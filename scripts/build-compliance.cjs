@@ -175,6 +175,15 @@ function discoverProtocols(sourceDir, specialisms) {
 // arrival. The one documented exception (si-terminate-session: naturally
 // idempotent by session_id) carries a `$comment` on its request schema
 // and is correctly absent from the required-key set.
+//
+// Divergence with `x-mutates-state`: the contradiction lint's cousin at
+// `scripts/lint-storyboard-contradictions.cjs:loadMutatingTasksFromSchemas`
+// reads `x-mutates-state: true` instead — that's the mutation-semantics
+// declaration ("this task changes observable state"), which is a different
+// concern from the idempotency mechanism enforced here. The two sets
+// overlap on ~95% of tasks but legitimately diverge on naturally-idempotent
+// mutations (comply_test_controller, si_terminate_session). Do not
+// unify — they answer different questions.
 
 function loadMutatingSchemaRefs(schemasDir) {
   const refs = new Set();
@@ -443,6 +452,32 @@ function main() {
   // (issue #2660, rule 3; canonical case #2627).
   try {
     execSync('node scripts/lint-storyboard-context-entity.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Auth-shape lint: storyboard steps must use principal-handle shapes
+  // (from_test_kit, value_strategy, none) rather than literal credentials
+  // that bind the storyboard to a specific value and leak identity into
+  // source control. #2720.
+  try {
+    execSync('node scripts/lint-storyboard-auth-shape.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Test-kits lint: every file under test-kits/ must declare either
+  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
+  // Enforces the bimodal partition documented in storyboard-schema.yaml
+  // under "Test kit flavors". #2721.
+  try {
+    execSync('node scripts/lint-storyboard-test-kits.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

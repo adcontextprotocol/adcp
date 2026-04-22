@@ -13,7 +13,8 @@
     "list_id": {
       "type": "string",
       "description": "Identifier for the property list within the agent",
-      "minLength": 1
+      "minLength": 1,
+      "x-entity": "property_list"
     },
     "auth_token": {
       "type": "string",

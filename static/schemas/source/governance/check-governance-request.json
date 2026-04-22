@@ -14,7 +14,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier."
+      "description": "Campaign governance plan identifier.",
+      "x-entity": "governance_plan"
     },
     "caller": {
       "type": "string",

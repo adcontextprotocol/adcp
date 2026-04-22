@@ -257,7 +257,7 @@ export async function handleGetPropertyList(
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
   }
 
   const domains = extractDomains(state.baseProperties);
@@ -280,7 +280,7 @@ export async function handleUpdatePropertyList(
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
   }
 
   if (req.name) {
@@ -324,7 +324,7 @@ export async function handleDeletePropertyList(
 
   const existed = session.propertyLists.delete(req.list_id);
   if (!existed) {
-    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
   }
 
   return { list_id: req.list_id, deleted: true };
@@ -343,7 +343,7 @@ export async function handleValidatePropertyDelivery(
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No property list with id '${req.list_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
   }
 
   const records = req.records || [];
@@ -369,6 +369,11 @@ export async function handleValidatePropertyDelivery(
       nonCompliantImpressions += impressions;
     }
 
+    // Per validation-result.json (additionalProperties: false), allowed
+    // keys are identifier, record_id, status, impressions, features,
+    // authorization, ext. Violations belong in `features[]` as the spec's
+    // machine-readable channel — a "record:list_membership" feature with
+    // status: failed carries the same signal.
     return {
       identifier: { type: 'domain', value: domain },
       ...(record.record_id ? { record_id: record.record_id } : {}),

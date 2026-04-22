@@ -22,7 +22,8 @@
             "properties": {
               "account_id": {
                 "type": "string",
-                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations."
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations.",
+                "x-entity": "account"
               },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",

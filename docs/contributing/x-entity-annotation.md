@@ -12,7 +12,7 @@ You're editing a schema and the field you're adding (or reviewing) is an id, slu
 
 1. **Does the value ever cross storyboard steps?** (captured via `context_outputs`, consumed as `$context.<name>`, or echoed between request and response.) If no, don't annotate.
 2. **Pick the entity type** from the table below. If none fits, read the full registry at `static/schemas/source/core/x-entity-types.json` — if still nothing, PR the registry to add one.
-3. **Add `x-entity: <value>`** next to `type` on the leaf property. For `$ref`'d shared types, annotate the shared type, not the use site.
+3. **Add `x-entity: <value>`** next to `type` on the leaf property. For `$ref`'d shared types, annotate the shared type, not the use site. For a domain sweep with many known id fields, run `node scripts/add-x-entity-annotations.mjs <files> [--overlay <map>]` — base map at `scripts/x-entity-field-map.json`, per-domain overlays resolve ambiguous names (`list_id`, `plan_id`, `pricing_option_id`). The script validates all values against the registry before writing, so typos hard-fail.
 4. If your field is a pass-through **echo** of a value from the request, annotate it with the **same** entity type on both sides.
 
 The lint is silent on fields without `x-entity`, so partial rollout is safe.
@@ -99,7 +99,7 @@ If variants resolve to *different* entities, **split the type**. The registry li
 
 The authoritative list lives at `static/schemas/source/core/x-entity-types.json`. The lint rejects unknown values — extending the registry is intentional and requires a PR.
 
-High-level groupings (see the registry for full descriptions):
+High-level groupings (see the registry for full descriptions). *Categories below are editorial grouping for orientation only; the registry at `static/schemas/source/core/x-entity-types.json` is the authoritative list.*
 
 | Category | Values |
 |---|---|
@@ -109,11 +109,25 @@ High-level groupings (see the registry for full descriptions):
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
-| Plans & governance | `media_plan`, `governance_plan`, `content_standards`, `task` |
+| Plans & governance | `media_plan`, `governance_plan`, `governance_registry_policy`, `governance_inline_policy`, `governance_check`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option` |
-| SI | `si_session` |
+| SI | `si_session`, `offering` |
+
+**Plan vs. policy vs. check:** `governance_plan` identifies the plan container (answers *"which plan?"*); `governance_registry_policy` / `governance_inline_policy` identify a rule inside or referenced by a plan (*"which rule?"*); `governance_check` identifies a specific evaluation of a plan against its policies (*"which check?"* — round-trips between `check_governance` and `report_plan_outcome`). Pick by the question the captured value answers.
+
+**Registry vs. inline policy:** Use `governance_registry_policy` when the field holds a globally-unique registry id (e.g., `uk_hfss`, `us_coppa`, `garm:brand_safety:violence`). Use `governance_inline_policy` when the field holds a plan-scoped bespoke id authored via `policy-entry.json`. Every `$ref` to `policy-entry.json` in an AdCP task schema is inline by definition — registry entries are served by a separate out-of-band API. If the field can legitimately hold either at runtime (the two ambiguous sites: `check-governance-response::findings[].policy_id`, `get-plan-audit-logs-response` audit entries, plus reserved `creative/creative-feature-result.json::policy_id` and `core/feature-requirement.json::policy_id`), leave it un-annotated and add a `$comment` starting with `"x-entity deliberately omitted"` — the gap lister recognises that phrase and skips the leaf.
 
 The registry file is the source of truth. To see every annotated field across the repo: `git grep -l x-entity static/schemas/source`.
+
+### Adding a new entity type
+
+When a schema change introduces an id that doesn't fit any registered value:
+
+1. Add the new value to the `enum` array in `static/schemas/source/core/x-entity-types.json`.
+2. Add a one-paragraph definition under `x-entity-definitions` in the same file. Describe what the id identifies, the schemas that use it, and any known caveats (e.g., namespace scope).
+3. Add the new value to the category table above, in the most appropriate row.
+4. If the new value neighbors an existing one (e.g., plan vs. policy vs. check), add a one-sentence disambiguation under the table.
+5. If the value will be applied by the patch script in a future domain sweep, add it to `scripts/x-entity-field-map.json` with the canonical field name → entity value mapping. If the same field name splits by domain (like `plan_id` or `list_id`), use the `__scope_specific__` / `__ambiguous__` sentinels and document the overlay pattern the per-domain PR should supply.
 
 ## How the lint reads annotations
 

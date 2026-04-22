@@ -41,7 +41,8 @@
               },
               "policy_id": {
                 "type": "string",
-                "description": "Policy ID that triggered this result. Enables the calibration loop to iterate on specific policies by correlating sample outcomes to policy ids."
+                "description": "Policy ID that triggered this result. Enables the calibration loop to iterate on specific policies by correlating sample outcomes to policy ids.",
+                "x-entity": "governance_registry_policy"
               },
               "explanation": {
                 "type": "string",

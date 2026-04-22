@@ -31,7 +31,27 @@
 #
 # requires_scenarios: string[] (optional — scenario IDs from storyboards/scenarios/ that must pass alongside this storyboard.
 #   Scenarios are small, focused behavior tests (e.g., "media_buy_seller/accepts_governance").
-#   The compliance engine resolves and runs them alongside the main storyboard.)
+#   The compliance engine resolves and runs them alongside the main storyboard.
+#
+#   Flag flow across `requires_scenarios`:
+#     A `branch_set` flag contributed in a step of storyboard X is
+#     considered asserted if EITHER (a) a step in X's own phases asserts
+#     it via `assert_contribution` with `check: any_of, allowed_values:
+#     [<flag>]`, OR (b) a scenario Y listed in `X.requires_scenarios`
+#     asserts it via the same check. The `orphan_contribution` lint
+#     honors this flow.
+#
+#     Reverse flow (a contribution in scenario Y asserted in parent X)
+#     is NOT supported — scenarios MUST be internally self-grading.
+#     The restriction preserves standalone lintability of scenarios
+#     and prevents cycles in the composition graph. Scenarios that
+#     contribute a flag without asserting it in their own phases will
+#     surface as `orphan_contribution` when linted standalone.
+#
+#     Scenario IDs in `requires_scenarios` MUST match the referenced
+#     file's top-level `id:` exactly, and the referenced scenario file
+#     MUST exist in the source tree at build time. Duplicate IDs
+#     across files are a build-time error.)
 #
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
@@ -44,7 +64,11 @@
 #
 # prerequisites:
 #   description: string (what must be true before running this storyboard)
-#   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml")
+#   test_kit: string (reference to a test kit file, e.g., "test-kits/acme-outdoor.yaml").
+#     Always a single path — test kits are not composed through this field. See
+#     "Test kit flavors" below for the two shapes a test kit may take and how
+#     storyboards compose brand identity with harness coordination when they need
+#     both.
 #   controller_seeding: boolean (optional — when true, the runner auto-injects a
 #     fixtures phase that seeds every entry in the storyboard's top-level
 #     `fixtures:` block via `comply_test_controller` before the main phases run.
@@ -97,6 +121,80 @@
 #   MUST NOT hardcode fixture IDs without a corresponding `fixtures:` block or a
 #   test-kit substitution.)
 #
+# --- Test kit flavors ---
+#
+# Files under `static/compliance/source/test-kits/` come in two shapes. The
+# distinction is not enforced by a separate field today — it's identified by
+# which fixture data the kit carries.
+#
+#   Brand kit — carries a brand identity and authentication fixture. Declares:
+#     id                 string (short identifier)
+#     auth.api_key       string (`demo-<kit>-v1` pattern; the demo Bearer the
+#                        runner sends on positive api-key probes)
+#     auth.probe_task    string (the protected read the runner calls under
+#                        `auth: none` and with a random-invalid key)
+#     brand              object (house + brand_id + names + logos + colors +
+#                        fonts + tone — full brand.json payload)
+#     + optional products, creatives, pricing_options, destinations, etc.
+#
+#   Today's brand kits: acme-outdoor, bistro-oranje, nova-motors, osei-natural,
+#   summit-foods. Used by storyboards that exercise brand-specific AdCP protocol
+#   flows (creative, media-buy, signals, governance, etc.).
+#
+#   Runner contract — carries a harness coordination contract. Declares:
+#     id                 string (short identifier)
+#     applies_to         object or list (which storyboards/specialisms consume
+#                        this contract, e.g., `{ specialism: signed-requests }`)
+#     + contract-specific fields describing how the runner should pre-configure
+#       the agent under test (e.g., `receiver_urls:`, `retry_replay_contract:`
+#       for webhook-receiver-runner; `endpoint_modes:` for signed-requests)
+#
+#   Today's runner contracts: signed-requests-runner, substitution-observer-
+#   runner, webhook-receiver-runner. They carry no credentials today — the
+#   runner injects no auth for these storyboards because the storyboards test
+#   harness infrastructure (signature verification, webhook receiver
+#   coordination, URL substitution observability), not brand-specific AdCP
+#   flows. A future runner contract could legitimately carry its own test-
+#   coordination principal (e.g., a callback-authenticating receiver), so the
+#   "no credentials" property is temporal, not structural.
+#
+# Enforcement. `scripts/lint-storyboard-test-kits.cjs` fails the build if a
+# kit under `test-kits/` declares neither `auth.api_key` nor `applies_to` —
+# that's the bimodal partition this section describes. The lint tolerates
+# kits that declare both (the future-branded-runner case above).
+#
+# Composition. Storyboards that need BOTH a brand identity AND a harness
+# contract declare the brand kit in `prerequisites.test_kit` and opt into the
+# runner contract through the `requires_contract: <runner_id>` field on
+# specific assertion tasks that need it — today that's `expect_substitution_safe`
+# and `expect_webhook*` (see their task definitions below for the per-task
+# field shape). When the named contract is not in scope for the runner, the
+# task grades as `not_applicable` rather than failing. Example:
+# `specialisms/sales-catalog-driven/index.yaml` declares
+# `prerequisites.test_kit: "test-kits/acme-outdoor.yaml"` and its
+# `expect_substitution_safe` step carries `requires_contract:
+# substitution_observer_runner`.
+#
+# Storyboards that test pure harness infrastructure without a specific brand
+# (e.g., `specialisms/signed-requests/index.yaml`,
+# `universal/webhook-emission.yaml`) point `prerequisites.test_kit` directly
+# at the runner contract and fall back on `task_default:` when any
+# `$test_kit.operations.<name>` reference resolves to null (see Step field
+# docs).
+#
+# `test_kit=<path>` in the contradiction-lint fingerprint disambiguates the
+# two flavors — `auth=kit_default` resolves to the kit's api_key for brand
+# kits and to no-credential for runner contracts, but the two never collide
+# because the `test_kit=` component separates them.
+#
+# Future: if a storyboard ever needs to compose TWO runner contracts
+# simultaneously (e.g., signed-requests + substitution-observer), the step-
+# level `requires_contract:` field will need to accept a list. Not reachable
+# today.
+#
+# See `docs/contributing/storyboard-authoring.md` for the author-workflow
+# side of kit selection.
+#
 # phases: array of Phase objects
 #
 # --- Phase ---
@@ -129,12 +227,22 @@
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
 #   auth: none                                            → strip any configured credentials before sending
 #   auth: { type: api_key, from_test_kit: true }          → use the API key at `auth.api_key` in the test kit
+#   auth: { type: api_key, from_test_kit: "auth.principals.<name>.api_key" }
+#                                                         → select a named principal within a multi-principal kit
+#                                                           (forward-compatible shape; no kit exposes multiple
+#                                                           principals today)
 #   auth: { type: api_key, value_strategy: random_invalid }
 #                                                         → use a per-run random bogus API key (for invalid-key probes).
 #                                                           Runner generates `invalid-<32 random bytes>` per run.
 #   auth: { type: oauth_bearer, value_strategy: random_invalid_jwt }
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
+#
+# DISALLOWED: `auth: { type: ..., value: "<literal>" }` — literal credentials in
+# storyboard YAML are a code smell (they bind the storyboard to a specific value,
+# can't rotate without rewriting, and leak plaintext identity into source).
+# `lint-storyboard-auth-shape.cjs` (rule `literal_value`) fails the build on this
+# shape. Use `from_test_kit` or `value_strategy` instead. See #2720.
 #
 # omit_idempotency_key: boolean (optional — when true on a mutating-task step,
 #   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
@@ -342,6 +450,54 @@
 #   a `branch_set.id`) are exempt from contradiction flagging by design:
 #   any_of semantics intentionally asserts mutually exclusive outcomes.
 #
+#   Mutating-task detection: the lint's prior-state fingerprint partitions
+#   steps by the ordered list of prior MUTATING tasks. A task is mutating
+#   iff its request schema declares `"x-mutates-state": true` at the top
+#   level. The annotation is consumed by
+#   `scripts/lint-storyboard-contradictions.cjs` (which builds the
+#   mutating-task set at lint time) and is the single source of truth for
+#   this concern.
+#
+#   Decidability rule (apply to any new task):
+#     A task declares `"x-mutates-state": true` iff a conformant compliance
+#     suite could write an assertion — on any later `get_*`, `list_*`, or
+#     follow-up call — whose outcome depends on this request having run.
+#     Equivalently: "this task changes observable server state a later
+#     conformant call may assert against."
+#
+#   Mutating task classes (illustrative; the decidability rule above is
+#   the actual test):
+#     - Writes (create/update/delete/sync/build) — resource lifecycle.
+#     - State transitions (cancel, approve, reject) — status moves.
+#     - Session-scoped primitives (si_initiate_session, si_send_message,
+#       si_terminate_session) — session lifecycle.
+#     - Reporting/audit writes (log_event, report_usage,
+#       report_plan_outcome, provide_performance_feedback) — mutating
+#       because `get_plan_audit_logs` and billing-summary tasks can assert
+#       against their recorded outputs.
+#
+#   Non-mutating task classes:
+#     - Read-only tasks (get_*, list_*, check_*, validate_*, preview_*) do
+#       not declare `x-mutates-state` UNLESS the read itself produces
+#       observable state a later task can assert against (e.g., a view
+#       counter that `get_analytics` can read) — those are mutating
+#       regardless of prefix.
+#     - Pure-compute tasks (no state read or write — estimates,
+#       calculations) MUST NOT declare `x-mutates-state`.
+#
+#   Relationship to idempotency_key (decoupled, do not unify):
+#     `x-mutates-state` declares mutation semantics. `required:
+#     [idempotency_key]` declares the idempotency mechanism. The sets
+#     overlap ~95% but legitimately diverge for naturally-idempotent
+#     mutations. Example: `comply_test_controller` declares
+#     `x-mutates-state: true` but omits `idempotency_key` from `required`
+#     because the `scenario` enum is the dedup boundary — replaying
+#     `force_media_buy_status=active` converges to the same observable
+#     state without a key. `si_terminate_session` is the same shape
+#     (session_id is the dedup boundary). `scripts/build-compliance.cjs`
+#     reads `idempotency_key` for its own enforcement; do not try to share
+#     the two reads.
+#
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
@@ -477,6 +633,36 @@
 #       a seed_* scenario the seller does not implement (returned as
 #       UNKNOWN_SCENARIO). The storyboard grades not_applicable (coverage gap),
 #       not failed.
+#
+#   unresolved_scenario_reference
+#       A detailed sub-reason under the canonical skip `reason:
+#       not_applicable`. Emitted when a parent storyboard's
+#       `requires_scenarios:` entry cannot be resolved against the source
+#       tree (no file declares that `id:`). Per the
+#       `detailed_reason_mapping` convention in runner-output-contract.yaml,
+#       runners MUST populate the canonical `reason: not_applicable` and
+#       encode `unresolved_scenario_reference` in `detail`. detail MUST
+#       follow the shape
+#       'requires_scenarios reference "<scenario_id>" did not resolve
+#       against the source tree' — and when multiple references are
+#       unresolved, detail MUST enumerate every unresolved id with the
+#       same shape (comma-separated or newline-delimited) so downstream
+#       tooling can parse each. Runners MUST NOT silently pass the parent
+#       as if the missing scenario had contributed.
+#
+#       Distinct from `fixture_seed_unsupported`: that reason indicates an
+#       agent-coverage gap (seller doesn't implement a seed scenario);
+#       `unresolved_scenario_reference` indicates a source-tree authoring
+#       bug that the build-time lint SHOULD have caught. Dashboards and
+#       summary reports SHOULD NOT conflate the two when aggregating
+#       `not_applicable` counts — they are categorically different
+#       signals.
+#
+#       The `lint:storyboard-branch-sets` script surfaces this as a
+#       build-time error via the `unresolved_scenario_reference` rule so
+#       unresolved references in a well-linted corpus never reach a
+#       runner. The runner-side grading is defensive for corpora that
+#       bypass the lint or come from pre-lint CI states.
 #
 # --- Webhook receiver (optional, for outbound-webhook conformance) ---
 #

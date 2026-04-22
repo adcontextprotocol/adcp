@@ -645,9 +645,8 @@ When implementing `list_creative_formats` for a creative agent:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `FORMAT_NOT_FOUND` | Requested format_id doesn't exist | Verify format_id from get_products response |
+| `REFERENCE_NOT_FOUND` | Requested `format_id` doesn't exist, or referenced creative agent is unavailable / not accessible. `error.field` MUST identify which typed parameter failed to resolve. | Verify `format_id` from `get_products` response; the format may be from a deprecated agent. |
 | `INVALID_REQUEST` | Invalid filter parameters | Check parameter types and values |
-| `AGENT_NOT_FOUND` | Referenced creative agent unavailable | Format may be from deprecated agent |
 
 ## Best Practices
 

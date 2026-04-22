@@ -171,15 +171,88 @@ describe('comply_test_controller', () => {
     });
   });
 
+  describe('seed scenarios', () => {
+    it('seed_creative pre-populates a creative the rest of the session can reference', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          creative_id: 'seeded_creative_1',
+          fixture: { name: 'Seeded Hero Video', status: 'approved', format_id: { id: 'video_30s' } },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+
+      // Creative should now be visible to list_creatives within the same session.
+      const { result: listed } = await simulateCallTool(server, 'list_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const creatives = (listed as any).creatives as Array<{ creative_id: string }>;
+      expect(creatives.some(c => c.creative_id === 'seeded_creative_1')).toBe(true);
+    });
+
+    it('seed_plan pre-populates a governance plan', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_plan',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          plan_id: 'seeded_plan_1',
+          fixture: {
+            brand: { domain: 'comply-test.example.com' },
+            objectives: 'seeded test plan',
+            budget: { total: 10000, currency: 'USD' },
+          },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+    });
+
+    it('seed_media_buy pre-populates a media buy in active state', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'seeded_mb_1',
+          fixture: { status: 'active', currency: 'USD' },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+
+      const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['seeded_mb_1'],
+      });
+      const found = (buys as any).media_buys as Array<{ media_buy_id: string }>;
+      expect(found.some(b => b.media_buy_id === 'seeded_mb_1')).toBe(true);
+    });
+
+    it('seed_* requires params (per spec allOf clause)', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((result as any).success).toBe(false);
+      expect((result as any).error).toBe('INVALID_PARAMS');
+    });
+  });
+
   describe('sandbox gating', () => {
-    it('rejects calls without sandbox: true', async () => {
+    it('allows calls when sandbox is not specified', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         account: { brand: { domain: 'test.example.com' }, operator: 'tester' },
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
 
     it('rejects calls with sandbox: false', async () => {
@@ -192,13 +265,12 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('rejects calls with no account', async () => {
+    it('allows calls with no account', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
   });
 

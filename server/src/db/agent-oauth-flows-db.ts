@@ -23,6 +23,7 @@ export interface PendingOAuthFlow {
     task: string;
     params: Record<string, unknown>;
   };
+  returnTo?: string;
 }
 
 // Internal stored representation (codeVerifier encrypted)
@@ -38,6 +39,7 @@ interface StoredPendingOAuthFlow {
     task: string;
     params: Record<string, unknown>;
   };
+  returnTo?: string;
 }
 
 function encryptFlowData(data: PendingOAuthFlow): StoredPendingOAuthFlow {

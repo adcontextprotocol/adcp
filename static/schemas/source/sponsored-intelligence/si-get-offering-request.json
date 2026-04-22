@@ -14,7 +14,8 @@
     },
     "offering_id": {
       "type": "string",
-      "description": "Offering identifier from the catalog to get details for"
+      "description": "Offering identifier from the catalog to get details for",
+      "x-entity": "offering"
     },
     "context": {
       "type": "string",

@@ -6570,20 +6570,20 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
     expect(mediaBuyId).toBeDefined();
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account,
       media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(targeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('persists collection_list_exclude in package targeting', async () => {
@@ -6613,11 +6613,11 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting,
+        targeting_overlay: targeting,
       }],
     });
-    const createdPackages = created.result.packages as Array<{ targeting?: unknown }>;
-    expect(createdPackages[0]!.targeting).toEqual(targeting);
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
   });
 
   it('update_media_buy round-trips targeting changes', async () => {
@@ -6646,7 +6646,7 @@ describe('AdCP protocol compliance', () => {
         pricing_option_id: pricing.pricing_option_id,
         budget: 5000,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
-        targeting: initialTargeting,
+        targeting_overlay: initialTargeting,
       }],
     });
     const mediaBuyId = created.result.media_buy_id as string;
@@ -6659,14 +6659,14 @@ describe('AdCP protocol compliance', () => {
     await simulateCallTool(server, 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
-      packages: [{ package_id: packageId, targeting: newTargeting }],
+      packages: [{ package_id: packageId, targeting_overlay: newTargeting }],
     });
 
     const fetched = await simulateCallTool(server, 'get_media_buys', {
       account, media_buy_ids: [mediaBuyId],
     });
-    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting?: unknown }> }>)[0]!;
-    expect(buy.packages[0]!.targeting).toEqual(newTargeting);
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(newTargeting);
   });
 
   it('rejects malformed targeting with VALIDATION_ERROR', async () => {
@@ -6857,6 +6857,50 @@ describe('get_brand_identity handler', () => {
     });
 
     expect(result.code).toBe('brand_not_found');
+  });
+});
+
+describe('property-list uniform not-found response (issue #2739)', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  // Paired-probe: two distinct unresolvable list_ids must produce byte-identical
+  // error bodies, otherwise the probed id is a cross-tenant enumeration oracle.
+  const PROBE_TOOLS = ['get_property_list', 'update_property_list', 'delete_property_list'] as const;
+  for (const toolName of PROBE_TOOLS) {
+    it(`${toolName} returns byte-identical errors for two distinct unresolvable list_ids`, async () => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+
+      const probeA = await simulateCallTool(server, toolName, { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec' });
+      const probeB = await simulateCallTool(server, toolName, { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b' });
+
+      expect(probeA.isError).toBe(probeB.isError);
+      expect(probeA.result).toEqual(probeB.result);
+      expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+      expect(probeA.result.message).toBe('Property list not found');
+      expect(probeA.result.field).toBe('list_id');
+    });
+  }
+
+  it('validate_property_delivery returns byte-identical errors for two distinct unresolvable list_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+    const records = [{ identifier: { type: 'domain', value: 'x.example' }, impressions: 1 }];
+
+    const probeA = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec', records });
+    const probeB = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b', records });
+
+    expect(probeA.isError).toBe(probeB.isError);
+    expect(probeA.result).toEqual(probeB.result);
+    expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+    expect(probeA.result.message).toBe('Property list not found');
+    expect(probeA.result.field).toBe('list_id');
   });
 });
 

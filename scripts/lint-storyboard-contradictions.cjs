@@ -61,40 +61,20 @@ const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source
 const SCHEMAS_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 
 /**
- * Tasks whose state mutations are invisible to the idempotency-key heuristic
- * below — they don't require `idempotency_key` in their request schema
- * (typically because they are naturally idempotent or session-scoped) but
- * still change observable agent state that a later step's outcome depends on.
- *
- * Each entry must be justified. Adding to this set without a schema-level
- * reason is a drift hazard; prefer declaring `idempotency_key` required on
- * the request schema instead.
- */
-const MUTATING_EXCEPTIONS = new Set([
-  // Schema description: "Naturally idempotent: the `scenario` enum is either
-  // a lookup (`list_scenarios`) or a state-forcing operation whose target
-  // state is carried in the payload (`force_*_status`, `simulate_*`), so
-  // replays converge to the same observable state." The controller scenarios
-  // do mutate controller state the next step observes, so the contradiction
-  // lint must treat them as mutations.
-  'comply_test_controller',
-  // Schema description: "Naturally idempotent — `session_id` is the dedup
-  // boundary, and terminating an already-terminated session is a no-op that
-  // returns the same terminal state." The termination still transitions
-  // active → terminated, and a later si_send_message on the same session_id
-  // asserts against that terminal state; the contradiction lint must
-  // discriminate pre- vs post-termination state paths.
-  'si_terminate_session',
-]);
-
-/**
  * Read every `*-request.json` under `SCHEMAS_DIR` and return the set of
- * task names that require `idempotency_key`. Task name is derived from the
- * filename: `create-media-buy-request.json` → `create_media_buy`.
+ * task names whose schema declares `"x-mutates-state": true`. Task name
+ * is derived from the filename: `create-media-buy-request.json` →
+ * `create_media_buy`.
  *
- * Mirrors the pattern in `scripts/build-compliance.cjs:loadMutatingSchemaRefs`;
- * kept local rather than shared because the two lints have slightly
- * different output needs (tool-only here, refs+tools there).
+ * `x-mutates-state` is the explicit schema-level declaration that this
+ * task changes observable server state a later step's assertion may
+ * depend on. It decouples "mutation semantics" (what the contradiction
+ * lint needs) from "idempotency mechanism" (what
+ * `build-compliance.cjs:loadMutatingSchemaRefs` enforces) — the two
+ * correlate ~95% of the time but legitimately diverge for naturally-
+ * idempotent mutations like `comply_test_controller` (scenario enum is
+ * the dedup boundary) and `si_terminate_session` (session_id is the
+ * dedup boundary).
  */
 function loadMutatingTasksFromSchemas(schemasDir) {
   // Map<task, srcPath> so same-task-name across subdirs surfaces as an
@@ -117,8 +97,7 @@ function loadMutatingTasksFromSchemas(schemasDir) {
       } catch {
         continue;
       }
-      const required = Array.isArray(schema.required) ? schema.required : [];
-      if (!required.includes('idempotency_key')) continue;
+      if (schema['x-mutates-state'] !== true) continue;
       const task = entry.name.replace(/-request\.json$/, '').replace(/-/g, '_');
       const prior = origins.get(task);
       if (prior && prior !== p) {
@@ -137,18 +116,13 @@ function loadMutatingTasksFromSchemas(schemasDir) {
 
 /**
  * AdCP task names that MUTATE server state. Derived at module load by
- * reading request schemas' `required: [idempotency_key]` declarations
- * (source of truth for "this task is a mutation"), plus documented
- * exceptions for naturally-idempotent tasks that still change state.
+ * reading every request schema's `x-mutates-state: true` declaration.
  *
  * Prior-state discrimination in the contradiction lint depends on this
  * set — a step whose prior phase contains only read tasks is at the same
  * "state" as a step with no prior phases.
  */
-const MUTATING_TASKS = new Set([
-  ...loadMutatingTasksFromSchemas(SCHEMAS_DIR),
-  ...MUTATING_EXCEPTIONS,
-]);
+const MUTATING_TASKS = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
 
 /**
  * Step tasks that we skip entirely — they're synthetic assertions or
@@ -253,31 +227,197 @@ function fingerprintRequest(req) {
 }
 
 /**
+ * Primary-id field per documented fixture category (see the `fixtures:`
+ * block documentation in storyboard-schema.yaml). Used to sort arrays
+ * within a category so two storyboards with semantically equivalent
+ * fixtures in different array order hash the same.
+ *
+ * The seeding DAG is keyed on foreign-key dependencies across categories,
+ * not on intra-array order within one — sorting by primary id is safe and
+ * eliminates a false-negative envelope in the env fingerprint.
+ */
+const FIXTURE_CATEGORY_PRIMARY_ID = {
+  products: 'product_id',
+  pricing_options: 'pricing_option_id',
+  creatives: 'creative_id',
+  plans: 'plan_id',
+  media_buys: 'media_buy_id',
+};
+
+function normalizeFixturesForHashing(fixtures) {
+  if (!fixtures || typeof fixtures !== 'object') return fixtures;
+  const out = {};
+  for (const [category, entries] of Object.entries(fixtures)) {
+    if (!Array.isArray(entries)) {
+      out[category] = entries;
+      continue;
+    }
+    const idField = FIXTURE_CATEGORY_PRIMARY_ID[category];
+    if (!idField) {
+      // Unknown category: fail loudly rather than preserve order silently.
+      // A new fixture category added to the schema without updating this
+      // table would otherwise create a false-negative bucket in the env
+      // fingerprint (two authors listing entries in different orders
+      // produce different hashes for the same seeded state). Force the
+      // schema update and the lint update to land together.
+      throw new Error(
+        `lint-storyboard-contradictions: unknown fixture category "${category}". ` +
+          `Add it to FIXTURE_CATEGORY_PRIMARY_ID in scripts/lint-storyboard-contradictions.cjs ` +
+          'alongside the schema documentation in static/compliance/source/universal/storyboard-schema.yaml.',
+      );
+    }
+    out[category] = [...entries].sort((a, b) => {
+      const aid = a && typeof a === 'object' ? a[idField] : undefined;
+      const bid = b && typeof b === 'object' ? b[idField] : undefined;
+      if (typeof aid !== 'string' || typeof bid !== 'string') return 0;
+      return aid < bid ? -1 : aid > bid ? 1 : 0;
+    });
+  }
+  return out;
+}
+
+/**
+ * Reduce a step's `auth` field to a stable fingerprint token. Always returns
+ * a string so the `auth=` component is ALWAYS present in the env fingerprint
+ * — required by #2711: steps that inherit the transport default used to emit
+ * no `auth=` component and could collide with explicit steps authored
+ * against divergent transport defaults once `sb=<doc.id>` was removed.
+ *
+ * Emission shape (what goes in `auth=...`):
+ *
+ *   kit_default              — step.auth absent. Step inherits whatever
+ *                              credential the transport is configured with
+ *                              (today: the test kit's `auth.api_key`, which
+ *                              is already covered by `test_kit=<path>` in
+ *                              the outer fingerprint; the explicit token
+ *                              keeps the shape legible and pins inheritance
+ *                              as a distinct semantic from a declared
+ *                              override).
+ *
+ *   none                     — step.auth === "none". Credentials stripped.
+ *
+ *   <type>:<strategy>        — step.auth is an object. Strategy encodes:
+ *     value_strategy          → the declared strategy verbatim
+ *                              (e.g., api_key:random_invalid). Per-run
+ *                              values are random; identity is the strategy.
+ *     from_test_kit: true     → `from_test_kit` — the kit's default
+ *                              principal handle. Equivalent in resolution
+ *                              to `kit_default` today, distinguished here
+ *                              because the explicit declaration carries
+ *                              type info the default case can't.
+ *     from_test_kit: "<path>" → `from_test_kit:<path>` — selects a named
+ *                              principal within a multi-principal kit
+ *                              (#2708). Today no kit declares multiple
+ *                              principals; emission shape is forward-
+ *                              compatible so the first multi-principal
+ *                              kit's storyboards are discriminated without
+ *                              further changes to the lint.
+ *     value: "<literal>"      → `literal:<sha1-8hex>` — hash the resolved
+ *                              identity (#2708) so two steps declaring
+ *                              different literal keys against the same
+ *                              kit don't collide. 32-bit truncation is
+ *                              deliberate: at storyboard-authoring scale
+ *                              (~thousands) the birthday bound is ~65K
+ *                              before even-odds collision, and a miss
+ *                              here degrades to a lint false-negative,
+ *                              not a correctness hazard. Literal keys in
+ *                              storyboards are already a code smell; the
+ *                              hash is defense-in-depth, not a load-
+ *                              bearing discriminator.
+ *
+ *   unknown                  — step.auth is some other shape. Defensive
+ *                              catch-all so the lint surfaces rather than
+ *                              silently drops.
+ *
+ * Precedence (first match wins): `value_strategy` > `from_test_kit` >
+ * `value`. Intentional: if a step declares both `value_strategy:
+ * random_invalid` and `from_test_kit: true`, the random value wins on the
+ * wire — the strategy is what the agent actually sees — so encoding the
+ * strategy is faithful to runtime behavior. Reordering would silently
+ * change which tests discriminate.
+ */
+function describeStepAuth(auth) {
+  if (auth === undefined) return 'kit_default';
+  if (auth === 'none') return 'none';
+  if (typeof auth !== 'object' || auth === null) return 'unknown';
+  const type = typeof auth.type === 'string' ? auth.type : '?';
+  if (typeof auth.value_strategy === 'string') return `${type}:${auth.value_strategy}`;
+  if (typeof auth.from_test_kit === 'string') return `${type}:from_test_kit:${auth.from_test_kit}`;
+  if (auth.from_test_kit === true) return `${type}:from_test_kit`;
+  if (typeof auth.value === 'string') {
+    const hash = crypto.createHash('sha1').update(auth.value).digest('hex').slice(0, 8);
+    return `${type}:literal:${hash}`;
+  }
+  return `${type}:?`;
+}
+
+/**
  * Env fingerprint: the external knobs that select which fixture a conformant
  * agent serves. Two steps with same request but different env can
  * legitimately disagree on outcome (e.g., api-key vs oauth_bearer auth
  * returning different error shapes, or two storyboards seeding different
  * governance states).
  *
- * The storyboard's top-level `id:` is included: distinct storyboard files
- * exercise distinct test-kit/controller configurations that a runner
- * resets between runs. Contradictions within a single storyboard are the
- * high-value signal; cross-storyboard contradictions require an explicit
- * shared env tag (comply_scenario + prerequisites) to surface.
+ * Components:
+ *   test_kit   — `doc.prerequisites.test_kit`. Two storyboards sharing id +
+ *                scenario but loading different test kits target different
+ *                agent fixtures. Also the de-facto principal-identity
+ *                discriminator today: every test kit binds a principal
+ *                profile (spend authority, brand rights, category scoping),
+ *                and the current storyboard suite declares `caller.role:
+ *                buyer_agent` uniformly — so `test_kit` alone separates the
+ *                governance-denied-by-spend-authority path from the
+ *                governance-approved path. See #2684 for the audit.
+ *   role       — `doc.caller.role`. Forward-compatible guard for the
+ *                "shared test_kit, distinct principal role" case identified
+ *                in #2684. No-op on the current suite (all buyer_agent)
+ *                but automatically discriminates the first storyboard that
+ *                authors a different caller role against a shared kit.
+ *   fixtures   — hash of `doc.fixtures` (top-level). Storyboards that seed
+ *                different prerequisite state via `comply_test_controller`
+ *                legitimately produce different outcomes for the same
+ *                request.
+ *   scenario   — step's `comply_scenario`.
+ *   auth       — step's effective credential shape, produced by
+ *                `describeStepAuth`. Always emitted (even for steps that
+ *                inherit the transport default) so inheritance itself
+ *                participates in the fingerprint rather than silently
+ *                collapsing with arbitrary other states — see #2711.
+ *                Forward-compatible with multi-principal kits via
+ *                `from_test_kit:<path>` selectors — see #2708.
+ *   seed       — phase's `prerequisites.controller_seeding` (distinct from
+ *                top-level fixtures; applies phase-scoped seeding).
+ *
+ * Note on `sb=<doc.id>`: the env fingerprint deliberately does NOT include
+ * the storyboard id. That was the conservative shape during the lint's
+ * initial rollout (#2661) but suppressed the exact class of bug the lint
+ * was built to catch — cross-storyboard contradictions (#2627, #2628,
+ * #2629). #2670 documented the planned removal; #2684 audited principal
+ * identity as the prerequisite discriminator (→ added `role=`); and
+ * #2708 tracks the deeper gap that `auth=` encodes strategy, not resolved
+ * principal identity. With those precisions in place, two steps that
+ * share (task, request, state, env) are now treated as the same test
+ * vector regardless of which storyboard file they live in — which is the
+ * whole point of this lint.
  */
 function fingerprintEnv(step, phase, doc) {
   const parts = [];
-  if (typeof doc?.id === 'string') parts.push(`sb=${doc.id}`);
-  if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
-  if (step.auth) {
-    const auth = step.auth;
-    if (auth === 'none') parts.push('auth=none');
-    else if (typeof auth === 'object') {
-      const type = auth.type || '?';
-      const strat = auth.value_strategy || (auth.from_test_kit ? 'from_test_kit' : auth.value ? 'literal' : '?');
-      parts.push(`auth=${type}:${strat}`);
-    }
+  if (typeof doc?.prerequisites?.test_kit === 'string') {
+    parts.push(`test_kit=${doc.prerequisites.test_kit}`);
   }
+  if (typeof doc?.caller?.role === 'string') {
+    parts.push(`role=${doc.caller.role}`);
+  }
+  if (doc?.fixtures && typeof doc.fixtures === 'object' && Object.keys(doc.fixtures).length > 0) {
+    const fixturesHash = crypto
+      .createHash('sha1')
+      .update(stableStringify(normalizeFixturesForHashing(doc.fixtures)))
+      .digest('hex')
+      .slice(0, 8);
+    parts.push(`fixtures=${fixturesHash}`);
+  }
+  if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
+  parts.push(`auth=${describeStepAuth(step.auth)}`);
   const seeding = phase?.prerequisites?.controller_seeding;
   if (Array.isArray(seeding) && seeding.length > 0) {
     parts.push(`seed=${seeding.map((s) => s?.scenario || s).sort().join(',')}`);
@@ -506,13 +646,15 @@ if (require.main === module) main();
 
 module.exports = {
   MUTATING_TASKS,
-  MUTATING_EXCEPTIONS,
   SKIP_TASKS,
+  FIXTURE_CATEGORY_PRIMARY_ID,
   loadMutatingTasksFromSchemas,
   normalizeRequestValue,
   canonicalizeRequest,
   fingerprintRequest,
   fingerprintEnv,
+  describeStepAuth,
+  normalizeFixturesForHashing,
   classifyOutcome,
   outcomesAgree,
   describeOutcome,

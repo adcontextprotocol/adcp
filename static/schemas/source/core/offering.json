@@ -7,7 +7,8 @@
   "properties": {
     "offering_id": {
       "type": "string",
-      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls."
+      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls.",
+      "x-entity": "offering"
     },
     "name": {
       "type": "string",

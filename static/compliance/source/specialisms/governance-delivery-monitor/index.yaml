@@ -44,6 +44,35 @@ prerequisites:
     and an active media buy with delivery data. The governance plan defines a
     reallocation threshold that triggers re-evaluation.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  plans:
+    - plan_id: "gov_acme_delivery_monitor"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Delivery-phase governance with drift detection and rebalancing"
+      budget:
+        total: 40000
+        currency: "USD"
+        reallocation_threshold: 8000
+      flight:
+        start: "2027-01-01T00:00:00Z"
+        end: "2027-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "drift_reevaluation"
+          enforcement: "must"
+          policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+  media_buys:
+    - media_buy_id: "mb_acme_q2_2026"
+      status: "active"
+      budget:
+        total: 40000
+        currency: "USD"
+      flight:
+        start: "2026-04-01T00:00:00Z"
+        end: "2026-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery
@@ -177,6 +206,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
           payload:
             account:
@@ -293,6 +323,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"
           media_buy_id: "mb_acme_q2_2026"

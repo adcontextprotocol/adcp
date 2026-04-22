@@ -353,11 +353,8 @@ All AdCP Governance responses follow a consistent structure:
 
 ### Error Codes
 
-- `PROPERTY_NOT_FOUND`: Property identifier not recognized
+- `REFERENCE_NOT_FOUND`: Referenced property, policy, or property list does not exist or is not accessible by the caller. Returned uniformly for both "does not exist" and "exists but unauthorized" — see [Uniform response for inaccessible references](/docs/building/implementation/error-handling#standard-error-codes).
 - `PROPERTY_NOT_MONITORED`: Governance agent doesn't cover this property
-- `POLICY_NOT_FOUND`: Referenced policy doesn't exist
-- `LIST_ACCESS_DENIED`: Cannot access property list (auth failed)
-- `LIST_NOT_FOUND`: Property list reference invalid
 - `METHODOLOGY_NOT_SUPPORTED`: Requested methodology version unavailable
 - `PARTIAL_RESULTS`: Some properties couldn't be evaluated
 

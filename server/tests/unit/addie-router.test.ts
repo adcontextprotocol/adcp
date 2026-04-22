@@ -489,6 +489,25 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('web_search');
   });
 
+  it('should always expose content submission and review tools (any channel, any toolset)', () => {
+    // Content tools must be reachable regardless of the router's set choice.
+    // Otherwise a member pasting a draft in an admin/editorial channel gets
+    // an escalation instead of a submission — the root of issues #2695/#2698.
+    const tools = getToolsForSets([], false);
+    expect(tools).toContain('propose_content');
+    expect(tools).toContain('get_my_content');
+    expect(tools).toContain('list_pending_content');
+    expect(tools).toContain('approve_content');
+    expect(tools).toContain('reject_content');
+  });
+
+  it('should always expose read_google_doc so propose_content can consume a Docs link', () => {
+    // Members share Google Doc links as drafts — the reader has to be
+    // reachable before propose_content can be called, regardless of channel.
+    const tools = getToolsForSets([], false);
+    expect(tools).toContain('read_google_doc');
+  });
+
   it('should block admin tools for non-admin users', () => {
     const tools = getToolsForSets(['admin'], false);
     // Non-admin requesting admin set should get only always-available tools

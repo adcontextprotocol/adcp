@@ -279,7 +279,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       expect(response.body.status).toBe('draft');
     });
 
-    it('defaults leads to published when no status is requested (preserves prior behavior)', async () => {
+    it('defaults leads to pending_review when no status is requested (no silent auto-publish)', async () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
@@ -287,6 +287,28 @@ describe('My Content — body, admin scope, status, delete', () => {
           content: 'body',
           content_type: 'article',
           collection: { slug: WG_SLUG },
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe('pending_review');
+
+      const db = await pool.query(
+        `SELECT status, published_at FROM perspectives WHERE id = $1`,
+        [response.body.id]
+      );
+      expect(db.rows[0].status).toBe('pending_review');
+      expect(db.rows[0].published_at).toBeNull();
+    });
+
+    it('leads who pass status=published explicitly are honored', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-lead-publish',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+          status: 'published',
         })
         .expect(201);
 

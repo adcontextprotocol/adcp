@@ -231,9 +231,8 @@ If the seller rejected the request, report it so the governance agent can update
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
-| `CHECK_NOT_FOUND` | correctable | No governance check with this `check_id`. |
-| `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `governance_context` in the plan. |
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID, or the plan is not accessible to the calling account. |
+| `REFERENCE_NOT_FOUND` | correctable | `check_id` does not resolve to a governance check, or `governance_context` does not resolve to a campaign in the plan. `error.field` MUST identify which typed parameter failed to resolve. |
 | `CAMPAIGN_SUSPENDED` | correctable | Plan is suspended pending human review. Outcome reporting is blocked until the escalation is resolved. |
 
 ## Related tasks

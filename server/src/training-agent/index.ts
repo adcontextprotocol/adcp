@@ -16,11 +16,12 @@ import {
   verifyApiKey,
   extractBearerToken,
   respondUnauthorized,
+  requireAuthenticatedOrSigned,
+  signatureErrorCodeFromCause,
   AuthError,
   type Authenticator,
   type AuthPrincipal,
 } from '@adcp/client/server';
-import { RequestSignatureError } from '@adcp/client/signing';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
@@ -29,7 +30,6 @@ import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
 import { buildRequestSigningAuthenticator, STRICT_REQUIRED_FOR } from './request-signing.js';
-import { strictSignatureAuthenticator, RequestSignatureRequiredError } from './strict-auth.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -121,16 +121,33 @@ function buildDefaultAuthenticator(): Authenticator | null {
 
 /**
  * Strict `/mcp-strict` route (grader target): presence-gated signature
- * with `required_for: ['create_media_buy']`. See `strict-auth.ts` for the
- * full behaviour matrix.
+ * with `required_for: ['create_media_buy']`. Delegates to the SDK's
+ * `requireAuthenticatedOrSigned` (5.7) — presence-gated signing, bypass
+ * on valid bearer, `request_signature_required` thrown as an
+ * `AuthError(cause: RequestSignatureError)` when the op requires signing
+ * and no other credential verifies. `serve()` / the handler below auto-
+ * detect the signature-layer error via `signatureErrorCodeFromCause`.
  */
 function buildStrictAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
-  return strictSignatureAuthenticator({
-    bearerAuth,
-    signingAuth: lazySigningAuth(),
+  return requireAuthenticatedOrSigned({
+    signature: lazySigningAuth(),
+    fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
+    resolveOperation: (req) => {
+      const raw = (req as { rawBody?: string }).rawBody;
+      if (!raw) return undefined;
+      try {
+        const body = JSON.parse(raw) as { method?: string; params?: { name?: string } };
+        if (body.method === 'tools/call' && typeof body.params?.name === 'string') {
+          return body.params.name;
+        }
+      } catch {
+        // Transport rejects malformed JSON downstream.
+      }
+      return undefined;
+    },
   });
 }
 
@@ -149,31 +166,16 @@ function buildRequireToken(authenticator: Authenticator | null) {
       principal = await authenticator(req);
     } catch (err) {
       logger.warn({ err }, 'Training agent: authentication error');
-      // The strict authenticator throws this sentinel when an unsigned
-      // request targets an op in `required_for`. The signing authenticator
-      // wraps `RequestSignatureError` (bad signature, replayed, revoked,
-      // etc.) inside `AuthError`. Both need to surface as a RFC 9421
-      // `WWW-Authenticate: Signature error="<code>"` challenge — the
-      // `signed_requests` conformance grader reads the error code off
-      // that header, not off the JSON body. `respondUnauthorized`
-      // hardcodes the Bearer scheme, so emit the Signature challenge
-      // directly.
-      if (err instanceof RequestSignatureRequiredError) {
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('WWW-Authenticate', 'Signature realm="mcp", error="request_signature_required"');
-        res.status(401).json({
-          error: 'request_signature_required',
-          error_description: err.publicMessage,
+      // `signatureErrorCodeFromCause` (5.7) unwraps `AuthError` → cause to
+      // surface RFC 9421 error codes. `respondUnauthorized({ signatureError })`
+      // emits `WWW-Authenticate: Signature error="<code>"` — the challenge
+      // the `signed_requests` conformance grader reads the code off of.
+      const signatureError = signatureErrorCodeFromCause(err);
+      if (signatureError) {
+        respondUnauthorized(req, res, {
+          signatureError,
+          errorDescription: err instanceof AuthError ? err.publicMessage : 'Signature rejected.',
         });
-        return;
-      }
-      const sigCause = err instanceof AuthError && err.cause instanceof RequestSignatureError
-        ? err.cause
-        : null;
-      if (sigCause) {
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('WWW-Authenticate', `Signature realm="mcp", error="${sigCause.code}"`);
-        res.status(401).json({ error: sigCause.code, error_description: sigCause.message });
         return;
       }
       const publicMessage = err instanceof AuthError

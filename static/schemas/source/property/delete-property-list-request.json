@@ -3,6 +3,7 @@
   "$id": "/schemas/property/delete-property-list-request.json",
   "title": "Delete Property List Request",
   "description": "Request parameters for deleting a property list",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,7 +14,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the property list to delete"
+      "description": "ID of the property list to delete",
+      "x-entity": "property_list"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

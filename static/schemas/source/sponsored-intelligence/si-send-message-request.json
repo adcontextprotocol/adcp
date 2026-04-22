@@ -4,6 +4,7 @@
   "title": "SI Send Message Request",
   "description": "Send a message to the brand agent within an active session",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -21,7 +22,8 @@
     },
     "session_id": {
       "type": "string",
-      "description": "Active session identifier"
+      "description": "Active session identifier",
+      "x-entity": "si_session"
     },
     "message": {
       "type": "string",

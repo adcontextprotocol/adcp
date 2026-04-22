@@ -14,7 +14,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Plan identifier."
+            "description": "Plan identifier.",
+            "x-entity": "governance_plan"
           },
           "plan_version": {
             "type": "integer",
@@ -114,7 +115,8 @@
                   "properties": {
                     "check_id": {
                       "type": "string",
-                      "description": "The escalated governance check."
+                      "description": "The escalated governance check.",
+                      "x-entity": "governance_check"
                     },
                     "reason": {
                       "type": "string",
@@ -236,7 +238,8 @@
                 },
                 "plan_id": {
                   "type": "string",
-                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio."
+                  "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio.",
+                  "x-entity": "governance_plan"
                 },
                 "caller": {
                   "type": "string",
@@ -292,7 +295,8 @@
                         "type": "string"
                       },
                       "policy_id": {
-                        "type": "string"
+                        "type": "string",
+                        "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"

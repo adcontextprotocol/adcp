@@ -76,6 +76,10 @@ import {
   createPropertyToolHandlers,
 } from './mcp/property-tools.js';
 import {
+  GOOGLE_DOCS_TOOLS,
+  createGoogleDocsToolHandlers,
+} from './mcp/google-docs.js';
+import {
   COMMITTEE_LEADER_TOOLS,
   createCommitteeLeaderToolHandlers,
   isCommitteeLeader,
@@ -209,6 +213,21 @@ export async function initializeAddie(): Promise<void> {
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
+  }
+
+  // Register Google Docs tools — mirror bolt-app so web Addie can call
+  // read_google_doc too. `createGoogleDocsToolHandlers` returns null
+  // when GOOGLE_* env vars are missing, so dev environments without
+  // Google credentials simply skip registration (matches bolt-app).
+  const googleDocsHandlers = createGoogleDocsToolHandlers();
+  if (googleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = googleDocsHandlers[tool.name];
+      if (handler) {
+        claudeClient.registerTool(tool, handler);
+      }
+    }
+    logger.info('Addie (web): Google Docs tools registered');
   }
 
   initialized = true;

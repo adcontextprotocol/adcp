@@ -24,11 +24,22 @@
  *   contributes_bad_type — `contributes` is present but not a boolean
  *   orphan_contribution  — contributes_to flag is never consumed by any
  *                          assert_contribution any_of in the same storyboard
+ *   unresolved_scenario_reference — requires_scenarios entry names an id
+ *                          that doesn't exist in the source tree (no file
+ *                          declares that `id:`). Symmetric with the
+ *                          duplicate-doc.id throw in buildScenarioFlagIndex:
+ *                          if collisions are a build-time error, missing
+ *                          references must be too.
  *
  * `contributes_both` / `contributes_outside_branch_set` / `contributes_bad_type`
  * mirror adcp-client's loader (node_modules/@adcp/client/dist/lib/testing/
  * storyboard/loader.js `resolveContributesShorthand`) so authors see the
  * violation at build time instead of storyboard-load time.
+ *
+ * Doc-level rules (those that apply to the storyboard as a whole, not a
+ * specific phase) use `phaseId: '<doc>'` as a sentinel so the main()
+ * formatter can render `file.yaml:<doc>` consistently. Current doc-level
+ * rules: unresolved_scenario_reference.
  */
 
 'use strict';
@@ -83,6 +94,12 @@ const RULE_MESSAGES = {
     `step in this storyboard references it via \`check: any_of, ` +
     `allowed_values: [${flag}]\`. Either add the assertion or remove the ` +
     'dead contribution — nothing is grading what this step produces.',
+  unresolved_scenario_reference: ({ scenarioId }) =>
+    `requires_scenarios references "${scenarioId}" but no file in the source ` +
+    `tree declares that \`id:\`. Either fix the reference, add the missing ` +
+    'scenario file, or remove the entry — the runner will grade this ' +
+    'storyboard `not_applicable` with `unresolved_scenario_reference` rather ' +
+    'than silently pass.',
 };
 
 function formatMessage(violation) {
@@ -129,6 +146,45 @@ function collectAssertedFlags(doc) {
 }
 
 /**
+ * Walk the source tree and build `Map<doc.id, Set<flag>>` of asserted flags
+ * per storyboard/scenario. `orphan_contribution` checks consume this to
+ * honor `requires_scenarios:` references — a flag asserted in a linked
+ * scenario is legitimately consumed.
+ *
+ * Duplicate `id:` across files is a source bug: which file "wins" becomes
+ * order-dependent on filesystem iteration, and the wrong file's asserted
+ * flags could mask a real orphan elsewhere. Throw immediately so the
+ * collision surfaces at lint time rather than as a silent false negative.
+ */
+function buildScenarioFlagIndex(sourceDir) {
+  const index = new Map();
+  const sources = new Map();
+  for (const file of walkYaml(sourceDir)) {
+    let doc;
+    try {
+      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue;
+    }
+    if (!doc || typeof doc !== 'object') continue;
+    const id = doc.id;
+    if (typeof id !== 'string' || id.length === 0) continue;
+    const prior = sources.get(id);
+    if (prior && prior !== file) {
+      throw new Error(
+        `lint-storyboard-branch-sets: duplicate storyboard id "${id}" in ` +
+          `${path.relative(sourceDir, prior)} and ` +
+          `${path.relative(sourceDir, file)}. IDs must be unique across the ` +
+          'source tree so requires_scenarios resolution is deterministic.',
+      );
+    }
+    sources.set(id, file);
+    index.set(id, collectAssertedFlags(doc));
+  }
+  return index;
+}
+
+/**
  * Lint a single parsed storyboard doc. Returns an array of violations shaped
  * as `{ rule, phaseId, stepId?, ...rule-specific payload }`. File paths are
  * threaded on at the caller.
@@ -136,14 +192,38 @@ function collectAssertedFlags(doc) {
  * Accepts an options object so tests can exercise future `semantics` values
  * without mutating module state.
  */
-function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
+function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS, scenarioFlagIndex } = {}) {
   const violations = [];
   if (!doc || typeof doc !== 'object') return violations;
   const phases = Array.isArray(doc.phases) ? doc.phases : [];
 
   const semanticsById = new Map();
   const declaredBranchSetIds = new Set();
+  // A contribution is legitimately consumed if any of (a) this doc asserts
+  // it via assert_contribution any_of, or (b) a scenario the doc declares
+  // in `requires_scenarios:` asserts it. The two kinds are unioned so a
+  // parent storyboard that delegates its grading to a shared scenario
+  // doesn't trigger orphan_contribution.
+  //
+  // An unresolved entry in `requires_scenarios` is a separate, stronger
+  // violation: it means the runner will grade this storyboard
+  // not_applicable at execution time. Surface it at lint time instead.
   const assertedFlags = collectAssertedFlags(doc);
+  if (scenarioFlagIndex && Array.isArray(doc.requires_scenarios)) {
+    for (const scenarioId of doc.requires_scenarios) {
+      if (typeof scenarioId !== 'string') continue;
+      const scenarioFlags = scenarioFlagIndex.get(scenarioId);
+      if (scenarioFlags) {
+        for (const flag of scenarioFlags) assertedFlags.add(flag);
+      } else {
+        violations.push({
+          rule: 'unresolved_scenario_reference',
+          phaseId: '<doc>',
+          scenarioId,
+        });
+      }
+    }
+  }
 
   // Pass 1: gather declared branch_set.ids so pass 2 can enforce peer
   // completeness against contributes_to on peer phases that haven't been
@@ -315,6 +395,7 @@ function lintDoc(doc, { supportedSemantics = SUPPORTED_SEMANTICS } = {}) {
 
 function lint() {
   const files = walkYaml(SOURCE_DIR);
+  const scenarioFlagIndex = buildScenarioFlagIndex(SOURCE_DIR);
   const allViolations = [];
   for (const file of files) {
     let doc;
@@ -326,7 +407,7 @@ function lint() {
       continue;
     }
     const relFile = path.relative(SOURCE_DIR, file);
-    for (const v of lintDoc(doc)) {
+    for (const v of lintDoc(doc, { scenarioFlagIndex })) {
       allViolations.push({ ...v, file: relFile });
     }
   }
@@ -359,5 +440,6 @@ module.exports = {
   lint,
   lintDoc,
   collectAssertedFlags,
+  buildScenarioFlagIndex,
   formatMessage,
 };

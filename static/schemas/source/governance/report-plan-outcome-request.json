@@ -4,6 +4,7 @@
   "title": "Report Plan Outcome Request",
   "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -14,11 +15,13 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "The plan this outcome is for."
+      "description": "The plan this outcome is for.",
+      "x-entity": "governance_plan"
     },
     "check_id": {
       "type": "string",
-      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
+      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes.",
+      "x-entity": "governance_check"
     },
     "idempotency_key": {
       "type": "string",

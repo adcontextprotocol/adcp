@@ -90,6 +90,14 @@ When you escalate, be honest with the user that you're passing this to a human w
           type: 'string',
           description: 'Slack display name or handle of the user (e.g. "jean-sebastien")',
         },
+        perspective_id: {
+          type: 'string',
+          description: 'Optional: UUID of a perspective this escalation is about. Set this when escalating something a reviewer needs to do on a specific draft (e.g. "approve Mary\'s post"). Approving the linked perspective later will auto-resolve this escalation.',
+        },
+        perspective_slug: {
+          type: 'string',
+          description: 'Optional: slug of the linked perspective (denormalized for admin display).',
+        },
       },
       required: ['summary', 'category'],
     },
@@ -270,6 +278,13 @@ export function createEscalationToolHandlers(
     const addieContext = input.addie_context as string | undefined;
     const userEmail = input.user_email as string | undefined;
     const userSlackHandle = input.user_slack_handle as string | undefined;
+    const perspectiveId = input.perspective_id as string | undefined;
+    const perspectiveSlug = input.perspective_slug as string | undefined;
+
+    // Validate UUID format on perspective_id if provided.
+    if (perspectiveId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(perspectiveId)) {
+      throw new ToolError('perspective_id must be a UUID string if provided');
+    }
 
     // Validate email format if provided
     if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
@@ -305,6 +320,8 @@ export function createEscalationToolHandlers(
         summary,
         original_request: originalRequest,
         addie_context: addieContext,
+        perspective_id: perspectiveId,
+        perspective_slug: perspectiveSlug,
       });
 
       logger.info(

@@ -4,6 +4,7 @@
   "title": "Update Rights Request",
   "description": "Modify an existing rights grant — extend dates, adjust impression caps, change pricing, or pause/resume. Parallels update_media_buy. Only the fields provided are updated; omitted fields remain unchanged.",
   "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
