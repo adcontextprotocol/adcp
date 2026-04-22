@@ -101,6 +101,7 @@ import {
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
+import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
@@ -874,6 +875,15 @@ async function createUserScopedTools(
       const handler = scopedGoogleDocsHandlers[tool.name];
       if (handler) allHandlers.set(tool.name, handler);
     }
+  }
+
+  // Register illustration tools (#2783). Self-gated on author
+  // permission + monthly quota + the 10/10min tool-rate-limit
+  // added in #2755.
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
+    allHandlers.set(name, handler);
   }
 
   // Add billing tools for all users (membership signup assistance)

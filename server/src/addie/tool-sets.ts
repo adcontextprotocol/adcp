@@ -54,6 +54,11 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   // gated on GOOGLE_* credentials at registration, so environments without
   // Google integration don't expose it anyway.
   'read_google_doc',
+  // Illustration tools — members ask for covers on their own posts from
+  // any channel. Handler gates on author-of-perspective + monthly quota
+  // + tool-call rate limit. #2783.
+  'check_illustration_status',
+  'generate_perspective_illustration',
 ];
 
 /**

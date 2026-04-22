@@ -508,6 +508,15 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('read_google_doc');
   });
 
+  it('should always expose illustration tools (#2783)', () => {
+    // Author asking Addie to regenerate their cover shouldn't depend
+    // on the router picking the right set. Permission + quota gating
+    // happens in the handler.
+    const tools = getToolsForSets([], false);
+    expect(tools).toContain('check_illustration_status');
+    expect(tools).toContain('generate_perspective_illustration');
+  });
+
   it('should block admin tools for non-admin users', () => {
     const tools = getToolsForSets(['admin'], false);
     // Non-admin requesting admin set should get only always-available tools
