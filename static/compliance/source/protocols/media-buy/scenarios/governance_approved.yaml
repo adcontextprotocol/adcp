@@ -46,10 +46,10 @@ fixtures:
       format_ids:
         - id: "display_300x250"
     - product_id: "outdoor_video_q2"
-      delivery_type: "non_guaranteed"
+      delivery_type: "guaranteed"
       channels: ["video"]
       format_ids:
-        - id: "video_30s"
+        - id: "video_15s"
   pricing_options:
     - product_id: "outdoor_display_q2"
       pricing_option_id: "cpm_standard"
@@ -60,7 +60,7 @@ fixtures:
       pricing_option_id: "cpm_standard"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 15.0
+      fixed_price: 12.0
 
 phases:
   - id: governance_plan_setup
