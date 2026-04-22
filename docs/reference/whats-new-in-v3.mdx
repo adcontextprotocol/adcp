@@ -541,10 +541,27 @@ The nested `deliver_to` object in `get_signals` request is replaced with two top
 | v2/beta field | v3 rc.1 field |
 |---------------|---------------|
 | `refine.overall` (string) | `{ "scope": "request", "ask": "..." }` array entry |
-| `refine.products[].product_id` | `{ "scope": "product", "id": "..." }` |
+| `refine.products[].product_id` | `{ "scope": "product", "product_id": "..." }` |
+| `refine.proposals[].proposal_id` | `{ "scope": "proposal", "proposal_id": "..." }` |
 | `refine.products[].notes` | `ask` field |
 
-Sellers respond with `refinement_applied` — a positionally-matched array where each entry reports `status` (`applied`, `partial`, `unable`) and optional `notes`.
+Product and proposal entries use the prefixed id field (`product_id`, `proposal_id`) matching AdCP's id naming convention throughout the protocol. `action` is optional on product and proposal entries and defaults to `"include"` — orchestrators only need to set it explicitly for `"omit"`, `"more_like_this"` (product), or `"finalize"` (proposal).
+
+Sellers respond with `refinement_applied` — a positionally-matched array where each entry reports `status` (`applied`, `partial`, `unable`) and optional `notes`. Entries echo the matching id field (`product_id` / `proposal_id`) for cross-validation.
+
+```json
+{
+  "buying_mode": "refine",
+  "refine": [
+    { "scope": "request",                                               "ask": "more video, less display" },
+    { "scope": "product",  "product_id":  "prod_video_premium",         "ask": "add 16:9 format" },
+    { "scope": "product",  "product_id":  "prod_display_ros",           "action": "omit" },
+    { "scope": "proposal", "proposal_id": "prop_balanced_v1",           "action": "finalize" }
+  ]
+}
+```
+
+**Seller migration note.** The shape change is breaking for sellers as well as buyers. Sellers that return `refinement_applied` MUST now echo `scope` and the matching id field (`product_id` for product scope, `proposal_id` for proposal scope) — the pre-rename `{status, notes}`-only entries are rejected by the tightened response schema. Missing `action` on incoming refine entries MUST be treated as `action: "include"`, not as a parse error. Re-issue your seller tests against the 3.0 request schema to catch any orchestrator code still emitting the generic `id` field — the validator now rejects it with `must NOT have additional properties`.
 
 <Card title="Refinement deep dive" icon="arrow-right" href="/docs/media-buy/product-discovery/refinement">
   Change-request types, seller acknowledgment, and before/after examples.

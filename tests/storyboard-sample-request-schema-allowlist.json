@@ -20,52 +20,6 @@
         "enum@/outcome"
       ]
     },
-    "protocols/media-buy/scenarios/proposal_finalize.yaml#finalize_proposal/get_products_finalize": {
-      "schema": "media-buy/get-products-request.json",
-      "errors": [
-        "required@/refine/0:ask",
-        "additionalProperties@/refine/0:proposal_id",
-        "additionalProperties@/refine/0:action",
-        "const@/refine/0/scope:request",
-        "required@/refine/0:id",
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:product",
-        "enum@/refine/0/action",
-        "required@/refine/0:id",
-        "additionalProperties@/refine/0:proposal_id",
-        "oneOf@/refine/0"
-      ]
-    },
-    "protocols/media-buy/scenarios/proposal_finalize.yaml#refine_proposal/get_products_refine": {
-      "schema": "media-buy/get-products-request.json",
-      "errors": [
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:request",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:product",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "oneOf@/refine/0"
-      ]
-    },
-    "protocols/media-buy/scenarios/refine_products.yaml#refine/get_products_refine": {
-      "schema": "media-buy/get-products-request.json",
-      "errors": [
-        "additionalProperties@/refine/1:product_id",
-        "const@/refine/1/scope:request",
-        "required@/refine/1:id",
-        "required@/refine/1:action",
-        "additionalProperties@/refine/1:product_id",
-        "required@/refine/1:id",
-        "required@/refine/1:action",
-        "additionalProperties@/refine/1:product_id",
-        "const@/refine/1/scope:proposal",
-        "oneOf@/refine/1"
-      ]
-    },
     "protocols/sponsored-intelligence/index.yaml#offering_discovery/si_get_offering": {
       "schema": "sponsored-intelligence/si-get-offering-request.json",
       "errors": [
@@ -95,21 +49,6 @@
       "schema": "governance/check-governance-request.json",
       "errors": [
         "additionalProperties@/:account"
-      ]
-    },
-    "specialisms/sales-proposal-mode/index.yaml#review_refine/get_products_refine": {
-      "schema": "media-buy/get-products-request.json",
-      "errors": [
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:request",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:product",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "oneOf@/refine/0"
       ]
     },
     "universal/deterministic-testing.yaml#deterministic_session/initiate_session": {
