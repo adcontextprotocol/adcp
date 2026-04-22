@@ -8,6 +8,7 @@
 import { logger } from '../../logger.js';
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
+import { withToolRateLimit } from './tool-rate-limiter.js';
 
 // Addie's email for access requests
 const ADDIE_EMAIL = 'addie@agenticadvertising.org';
@@ -852,6 +853,12 @@ function stripLoneSurrogates(s: string): string {
  *
  * Returns null if GOOGLE_* credentials are not configured; callers
  * should branch on null to handle that case themselves.
+ *
+ * Intentionally does NOT rate-limit. Internal callers are automated
+ * pipelines (committee-document-indexer, content-curator) that
+ * legitimately run on a cadence. Rate limiting happens at the
+ * LLM-facing handler (createGoogleDocsToolHandlers) where per-user
+ * user-driven abuse is the concern.
  */
 export function createGoogleDocsReader(): ((url: string) => Promise<GoogleDocResult>) | null {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -867,10 +874,16 @@ export function createGoogleDocsReader(): ((url: string) => Promise<GoogleDocRes
 let credentialsWarningLogged = false;
 
 /**
- * Create tool handlers for Google Docs
- * Returns null if Google credentials are not configured
+ * Create tool handlers for Google Docs.
+ * Returns null if Google credentials are not configured.
+ *
+ * @param userId - Optional WorkOS user id; when present, per-user rate
+ *   limits apply (see tool-rate-limiter.ts). Web Addie passes the
+ *   logged-in user's id via createUserScopedTools; Slack Addie passes
+ *   the slack-mapped workos id. Internal/system callers pass `null`
+ *   to skip rate limiting.
  */
-export function createGoogleDocsToolHandlers(): Record<string, (input: Record<string, unknown>) => Promise<string>> | null {
+export function createGoogleDocsToolHandlers(userId?: string | null): Record<string, (input: Record<string, unknown>) => Promise<string>> | null {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
@@ -886,34 +899,36 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
 
   const config: GoogleAuthConfig = { clientId, clientSecret, refreshToken };
 
+  const readHandler = async (input: Record<string, unknown>) => {
+    const url = input.url;
+
+    // Validate input
+    if (typeof url !== 'string' || !url.trim()) {
+      throw new ToolError('URL parameter is required and must be a non-empty string');
+    }
+
+    const docId = extractDocId(url);
+    logger.info({ docId, userId }, 'Addie: Reading Google Doc');
+
+    const result = await readGoogleDocStructured(url, config);
+
+    // Cap body for LLM context — don't let one doc burn tokens or
+    // hand Sonnet a large prompt-injection payload. Internal callers
+    // (committee-document-indexer, content-curator) hit the inner
+    // 500KB cap in readGoogleDocStructured instead.
+    let body = result.body;
+    let truncated = result.truncated;
+    if (body && body.length > LLM_BODY_CAP) {
+      body = body.substring(0, LLM_BODY_CAP) + '\n\n[body truncated]';
+      truncated = true;
+    }
+    if (body) body = stripLoneSurrogates(body);
+    const title = result.title ? stripLoneSurrogates(result.title) : result.title;
+
+    return JSON.stringify({ ...result, title, body, truncated });
+  };
+
   return {
-    read_google_doc: async (input: Record<string, unknown>) => {
-      const url = input.url;
-
-      // Validate input
-      if (typeof url !== 'string' || !url.trim()) {
-        throw new ToolError('URL parameter is required and must be a non-empty string');
-      }
-
-      const docId = extractDocId(url);
-      logger.info({ docId }, 'Addie: Reading Google Doc');
-
-      const result = await readGoogleDocStructured(url, config);
-
-      // Cap body for LLM context — don't let one doc burn tokens or
-      // hand Sonnet a large prompt-injection payload. Internal callers
-      // (committee-document-indexer, content-curator) hit the inner
-      // 500KB cap in readGoogleDocStructured instead.
-      let body = result.body;
-      let truncated = result.truncated;
-      if (body && body.length > LLM_BODY_CAP) {
-        body = body.substring(0, LLM_BODY_CAP) + '\n\n[body truncated]';
-        truncated = true;
-      }
-      if (body) body = stripLoneSurrogates(body);
-      const title = result.title ? stripLoneSurrogates(result.title) : result.title;
-
-      return JSON.stringify({ ...result, title, body, truncated });
-    },
+    read_google_doc: withToolRateLimit('read_google_doc', userId ?? null, readHandler),
   };
 }
