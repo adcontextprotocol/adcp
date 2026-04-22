@@ -9,9 +9,70 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0
+
+**Status:** Generally Available | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3) | [Migration guide](/docs/reference/migration/index) | [SDK support](/docs/building/schemas-and-sdks#adcp-3-0-support)
+
+3.0.0 is the first stable release of AdCP 3.0 and supersedes the rc.1–rc.3 sequence. The complete 3.0 feature set — Brand Protocol, Campaign Governance, Trusted Match Protocol (TMP), Sponsored Intelligence, Accounts Protocol, Collections and Installments, Proposal Lifecycle, Order Lifecycle, Audience Bias Governance, and the 20-channel taxonomy — is documented in [What's new in v3](/docs/reference/whats-new-in-v3). This entry summarizes the finalization work between rc.3 and GA.
+
+### Finalization changes since rc.3
+
+1. **Media buy status split** — `pending_activation` is removed and replaced by two distinct states: `pending_creatives` (buy approved, no creatives assigned) and `pending_start` (ready to serve, waiting for flight date). `rejected` is valid from both. `pending` remains an accepted alias for `pending_start` in delivery responses. The largest rc.3 → GA state-machine change.
+
+2. **Tool surface collapsed to three meta-tools** — The MCP-exposed surface is now `ask_about_adcp_task`, `call_adcp_task`, and `get_adcp_capabilities`. All 40+ AdCP task names remain the callable contract through `call_adcp_task`; the schema surface sent to LLMs drops ~95% in token size. Clients built on the SDKs are unaffected.
+
+3. **`update_media_buy` requires `account`** — `account` is now required on `update_media_buy` requests, matching `create_media_buy` and enabling automated governance and account resolution on the most financially sensitive mutation.
+
+4. **`preview_creative` flattened** — The three-variant `oneOf` request was replaced with a flat object using a `request_type` discriminant. Fixes code generation fragility across TypeScript, Python, and Go.
+
+5. **`comply_test_controller` flattened** — `oneOf` union replaced with a flat object using a `scenario` enum discriminant and `if/then` conditional validation. Per-scenario `$ref` enum constraints on `status` preserved.
+
+6. **Geo capability shape reverted** — The rc.3 flattening of geo capabilities into flat arrays (`supported_geo_levels`, `supported_metro_systems`, `supported_postal_systems`) was reverted. Geo capability uses `geo_countries` / `geo_regions` booleans and `geo_metros` / `geo_postal_areas` typed objects.
+
+7. **`signal_id` required on `get_signals` responses** — Signal identifiers must now be present on every signal in a `get_signals` response.
+
+### Additive changes since rc.3
+
+- **`compliance_testing` capability** — Agents can declare `compliance_testing` in `supported_protocols` with a `scenarios` array listing which `comply_test_controller` scenarios they support. Storyboard runners check for it before running deterministic steps.
+- **`GOVERNANCE_DENIED` standard error** — Added to the standard error code enum with `correctable` recovery. Mutating tools can now surface governance denials uniformly; existing implementations continue to work.
+- **`context` / `ext` on all schemas** — Added missing `context` and `ext` extension fields to request/response schemas across governance, collection, property, and sponsored intelligence.
+- **Offline reporting delivery** — `reporting_delivery_methods` on `get_adcp_capabilities` (`webhook`, `offline`), `reporting_bucket` on `account.json` for seller-provisioned cloud storage, and per-product `supports_offline_delivery` / `offline_delivery_protocols` on `reporting_capabilities`. Avro and ORC added as supported export formats.
+- **TMP provider lifecycle** — `provider-registration.json` schema, `GET /health` endpoint on the TMP provider contract, and `active` / `inactive` / `draining` lifecycle states for graceful provider management.
+- **VAST/DAAST 4.2 tracking events** — Tracking event enums expanded to the full VAST/DAAST 4.2 set, including verification, interactive, and companion events.
+- **`measurement_window` generalized** — Measurement window fields on products broadened beyond broadcast TV so digital and streaming inventory can declare measurement periods under the same schema.
+
+### Breaking changes for rc.3 adopters
+
+| Change | rc.3 | 3.0 | What to do |
+|---|---|---|---|
+| Media buy status | `pending_activation` | Removed — split into `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic |
+| `update_media_buy` account | Optional | Required on request | Add `account` to all update calls |
+| `preview_creative` request | `oneOf` union (3 variants) | Flat object with `request_type` | Replace union payloads with the flat shape |
+| `comply_test_controller` request | `oneOf` union | Flat object with `scenario` enum | Flatten to single-shape payload |
+| Geo capability fields | Flat arrays (`supported_geo_levels`, `supported_metro_systems`, `supported_postal_systems`) | `geo_countries` / `geo_regions` booleans + `geo_metros` / `geo_postal_areas` typed objects | Remove the rc.3 flat arrays and return to the typed form |
+| `get_signals` response | `signal_id` optional | `signal_id` required | Ensure every returned signal carries an ID |
+
+### Migration paths
+
+- **From v2.x** — follow the [3.0 migration guide](/docs/reference/migration/index). The rc.3 deltas above are included.
+- **From rc.3** — apply the table above. Most are small; `preview_creative` and the geo-shape revert are the code edits most likely to require more than a find-and-replace.
+- **Earlier release candidates (rc.1 / rc.2)** — work through the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) in order, then apply the rc.3 → 3.0 deltas above.
+
+### Compatible SDKs
+
+| SDK | Minimum 3.0-compatible version |
+|---|---|
+| `@adcp/client` (JS/TS) | `5.13.0` |
+| `adcp` (Python) | `4.0.0` |
+| `adcp-go` (Go) | `v1.0.0` |
+
+See [Schemas and SDKs](/docs/building/schemas-and-sdks#adcp-3-0-support) for install details.
+
+---
+
 ## Version 3.0.0-rc.3
 
-**Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
+**Status:** Release Candidate (superseded by 3.0.0) | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3) | [SDK support](/docs/building/schemas-and-sdks#adcp-3-0-support)
 
 ### What's New
 

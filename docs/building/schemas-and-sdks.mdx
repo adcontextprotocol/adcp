@@ -36,6 +36,18 @@ Point your AI coding agent to **[https://docs.adcontextprotocol.org/mcp](https:/
 
 AdCP provides official SDKs for JavaScript/TypeScript, Python, and Go. These work for both client and server implementations.
 
+### AdCP 3.0 support
+
+All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/docs/building/validate-your-agent).
+
+| SDK | 3.0-compatible from | Package |
+|---|---|---|
+| `@adcp/client` (JS/TS) | `5.13.0` | [npm](https://www.npmjs.com/package/@adcp/client) · [releases](https://github.com/adcontextprotocol/adcp-client/releases) |
+| `adcp` (Python) | `4.0.0` | [PyPI](https://pypi.org/project/adcp/) · [releases](https://github.com/adcontextprotocol/adcp-python/releases) |
+| `adcp-go` (Go) | `v1.0.0` | [releases](https://github.com/adcontextprotocol/adcp-go/releases) |
+
+If you are on an earlier major version, upgrade before working through the [3.0 migration guide](/docs/reference/migration/index).
+
 ### JavaScript / TypeScript
 
 [![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
@@ -133,16 +145,16 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 | Path | Example | Best For |
 |------|---------|----------|
-| Exact version | `/schemas/2.5.3/` | Production, SDK generation |
+| Exact version | `/schemas/3.0.0/` | Production, SDK generation |
 | Major version | `/schemas/v3/` | Development, documentation |
-| Minor version | `/schemas/v2.5/` | Stable development (patch updates only) |
+| Minor version | `/schemas/v3.0/` | Stable development (patch updates only) |
 
 ### Production (Recommended)
 
 Pin to an exact version for stability:
 
 ```javascript
-const SCHEMA_VERSION = '2.5.3';
+const SCHEMA_VERSION = '3.0.0';
 const schema = await fetch(
   `https://adcontextprotocol.org/schemas/${SCHEMA_VERSION}/core/product.json`
 );
@@ -163,12 +175,12 @@ const schema = await fetch(
 ```bash
 # TypeScript
 npx json-schema-to-typescript \
-  https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
+  https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
   --output types/product.d.ts
 
 # Python
 datamodel-codegen \
-  --url https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
+  --url https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
   --output models/product.py
 ```
 
@@ -179,7 +191,7 @@ For tools that don't support `$ref` resolution, use bundled schemas with all ref
 ### Website Access
 
 ```
-https://adcontextprotocol.org/schemas/2.5.3/bundled/media-buy/create-media-buy-request.json
+https://adcontextprotocol.org/schemas/3.0.0/bundled/media-buy/create-media-buy-request.json
 ```
 
 ### GitHub Access
@@ -189,10 +201,10 @@ Bundled schemas are committed to the repository at `dist/schemas/{VERSION}/bundl
 ```bash
 # Clone and access locally
 git clone https://github.com/adcontextprotocol/adcp.git
-ls adcp/dist/schemas/2.5.3/bundled/media-buy/
+ls adcp/dist/schemas/3.0.0/bundled/media-buy/
 
 # Or fetch directly via GitHub raw
-curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/2.5.3/bundled/media-buy/get-products-request.json
+curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/3.0.0/bundled/media-buy/get-products-request.json
 ```
 
 ### Directory Structure

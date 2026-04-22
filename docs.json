@@ -63,7 +63,7 @@
   "navigation": {
     "versions": [
       {
-        "version": "3.0-rc",
+        "version": "3.0",
         "default": true,
         "groups": [
           {

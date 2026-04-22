@@ -9,11 +9,11 @@ description: "Breaking and additive changes between AdCP 3.0.0 release candidate
 
 If you adopted a prerelease version, review the relevant section below before upgrading. If you are migrating from v2, see the [main migration guide](/docs/reference/migration).
 
-## rc.3 → rc.4
+## rc.3 → 3.0
 
 ### Breaking for rc.3 adopters
 
-| Area | rc.3 | rc.4 | What to do |
+| Area | rc.3 | 3.0 | What to do |
 |---|---|---|---|
 | Media buy status | `pending_activation` | Removed — replaced by `pending_creatives` and `pending_start` | Replace `pending_activation` in status filters, comparisons, and state machine logic. See details below. |
 | Capabilities | No `compliance_testing` protocol | `compliance_testing` added to `supported_protocols` enum | Agents implementing `comply_test_controller` should declare `compliance_testing` in capabilities. Storyboard runners check for it before running deterministic steps. |
@@ -22,7 +22,7 @@ If you adopted a prerelease version, review the relevant section below before up
 
 `pending_activation` was a single state covering two distinct conditions. It has been split:
 
-| Condition | rc.3 status | rc.4 status |
+| Condition | rc.3 status | 3.0 status |
 |---|---|---|
 | Buy approved, no creatives assigned | `pending_activation` | `pending_creatives` |
 | Buy ready to serve, waiting for flight date | `pending_activation` | `pending_start` |
@@ -37,7 +37,7 @@ If you adopted a prerelease version, review the relevant section below before up
 
 See the [canonical lifecycle diagram](/docs/media-buy/media-buys#lifecycle-states) for the full state machine.
 
-### Additive changes in rc.4
+### Additive changes in 3.0
 
 - **Compliance testing capability** — Agents can declare `compliance_testing` in `supported_protocols` with a `scenarios` array listing which `comply_test_controller` scenarios they support. Storyboard runners use this to determine whether deterministic testing steps can be validated.
 - **Storyboard validation fixes** — 20+ validation bugs fixed across 11 storyboard files: corrected field paths (`creatives[0].action`, `media_buy_deliveries`, `renders[0].preview_url`), added missing `value:` to `field_value` checks, added `value` property to storyboard validation schema.
