@@ -150,15 +150,13 @@
     "protocols/sponsored-intelligence/index.yaml#offering_discovery/si_get_offering": {
       "schema": "sponsored-intelligence/si-get-offering-request.json",
       "errors": [
-        "required@/:offering_id",
-        "type@/context:string"
+        "required@/:offering_id"
       ]
     },
     "protocols/sponsored-intelligence/index.yaml#session_lifecycle/si_initiate_session": {
       "schema": "sponsored-intelligence/si-initiate-session-request.json",
       "errors": [
-        "required@/:identity",
-        "type@/context:string"
+        "required@/:identity"
       ]
     },
     "protocols/sponsored-intelligence/index.yaml#session_lifecycle/si_terminate_session": {
@@ -365,7 +363,6 @@
     "universal/deterministic-testing.yaml#deterministic_session/initiate_session": {
       "schema": "sponsored-intelligence/si-initiate-session-request.json",
       "errors": [
-        "type@/context:string",
         "required@/identity:consent_granted"
       ]
     },

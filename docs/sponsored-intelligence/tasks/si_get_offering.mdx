@@ -20,7 +20,7 @@ There are two valid flows for starting an SI session:
 si_get_offering → Host shows products → User consents → si_initiate_session with offering_token
 ```
 
-Use this when you want to show the user products **before** asking for consent. The `offering_token` bridges pre-session context into the session, so references like "the second one" work.
+Use this when you want to show the user products **before** asking for consent. The `offering_token` bridges what was shown into the session, so references like "the second one" work.
 
 **Example**: Search results page shows "Nike has 3 running shoes in your size from \$89" before the user decides to engage.
 
@@ -41,21 +41,22 @@ The key difference: `si_get_offering` is for **anonymous pre-consent previews**.
 The offering lookup serves three purposes:
 
 1. **Show offering details** - Display pricing, availability, and descriptions to users before consent
-2. **Surface matching products** - When given context, return relevant products from the offering
-3. **Session continuity** - The returned token preserves what was shown, so the brand agent knows the context when the session starts
+2. **Surface matching products** - When given an `intent`, return relevant products from the offering
+3. **Session continuity** - The returned token preserves what was shown, so the brand agent knows what the user already saw when the session starts
 
 ## Request
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `offering_id` | string | Yes | Offering identifier from the catalog |
-| `context` | string | No | Natural language context for personalized results (no PII) |
+| `intent` | string | No | Natural language description of user intent for personalized results (no PII) |
 | `include_products` | boolean | No | Whether to include matching products (default: false) |
 | `product_limit` | integer | No | Max products to return (default: 5, max: 50) |
+| `context` | object | No | Opaque correlation data echoed unchanged in the response |
 
 ### Privacy
 
-This request must not include any personally identifiable information. The `context` field may include intent description but must be anonymous (e.g., "mens size 14 near Cincinnati" is OK, but email addresses are not).
+This request must not include any personally identifiable information. The `intent` field describes what the user is looking for but must be anonymous (e.g., "mens size 14 near Cincinnati" is OK, but email addresses are not).
 
 ## Response
 
@@ -66,7 +67,7 @@ This request must not include any personally identifiable information. The `cont
 | `ttl_seconds` | integer | How long this information is valid |
 | `checked_at` | string | ISO 8601 timestamp of the lookup |
 | `offering` | object | Offering details |
-| `matching_products` | array | Products matching the context (if requested) |
+| `matching_products` | array | Products matching the intent (if requested) |
 | `total_matching` | integer | Total products matching (may exceed returned count) |
 | `unavailable_reason` | string | Why offering is unavailable (if not available) |
 | `alternative_offering_ids` | array | Alternative offerings to check |
@@ -141,7 +142,7 @@ This request must not include any personally identifiable information. The `cont
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-request.json",
   "offering_id": "nike-summer-sale",
-  "context": "mens size 14 running shoes near Cincinnati",
+  "intent": "mens size 14 running shoes near Cincinnati",
   "include_products": true,
   "product_limit": 3
 }
@@ -213,7 +214,7 @@ Without the token, this conversation breaks:
 ```
 Host: "Nike has 3 running shoes in size 14: Pegasus 41 ($89), Air Max 90 ($129), Vomero 18 ($139)"
 User: "Tell me more about the second one"
-Host → si_initiate_session: { context: "User wants more info about the second shoe" }
+Host → si_initiate_session: { intent: "User wants more info about the second shoe" }
 Brand Agent: ??? (Which shoes were shown? In what order?)
 ```
 
@@ -221,7 +222,7 @@ With the token, the brand agent can reconstruct the full context:
 
 ```
 Host → si_initiate_session: {
-  context: "User wants more info about the second shoe",
+  intent: "User wants more info about the second shoe",
   offering_token: "offering_abc123xyz"
 }
 Brand Agent: (Looks up token → sees Pegasus, Air Max, Vomero were shown in that order)
@@ -237,7 +238,7 @@ When generating an `offering_token`, store the full query state server-side:
 const token = generateToken();
 await store.save(token, {
   offering_id: request.offering_id,
-  context: request.context,
+  intent: request.intent,
   products_shown: matchingProducts,  // In exact order returned
   product_ids: matchingProducts.map(p => p.product_id),
   queried_at: new Date().toISOString(),
@@ -269,7 +270,7 @@ When initiating a session after getting offering details, include the token:
 
 ```json
 {
-  "context": "User wants running shoes, mens size 14",
+  "intent": "User wants running shoes, mens size 14",
   "offering_id": "nike-summer-sale",
   "offering_token": "offering_abc123xyz",
   "identity": {
@@ -285,7 +286,7 @@ When initiating a session after getting offering details, include the token:
 
 2. **Session continuity** - The offering token is the brand's memory of what was shown. When users reference "the first option" or "that blue one", the token lets the brand agent resolve those references.
 
-3. **Product matching** - When `include_products` is true and `context` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from \$89."
+3. **Product matching** - When `include_products` is true and `intent` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from \$89."
 
 4. **Caching** - Hosts may cache responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offerings.
 
@@ -298,7 +299,7 @@ When initiating a session after getting offering details, include the token:
 ### For Hosts
 
 - Get offering details before showing sponsored results to users
-- Use `include_products` with context for richer previews
+- Use `include_products` with an `intent` for richer previews
 - Respect TTL for caching to avoid stale data
 - Handle unavailable gracefully - don't show expired offerings
 - Include offering token in session initiation when available

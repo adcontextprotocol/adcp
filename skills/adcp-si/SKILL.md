@@ -21,7 +21,7 @@ The SI Protocol provides 4 standardized tasks for managing conversational sessio
 ## Typical Workflow
 
 1. **Preview** (optional): `si_get_offering` to see what the brand offers before consent
-2. **Start session**: `si_initiate_session` with user context and consent
+2. **Start session**: `si_initiate_session` with the user's `intent` and consent
 3. **Converse**: `si_send_message` to relay user messages and action responses
 4. **End**: `si_terminate_session` when done
 
@@ -36,7 +36,7 @@ Start a conversational session with a brand agent.
 **Request:**
 ```json
 {
-  "context": "I'm interested in your winter jacket collection",
+  "intent": "I'm interested in your winter jacket collection",
   "identity": {
     "consent_granted": true,
     "consent_timestamp": "2025-01-15T10:30:00Z",
@@ -52,7 +52,7 @@ Start a conversational session with a brand agent.
 ```
 
 **Key fields:**
-- `context` (string, required): Natural language description of user intent
+- `intent` (string, required): Natural language description of user intent — the conversation handoff from host to brand agent
 - `identity` (object, required): User identity with consent status
   - `consent_granted` (boolean, required): Whether user consented to share identity
   - `consent_timestamp` (string, optional): ISO 8601 timestamp of consent
@@ -119,7 +119,7 @@ Get offering details and availability before initiating a session. Allows showin
 ```json
 {
   "offering_id": "winter-collection-2025",
-  "context": "Looking for warm jackets under $200",
+  "intent": "Looking for warm jackets under $200",
   "include_products": true,
   "product_limit": 5
 }
@@ -127,7 +127,7 @@ Get offering details and availability before initiating a session. Allows showin
 
 **Key fields:**
 - `offering_id` (string, required): Offering identifier from the catalog
-- `context` (string, optional): Natural language context for personalized results (no PII)
+- `intent` (string, optional): Natural language description of user intent for personalized results (no PII)
 - `include_products` (boolean, optional): Include matching products
 - `product_limit` (number, optional): Max products to return (default 5, max 50)
 

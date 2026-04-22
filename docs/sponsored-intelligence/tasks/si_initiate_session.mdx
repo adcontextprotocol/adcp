@@ -14,13 +14,14 @@ Start a conversational session with a brand agent. The host platform invokes thi
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `context` | string | Yes | Natural language description of user intent |
+| `intent` | string | Yes | Natural language description of user intent — the conversation handoff from the host |
 | `identity` | object | Yes | User identity with consent status |
 | `media_buy_id` | string | No | AdCP media buy ID if triggered by advertising |
 | `placement` | string | No | Where the session was triggered (e.g., "chatgpt_search") |
 | `offering_id` | string | No | Brand-specific offering reference to apply |
 | `supported_capabilities` | object | No | What the host platform supports |
 | `offering_token` | string | No | Token from `si_get_offering` for correlation |
+| `context` | object | No | Opaque correlation data echoed unchanged in the response (see [context sessions](/docs/building/integration/context-sessions)) |
 
 ### Offering Token
 
@@ -104,7 +105,7 @@ Declares what the host platform can render:
 {
   "$schema": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
   "idempotency_key": "f6a7b8c9-d0e1-4234-f567-234567890123",
-  "context": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
+  "intent": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
   "media_buy_id": "delta_q1_premium_upgrade",
   "placement": "chatgpt_search",
   "offering_id": "delta_chatgpt_3313",
@@ -177,7 +178,7 @@ Declares what the host platform can render:
 
 ## Key Points
 
-1. **Context is a conversation handoff** - The host tells the brand agent what the user needs. The brand agent responds naturally, continuing the conversation.
+1. **`intent` is the conversation handoff** - The host tells the brand agent what the user needs in natural language. The brand agent responds naturally, continuing the conversation. `context` is a separate, optional field: an opaque object (e.g., `{"trace_id": "abc-123"}`) that the brand agent echoes back unchanged — used by the buyer for correlation, never parsed by the brand agent.
 
 2. **Brand looks up loyalty data** - If Jane's email is recognized, Delta retrieves her SkyMiles status automatically. Hosts don't store loyalty numbers.
 
