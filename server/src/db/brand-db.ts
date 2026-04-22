@@ -711,15 +711,15 @@ export class BrandDatabase {
         const manifest = (current.brand_manifest as Record<string, unknown>) || {};
         manifest.agents = agents;
 
-        // Create revision snapshot
+        // Create revision snapshot (brand_revisions uses brand_domain, not domain)
         const revCountResult = await client.query<{ count: string }>(
-          'SELECT COUNT(*) as count FROM brand_revisions WHERE domain = $1',
+          'SELECT COUNT(*) as count FROM brand_revisions WHERE brand_domain = $1',
           [domain.toLowerCase()]
         );
         const revisionNumber = parseInt(revCountResult.rows[0].count) + 1;
 
         await client.query(
-          `INSERT INTO brand_revisions (domain, revision_number, snapshot, editor_user_id, editor_email, editor_name, edit_summary)
+          `INSERT INTO brand_revisions (brand_domain, revision_number, snapshot, editor_user_id, editor_email, editor_name, edit_summary)
            VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)`,
           [domain.toLowerCase(), revisionNumber, JSON.stringify(current), editor.user_id, editor.email || null, editor.name || null, editor.summary]
         );

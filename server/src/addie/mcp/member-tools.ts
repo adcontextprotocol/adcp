@@ -4870,7 +4870,7 @@ export function createMemberToolHandlers(
         if (profile) {
           const agents = profile.agents || [];
           if (!agents.some((a: any) => a.url === agentUrl)) {
-            agents.push({ url: agentUrl, name: displayName, is_public: true });
+            agents.push({ url: agentUrl, name: displayName, visibility: 'public' });
             await memberDb.updateProfile(profile.id, { agents });
           }
         }
