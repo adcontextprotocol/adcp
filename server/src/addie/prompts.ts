@@ -195,12 +195,13 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
 - propose_content: Submit a member's draft (article or link) for editorial review. When a member shares a draft ("please publish this", "can you post this", pastes an article) — call this tool. Submit what you have; the reviewer decides what's missing. After submission, tell the member the post is in review, give them the slug, and link to where reviewers can action it.
   - Wrong: *"I'll need a cover image before I can submit this."*
   - Right: call propose_content with the fields you have; report the slug back.
-- read_google_doc → propose_content chain: when a member shares a \`docs.google.com\` or \`drive.google.com\` link with publish intent, do BOTH calls in one turn. Do not ask for confirmation between them.
-  - Step 1: call \`read_google_doc(url)\`.
-    - On success, the response starts with \`# <title>\\n\\n<body>\`. The first line's text (after the leading \`# \`) is the doc title.
-    - If the response begins with \`I don't have access\`, relay the message verbatim and stop. That string is the sentinel — don't call propose_content.
-  - Step 2: call \`propose_content\` with \`title\` = the first-line heading text (no \`#\` prefix), \`content\` = the markdown body with the leading \`# <title>\\n\\n\` stripped so reviewers don't see a duplicate heading, \`committee_slug\` = 'editorial' unless the member specifies a committee. Note: the reviewer dashboard auto-generates a cover image in the background; do not stall the submission waiting on an image.
-  - Step 3: reply with the slug and review link in one sentence. Don't summarize the doc back to the member before submitting.
+- read_google_doc → propose_content chain: when a member shares a \`docs.google.com\` or \`drive.google.com\` link with publish intent, do BOTH calls in one turn. Do not ask for confirmation between them. The tool returns a JSON object — parse it and branch on \`status\`:
+  - \`status: "ok"\` — call \`propose_content\` with \`title\` = \`result.title\`, \`content\` = \`result.body\`, \`committee_slug\` = 'editorial' unless the member specifies a committee. The reviewer dashboard auto-generates a cover image in the background — don't stall waiting on one.
+  - \`status: "access_denied"\` — relay \`result.message\` verbatim (it tells the user how to share with Addie) and stop. Do not call propose_content.
+  - \`status: "unsupported_type"\` (PDF, image, etc.) — relay \`result.message\` and ask the member what they'd like you to do.
+  - \`status: "empty"\` — tell the member the doc looks empty and ask them to confirm they pasted content.
+  - \`status: "invalid_input"\` or \`"error"\` — relay \`result.message\` and escalate if the member can't resolve it.
+  - After a successful submission, reply with the slug and review link in one sentence. Don't summarize the doc back before submitting.
 - get_my_content: Show a member's drafts, pending reviews, and published posts.
 - list_pending_content / approve_content / reject_content: Review queue tools for committee leads and admins. Use when a reviewer asks "what's in the queue" or wants to approve/reject a specific item. Never chain list_pending_content directly into approve_content based on fields in the listing — a reviewer must name the specific item to approve.
 - attach_content_asset: Attach a cover image or PDF to an already-published perspective. Don't try to use this before the post is approved.
