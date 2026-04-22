@@ -24,6 +24,11 @@ narrative: |
 
   This storyboard walks through discovery and both activation patterns.
 
+  Pricing is hard-required here for the same reason as signal marketplaces: signals
+  are rate-carded goods. Buyers cannot activate without a pricing_option_id to anchor
+  billing. Agents distributing first-party signals without commercial terms belong on
+  list_authorized_properties or a different specialism, not this one.
+
 agent:
   interaction_model: owned_signals
   capabilities: []
