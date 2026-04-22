@@ -173,8 +173,19 @@
           <div class="navbar__items navbar__items--right">
             <div class="navbar__links-desktop">
               <div class="navbar__divider"></div>
-              <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
-              <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
+              <div class="navbar__resources">
+                <button class="navbar__link navbar__resources-btn" id="resourcesMenuBtn">
+                  Resources
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style="margin-left:2px">
+                    <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </button>
+                <div class="navbar__dropdown navbar__resources-dropdown" id="resourcesDropdown">
+                  <a href="/registry" class="navbar__dropdown-item ${isRegistryActive ? 'active' : ''}">Registry</a>
+                  <a href="${docsUrl}" class="navbar__dropdown-item">AdCP Docs</a>
+                  <a href="/members" class="navbar__dropdown-item">Member Directory</a>
+                </div>
+              </div>
             </div>
             ${authSection}
             <button class="navbar__hamburger" id="mobileMenuBtn" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
@@ -436,6 +447,20 @@
       }
 
       /* Account dropdown */
+      .navbar__resources {
+        position: relative;
+      }
+
+      .navbar__resources-btn {
+        display: flex;
+        align-items: center;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.375rem 0.5rem;
+        font-size: 0.875rem;
+      }
+
       .navbar__account {
         position: relative;
       }
@@ -1079,7 +1104,7 @@
 
       .aao-footer__copyright {
         font-size: 0.75rem;
-        color: #6b7280;
+        color: #9ca3af;
       }
 
       @media (max-width: 768px) {
@@ -1262,6 +1287,20 @@
       });
     }
 
+    // Resources dropdown toggle
+    const resourcesBtn = document.getElementById('resourcesMenuBtn');
+    const resourcesDropdown = document.getElementById('resourcesDropdown');
+    if (resourcesBtn && resourcesDropdown) {
+      resourcesBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resourcesDropdown.classList.toggle('open');
+        if (accountDropdown) accountDropdown.classList.remove('open');
+      });
+      resourcesDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+
     // Notification bell
     const notifBell = document.getElementById('notifBell');
     const notifDropdown = document.getElementById('notifDropdown');
@@ -1387,6 +1426,7 @@
     document.addEventListener('click', (e) => {
       if (accountDropdown) accountDropdown.classList.remove('open');
       if (notifDropdown) notifDropdown.classList.remove('open');
+      if (resourcesDropdown) resourcesDropdown.classList.remove('open');
       if (mobileMenu && mobileMenu.classList.contains('open')) {
         toggleMobileMenu(false);
       }
