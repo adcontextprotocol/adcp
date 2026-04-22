@@ -29,6 +29,7 @@ import { getIdempotencyStore } from './idempotency.js';
 import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
+import { runWithSessionContext, flushDirtySessions } from './state.js';
 import { createLogger } from '../logger.js';
 
 import {
@@ -213,8 +214,20 @@ function adapt(toolName: string, handler: LegacyHandler) {
       principal: ctx.authInfo?.clientId ?? 'anonymous',
     };
 
-    try {
-      const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+    return runWithSessionContext(async () => {
+      let result: unknown;
+      try {
+        result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+      } catch (err) {
+        logger.error({ err }, 'framework handler threw');
+        return serviceUnavailable(err, callerContext);
+      }
+      try {
+        await flushDirtySessions();
+      } catch (err) {
+        logger.error({ err }, 'framework flushDirtySessions threw');
+        return serviceUnavailable(err, callerContext);
+      }
       const response = toAdaptedResponse(result, callerContext);
       if (!response.isError) {
         const idk = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
@@ -226,10 +239,7 @@ function adapt(toolName: string, handler: LegacyHandler) {
         });
       }
       return response;
-    } catch (err) {
-      logger.error({ err }, 'framework handler threw');
-      return serviceUnavailable(err, callerContext);
-    }
+    });
   };
 }
 
@@ -283,13 +293,22 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
           principal: authInfo?.clientId ?? 'anonymous',
         };
         const { context: callerContext, ...handlerArgs } = params;
-        try {
-          const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+        return runWithSessionContext(async () => {
+          let result: unknown;
+          try {
+            result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+          } catch (err) {
+            logger.error({ err, tool: name }, 'framework custom-tool handler threw');
+            return serviceUnavailable(err, callerContext);
+          }
+          try {
+            await flushDirtySessions();
+          } catch (err) {
+            logger.error({ err, tool: name }, 'framework custom-tool flushDirtySessions threw');
+            return serviceUnavailable(err, callerContext);
+          }
           return toAdaptedResponse(result, callerContext);
-        } catch (err) {
-          logger.error({ err, tool: name }, 'framework custom-tool handler threw');
-          return serviceUnavailable(err, callerContext);
-        }
+        });
       },
     };
   }
@@ -388,16 +407,15 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     context: CONTEXT_REF,
   };
 
+  // `scenario` stays an open string rather than z.enum so unrecognized
+  // scenarios reach the SDK handler and get a typed `UNKNOWN_SCENARIO`
+  // response envelope. A zod enum here would reject at MCP input validation,
+  // returning a generic validation error without the controller's context
+  // echo — breaking the deterministic_testing storyboard's unknown-scenario
+  // probe. Seed scenarios (seed_product, seed_creative, etc.) are also
+  // accepted here for the same reason.
   const COMPLY_TEST_CONTROLLER_SCHEMA = {
-    scenario: z.enum([
-      'list_scenarios',
-      'force_creative_status',
-      'force_account_status',
-      'force_media_buy_status',
-      'force_session_status',
-      'simulate_delivery',
-      'simulate_budget_spend',
-    ]),
+    scenario: z.string(),
     params: z.record(z.string(), z.any()).optional(),
     account: ACCOUNT_REF,
     brand: BRAND_REF,
