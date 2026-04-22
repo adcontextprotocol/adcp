@@ -836,36 +836,6 @@ function splitHeadedString(text: string): { title: string; body: string } {
 }
 
 /**
- * Legacy string-returning facade over `readGoogleDocStructured`.
- * Preserves the original API for internal callers that haven't been
- * migrated yet (committee-document-indexer, content-curator). New
- * code should call `readGoogleDocStructured` directly.
- */
-async function readGoogleDoc(
-  urlOrId: string,
-  config: GoogleAuthConfig
-): Promise<string> {
-  const result = await readGoogleDocStructured(urlOrId, config);
-  switch (result.status) {
-    case 'invalid_input':
-      throw new ToolError(result.message ?? 'Invalid Google Docs URL');
-    case 'access_denied':
-    case 'unsupported_type':
-      return result.message ?? 'Unable to read document';
-    case 'error':
-      throw new ToolError(result.message ?? 'Error reading Google Doc');
-    case 'empty':
-      return `**${result.title ?? 'Untitled'}**\n\n(Document is empty)`;
-    case 'ok': {
-      const format = result.format && result.format !== 'markdown' ? ` (${result.format})` : '';
-      const head = `**${result.title ?? 'Untitled'}**${format}`;
-      const tail = result.truncated ? `\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]` : '';
-      return `${head}\n\n${result.body}${tail}`;
-    }
-  }
-}
-
-/**
  * Tool definition for reading Google Docs
  */
 export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
