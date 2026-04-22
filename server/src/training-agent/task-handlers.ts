@@ -1946,7 +1946,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   }
 
-  const includePricing = req.include_pricing && req.account;
+  // Ad-server-capable sellers (creative.has_creative_library) quote per-
+  // creative pricing whenever an account is present, independent of the
+  // buyer setting include_pricing. Explicit `include_pricing: false` still
+  // suppresses — matches the spec wording while letting callers that omit
+  // the flag (e.g., SDK request builders that drop it) still receive pricing.
+  // Spec today says "When false or omitted, pricing is not computed"; the
+  // emission-on-omit behaviour here is deliberate per the has_creative_library
+  // gate in #2847 and tracks the spec-side clarification referenced there.
+  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
 
   return {
     query_summary: {
@@ -1966,7 +1974,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
       };
-      if (includePricing) {
+      if (emitPricing && c.formatId?.id) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {

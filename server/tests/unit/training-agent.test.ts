@@ -731,7 +731,11 @@ describe('session state', () => {
         expect(session.mediaBuys).toBeInstanceOf(Map);
         expect(session.mediaBuys.size).toBe(0);
         expect(session.creatives).toBeInstanceOf(Map);
-        expect(session.creatives.size).toBe(0);
+        // Sessions seed exactly the compliance-fixture creatives referenced
+        // by conformance storyboards (see seedComplianceCreatives). Pinning
+        // the size as well as membership keeps future additions deliberate.
+        expect(session.creatives.size).toBe(1);
+        expect(session.creatives.has('campaign_hero_video')).toBe(true);
       });
     });
 
@@ -1963,7 +1967,10 @@ describe('list_creatives handler', () => {
     });
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'list_creatives', { account });
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      creative_ids: ['cr_list_1'],
+    });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives).toHaveLength(1);
@@ -1981,20 +1988,25 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
-  it('returns zero counts when no creatives synced', async () => {
+  it('returns only the compliance-fixture creative when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'list_creatives', { account });
 
-    expect(result.creatives).toEqual([]);
+    // Sessions pre-seed conformance fixtures (see seedComplianceCreatives) so
+    // storyboards that reference stable IDs like `campaign_hero_video`
+    // resolve on the first call. Callers that need a truly empty view filter
+    // via creative_ids.
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
 
     const qs = result.query_summary as Record<string, unknown>;
-    expect(qs.total_matching).toBe(0);
-    expect(qs.returned).toBe(0);
+    expect(qs.total_matching).toBe(1);
+    expect(qs.returned).toBe(1);
 
     const pg = result.pagination as Record<string, unknown>;
     expect(pg.has_more).toBe(false);
-    expect(pg.total_count).toBe(0);
+    expect(pg.total_count).toBe(1);
   });
 
   it('query_summary reflects filtered count', async () => {
@@ -2061,6 +2073,7 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account,
       include_pricing: true,
+      creative_ids: ['cr_price_test'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
@@ -2082,10 +2095,31 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account,
       include_pricing: false,
+      creative_ids: ['cr_price_test'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives[0].pricing_options).toBeUndefined();
+  });
+
+  it('includes pricing_options on an ad-server-capable seller when include_pricing is omitted', async () => {
+    // creative.has_creative_library: true sellers quote per-creative pricing
+    // against the account rate card automatically — the SDK's list_creatives
+    // request builder does not forward include_pricing, so storyboards rely
+    // on capability-based emission for creative_ad_server conformance.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      creative_ids: ['cr_price_test'],
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options).toBeDefined();
+    expect(options[0].pricing_option_id).toBe('po_display_300x250_cpm');
   });
 
   it('includes pricing_options when both include_pricing and account are provided', async () => {
@@ -2116,6 +2150,7 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account: premiumAccount,
       include_pricing: true,
+      creative_ids: ['cr_premium'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;

@@ -27,6 +27,7 @@ import {
 } from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import { getAgentUrl } from './config.js';
 
 const logger = createLogger('training-agent-state');
 
@@ -157,7 +158,7 @@ function stableStringify(value: unknown): string {
 
 function createSession(): SessionState {
   const now = new Date();
-  return {
+  const session: SessionState = {
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
@@ -180,6 +181,40 @@ function createSession(): SessionState {
     createdAt: now,
     lastAccessedAt: now,
   };
+  seedComplianceCreatives(session);
+  return session;
+}
+
+/**
+ * Seed storyboard-hardcoded creative IDs into a session.
+ *
+ * Conformance storyboards (see `static/compliance/source/**` `fixtures:`
+ * blocks) reference creatives by stable IDs that the test runner is meant to
+ * auto-fire via `comply_test_controller.seed_creative` before phases run.
+ * While the SDK's runner side of that wiring (adcp-client#778) is still open,
+ * the training agent pre-seeds the same IDs on every session so storyboards
+ * that assume them (e.g. `creative_ad_server` referencing
+ * `campaign_hero_video`) can resolve the creative across every session key
+ * the run touches — list_creatives, build_creative, get_creative_delivery,
+ * and report_usage each derive their own key.
+ *
+ * The product catalog handles the equivalent aliasing for `test-product` and
+ * `sports_ctv_q2` via `product-factory.ts`.
+ */
+function seedComplianceCreatives(session: SessionState): void {
+  const seedAt = new Date().toISOString();
+  // campaign_hero_video — creative_ad_server storyboard
+  // (static/compliance/source/specialisms/creative-ad-server/index.yaml)
+  if (!session.creatives.has('campaign_hero_video')) {
+    session.creatives.set('campaign_hero_video', {
+      creativeId: 'campaign_hero_video',
+      formatId: { agent_url: getAgentUrl(), id: 'vast_30s' },
+      name: 'Campaign Hero Video',
+      status: 'approved',
+      syncedAt: seedAt,
+      pricingOptionId: 'po_vast_30s_cpm',
+    });
+  }
 }
 
 /**
@@ -278,6 +313,11 @@ export async function getSession(key: string): Promise<SessionState> {
   }
   if (!session) {
     session = createSession();
+  } else {
+    // Idempotently backfill compliance fixtures onto sessions loaded from
+    // storage that predate the seed (the load-time snapshot below captures
+    // the added entries so we don't flush a spurious write).
+    seedComplianceCreatives(session);
   }
   session.lastAccessedAt = new Date();
 
