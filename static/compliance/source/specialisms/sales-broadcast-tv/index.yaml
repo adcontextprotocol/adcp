@@ -64,6 +64,31 @@ prerequisites:
     kit provides the Nova Motors Volta EV launch campaign — an automotive brand with
     national broadcast reach goals and budget appropriate for primetime linear TV.
   test_kit: "test-kits/nova-motors.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "primetime_30s_mf"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "broadcast_spot_30s"
+    - product_id: "late_fringe_15s_mf"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "broadcast_spot_15s"
+  pricing_options:
+    - product_id: "primetime_30s_mf"
+      pricing_option_id: "unit_primetime_30"
+      pricing_model: "flat_rate"
+      currency: "USD"
+      fixed_price: 4500.0
+    - product_id: "late_fringe_15s_mf"
+      pricing_option_id: "unit_fringe_15"
+      pricing_model: "flat_rate"
+      currency: "USD"
+      fixed_price: 1200.0
 
 phases:
   - id: capability_discovery

@@ -61,6 +61,31 @@ prerequisites:
     The test kit provides a sample brand (Acme Outdoor) with campaign parameters
     suitable for testing the guaranteed approval flow.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_preroll_q2_guaranteed"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "outdoor_ctv_q2_guaranteed"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "sports_preroll_q2_guaranteed"
+      pricing_option_id: "cpm_guaranteed_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 35.0
+    - product_id: "outdoor_ctv_q2_guaranteed"
+      pricing_option_id: "cpm_guaranteed_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 45.0
 
 phases:
   - id: capability_discovery

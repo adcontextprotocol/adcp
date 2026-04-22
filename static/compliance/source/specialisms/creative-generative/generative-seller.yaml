@@ -65,6 +65,31 @@ prerequisites:
     tone — that the generative seller uses to produce on-brand creatives. The test kit provides
     a sample brand with campaign parameters.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outdoor_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "outdoor_display_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 15.0
 
 phases:
   - id: capability_discovery
