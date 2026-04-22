@@ -27,7 +27,7 @@ import { z } from 'zod';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
 import { markSessionHandlerThrew } from './state.js';
-import { getWebhookSigningKey } from './webhooks.js';
+import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
 import { createLogger } from '../logger.js';
@@ -192,8 +192,11 @@ function versionUnsupported(requested: unknown, callerContext: unknown): Adapted
  *   it on the response (so handlers never see or forward `context` and the
  *   framework's own injectContextIntoResponse doesn't double-echo).
  * - Wraps thrown exceptions as `SERVICE_UNAVAILABLE` per legacy behavior.
+ * - Fires a completion webhook after a successful handler when the buyer
+ *   supplied `push_notification_config.url` and the tool maps to a webhook
+ *   task type. Matches legacy dispatch behavior in `task-handlers.ts`.
  */
-function adapt(handler: LegacyHandler) {
+function adapt(toolName: string, handler: LegacyHandler) {
   return async (params: unknown, ctx: HandlerContext): Promise<AdaptedResponse> => {
     const rawParams = (params as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...handlerArgs } = rawParams;
@@ -213,7 +216,17 @@ function adapt(handler: LegacyHandler) {
 
     try {
       const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
-      return toAdaptedResponse(result, callerContext);
+      const response = toAdaptedResponse(result, callerContext);
+      if (!response.isError) {
+        const idk = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
+        maybeEmitCompletionWebhook({
+          toolName,
+          args: handlerArgs as Record<string, unknown>,
+          response: (result ?? {}) as Record<string, unknown>,
+          requestIdempotencyKey: typeof idk === 'string' ? idk : undefined,
+        });
+      }
+      return response;
     } catch (err) {
       markSessionHandlerThrew();
       logger.error({ err }, 'framework handler threw');
@@ -495,56 +508,56 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
 
     mediaBuy: {
-      getProducts: adapt(handleGetProducts),
-      createMediaBuy: adapt(handleCreateMediaBuy),
-      updateMediaBuy: adapt(handleUpdateMediaBuy),
-      getMediaBuys: adapt(handleGetMediaBuys),
-      getMediaBuyDelivery: adapt(handleGetMediaBuyDelivery),
-      providePerformanceFeedback: adapt(handleProvidePerformanceFeedback),
-      listCreativeFormats: adapt(handleListCreativeFormats),
-      syncCreatives: adapt(handleSyncCreatives),
-      listCreatives: adapt(handleListCreatives),
+      getProducts: adapt('get_products', handleGetProducts),
+      createMediaBuy: adapt('create_media_buy', handleCreateMediaBuy),
+      updateMediaBuy: adapt('update_media_buy', handleUpdateMediaBuy),
+      getMediaBuys: adapt('get_media_buys', handleGetMediaBuys),
+      getMediaBuyDelivery: adapt('get_media_buy_delivery', handleGetMediaBuyDelivery),
+      providePerformanceFeedback: adapt('provide_performance_feedback', handleProvidePerformanceFeedback),
+      listCreativeFormats: adapt('list_creative_formats', handleListCreativeFormats),
+      syncCreatives: adapt('sync_creatives', handleSyncCreatives),
+      listCreatives: adapt('list_creatives', handleListCreatives),
     },
     creative: {
-      buildCreative: adapt(handleBuildCreative),
-      previewCreative: adapt(handlePreviewCreative),
-      getCreativeDelivery: adapt(handleGetCreativeDelivery),
+      buildCreative: adapt('build_creative', handleBuildCreative),
+      previewCreative: adapt('preview_creative', handlePreviewCreative),
+      getCreativeDelivery: adapt('get_creative_delivery', handleGetCreativeDelivery),
     },
     signals: {
-      getSignals: adapt(handleGetSignals),
-      activateSignal: adapt(handleActivateSignal),
+      getSignals: adapt('get_signals', handleGetSignals),
+      activateSignal: adapt('activate_signal', handleActivateSignal),
     },
     governance: {
-      syncPlans: adapt(handleSyncPlans),
-      checkGovernance: adapt(handleCheckGovernance),
-      reportPlanOutcome: adapt(handleReportPlanOutcome),
-      getPlanAuditLogs: adapt(handleGetPlanAuditLogs),
-      createPropertyList: adapt(handleCreatePropertyList),
-      listPropertyLists: adapt(handleListPropertyLists),
-      getPropertyList: adapt(handleGetPropertyList),
-      updatePropertyList: adapt(handleUpdatePropertyList),
-      deletePropertyList: adapt(handleDeletePropertyList),
-      createContentStandards: adapt(handleCreateContentStandards),
-      listContentStandards: adapt(handleListContentStandards),
-      getContentStandards: adapt(handleGetContentStandards),
-      updateContentStandards: adapt(handleUpdateContentStandards),
-      calibrateContent: adapt(handleCalibrateContent),
-      validateContentDelivery: adapt(handleValidateContentDelivery),
+      syncPlans: adapt('sync_plans', handleSyncPlans),
+      checkGovernance: adapt('check_governance', handleCheckGovernance),
+      reportPlanOutcome: adapt('report_plan_outcome', handleReportPlanOutcome),
+      getPlanAuditLogs: adapt('get_plan_audit_logs', handleGetPlanAuditLogs),
+      createPropertyList: adapt('create_property_list', handleCreatePropertyList),
+      listPropertyLists: adapt('list_property_lists', handleListPropertyLists),
+      getPropertyList: adapt('get_property_list', handleGetPropertyList),
+      updatePropertyList: adapt('update_property_list', handleUpdatePropertyList),
+      deletePropertyList: adapt('delete_property_list', handleDeletePropertyList),
+      createContentStandards: adapt('create_content_standards', handleCreateContentStandards),
+      listContentStandards: adapt('list_content_standards', handleListContentStandards),
+      getContentStandards: adapt('get_content_standards', handleGetContentStandards),
+      updateContentStandards: adapt('update_content_standards', handleUpdateContentStandards),
+      calibrateContent: adapt('calibrate_content', handleCalibrateContent),
+      validateContentDelivery: adapt('validate_content_delivery', handleValidateContentDelivery),
     },
     accounts: {
-      syncAccounts: adapt(handleSyncAccounts),
-      syncGovernance: adapt(handleSyncGovernance),
-      reportUsage: adapt(handleReportUsage),
+      syncAccounts: adapt('sync_accounts', handleSyncAccounts),
+      syncGovernance: adapt('sync_governance', handleSyncGovernance),
+      reportUsage: adapt('report_usage', handleReportUsage),
     },
     eventTracking: {
-      syncEventSources: adapt(handleSyncEventSources),
-      logEvent: adapt(handleLogEvent),
-      syncCatalogs: adapt(handleSyncCatalogs),
+      syncEventSources: adapt('sync_event_sources', handleSyncEventSources),
+      logEvent: adapt('log_event', handleLogEvent),
+      syncCatalogs: adapt('sync_catalogs', handleSyncCatalogs),
     },
     brandRights: {
-      getBrandIdentity: adapt(handleGetBrandIdentity),
-      getRights: adapt(handleGetRights),
-      acquireRights: adapt(handleAcquireRights),
+      getBrandIdentity: adapt('get_brand_identity', handleGetBrandIdentity),
+      getRights: adapt('get_rights', handleGetRights),
+      acquireRights: adapt('acquire_rights', handleAcquireRights),
     },
 
     customTools: {

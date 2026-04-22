@@ -420,5 +420,5 @@
   "required": [
     "plans"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

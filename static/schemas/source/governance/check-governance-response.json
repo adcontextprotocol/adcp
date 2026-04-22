@@ -149,7 +149,7 @@
     "plan_id",
     "explanation"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": {

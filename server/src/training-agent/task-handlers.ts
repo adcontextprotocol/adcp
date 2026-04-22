@@ -237,17 +237,8 @@ import {
   scopedPrincipal,
   getIdempotencyStore,
 } from './idempotency.js';
-import { getWebhookEmitter } from './webhooks.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
-
-// MCP webhook envelope's `task_type` enum (core.generated TaskType — not re-exported).
-type WebhookTaskType =
-  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
-  | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
-  | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
-  | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
-  | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -335,62 +326,6 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
     }));
   }
   return details;
-}
-
-/** Map tool name → TaskType for webhook envelopes. Only tools that emit
- * webhooks need an entry — tools absent from this map never fire an emission
- * even if the caller supplies a push_notification_config.url. */
-const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
-  create_media_buy: 'create_media_buy',
-  update_media_buy: 'update_media_buy',
-  sync_creatives: 'sync_creatives',
-  activate_signal: 'activate_signal',
-  get_signals: 'get_signals',
-  create_property_list: 'create_property_list',
-  update_property_list: 'update_property_list',
-  get_property_list: 'get_property_list',
-  list_property_lists: 'list_property_lists',
-  delete_property_list: 'delete_property_list',
-  sync_accounts: 'sync_accounts',
-  get_account_financials: 'get_account_financials',
-  get_creative_delivery: 'get_creative_delivery',
-  sync_event_sources: 'sync_event_sources',
-  sync_audiences: 'sync_audiences',
-  sync_catalogs: 'sync_catalogs',
-  log_event: 'log_event',
-  get_brand_identity: 'get_brand_identity',
-  get_rights: 'get_rights',
-  acquire_rights: 'acquire_rights',
-};
-
-function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
-  const pnc = args.push_notification_config as { url?: unknown } | undefined;
-  if (!pnc || typeof pnc !== 'object') return undefined;
-  return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
-}
-
-/**
- * Derive a stable logical event id for webhook idempotency.
- *
- * The `operation_id` feeds `WebhookIdempotencyKeyStore` — two emissions with
- * the same operation_id reuse the same `idempotency_key`, which is the
- * cross-attempt invariant receiver-side dedup depends on. We prefer a
- * buyer-facing entity id from the response (media_buy_id, creative_id,
- * activation_id, etc.) so retries from the same buyer collapse; if the
- * response has none, we fall back to the request's idempotency_key which
- * is already unique per logical submission.
- */
-function deriveWebhookOperationId(
-  toolName: string,
-  response: Record<string, unknown>,
-  requestIdempotencyKey: string | undefined,
-): string {
-  for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
-    const v = response[field];
-    if (typeof v === 'string' && v.length > 0) return `${toolName}.${v}`;
-  }
-  if (requestIdempotencyKey) return `${toolName}.${requestIdempotencyKey}`;
-  return `${toolName}.${randomUUID()}`;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -3583,33 +3518,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Fire completion webhook if the buyer supplied a push URL and the tool
     // mapped to a TaskType. Emission is fire-and-forget so the sync response
     // doesn't wait on the receiver; retries/backoff live inside the emitter.
-    const webhookUrl = extractWebhookUrl(handlerArgs);
-    const taskType = TOOL_TO_TASK_TYPE[name];
     if (
-      webhookUrl
-      && taskType
-      && cachableResponse !== null
+      cachableResponse !== null
       && !toolResult.isError
       && !handlerThrew
     ) {
-      const emitter = getWebhookEmitter();
-      const operationId = deriveWebhookOperationId(
-        name,
-        cachableResponse,
-        typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
-      );
-      const webhookTaskId = (cachableResponse.task_id as string | undefined)
-        ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
-      const payload: Record<string, unknown> = {
-        task_id: webhookTaskId,
-        task_type: taskType,
-        protocol: 'mcp',
-        status: 'completed',
-        timestamp: new Date().toISOString(),
-        result: cachableResponse,
-      };
-      void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
-        .catch(err => logger.warn({ err, tool: name, url: webhookUrl }, 'Webhook emission failed'));
+      maybeEmitCompletionWebhook({
+        toolName: name,
+        args: handlerArgs,
+        response: cachableResponse,
+        requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+      });
     }
 
     // If not task-augmented, return result directly.
