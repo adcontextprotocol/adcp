@@ -336,6 +336,63 @@ describe('My Content — body, admin scope, status, delete', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // #2713 — rejected/archived transitions require admin or committee lead
+  // ---------------------------------------------------------------------------
+
+  describe('PUT /api/me/content/:id status transitions', () => {
+    it('prevents non-admin co-author from resurrecting a rejected item', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-resurrect',
+        title: 'previously rejected',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // Switch to a non-lead, non-admin user. Make them a co-author so
+      // they pass the ownership check but NOT the lead/admin check.
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+      adminState.isAdmin = false;
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name)
+         VALUES ($1, $2, 'Co-author')
+         ON CONFLICT DO NOTHING`,
+        [id, OTHER_USER_ID]
+      );
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(403);
+
+      expect(response.body.message).toMatch(/move it out of rejected/i);
+    });
+
+    it('allows a committee lead to resurrect a rejected item in their committee', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-lead-resurrect',
+        title: 'lead resurrecting',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // USER_ID is the lead of WG_SLUG per the test setup at line 130
+      authState.userId = USER_ID;
+      authState.email = 'mc@example.com';
+      adminState.isAdmin = false;
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // #2292 follow-on — users can delete their own non-published content
   // ---------------------------------------------------------------------------
 

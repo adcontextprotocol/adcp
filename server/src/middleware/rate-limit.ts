@@ -301,6 +301,41 @@ export const newsletterConfirmRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for content submission endpoint (POST /api/content/propose).
+ * Limits: 20 submissions per 10 minutes per user.
+ *
+ * Protects the editorial queue from accidental floods (member accidentally
+ * double-clicks submit) and abuse (scripted member spamming the review
+ * channel). 20 submissions in 10 minutes is well above any legitimate
+ * editorial cadence — Mary-like one-off drafts aren't affected.
+ *
+ * Also bounds the downstream Slack notifications and auto-cover-image
+ * Gemini calls fired per submission.
+ */
+export const contentProposeRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('content-propose:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for content submission');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Content submission rate limit exceeded (20 per 10 minutes). Please try again later.',
+      retryAfter: Math.ceil(10 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for admin content write operations (delete, status change)
  * Limits: 30 writes per 15 minutes per user
  */

@@ -12,6 +12,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
+import { contentProposeRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
@@ -965,7 +966,7 @@ export function createContentRouter(): Router {
   });
 
   // POST /api/content/propose - Submit content to any collection
-  router.post('/propose', requireAuth, async (req, res) => {
+  router.post('/propose', requireAuth, contentProposeRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
       const result = await proposeContentForUser(
@@ -1556,8 +1557,11 @@ export function createMyContentRouter(): Router {
           values.push(content_origin);
         }
       }
-      // Allow status changes: members can resubmit rejected→pending_review, or draft↔pending_review
-      // Admins can set any status
+      // Allow status changes: members can move their own drafts between
+      // draft ↔ pending_review. Moving out of a terminal state (rejected
+      // or archived) is gated to admins or the lead of the item's own
+      // committee — otherwise an unrelated co-author could resurrect a
+      // rejected item without going through the rejecter (see #2713).
       if (requestedStatus !== undefined) {
         const allowedStatuses = ['draft', 'pending_review', 'published', 'archived'];
         if (allowedStatuses.includes(requestedStatus)) {
@@ -1566,6 +1570,21 @@ export function createMyContentRouter(): Router {
             return res.status(403).json({
               error: 'Permission denied',
               message: 'Only admins can set this status',
+            });
+          }
+          // Moving out of `rejected` or `archived` requires admin or the
+          // lead of the item's committee. Prevents a co-author on an
+          // unrelated committee from resurrecting a rejected item.
+          const currentStatus = contentItem.status as string;
+          if (
+            (currentStatus === 'rejected' || currentStatus === 'archived')
+            && requestedStatus !== currentStatus
+            && !userIsAdmin
+            && !userIsLead
+          ) {
+            return res.status(403).json({
+              error: 'Permission denied',
+              message: `Only an admin or a lead of this item's committee can move it out of ${currentStatus}`,
             });
           }
           updates.push(`status = $${paramIndex++}`);
