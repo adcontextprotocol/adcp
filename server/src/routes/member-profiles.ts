@@ -859,7 +859,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
       throw err;
     } finally {
-      client.release();
+      // Don't let a release() failure mask whatever the try block threw
+      // (e.g. a COMMIT error we actually want to surface to the caller).
+      try {
+        client.release();
+      } catch (releaseErr) {
+        logger.warn({ err: releaseErr, orgId }, 'pg client release failed');
+      }
     }
 
     // Profile JSONB is committed. Apply the manifest change outside
@@ -874,9 +880,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           summary: manifestOp.summary,
         });
       } catch (manifestErr) {
+        // Narrow the error shape. pg driver errors and other library
+        // errors can carry `error.query` / `error.parameters` that
+        // pino's default err-serializer would emit — keep diagnostic
+        // logs free of raw SQL + parameter values.
+        const errPayload = manifestErr instanceof Error
+          ? { message: manifestErr.message, name: manifestErr.name }
+          : { message: String(manifestErr) };
         logger.warn(
           {
-            err: manifestErr,
+            err: errPayload,
             domain: manifestOp.domain,
             orgId,
             agentIndex: index,
