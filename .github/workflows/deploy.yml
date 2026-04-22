@@ -10,8 +10,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Preflight: cheap sanity checks that must pass before we spend the
+  # Fly build/deploy budget. If main has a broken state (e.g. two PRs
+  # merged minutes apart reserved the same migration number), catch it
+  # here instead of shipping a container that crashloops on boot.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: No duplicate migration numbers
+        run: |
+          dupes=$(ls server/src/db/migrations/*.sql \
+            | xargs -n1 basename \
+            | sed 's/_.*//' \
+            | sort \
+            | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "::error::Duplicate migration number prefixes on main: $dupes"
+            echo ""
+            echo "Deploy blocked — main would crashloop on boot. Land a renumber"
+            echo "hotfix before the next push can deploy. Duplicate files:"
+            for prefix in $dupes; do
+              ls server/src/db/migrations/${prefix}_*.sql
+            done
+            exit 1
+          fi
+          echo "No duplicate migration numbers on main."
+
   deploy:
     name: Deploy to Fly.io
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
