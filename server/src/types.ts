@@ -998,6 +998,8 @@ export interface AgentCompliance {
   headline: string | null;
   monitoring_paused: boolean;
   check_interval_hours: number;
+  verified?: boolean;
+  verified_roles?: string[];
 }
 
 // Federated Discovery Types

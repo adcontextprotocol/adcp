@@ -102,6 +102,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
@@ -888,6 +889,12 @@ export class HTTPServer {
       requireAuth,
     });
     this.app.use('/api', registryApiRouter);
+
+    // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.json(getPublicJwks());
+    });
 
     // Mount property catalog API routes (resolve, browse, sync, disputes)
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });

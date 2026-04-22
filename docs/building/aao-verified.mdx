@@ -1,0 +1,105 @@
+---
+title: AAO Verified
+sidebarTitle: AAO Verified
+description: "The public trust mark for AdCP agents that pass AAO's automated conformance tests. How badges are earned, displayed, and verified."
+"og:title": "AdCP — AAO Verified"
+---
+
+**AAO Verified** is the public trust mark for AdCP agents that pass AAO's automated conformance tests for the capabilities they declare.
+
+Conformance and verification are separate concerns. The [Conformance Specification](/docs/building/conformance) defines *what conformant means* — the normative rules, expressed as executable storyboards. The [Compliance Catalog](/docs/building/compliance-catalog) indexes the protocols and specialisms an agent can claim. This page describes how AAO **verifies** those claims: the issuance process, badge display, decentralized verification, and lifecycle.
+
+Put differently: conformance is a property of the agent's wire behavior. Verification is a time-bounded third-party attestation that an agent is conformant. Verified ⊆ Conformant — you can be conformant without being verified, but you cannot be verified without being conformant.
+
+## What the badge certifies
+
+An AAO Verified badge is issued per AdCP protocol. For each declared protocol, AAO confirms:
+
+- The agent responds correctly to every [universal](/docs/building/conformance#universal-layer) storyboard
+- The agent passes the protocol's baseline conformance storyboard
+- Every **stable** specialism the agent declares under that protocol passes its storyboard bundle
+- The agent's operating organization holds an active AAO membership with API-access tier
+
+Preview specialisms are tested but do not affect badge issuance until they go stable.
+
+The badge does **not** certify that the agent is bug-free, legally compliant in any jurisdiction, creditworthy, or generally trustworthy outside the specific behavioral checks above. See the [Conformance Specification](/docs/building/conformance) for the authoritative normative surface.
+
+## How agents earn a badge
+
+```json
+// agent declares claims in get_adcp_capabilities
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": [
+    "sales-broadcast-tv",
+    "sales-guaranteed",
+    "creative-ad-server"
+  ]
+}
+```
+
+1. **Declare**. Agent lists `supported_protocols` and `specialisms` in its `get_adcp_capabilities` response.
+2. **Test**. AAO's compliance heartbeat runs all matching storyboards (universal + protocol baselines + declared specialism bundles) from AAO infrastructure, approximately every 12–24 hours. Tests are `dry_run: true` — no real transactions occur.
+3. **Verify**. If every declared stable claim passes and the agent's org has an active AAO membership, AAO issues a badge per earned protocol.
+4. **Display**. Badges appear in the AAO agent registry, and agents can embed them on websites, social profiles, and docs.
+
+## Badge roles
+
+One badge per [AdCP protocol](/docs/building/compliance-catalog#protocols) the agent is verified for:
+
+| Badge role | Earned by |
+|---|---|
+| AAO Verified Media Buy Agent | Passing the `media-buy` baseline + all declared media-buy specialisms |
+| AAO Verified Creative Agent | Passing the `creative` baseline + all declared creative specialisms |
+| AAO Verified Signals Agent | Passing the `signals` baseline + all declared signals specialisms |
+| AAO Verified Governance Agent | Passing the `governance` baseline + all declared governance specialisms |
+| AAO Verified Brand Agent | Passing the `brand` baseline + all declared brand specialisms |
+| AAO Verified SI Agent | Passing the `sponsored-intelligence` baseline + all declared SI specialisms |
+
+An agent can earn multiple badges (one per protocol it claims). A full-stack platform claiming media-buy + creative + signals earns three badges once each passes.
+
+## Decentralized verification
+
+Each badge is backed by a signed JWT (EdDSA / Ed25519). AAO publishes its public key set at `/.well-known/jwks.json` so any third party — buyer, publisher, or another ad tech company — can verify a badge's authenticity *without* calling AAO's API.
+
+JWT claims include `iss`, `sub` (agent URL), `aud: aao-verification`, `jti`, `iat`, `exp` (30 days), plus `role`, `verified_specialisms[]`, and `verified_protocol_version`. The registry API is authoritative for real-time status; the JWT is a cacheable proof that narrows the verification window to 30 days.
+
+## Lifecycle
+
+Badges are **continuously re-verified**, not one-time certificates:
+
+- **Issued** — first successful compliance run with declared claims all passing.
+- **Active** — re-checked on every heartbeat; JWT auto-renewed.
+- **Degraded** — first failure enters a 48-hour grace period; the badge continues to display as verified while the operator investigates.
+- **Revoked** — after 48 hours of continuous failure, the badge is revoked, `verification_lost` is emitted on the change feed, and the badge displays as "Not Verified" until recovery.
+- **Recovery** — resuming passing status reissues the badge with a fresh `verified_at` timestamp.
+
+Membership lapse revokes the badge regardless of test results.
+
+## Display
+
+### SVG badge
+
+```
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}.svg
+```
+
+Returns a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and a `Cache-Control` of 5 minutes. Renders teal when verified, grey when not. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed.
+
+### Embed snippet
+
+```bash
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/embed
+```
+
+Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent's AAO registry listing. Safe for READMEs, docs, landing pages, and social profiles.
+
+### Registry filter
+
+The [agent registry](/docs/building) surfaces an "AAO Verified" filter so buyers can narrow results to verified agents by protocol.
+
+## What's not covered (yet)
+
+- **Preview specialism badges** — preview specialisms are tested but don't currently carry a badge variant. Once the protocol surface stabilizes and a specialism moves to `stable`, badge issuance begins automatically.
+- **Historical badge data** — the public API shows current state; historical verification is surfaced in the [change feed](/docs/building/index) as `agent.verification_earned` / `agent.verification_lost` events.
+- **Badge tiers** — every verified agent gets the same badge; there's no "gold tier." Tiering would add pay-to-play perception without adding verification value.

@@ -797,8 +797,9 @@ async function handleFeedEmail(
   const emailBody = parseEmailFromWebhook(data);
 
   if (emailBody?.html) {
-    // Simple regex to extract links from HTML
-    const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]*)</gi;
+    // Extract href and text from anchor tags.
+    // Uses non-greedy quantifiers to avoid polynomial backtracking (CodeQL js/polynomial-redos).
+    const linkRegex = /<a\s[^>]*?href=["']([^"']+)["'][^>]*?>([^<]*)</gi;
     let linkMatch;
     while ((linkMatch = linkRegex.exec(emailBody.html)) !== null) {
       const url = linkMatch[1];
