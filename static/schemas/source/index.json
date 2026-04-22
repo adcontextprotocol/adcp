@@ -480,6 +480,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "audience-status": {
+          "$ref": "/schemas/enums/audience-status.json",
+          "description": "Matching status of a synced audience on a seller platform"
+        },
         "creative-quality": {
           "$ref": "/schemas/enums/creative-quality.json",
           "description": "Quality tier for creative generation (draft, production)"
