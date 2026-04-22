@@ -445,6 +445,39 @@ export function stopSessionCleanup(): void {
   }
 }
 
+/**
+ * Search every persisted session for a media buy by id. Some tools
+ * (provide_performance_feedback, potentially others) carry a media_buy_id
+ * the buyer captured earlier but have `account` stripped by the SDK
+ * against the published tool schema — so the request-level session key
+ * lands on `open:default` while create_media_buy wrote under
+ * `open:<brand.domain>`. Returning the raw session here lets the handler
+ * keep its primary-path session lookup but fall back to this scan.
+ *
+ * Iterates the per-request cache first (hits on common recent writes),
+ * then lists the persisted sessions collection.
+ */
+export async function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionState | null> {
+  const ctx = requestCtx.getStore();
+  if (ctx) {
+    for (const session of ctx.sessions.values()) {
+      if (session.mediaBuys.has(mediaBuyId)) return session;
+    }
+  }
+  const store = storeInstance;
+  if (!store) return null;
+  try {
+    const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
+    for (const row of page.items ?? []) {
+      const session = deserializeSession(row);
+      if (session.mediaBuys.has(mediaBuyId)) return session;
+    }
+  } catch (err) {
+    logger.warn({ err, mediaBuyId }, 'findMediaBuyAcrossSessions: store list failed');
+  }
+  return null;
+}
+
 /** Clear all sessions (tests only). */
 export async function clearSessions(): Promise<void> {
   const ctx = requestCtx.getStore();

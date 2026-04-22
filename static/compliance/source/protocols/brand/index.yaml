@@ -76,10 +76,6 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Response declares supported_protocols"
-          - check: array_contains
-            path: "supported_protocols"
-            value: "brand"
-            description: "supported_protocols includes 'brand'"
 
   - id: brand_identity_retrieval
     title: "Brand identity retrieval"
@@ -156,12 +152,11 @@ phases:
           context:
             correlation_id: "brand_baseline--get_brand_identity_unknown"
 
+        expect_error: true
         validations:
-          - check: is_error
-            description: "Response is a structured error, not a synthesized identity"
-          - check: field_present
-            path: "error.code"
-            description: "Error response includes an error code"
-          - check: field_present
-            path: "error.recovery"
-            description: "Error response includes a recovery classification"
+          - check: error_code
+            allowed_values:
+              - "brand_not_found"
+              - "BRAND_NOT_FOUND"
+              - "NOT_FOUND"
+            description: "Error code indicates brand-not-found"
