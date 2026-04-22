@@ -509,10 +509,25 @@ export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   // synced source is still reachable.
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const sources = getEventSourceMap(sessionKey);
+  // Session-key fallback: SDK-generated log_event schemas omit `account`,
+  // so the request hits `open:default` while sync_event_sources wrote
+  // under `open:<brand.domain>`. Cross-session scan first.
+  // Sandbox permissiveness: if still not found, auto-register the source
+  // so storyboards that don't call sync_event_sources first (e.g.
+  // sales_social — buyer assumes the source was set up out-of-band) can
+  // still grade the ingestion behaviour. Production agents reject the
+  // unknown id; the training agent elides that step.
   if (!sources.has(req.event_source_id) && !findEventSourceAnywhere(req.event_source_id)) {
-    return {
-      errors: [{ code: 'EVENT_SOURCE_NOT_FOUND', message: `Event source '${req.event_source_id}' not found. Call sync_event_sources first to configure the event source.` }],
-    };
+    const now = new Date().toISOString();
+    sources.set(req.event_source_id, {
+      eventSourceId: req.event_source_id,
+      name: req.event_source_id,
+      sellerId: 'sandbox-auto',
+      eventTypes: ['page_view', 'purchase', 'add_to_cart', 'lead'],
+      allowedDomains: [],
+      action: 'auto_created',
+      createdAt: now,
+    });
   }
 
   // Validate each event has event_type

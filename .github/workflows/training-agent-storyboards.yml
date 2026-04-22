@@ -36,22 +36,18 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 46→50 after tightening calibrate_content verdicts, list_creatives
-            # response shape, force_creative_rejected transition map, and
-            # brand_baseline validation checks; plus pricing_option_id context
-            # capture on brand_rights acquire_rights.
-            min_clean_storyboards: 50
+            # 50→52 after bumping @adcp/client to 5.13 (governance denial
+            # recovery invariant relaxed in adcp-client#813) and overlay
+            # targets the SDK-versioned cache dir.
+            min_clean_storyboards: 52
             min_passing_steps: 378
           - mode: framework
             flag_value: '1'
-            # 39→44 after the same handler tightening lifted framework too
-            # (calibrate verdict, provide_feedback cross-session lookup).
-            # Residual framework-only failures (7): acquire_rights_denied
-            # error code, check_governance conditions, report_plan_outcome
-            # outcome_id, create_media_buy_initial replayed field,
-            # log_event/log_events session lookup — tracked as the residual
-            # zod-parity follow-up.
-            min_clean_storyboards: 44
+            # 44→51 after 5.13 bump + wrapEnvelope(replayed:false) +
+            # governance plan cross-session fallback + event-source
+            # auto-register. Single residual: create_media_buy_initial
+            # replayed field (framework adapter task-path wrapping).
+            min_clean_storyboards: 51
             min_passing_steps: 378
     steps:
       - uses: actions/checkout@v6
@@ -77,11 +73,16 @@ jobs:
         # source/ still require a sync-schemas cycle on the SDK side.
         run: |
           SRC="static/compliance/source"
-          DST="node_modules/@adcp/client/compliance/cache/latest"
-          if [ ! -d "$DST" ]; then
-            echo "::warning::SDK compliance cache not found at $DST — skipping overlay"
+          # 5.13 moved the cache dir from `latest` to the AdCP version
+          # string (e.g. `3.0.0`). Resolve whichever subdir exists so the
+          # overlay step doesn't have to bump with every SDK release.
+          CACHE_ROOT="node_modules/@adcp/client/compliance/cache"
+          DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
+          if [ -z "$DST" ] || [ ! -d "$DST" ]; then
+            echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
             exit 0
           fi
+          echo "Overlaying onto $DST"
           # Copy every file that already exists in the cache. `cp -u` is
           # not used because we want the overlay to always win for the
           # files we maintain here.
