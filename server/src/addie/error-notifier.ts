@@ -129,7 +129,7 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     threadLine,
   ].filter(Boolean);
 
-  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
+  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') }, { requirePrivate: true });
 }
 
 async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
@@ -155,5 +155,5 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
     quoted,
   ];
 
-  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
+  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') }, { requirePrivate: true });
 }

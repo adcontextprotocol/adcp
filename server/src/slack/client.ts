@@ -391,12 +391,71 @@ export async function sendDirectMessage(
 }
 
 /**
- * Send a message to a channel
+ * Check that a channel is still private before posting sensitive content.
+ *
+ * Admin settings routes validate `is_private === true` at write time, but
+ * Slack allows a channel owner to convert the channel public afterward —
+ * and the server wouldn't notice. Callers posting sensitive notifications
+ * (billing events, escalations, editorial reviewer names, admin alerts,
+ * prospect data, system errors) gate through this function so a toggled-
+ * public channel stops receiving new posts within one `getChannelInfo`
+ * cache TTL. Piggybacks on the existing 30-minute channel-info cache so
+ * the happy path doesn't pay an extra Slack API call per send.
+ *
+ * Returns:
+ * - `true`  when the channel is still private and safe to post to
+ * - `false` when the channel is no longer private OR when we couldn't
+ *   verify (info fetch failed, channel not found, etc.) — the gate
+ *   fails closed for sensitive payloads.
+ *
+ * #2735
+ */
+export async function verifyChannelStillPrivate(
+  channelId: string,
+): Promise<boolean> {
+  const info = await getChannelInfo(channelId);
+  if (!info) {
+    logger.warn(
+      { channelId, event: 'channel_privacy_verify_unavailable' },
+      'Could not verify Slack channel privacy state — failing closed on sensitive send',
+    );
+    return false;
+  }
+  if (info.is_private !== true) {
+    logger.warn(
+      {
+        channelId,
+        channelName: info.name,
+        event: 'channel_privacy_drift',
+      },
+      'Configured Slack channel is no longer private — refusing to post sensitive content. Admin action required to re-privatize or unlink.',
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Send a message to a channel.
+ *
+ * `requirePrivate` gates on `verifyChannelStillPrivate`. Callers posting
+ * sensitive content (the admin notification flows) set this so a
+ * channel that was toggled private → public after configuration stops
+ * receiving new posts (#2735). Channels that are intended for broad
+ * workspace visibility leave the default `false`.
  */
 export async function sendChannelMessage(
   channelId: string,
-  message: SlackBlockMessage
-): Promise<{ ok: boolean; ts?: string; error?: string }> {
+  message: SlackBlockMessage,
+  options: { requirePrivate?: boolean } = {},
+): Promise<{ ok: boolean; ts?: string; error?: string; skipped?: 'not_private' }> {
+  if (options.requirePrivate) {
+    const stillPrivate = await verifyChannelStillPrivate(channelId);
+    if (!stillPrivate) {
+      return { ok: false, error: 'channel_no_longer_private', skipped: 'not_private' };
+    }
+  }
+
   try {
     const response = await slackPostRequest<{ ts: string }>('chat.postMessage', {
       channel: channelId,

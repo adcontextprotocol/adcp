@@ -37,9 +37,13 @@ describe('error-notifier', () => {
 
       await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
 
-      expect(mockSendChannelMessage).toHaveBeenCalledWith('C123', {
-        text: expect.stringContaining(name),
-      });
+      expect(mockSendChannelMessage).toHaveBeenCalledWith(
+        'C123',
+        { text: expect.stringContaining(name) },
+        // error_slack_channel is admin-configured — posts gate on
+        // verifyChannelStillPrivate (#2735).
+        { requirePrivate: true },
+      );
     });
 
     it('includes user and thread info when provided', async () => {

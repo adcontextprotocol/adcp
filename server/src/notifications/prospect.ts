@@ -97,7 +97,7 @@ export async function notifyAliasMatch(data: {
   } as SlackBlock);
 
   try {
-    const result = await sendChannelMessage(channel.channel_id, { text, blocks });
+    const result = await sendChannelMessage(channel.channel_id, { text, blocks }, { requirePrivate: true });
     if (result.ok) {
       logger.info({ channel: channel.channel_name, signupDomain: data.signupDomain, orgName: data.orgName }, 'Alias match notification sent');
       return true;
@@ -201,7 +201,7 @@ export async function notifyNewProspect(data: {
   }
 
   try {
-    const result = await sendChannelMessage(channel.channel_id, { text, blocks });
+    const result = await sendChannelMessage(channel.channel_id, { text, blocks }, { requirePrivate: true });
     if (result.ok) {
       logger.info({ channel: channel.channel_name, org: data.orgName }, 'Prospect notification sent');
       return true;

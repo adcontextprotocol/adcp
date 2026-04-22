@@ -77,7 +77,7 @@ async function sendBillingNotification(
   }
 
   try {
-    const result = await sendChannelMessage(billingChannel.channel_id, { text, blocks });
+    const result = await sendChannelMessage(billingChannel.channel_id, { text, blocks }, { requirePrivate: true });
     if (result.ok) {
       logger.info({ channel: billingChannel.channel_name }, 'Billing notification sent');
       return true;
