@@ -17,12 +17,11 @@
  * See adcontextprotocol/adcp#2639 for the invariants framework.
  */
 
-import {
-  registerAssertion,
-  type AssertionContext,
-  type AssertionSpec,
-  type AssertionResult,
-  type StoryboardStepResult,
+import type {
+  AssertionContext,
+  AssertionSpec,
+  AssertionResult,
+  StoryboardStepResult,
 } from '@adcp/client/testing';
 
 export const ASSERTION_ID = 'context.no_secret_echo';
@@ -111,5 +110,3 @@ export const spec: AssertionSpec = {
   onStart,
   onStep,
 };
-
-registerAssertion(spec);

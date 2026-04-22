@@ -28,9 +28,7 @@ import {
   InMemoryRevocationStore,
 } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
-// Registers cross-step assertions (adcp#2639) against the runner so any
-// storyboard with `invariants: [...]` resolves. MUST import before any
-// runStoryboard call — the runner throws at start on unresolved ids.
+// Install our stricter `context.no_secret_echo` over the SDK default (adcp-client#751).
 import '../../src/compliance/assertions/index.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
