@@ -151,10 +151,10 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
-        const s = step as { id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
+        const s = step as { id?: string; step_id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
         const validationFails = (s.validations ?? []).filter(v => !v.passed).map(v => v.description ?? '(validation failed)').join('; ');
         base.failures.push({
-          step: s.id ?? '(unknown step)',
+          step: s.step_id ?? s.id ?? '(unknown step)',
           error: s.error ?? validationFails ?? '(failed without message)',
         });
       }
