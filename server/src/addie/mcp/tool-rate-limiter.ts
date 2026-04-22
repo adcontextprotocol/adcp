@@ -1,6 +1,6 @@
 /**
- * In-process per-user, per-tool sliding-window rate limiter for Addie's
- * MCP tool handlers.
+ * Per-user, per-tool sliding-window rate limiter for Addie's MCP tool
+ * handlers.
  *
  * The HTTP `contentProposeRateLimiter` (middleware) and the function-level
  * limiter inside `proposeContentForUser` (#2767) bound submission paths,
@@ -10,14 +10,17 @@
  *
  * Unlike Slack (naturally bounded by Slack API rates), the web chat has
  * no upstream rate ceiling. This module adds per-tool + global caps per
- * user, surfaces a clear error when exceeded, and exempts system users
- * (`system:*` — newsletter pipeline, digest publisher) that legitimately
- * run tool chains on a cadence.
+ * user, a workspace-aggregate cap for shared-cost tools, and exempts
+ * system users that legitimately run tool chains on a cadence.
  *
- * Part of #2755.
+ * State lives in Postgres (`addie_tool_rate_limit_events`) so caps are
+ * bounded across multi-instance Fly deploys — prior to #2789 each pod
+ * had its own in-process Map, so a user fanned across N pods got N×
+ * the advertised cap.
  */
 
 import { createLogger } from '../../logger.js';
+import { query } from '../../db/client.js';
 
 const logger = createLogger('addie-tool-rate-limit');
 
@@ -63,11 +66,6 @@ const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
  * multi-member workspace collectively drives the tool past a
  * defensible cost ceiling, or where an attacker rotates through
  * compromised user sessions to stay under individual caps.
- *
- * Only applies to tools where per-user enforcement is insufficient.
- * Tools not listed here have no workspace-level cap.
- *
- * Part of #2796.
  */
 const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
   // Gemini generation — most expensive tool in the Addie surface.
@@ -76,18 +74,6 @@ const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
   // 10/10min tool limit still apply on top.
   generate_perspective_illustration: { windowMs: 24 * 60 * 60 * 1000, max: 50 },
 };
-
-/**
- * Longest window across all caps — used as the GC staleness cutoff so
- * entries aren't prematurely dropped if a future tool gets a longer
- * window than the global cap.
- */
-const MAX_WINDOW_MS = Math.max(
-  GLOBAL_CAP.windowMs,
-  DEFAULT_CAP.windowMs,
-  ...Object.values(CAPS).map(c => c.windowMs),
-  ...Object.values(WORKSPACE_CAPS).map(c => c.windowMs),
-);
 
 /**
  * Literal allowlist of system user identifiers that bypass the limiter.
@@ -104,12 +90,6 @@ const SYSTEM_USER_IDS = new Set<string>([
   'system:google-alias-merge',
 ]);
 
-/**
- * Per-user history. Key is `${userId}|${toolName}` for per-tool tracking
- * and `${userId}|*` for the global counter.
- */
-const history = new Map<string, number[]>();
-
 export interface RateLimitResult {
   ok: boolean;
   retryAfterMs?: number;
@@ -117,15 +97,108 @@ export interface RateLimitResult {
 }
 
 /**
- * Check + record an invocation. Returns { ok: true } when allowed, or
- * `{ ok: false, retryAfterMs, scope }` when the per-tool or global cap
- * is hit.
+ * Storage backend. The default implementation is Postgres-backed; tests
+ * inject an in-memory store so they don't need a DB connection.
+ */
+export interface RateLimitStore {
+  /**
+   * Count hits for `key` that occurred in the last `windowMs`, returning
+   * the count and the timestamp of the oldest in-window hit (millis
+   * since epoch). `null` first-hit means no hits in window.
+   */
+  countInWindow(key: string, windowMs: number): Promise<{ count: number; firstHitAtMs: number | null }>;
+  /** Record a new hit for `key`. */
+  record(key: string): Promise<void>;
+  /** Remove hits older than `windowMs` for `key`. Opportunistic trim. */
+  trim(key: string, windowMs: number): Promise<void>;
+  /** Test-only: clear all state. */
+  reset(): Promise<void>;
+}
+
+class PostgresStore implements RateLimitStore {
+  async countInWindow(key: string, windowMs: number): Promise<{ count: number; firstHitAtMs: number | null }> {
+    const result = await query<{ count: string; first_hit_at: Date | null }>(
+      `SELECT COUNT(*)::text AS count, MIN(hit_at) AS first_hit_at
+       FROM addie_tool_rate_limit_events
+       WHERE scope_key = $1 AND hit_at > NOW() - ($2::bigint || ' milliseconds')::interval`,
+      [key, String(windowMs)],
+    );
+    const row = result.rows[0];
+    return {
+      count: Number(row.count),
+      firstHitAtMs: row.first_hit_at ? row.first_hit_at.getTime() : null,
+    };
+  }
+
+  async record(key: string): Promise<void> {
+    await query(
+      `INSERT INTO addie_tool_rate_limit_events (scope_key) VALUES ($1)`,
+      [key],
+    );
+  }
+
+  async trim(key: string, windowMs: number): Promise<void> {
+    await query(
+      `DELETE FROM addie_tool_rate_limit_events
+       WHERE scope_key = $1 AND hit_at <= NOW() - ($2::bigint || ' milliseconds')::interval`,
+      [key, String(windowMs)],
+    );
+  }
+
+  async reset(): Promise<void> {
+    await query(`TRUNCATE addie_tool_rate_limit_events`);
+  }
+}
+
+class InMemoryStore implements RateLimitStore {
+  private readonly hits = new Map<string, number[]>();
+
+  async countInWindow(key: string, windowMs: number): Promise<{ count: number; firstHitAtMs: number | null }> {
+    const cutoff = Date.now() - windowMs;
+    const recent = (this.hits.get(key) ?? []).filter(t => t > cutoff);
+    return {
+      count: recent.length,
+      firstHitAtMs: recent.length > 0 ? recent[0] : null,
+    };
+  }
+
+  async record(key: string): Promise<void> {
+    const existing = this.hits.get(key) ?? [];
+    existing.push(Date.now());
+    this.hits.set(key, existing);
+  }
+
+  async trim(key: string, windowMs: number): Promise<void> {
+    const cutoff = Date.now() - windowMs;
+    const recent = (this.hits.get(key) ?? []).filter(t => t > cutoff);
+    if (recent.length === 0) this.hits.delete(key);
+    else this.hits.set(key, recent);
+  }
+
+  async reset(): Promise<void> {
+    this.hits.clear();
+  }
+}
+
+let store: RateLimitStore = new PostgresStore();
+
+/**
+ * Check + record an invocation. Returns `{ ok: true }` when allowed, or
+ * `{ ok: false, retryAfterMs, scope }` when a cap is hit.
  *
  * `userId` must be a stable identifier for the caller. Pass `null` /
  * `undefined` only for genuinely anonymous / system paths that have
  * been explicitly vetted; otherwise the limiter is bypassed.
+ *
+ * Three scopes are checked in sequence: per-tool, per-user global,
+ * workspace-aggregate (only for tools in WORKSPACE_CAPS). If any scope
+ * is over cap, the call is blocked and NO scopes are recorded — so a
+ * blocked request doesn't pollute counters for scopes it didn't reach.
  */
-export function checkToolRateLimit(toolName: string, userId: string | undefined | null): RateLimitResult {
+export async function checkToolRateLimit(
+  toolName: string,
+  userId: string | undefined | null,
+): Promise<RateLimitResult> {
   // No user context (anonymous tools, startup paths) — skip.
   if (!userId) return { ok: true };
   // Known system automation — exempt via literal allowlist so a
@@ -137,67 +210,45 @@ export function checkToolRateLimit(toolName: string, userId: string | undefined 
   const toolCap = CAPS[toolName] ?? DEFAULT_CAP;
 
   const perToolKey = `${userId}|${toolName}`;
-  const perToolCutoff = now - toolCap.windowMs;
-  const perToolHistory = (history.get(perToolKey) ?? []).filter(t => t > perToolCutoff);
-  if (perToolHistory.length >= toolCap.max) {
+  const perTool = await store.countInWindow(perToolKey, toolCap.windowMs);
+  if (perTool.count >= toolCap.max && perTool.firstHitAtMs !== null) {
     return {
       ok: false,
-      retryAfterMs: perToolHistory[0] + toolCap.windowMs - now,
+      retryAfterMs: perTool.firstHitAtMs + toolCap.windowMs - now,
       scope: 'per_tool',
     };
   }
 
   const globalKey = `${userId}|*`;
-  const globalCutoff = now - GLOBAL_CAP.windowMs;
-  const globalHistory = (history.get(globalKey) ?? []).filter(t => t > globalCutoff);
-  if (globalHistory.length >= GLOBAL_CAP.max) {
+  const globalHits = await store.countInWindow(globalKey, GLOBAL_CAP.windowMs);
+  if (globalHits.count >= GLOBAL_CAP.max && globalHits.firstHitAtMs !== null) {
     return {
       ok: false,
-      retryAfterMs: globalHistory[0] + GLOBAL_CAP.windowMs - now,
+      retryAfterMs: globalHits.firstHitAtMs + GLOBAL_CAP.windowMs - now,
       scope: 'global',
     };
   }
 
-  // Workspace-aggregate cap (only for tools explicitly listed in
-  // WORKSPACE_CAPS). Keyed on a singleton `__workspace__` identifier
-  // so all users' invocations count against the same bucket.
   const workspaceCap = WORKSPACE_CAPS[toolName];
-  let workspaceHistory: number[] | null = null;
   let workspaceKey: string | null = null;
   if (workspaceCap) {
     workspaceKey = `__workspace__|${toolName}`;
-    const workspaceCutoff = now - workspaceCap.windowMs;
-    workspaceHistory = (history.get(workspaceKey) ?? []).filter(t => t > workspaceCutoff);
-    if (workspaceHistory.length >= workspaceCap.max) {
+    const workspaceHits = await store.countInWindow(workspaceKey, workspaceCap.windowMs);
+    if (workspaceHits.count >= workspaceCap.max && workspaceHits.firstHitAtMs !== null) {
       return {
         ok: false,
-        retryAfterMs: workspaceHistory[0] + workspaceCap.windowMs - now,
+        retryAfterMs: workspaceHits.firstHitAtMs + workspaceCap.windowMs - now,
         scope: 'workspace',
       };
     }
   }
 
-  // Record the invocation in all applicable tracks
-  perToolHistory.push(now);
-  globalHistory.push(now);
-  history.set(perToolKey, perToolHistory);
-  history.set(globalKey, globalHistory);
-  if (workspaceHistory && workspaceKey) {
-    workspaceHistory.push(now);
-    history.set(workspaceKey, workspaceHistory);
-  }
-
-  // Opportunistic GC once the map gets large
-  if (history.size > 2000) {
-    // Use the longest window across all caps to decide staleness so
-    // we don't drop entries mid-window for any tracked counter.
-    const cutoff = now - MAX_WINDOW_MS;
-    for (const [key, entries] of history) {
-      const recent = entries.filter(t => t > cutoff);
-      if (recent.length === 0) history.delete(key);
-      else history.set(key, recent);
-    }
-  }
+  // All scopes passed — record the hit in each. If one of these fails,
+  // let it bubble: failing to record is preferable to silently letting
+  // the counter drift.
+  await store.record(perToolKey);
+  await store.record(globalKey);
+  if (workspaceKey) await store.record(workspaceKey);
 
   return { ok: true };
 }
@@ -207,8 +258,6 @@ export function checkToolRateLimit(toolName: string, userId: string | undefined 
  * checks the cap first, returns a user-facing error string (NOT a
  * thrown error — the LLM needs to surface the message) when exceeded,
  * and otherwise delegates to the original handler.
- *
- * Use at handler-creation time: `handlers.set(name, withToolRateLimit(name, userId, originalHandler))`.
  */
 export function withToolRateLimit<T extends (input: Record<string, unknown>) => Promise<string>>(
   toolName: string,
@@ -216,7 +265,7 @@ export function withToolRateLimit<T extends (input: Record<string, unknown>) => 
   handler: T,
 ): T {
   return (async (input: Record<string, unknown>) => {
-    const check = checkToolRateLimit(toolName, userId);
+    const check = await checkToolRateLimit(toolName, userId);
     if (!check.ok) {
       const retrySeconds = Math.max(1, Math.ceil((check.retryAfterMs ?? 60000) / 1000));
       logger.warn({ toolName, userId, scope: check.scope, retrySeconds }, 'Addie tool call rate-limited');
@@ -237,9 +286,25 @@ export function withToolRateLimit<T extends (input: Record<string, unknown>) => 
 }
 
 /**
- * Test-only: clear the history map. Exposed so tests can reset state
- * between cases without waiting out the window.
+ * Test-only: swap the store implementation. Tests pass an InMemoryStore
+ * so they don't need a DB. Production code should never call this.
  */
-export function __resetRateLimitHistory(): void {
-  history.clear();
+export function __setRateLimitStore(next: RateLimitStore): void {
+  store = next;
+}
+
+/**
+ * Test-only: clear all rate-limit state. Works against whichever store
+ * is currently active.
+ */
+export async function __resetRateLimitHistory(): Promise<void> {
+  await store.reset();
+}
+
+/**
+ * Test-only: expose the in-memory store constructor so tests don't need
+ * to import its name directly.
+ */
+export function __createInMemoryStore(): RateLimitStore {
+  return new InMemoryStore();
 }
