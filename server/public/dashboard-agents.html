@@ -257,7 +257,8 @@
     }
     .agent-connect-form input { min-width: 260px; }
     .agent-connect-save,
-    .agent-oauth-start {
+    .agent-oauth-start,
+    .agent-cc-save {
       background: var(--color-primary-600);
       color: white;
       border: none;
@@ -267,9 +268,11 @@
       cursor: pointer;
     }
     .agent-connect-save:hover,
-    .agent-oauth-start:hover { background: var(--color-primary-700); }
+    .agent-oauth-start:hover,
+    .agent-cc-save:hover { background: var(--color-primary-700); }
     .agent-connect-save:disabled,
-    .agent-oauth-start:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-oauth-start:disabled,
+    .agent-cc-save:disabled { opacity: 0.6; cursor: not-allowed; }
     .agent-oauth-start { align-self: flex-end; }
     .agent-connect-msg {
       font-size: var(--text-xs);
@@ -776,15 +779,21 @@
         '</div>' +
         '<div class="auth-cc-fields" style="display:none;">' +
           '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">' +
-            'Server-to-server OAuth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before each call. ' +
-            'For secrets wired through environment variables, use <code>$ENV:ADCP_OAUTH_&lt;NAME&gt;</code> references (uppercase + underscore).' +
+            'Server-to-server OAuth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before each call and refreshes on 401. ' +
+            'For secrets wired through environment variables, use <code>$ENV:ADCP_OAUTH_&lt;NAME&gt;</code> references. ' +
+            'The <code>ADCP_OAUTH_</code> prefix is required — other env-var names are rejected server-side so a misconfigured agent can\'t read unrelated secrets.' +
           '</p>' +
           '<label>Token endpoint<input type="url" name="cc_token_endpoint" placeholder="https://auth.example.com/oauth/token" autocomplete="off" required></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">' +
+            'Auth0: <code>https://{tenant}.auth0.com/oauth/token</code> · Okta: <code>https://{org}.okta.com/oauth2/default/v1/token</code> · Azure AD: <code>https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code> · Keycloak: <code>https://{host}/realms/{realm}/protocol/openid-connect/token</code>' +
+          '</p>' +
           '<label>Client ID<input type="text" name="cc_client_id" placeholder="client_abc or $ENV:ADCP_OAUTH_CLIENT_ID" autocomplete="off" required></label>' +
           '<label>Client secret<input type="password" name="cc_client_secret" placeholder="literal secret or $ENV:ADCP_OAUTH_CLIENT_SECRET" autocomplete="off" required></label>' +
           '<label>Scope <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_scope" placeholder="adcp" autocomplete="off"></label>' +
           '<label>Resource <span style="color:var(--color-text-secondary);">(optional, RFC 8707)</span><input type="text" name="cc_resource" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">The agent URL the token is for. Okta and Keycloak typically use <code>resource</code>.</p>' +
           '<label>Audience <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_audience" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">Auth0\'s name for the same thing (the <code>aud</code> claim). Use either <code>resource</code> OR <code>audience</code> — not both unless your IdP asks for it.</p>' +
           '<label>Auth method<select name="cc_auth_method">' +
             '<option value="">Basic (default — HTTP Basic header)</option>' +
             '<option value="basic">Basic (HTTP Basic header)</option>' +
