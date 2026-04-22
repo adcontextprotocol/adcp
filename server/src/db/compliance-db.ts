@@ -33,10 +33,8 @@ export type ResolvedOwnerAuth =
       /**
        * OAuth 2.0 client credentials (RFC 6749 §4.4). The SDK exchanges at
        * `credentials.token_endpoint` before every call and refreshes on 401.
-       * `credentials.client_secret` may be a `$ENV:VAR_NAME` reference — the
-       * SDK resolves at exchange time. `tokens` is an optional cache hint
-       * from a prior exchange; omitted when none is cached (SDK will
-       * exchange on first call).
+       * `credentials.client_secret` may be a `$ENV:ADCP_OAUTH_<NAME>`
+       * reference — the SDK resolves at exchange time.
        */
       type: 'oauth_client_credentials';
       credentials: {
@@ -48,7 +46,6 @@ export type ResolvedOwnerAuth =
         audience?: string;
         auth_method?: 'basic' | 'body';
       };
-      tokens?: { access_token: string; refresh_token?: string; expires_at?: string };
     };
 
 /**
@@ -714,6 +711,15 @@ export class ComplianceDatabase {
         if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
         if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
           credentials.auth_method = row.oauth_cc_auth_method;
+        } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
+          // Drop values outside the SDK's accepted enum rather than poisoning
+          // the return type — but log it. An unexpected value here means a
+          // write path bypassed validation, which is a latent bug worth
+          // surfacing before it spreads.
+          logger.warn(
+            { agentUrl, orgId: row.organization_id, value: row.oauth_cc_auth_method },
+            'Dropped unrecognized oauth_cc_auth_method from agent_context',
+          );
         }
         return { type: 'oauth_client_credentials', credentials };
       }

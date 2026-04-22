@@ -1,6 +1,9 @@
 import { query } from './client.js';
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
+import { createLogger } from '../logger.js';
 import crypto from 'crypto';
+
+const logger = createLogger('agent-context-db');
 
 // =====================================================
 // TYPES
@@ -67,12 +70,7 @@ export interface OAuthClientCredentials {
   client_id: string;
   client_secret: string;
   scope?: string;
-  /**
-   * RFC 8707 resource indicator. The SDK accepts `string | string[]`; this
-   * first cut stores a single resource. Multi-resource support is a
-   * straightforward follow-up (JSON-encode on write, decode on read) but
-   * is not wired up yet.
-   */
+  /** RFC 8707 resource indicator. Single-resource only; multi-resource tracked as #2805. */
   resource?: string;
   audience?: string;
   /**
@@ -848,6 +846,13 @@ export class AgentContextDatabase {
     if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
     if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
       creds.auth_method = row.oauth_cc_auth_method;
+    } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
+      // Surface unexpected values rather than silently dropping — a write
+      // path bypassed validation if this fires.
+      logger.warn(
+        { agentUrl, organizationId, value: row.oauth_cc_auth_method },
+        'agent-context-db: dropped unrecognized oauth_cc_auth_method',
+      );
     }
     return creds;
   }

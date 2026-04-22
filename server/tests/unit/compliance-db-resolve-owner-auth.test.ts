@@ -249,14 +249,16 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     });
   });
 
-  it('ignores an invalid oauth_cc_auth_method value instead of throwing', async () => {
+  it('drops (and logs warn on) an unrecognized oauth_cc_auth_method value', async () => {
     mockRow({
       oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
       oauth_cc_client_id: 'client_abc',
       oauth_cc_client_secret_encrypted: 'enc_cc_secret',
       oauth_cc_client_secret_iv: 'iv_cc_secret',
-      // A stale value from a migration or a rogue write — the resolver
-      // refuses to pass it through rather than break the SDK's type contract.
+      // A stale value from a migration or a rogue write — the resolver drops
+      // it rather than poisoning the return type. The warn log surfaces the
+      // write-path validation gap; this test asserts only the behavior, the
+      // log is observed via the test runner's stderr capture.
       oauth_cc_auth_method: 'client_secret_post',
     });
     mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
@@ -270,6 +272,34 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
         client_secret: 'cc-secret-plaintext',
       },
     });
+  });
+
+  it('returns undefined when token_endpoint is set but client_id is missing (partial row)', async () => {
+    // Partial rows shouldn't happen given the write-path validation, but are
+    // defensive-guarded here — a botched migration or manual DB write must
+    // not lead to emitting an invalid { credentials } shape to the SDK.
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      // client_id intentionally null
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toBeUndefined();
+  });
+
+  it('returns undefined when client_secret_encrypted is set but client_secret_iv is missing', async () => {
+    // Symmetric to the auth-code path's half-written-row guard.
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      // iv intentionally null — can't decrypt without it
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toBeUndefined();
   });
 
   it('prefers auth-code OAuth over client-credentials when both are present', async () => {

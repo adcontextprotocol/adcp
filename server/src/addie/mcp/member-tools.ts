@@ -13,6 +13,8 @@
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
+import { validateExternalUrl } from '../../utils/url-security.js';
+import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
 import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -44,7 +46,7 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/client/testing';
-import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
@@ -4887,52 +4889,17 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
-    // Parse and validate OAuth client-credentials if provided. Fail fast with
-    // a user-visible string — the tool's caller is an LLM and raw exceptions
-    // tend to get summarized into unhelpful errors.
-    let clientCredentials: {
-      token_endpoint: string;
-      client_id: string;
-      client_secret: string;
-      scope?: string;
-      resource?: string;
-      audience?: string;
-      auth_method?: 'basic' | 'body';
-    } | null = null;
+    // Route oauth_client_credentials through the shared parser so the Addie
+    // tool applies identical SSRF + $ENV-prefix rules as the REST endpoint.
+    // Any divergence here reopens the cloud-metadata / env-var exfiltration
+    // surface the REST path closed.
+    let clientCredentials: OAuthClientCredentials | null = null;
     if (input.oauth_client_credentials !== undefined && input.oauth_client_credentials !== null) {
-      const cc = input.oauth_client_credentials as Record<string, unknown>;
-      if (typeof cc !== 'object' || Array.isArray(cc)) {
-        return 'oauth_client_credentials must be an object with token_endpoint, client_id, and client_secret.';
-      }
-      if (typeof cc.token_endpoint !== 'string' || !cc.token_endpoint) {
-        return 'oauth_client_credentials.token_endpoint is required and must be a string.';
-      }
-      try {
-        const tokenUrl = new URL(cc.token_endpoint);
-        if (tokenUrl.protocol !== 'https:' && tokenUrl.hostname !== 'localhost' && tokenUrl.hostname !== '127.0.0.1') {
-          return 'oauth_client_credentials.token_endpoint must use https:// (http://localhost is OK for development).';
-        }
-      } catch {
-        return 'oauth_client_credentials.token_endpoint is not a valid URL.';
-      }
-      if (typeof cc.client_id !== 'string' || !cc.client_id) {
-        return 'oauth_client_credentials.client_id is required and must be a string.';
-      }
-      if (typeof cc.client_secret !== 'string' || !cc.client_secret) {
-        return 'oauth_client_credentials.client_secret is required and must be a string. Use `$ENV:VAR_NAME` to reference an environment variable.';
-      }
-      if (cc.auth_method !== undefined && cc.auth_method !== 'basic' && cc.auth_method !== 'body') {
-        return 'oauth_client_credentials.auth_method must be "basic" or "body" when set.';
-      }
-      clientCredentials = {
-        token_endpoint: cc.token_endpoint,
-        client_id: cc.client_id,
-        client_secret: cc.client_secret,
-        ...(typeof cc.scope === 'string' && cc.scope && { scope: cc.scope }),
-        ...(typeof cc.resource === 'string' && cc.resource && { resource: cc.resource }),
-        ...(typeof cc.audience === 'string' && cc.audience && { audience: cc.audience }),
-        ...(cc.auth_method && { auth_method: cc.auth_method as 'basic' | 'body' }),
-      };
+      const parsed = parseOAuthClientCredentialsInput(input.oauth_client_credentials, {
+        validateTokenEndpoint: validateExternalUrl,
+      });
+      if (!parsed.ok) return parsed.error;
+      clientCredentials = parsed.creds;
     }
 
     async function ensureAgentInProfile(displayName: string): Promise<void> {

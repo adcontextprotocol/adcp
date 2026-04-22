@@ -26,7 +26,7 @@ import {
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
-import { validateCrawlDomain } from "../utils/url-security.js";
+import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -74,6 +74,7 @@ import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
+import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
@@ -3609,31 +3610,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
   }
 
-  function validateAgentUrlParam(raw: string): string | null {
-    try {
-      const url = new URL(raw);
-      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-
-      const hostname = url.hostname.toLowerCase();
-
-      // Block cloud metadata endpoints
-      if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") return null;
-
-      // Block private/loopback addresses in production
-      if (process.env.NODE_ENV === "production") {
-        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0") return null;
-        const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-        if (ipMatch) {
-          const [, a, b] = ipMatch.map(Number);
-          if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
-        }
-      }
-
-      return raw;
-    } catch {
-      return null;
-    }
-  }
+  // Shared SSRF-resistant URL validator lives in utils/url-security.ts so the
+  // Addie tool handler (save_agent) can apply identical rules to OAuth
+  // token_endpoint values — any divergence reopens the cloud-metadata
+  // / private-IP exfiltration surface we closed here.
+  const validateAgentUrlParam = validateExternalUrl;
 
   /**
    * Ensure an agent_context exists so the UI can hand the user a working
@@ -3993,60 +3974,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const body = req.body as Record<string, unknown>;
-        const tokenEndpoint = typeof body.token_endpoint === "string" ? body.token_endpoint : null;
-        const clientId = typeof body.client_id === "string" ? body.client_id : null;
-        const clientSecret = typeof body.client_secret === "string" ? body.client_secret : null;
-
-        if (!tokenEndpoint) {
-          return res.status(400).json({ error: "token_endpoint is required" });
-        }
-        if (!clientId) {
-          return res.status(400).json({ error: "client_id is required" });
-        }
-        if (!clientSecret) {
-          return res.status(400).json({ error: "client_secret is required" });
-        }
-        if (!validateAgentUrlParam(tokenEndpoint)) {
-          return res.status(400).json({
-            error:
-              "token_endpoint failed URL validation. Must be https:// (http://localhost is OK in development), not a cloud metadata or private-network host.",
-          });
-        }
-        // Length limits guard against accidental payload-as-credential pastes
-        // without being so tight they reject real tokens or env-var refs.
-        if (clientId.length > 2048) {
-          return res.status(400).json({ error: "client_id exceeds maximum length" });
-        }
-        if (clientSecret.length > 8192) {
-          return res.status(400).json({ error: "client_secret exceeds maximum length" });
-        }
-
-        const optionalString = (key: string, max: number): string | null | { error: string } => {
-          const value = body[key];
-          if (value === undefined || value === null || value === "") return null;
-          if (typeof value !== "string") return { error: `${key} must be a string` };
-          if (value.length > max) return { error: `${key} exceeds maximum length` };
-          return value;
-        };
-        const scopeRes = optionalString("scope", 1024);
-        const resourceRes = optionalString("resource", 2048);
-        const audienceRes = optionalString("audience", 2048);
-        for (const r of [scopeRes, resourceRes, audienceRes]) {
-          if (r && typeof r === "object" && "error" in r) {
-            return res.status(400).json({ error: r.error });
-          }
-        }
-        const scope = typeof scopeRes === "string" ? scopeRes : undefined;
-        const resource = typeof resourceRes === "string" ? resourceRes : undefined;
-        const audience = typeof audienceRes === "string" ? audienceRes : undefined;
-
-        let authMethod: "basic" | "body" | undefined;
-        if (body.auth_method !== undefined && body.auth_method !== null && body.auth_method !== "") {
-          if (body.auth_method !== "basic" && body.auth_method !== "body") {
-            return res.status(400).json({ error: 'auth_method must be "basic" or "body"' });
-          }
-          authMethod = body.auth_method;
+        const parsed = parseOAuthClientCredentialsInput(req.body, {
+          validateTokenEndpoint: validateExternalUrl,
+        });
+        if (!parsed.ok) {
+          return res.status(400).json({ error: parsed.error });
         }
 
         const orgResult = await query<{ workos_organization_id: string }>(
@@ -4073,15 +4005,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           });
         }
 
-        await agentContextDb.saveOAuthClientCredentials(context.id, {
-          token_endpoint: tokenEndpoint,
-          client_id: clientId,
-          client_secret: clientSecret,
-          ...(scope && { scope }),
-          ...(resource && { resource }),
-          ...(audience && { audience }),
-          ...(authMethod && { auth_method: authMethod }),
-        });
+        await agentContextDb.saveOAuthClientCredentials(context.id, parsed.creds);
 
         res.json({
           connected: true,
