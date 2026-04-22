@@ -2785,10 +2785,10 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  // HTMLAsset schema (5.9.x) is { content, version?, accessibility?, provenance? }
-  // — asset type is discriminated by the slot name / manifest structure, not a
-  // per-asset `asset_type` field.
-  return { serving_tag: { content: html } };
+  // HTMLAsset in @adcp/client ≥5.10 has `asset_type: 'html'` as a required
+  // discriminator. Without it the union resolves ambiguously to MarkdownAsset
+  // and tsc fails build (CI run 72453988632).
+  return { serving_tag: { asset_type: 'html', content: html } };
 }
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
