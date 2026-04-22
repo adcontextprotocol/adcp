@@ -8,7 +8,7 @@
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/client";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
@@ -1705,6 +1705,54 @@ registry.registerPath({
     400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/oauth-client-credentials/test",
+  operationId: "testAgentOAuthClientCredentials",
+  summary: "Dry-run the saved OAuth 2.0 client-credentials config",
+  description:
+    "Exchange the saved client_credentials at the token endpoint and discard the resulting access token. Returns success + latency on a 2xx exchange, or the SDK's `ClientCredentialsExchangeError` kind (`oauth`, `malformed`, `network`) on failure so operators get same-second feedback instead of waiting for the next compliance heartbeat. Requires authentication and ownership. Requires credentials to already be saved via `PUT /oauth-client-credentials`.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: {
+      description:
+        "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it).",
+      content: {
+        "application/json": {
+          schema: z.union([
+            z.object({
+              ok: z.literal(true),
+              latency_ms: z.number().int(),
+            }),
+            z.object({
+              ok: z.literal(false),
+              latency_ms: z.number().int(),
+              error: z.object({
+                kind: z.enum(["oauth", "malformed", "network"]).openapi({ description: "Category of failure: `oauth` = AS returned a typed error (e.g. invalid_client), `malformed` = AS returned an unexpected 2xx payload, `network` = couldn't reach the AS." }),
+                message: z.string(),
+                oauth_error: z.string().optional().openapi({ description: "RFC 6749 `error` field when kind=oauth." }),
+                oauth_error_description: z.string().optional().openapi({ description: "RFC 6749 `error_description` field when kind=oauth." }),
+                http_status: z.number().int().optional().openapi({ description: "Status code when the AS returned a non-2xx." }),
+              }),
+            }),
+          ]),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "No saved client-credentials config for this agent", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -4016,6 +4064,67 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to save oauth client credentials");
         res.status(500).json({ error: "Failed to save OAuth client credentials" });
+      }
+    },
+  );
+
+  /**
+   * Dry-run the saved client-credentials config by exchanging at the token
+   * endpoint and discarding the result. Converts the dashboard's "save and
+   * pray and wait for the next heartbeat" flow into "save and verify in
+   * under 2s" — see #2809. Returns `{ok: true, latency_ms}` on a successful
+   * exchange, or `{ok: false, error: {kind, message, ...}}` mapping the
+   * SDK's ClientCredentialsExchangeError kinds (oauth / malformed / network).
+   */
+  router.post(
+    "/registry/agents/:encodedUrl/oauth-client-credentials/test",
+    brandCreationRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, agentUrl);
+        if (!creds) {
+          return res.status(404).json({ error: "No client-credentials config saved for this agent. Save credentials first, then test." });
+        }
+
+        const start = Date.now();
+        try {
+          await exchangeClientCredentials(creds);
+          return res.json({ ok: true, latency_ms: Date.now() - start });
+        } catch (err) {
+          if (err instanceof ClientCredentialsExchangeError) {
+            const body: Record<string, unknown> = {
+              ok: false,
+              error: {
+                kind: err.kind,
+                message: err.message,
+              },
+              latency_ms: Date.now() - start,
+            };
+            const errorRec = body.error as Record<string, unknown>;
+            if (err.oauthError) errorRec.oauth_error = err.oauthError;
+            if (err.oauthErrorDescription) errorRec.oauth_error_description = err.oauthErrorDescription;
+            if (err.httpStatus) errorRec.http_status = err.httpStatus;
+            return res.json(body);
+          }
+          throw err;
+        }
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to test oauth client credentials");
+        res.status(500).json({ error: "Failed to test OAuth client credentials" });
       }
     },
   );
