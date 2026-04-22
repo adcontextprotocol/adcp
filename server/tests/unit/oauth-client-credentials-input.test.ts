@@ -206,4 +206,49 @@ describe('parseOAuthClientCredentialsInput', () => {
       expect(result.creds.auth_method).toBeUndefined();
     }
   });
+
+  // ── Structured error codes (closes #2810) ───────────────────────────
+
+  describe('failure result carries structured { code, field }', () => {
+    // Each case exercises one rejection branch and locks both the stable
+    // code tag (for UI localization + telemetry) and the field pointer
+    // (for scroll-into-view + red outline).
+    const cases: Array<{
+      name: string;
+      input: unknown;
+      options?: { validateTokenEndpoint: (url: string) => string | null };
+      code: string;
+      field: string;
+    }> = [
+      { name: 'non-object input', input: 'oops', code: 'invalid_blob_shape', field: 'oauth_client_credentials' },
+      { name: 'array input', input: [], code: 'invalid_blob_shape', field: 'oauth_client_credentials' },
+      { name: 'missing token_endpoint', input: { client_id: 'x', client_secret: 'y' }, code: 'missing_field', field: 'token_endpoint' },
+      { name: 'missing client_id', input: { token_endpoint: 'https://a/t', client_secret: 'y' }, code: 'missing_field', field: 'client_id' },
+      { name: 'missing client_secret', input: { token_endpoint: 'https://a/t', client_id: 'x' }, code: 'missing_field', field: 'client_secret' },
+      { name: 'validator-rejected token_endpoint', input: validMinimal, options: { validateTokenEndpoint: rejectAll }, code: 'invalid_url', field: 'token_endpoint' },
+      { name: 'over-long client_id', input: { ...validMinimal, client_id: 'x'.repeat(2049) }, code: 'field_too_long', field: 'client_id' },
+      { name: 'over-long client_secret', input: { ...validMinimal, client_secret: 'x'.repeat(8193) }, code: 'field_too_long', field: 'client_secret' },
+      { name: 'bad $ENV ref in client_id', input: { ...validMinimal, client_id: '$ENV:DATABASE_URL' }, code: 'invalid_env_reference', field: 'client_id' },
+      { name: 'bad $ENV ref in client_secret', input: { ...validMinimal, client_secret: '$ENV:DATABASE_URL' }, code: 'invalid_env_reference', field: 'client_secret' },
+      { name: 'non-string scope', input: { ...validMinimal, scope: 42 }, code: 'invalid_field_type', field: 'scope' },
+      { name: 'non-string resource', input: { ...validMinimal, resource: {} }, code: 'invalid_field_type', field: 'resource' },
+      { name: 'non-string audience', input: { ...validMinimal, audience: false }, code: 'invalid_field_type', field: 'audience' },
+      { name: 'over-long scope', input: { ...validMinimal, scope: 'x'.repeat(1025) }, code: 'field_too_long', field: 'scope' },
+      { name: 'over-long resource', input: { ...validMinimal, resource: 'x'.repeat(2049) }, code: 'field_too_long', field: 'resource' },
+      { name: 'over-long audience', input: { ...validMinimal, audience: 'x'.repeat(2049) }, code: 'field_too_long', field: 'audience' },
+      { name: 'invalid auth_method', input: { ...validMinimal, auth_method: 'client_secret_post' }, code: 'invalid_auth_method_value', field: 'auth_method' },
+    ];
+
+    for (const c of cases) {
+      it(`${c.name} → code=${c.code}, field=${c.field}`, () => {
+        const result = parseOAuthClientCredentialsInput(c.input, c.options || { validateTokenEndpoint: acceptAll });
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.code).toBe(c.code);
+        expect(result.field).toBe(c.field);
+        expect(typeof result.error).toBe('string');
+        expect(result.error.length).toBeGreaterThan(0);
+      });
+    }
+  });
 });

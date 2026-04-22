@@ -281,6 +281,10 @@
       font-size: var(--text-xs);
       margin-top: var(--space-1);
     }
+    .agent-cc-field-error {
+      outline: 2px solid var(--color-error-500, #ef4444);
+      outline-offset: 1px;
+    }
 
     .agent-lifecycle-select {
       font-size: var(--text-xs);
@@ -1169,8 +1173,30 @@
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
+          // Structured 400 from parseOAuthClientCredentialsInput: code + field
+          // drive a friendly message and an outlined-and-scrolled input.
+          // Other failure statuses (401/403/500) fall back to data.error.
+          if (res.status === 400 && data.code) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save credentials';
+            ccSaveHighlightField(form, data.field);
+            let msg = form.querySelector('.agent-connect-msg');
+            if (!msg) {
+              msg = document.createElement('div');
+              msg.className = 'agent-connect-msg';
+              form.appendChild(msg);
+            }
+            msg.style.color = 'var(--color-error-600)';
+            msg.textContent = ccSaveFriendlyMessage(data.code, data.field, data.error);
+            return;
+          }
           throw new Error(data.error || 'Failed to save credentials');
         }
+
+        // Clear any lingering field highlights on success — the form is
+        // about to be replaced, but this keeps the DOM state clean for any
+        // mid-flight handler that inspects it before the innerHTML swap.
+        ccSaveHighlightField(form, null);
 
         // Replace the form with a save-confirmation + a "Test now" button.
         // The test endpoint exchanges at the AS and discards the token, so
@@ -1200,6 +1226,45 @@
         msg.textContent = err.message;
       }
     });
+
+    // Map save-endpoint rejection codes to operator-friendly prose + the form
+    // field the user should fix. Server returns { error, code, field } on
+    // 400; UI renders the friendly message and red-outlines the field. Fall
+    // back to the raw error string when we don't recognize the code.
+    const CC_SAVE_FIELD_TO_INPUT = {
+      token_endpoint: 'cc_token_endpoint',
+      client_id: 'cc_client_id',
+      client_secret: 'cc_client_secret',
+      scope: 'cc_scope',
+      resource: 'cc_resource',
+      audience: 'cc_audience',
+      auth_method: 'cc_auth_method',
+    };
+    function ccSaveFriendlyMessage(code, field, rawError) {
+      if (code === 'invalid_blob_shape') return 'Credentials payload had an unexpected shape. Refresh and try again.';
+      if (code === 'missing_field') return 'Required field is missing: ' + (field || 'unknown') + '.';
+      if (code === 'invalid_field_type') return 'Field has the wrong type: ' + (field || 'unknown') + '. Must be text.';
+      if (code === 'field_too_long') return 'Value is too long for ' + (field || 'this field') + '. Shorten it and retry.';
+      if (code === 'invalid_url') return 'Token endpoint must be https:// (http://localhost is allowed in development). Cloud-metadata and private-network hosts are blocked.';
+      if (code === 'invalid_env_reference') return 'Environment-variable references must use the ADCP_OAUTH_ prefix (e.g. $ENV:ADCP_OAUTH_CLIENT_SECRET). Other names are rejected so a misconfigured agent can\'t read unrelated secrets.';
+      if (code === 'invalid_auth_method_value') return 'Auth method must be "basic" or "body".';
+      return rawError || 'Failed to save credentials.';
+    }
+    function ccSaveHighlightField(form, field) {
+      // Clear any prior highlights before setting the new one — otherwise
+      // repeated save attempts accumulate outlines on fields the user has
+      // since fixed.
+      form.querySelectorAll('.agent-cc-field-error').forEach(el => el.classList.remove('agent-cc-field-error'));
+      if (!field) return;
+      const name = CC_SAVE_FIELD_TO_INPUT[field];
+      if (!name) return;
+      const el = form.querySelector('[name="' + name + '"]');
+      if (el) {
+        el.classList.add('agent-cc-field-error');
+        el.focus();
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
 
     // One-line actionable hints keyed off the SDK's ClientCredentialsExchangeError
     // kind / oauth_error. Aimed at a non-engineer ad-ops operator: "here's the
