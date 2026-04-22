@@ -306,7 +306,6 @@ describe('Agent visibility E2E', () => {
       orgId,
       'individual_professional',
       'individual_academic',
-      memberDb,
       brandDb,
     );
 
@@ -335,7 +334,6 @@ describe('Agent visibility E2E', () => {
       orgId,
       'company_leader',
       null,
-      memberDb,
       brandDb,
     );
 
@@ -451,5 +449,70 @@ describe('Agent visibility E2E', () => {
     expect(byUrl['https://old-priv.example']).toBe('private');
     // is_public key should be gone after migration transform
     expect((profile!.agents[0] as any).is_public).toBeUndefined();
+  });
+
+  it('POST /publish: profile JSONB commits even when brand.json manifest write fails (#2825)', async () => {
+    // The invariant this pins: `applyAgentVisibility` writes to two
+    // different surfaces — `member_profiles.agents` (inside the tx)
+    // and `brand_revisions` via `updateManifestAgents` (separate
+    // connection). If the manifest write is inside the tx and
+    // succeeds while the commit fails, we orphan a manifest entry.
+    // The rewrite in #2825 moved the manifest write to AFTER the
+    // profile commit, so a manifest failure leaves the committed
+    // JSONB authoritative and `/check`'s drift detection picks up
+    // the divergence.
+    const orgId = `${TEST_PREFIX}_manifest_fail`;
+    const userId = `${TEST_PREFIX}_manifest_fail_user`;
+    const domain = 'manifestfail.example';
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Manifest Fail Org',
+      slug: 'manifestfail',
+      primary_brand_domain: domain,
+      is_public: true,
+      agents: [
+        { url: `https://agent.${domain}`, visibility: 'private' },
+      ],
+    });
+
+    // No brand row seeded on purpose — `applyAgentVisibility` still
+    // routes through `updateManifestAgents` when `discovered` is
+    // null (the non-self-hosted path treats missing discovery as an
+    // empty community manifest). Self-hosted brands (`source_type ===
+    // 'brand_json'`) skip the manifest write entirely; the drift
+    // scenario only applies to community-hosted / unknown brands.
+
+    // Spy on the real brandDb instance. `applyAgentVisibility` calls
+    // `brandDb.updateManifestAgents` — forcing it to throw simulates a
+    // failed community-manifest write.
+    const originalUpdate = brandDb.updateManifestAgents.bind(brandDb);
+    const updateSpy = vi
+      .spyOn(brandDb, 'updateManifestAgents')
+      .mockRejectedValueOnce(new Error('simulated manifest-write failure'));
+
+    try {
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+
+      // Response should still be 200 — the profile update is
+      // authoritative; manifest drift logs but doesn't fail the request.
+      expect(res.status).toBe(200);
+      expect(res.body.visibility).toBe('public');
+
+      // The manifest write was attempted (so this is a real drift
+      // scenario, not a skipped one).
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+
+      // Profile JSONB is authoritative and reflects the publish.
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      expect(profile!.agents[0].visibility).toBe('public');
+    } finally {
+      updateSpy.mockRestore();
+      // Keep the closure around `originalUpdate` happy (some linters
+      // flag otherwise-unused bindings in the spy pattern).
+      void originalUpdate;
+    }
   });
 });
