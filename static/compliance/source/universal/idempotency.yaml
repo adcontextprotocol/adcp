@@ -252,6 +252,15 @@ phases:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
+          # Both the initial call and the replay below use the SAME webhook URL
+          # so the canonical payload hash matches across the two calls. A
+          # different URL between the two requests would hash differently and
+          # trip IDEMPOTENCY_CONFLICT instead of exercising replay. The URL
+          # template resolves against the runner's ephemeral webhook receiver
+          # (webhook_receiver_runner contract); runners without a receiver
+          # grade `no_duplicate_webhooks_on_replay` as not_applicable.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
 
           context:
             correlation_id: "idempotency--create_media_buy_initial"
@@ -314,6 +323,11 @@ phases:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
+          # Byte-identical to the initial call above — same URL, same step id
+          # token — so the canonical payload hash matches and the request
+          # lands on the replay branch rather than IDEMPOTENCY_CONFLICT.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
 
           context:
             correlation_id: "idempotency--create_media_buy_replay"
@@ -363,9 +377,17 @@ phases:
           re-executes on replay emits a second set, catchable only by live
           observation.
         task: expect_webhook
-        triggered_by: create_media_buy_replay
-        filter:
-          operation_id: "{{prior_step.create_media_buy_initial.operation_id}}"
+        # `triggered_by` points at the initial call (not the replay) because the
+        # default filter resolves `step_id` + `operation_id` from `stepOperationIds`
+        # for that step — which is populated when the initial sample_request's
+        # `push_notification_config.url` expanded `{{runner.webhook_url:create_media_buy_initial}}`
+        # above. The execution-order wait still spans the replay window: this
+        # step runs after `create_media_buy_replay` in YAML order and `wait_all`
+        # drains the full `timeout_seconds` so any webhook re-fired by the
+        # replay is captured and counted against the cap below. A non-conformant
+        # seller that re-executes on replay would deliver a second webhook with
+        # a fresh idempotency_key and trip `duplicate_webhook_on_replay`.
+        triggered_by: create_media_buy_initial
         timeout_seconds: 30
         expect_max_deliveries_per_logical_event: 1
         requires_contract: webhook_receiver_runner

@@ -25,6 +25,7 @@ import {
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
+import { redactConflictEnvelopeInBody } from './conflict-envelope.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -205,6 +206,98 @@ function buildRequireToken(authenticator: Authenticator | null) {
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
 
+/**
+ * Capture the response body as it's written by the MCP transport, redact any
+ * `IDEMPOTENCY_CONFLICT` envelopes (framework-dispatch's `adcpError()` emits
+ * `recovery` which the storyboard invariant treats as a payload leak), and
+ * flush the transformed body through the original writer. Idempotent: safe
+ * to call even when no conflict envelope is present (pass-through via a
+ * fast-path `includes('IDEMPOTENCY_CONFLICT')` probe inside the redactor).
+ *
+ * Works for the JSON-response mode (`enableJsonResponse: true`) the training
+ * agent forces for every request — the transport writes a single
+ * `res.write(body) ; res.end()` pair, which this wrapper buffers into one
+ * string before rewriting. Streaming/SSE would break this contract, so do
+ * not remove `enableJsonResponse: true` from the transport config above.
+ */
+function wrapResponseForConflictRedaction(res: Response): void {
+  const origWriteHead = res.writeHead.bind(res);
+  const origWrite = res.write.bind(res) as (chunk: unknown, ...rest: unknown[]) => boolean;
+  const origEnd = res.end.bind(res) as (chunk?: unknown, ...rest: unknown[]) => Response;
+  const chunks: Buffer[] = [];
+  let pendingHead: { status: number; headers: Record<string, string | number | string[]> } | null = null;
+
+  const collect = (chunk: unknown): void => {
+    if (chunk === undefined || chunk === null) return;
+    if (Buffer.isBuffer(chunk)) chunks.push(chunk);
+    else if (typeof chunk === 'string') chunks.push(Buffer.from(chunk, 'utf8'));
+    else if (chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+    else chunks.push(Buffer.from(String(chunk), 'utf8'));
+  };
+
+  // `@hono/node-server` flushes headers via `writeHead(status, headers)`
+  // before calling `write` — with content-length already computed from the
+  // original body length. Buffering headers here defers flush until `end`
+  // runs, so the final `Content-Length` reflects the redacted body size.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).writeHead = ((
+    status: number,
+    statusMessageOrHeaders?: string | Record<string, string | number | string[]>,
+    headersArg?: Record<string, string | number | string[]>,
+  ): Response => {
+    const headers = typeof statusMessageOrHeaders === 'object' && statusMessageOrHeaders !== null
+      ? statusMessageOrHeaders
+      : headersArg ?? {};
+    pendingHead = { status, headers: { ...headers } };
+    return res;
+  }) as typeof res.writeHead;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).write = (chunk: unknown, encoding?: unknown, cb?: unknown): boolean => {
+    collect(chunk);
+    const callback = typeof encoding === 'function' ? encoding : cb;
+    if (typeof callback === 'function') (callback as () => void)();
+    return true;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).end = (chunk?: unknown, encoding?: unknown, cb?: unknown): Response => {
+    if (chunk !== undefined && typeof chunk !== 'function') collect(chunk);
+    const callback = typeof chunk === 'function'
+      ? chunk
+      : typeof encoding === 'function'
+        ? encoding
+        : cb;
+    const body = Buffer.concat(chunks).toString('utf8');
+    const rewritten = redactConflictEnvelopeInBody(body);
+    if (pendingHead) {
+      // Hono's node-server path: the transport called `writeHead(status, headers)`
+      // up front. Patch content-length (case-insensitive) to the redacted
+      // length before flushing so the wire byte count matches the body.
+      const headers = pendingHead.headers;
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'content-length') delete headers[key];
+      }
+      headers['content-length'] = Buffer.byteLength(rewritten, 'utf8');
+      origWriteHead(pendingHead.status, headers);
+      pendingHead = null;
+    }
+    // When `pendingHead` is null, either no response was produced (e.g. an
+    // uncaught throw before the transport wrote anything) or Express's own
+    // error-path `.json()` handler flushed via `setHeader`+`end` rather than
+    // `writeHead`. Node's implicit-header emission fires on the first
+    // `origWrite`/`origEnd` in that case, using whatever headers Express
+    // already stacked via `setHeader`. Content-Length may be wrong if the
+    // error path pre-set it, but those responses never carry an
+    // IDEMPOTENCY_CONFLICT body so `rewritten === body` and the length is
+    // unchanged.
+    if (rewritten.length > 0) origWrite(rewritten);
+    const args: unknown[] = [];
+    if (typeof callback === 'function') args.push(callback);
+    return origEnd(...args);
+  };
+}
+
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -371,6 +464,17 @@ export function createTrainingAgentRouter(): Router {
         });
 
         await server.connect(transport);
+
+        // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
+        // `@adcp/client/server`'s `adcpError()` builder, which auto-injects
+        // `recovery` on every error. The universal idempotency storyboard's
+        // `conflict_no_payload_leak` invariant allows only a narrow set of
+        // envelope keys on conflict — anything else is flagged as a potential
+        // stolen-key read oracle. Intercept the response bytes before they
+        // leave the process and strip disallowed keys. Legacy dispatch builds
+        // a minimal envelope by hand, so the wrap is a no-op there in
+        // practice (it still runs but finds nothing to redact).
+        wrapResponseForConflictRedaction(res);
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 

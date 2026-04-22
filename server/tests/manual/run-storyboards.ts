@@ -151,10 +151,29 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
-        const s = step as { id?: string; error?: string; validations?: Array<{ passed: boolean; description?: string }> };
-        const validationFails = (s.validations ?? []).filter(v => !v.passed).map(v => v.description ?? '(validation failed)').join('; ');
+        // Surface the validator's `error` text alongside the description so
+        // failures like "Expected one of [false], got undefined" print the
+        // actionable detail instead of just the narrative — the description
+        // alone was collapsing distinct codes into the same summary line.
+        // Webhook-assertion pseudo-steps (expect_webhook*) return their id
+        // on `step_id`; every other step result uses `id`. Carry both so the
+        // failure summary never collapses to "(unknown step)".
+        const s = step as {
+          id?: string;
+          step_id?: string;
+          error?: string;
+          validations?: Array<{ passed: boolean; description?: string; error?: string; actual?: unknown }>;
+        };
+        const validationFails = (s.validations ?? [])
+          .filter(v => !v.passed)
+          .map(v => {
+            const desc = v.description ?? '(validation failed)';
+            const detail = v.error ?? (v.actual ? JSON.stringify(v.actual) : undefined);
+            return detail ? `${desc} — ${detail}` : desc;
+          })
+          .join('; ');
         base.failures.push({
-          step: s.id ?? '(unknown step)',
+          step: s.id ?? s.step_id ?? '(unknown step)',
           error: s.error ?? validationFails ?? '(failed without message)',
         });
       }
