@@ -29,7 +29,11 @@ import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import { buildRequestSigningAuthenticator, STRICT_REQUIRED_FOR } from './request-signing.js';
+import {
+  buildRequestSigningAuthenticator,
+  enforceSigningWhenWebhookAuthPresent,
+  STRICT_REQUIRED_FOR,
+} from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -126,6 +130,14 @@ function lazySigningAuth(): Authenticator {
  * pass through verifyApiKey; signed requests compose via anyOf. Present-but-
  * invalid signatures fall through to bearer (a known gap — closed on the
  * strict route, tracked upstream as adcp-client#659).
+ *
+ * The webhook-auth downgrade-resistance rule (security.mdx#webhook-callbacks)
+ * is enforced only on `/mcp-strict`. The sandbox `/mcp` route accepts
+ * unsigned `push_notification_config.authentication` for backward compat
+ * with pre-3.0 storyboards that wire legacy HMAC-SHA256 webhooks over
+ * bearer-auth'd `create_media_buy`. Updating those storyboards to
+ * 9421-sign the registration is tracked separately; the grader-facing
+ * strict route already matches the spec.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
@@ -145,7 +157,7 @@ function buildDefaultAuthenticator(): Authenticator | null {
 function buildStrictAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
-  return requireAuthenticatedOrSigned({
+  return enforceSigningWhenWebhookAuthPresent(requireAuthenticatedOrSigned({
     signature: lazySigningAuth(),
     fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
@@ -162,7 +174,7 @@ function buildStrictAuthenticator(): Authenticator | null {
       }
       return undefined;
     },
-  });
+  }));
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
