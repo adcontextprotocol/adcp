@@ -333,6 +333,125 @@ describe('My Content — body, admin scope, status, delete', () => {
 
       expect(response.body.status).toBe('pending_review');
     });
+
+    it('rate-limits proposeContentForUser at the function level (Addie bypass) — #2733 follow-up', async () => {
+      // Simulate Addie's MCP handler which calls proposeContentForUser
+      // directly, bypassing HTTP middleware. Fresh user id so we start
+      // with an empty window.
+      const { proposeContentForUser } = await import('../../src/routes/content.js');
+      const testUser = { id: 'user_mc_ratelimit_test', email: 'ratelimit@test.local' };
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name)
+         VALUES ($1, $2, 'Rate', 'Limit')
+         ON CONFLICT (workos_user_id) DO NOTHING`,
+        [testUser.id, testUser.email]
+      );
+
+      const results: Array<{ success: boolean; error?: string }> = [];
+      for (let i = 0; i < 21; i++) {
+        const r = await proposeContentForUser(testUser, {
+          title: `mc-test-ratelimit-${i}`,
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        });
+        results.push({ success: r.success, error: r.error });
+      }
+
+      expect(results.filter(r => r.success).length).toBe(20);
+      expect(results.filter(r => !r.success && /rate limit/i.test(r.error ?? '')).length).toBe(1);
+
+      await pool.query(
+        `DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE proposer_user_id = $1)`,
+        [testUser.id]
+      );
+      await pool.query(`DELETE FROM perspectives WHERE proposer_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM community_points WHERE workos_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM user_badges WHERE workos_user_id = $1`, [testUser.id]);
+      await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [testUser.id]);
+    }, 30000);
+
+    it('exempts system: users from the function-level rate limit', async () => {
+      // Newsletter pipeline + digest publisher submit as `system:addie`
+      // / `system:sage`. Those automated paths must not be bounded.
+      const { proposeContentForUser } = await import('../../src/routes/content.js');
+      const systemUser = { id: 'system:addie', email: 'addie@agenticadvertising.org' };
+
+      const results: Array<{ success: boolean }> = [];
+      for (let i = 0; i < 25; i++) {
+        const r = await proposeContentForUser(systemUser, {
+          title: `mc-test-system-${i}-${Date.now()}`,
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        });
+        results.push({ success: r.success });
+      }
+      expect(results.every(r => r.success)).toBe(true);
+
+      await pool.query(
+        `DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE proposer_user_id = $1)`,
+        [systemUser.id]
+      );
+      await pool.query(`DELETE FROM perspectives WHERE proposer_user_id = $1`, [systemUser.id]);
+    }, 30000);
+  });
+
+  // ---------------------------------------------------------------------------
+  // #2713 — rejected/archived transitions require admin or committee lead
+  // ---------------------------------------------------------------------------
+
+  describe('PUT /api/me/content/:id status transitions', () => {
+    it('prevents non-admin co-author from resurrecting a rejected item', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-resurrect',
+        title: 'previously rejected',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // Switch to a non-lead, non-admin user. Make them a co-author so
+      // they pass the ownership check but NOT the lead/admin check.
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+      adminState.isAdmin = false;
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name)
+         VALUES ($1, $2, 'Co-author')
+         ON CONFLICT DO NOTHING`,
+        [id, OTHER_USER_ID]
+      );
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(403);
+
+      expect(response.body.message).toMatch(/move it out of rejected/i);
+    });
+
+    it('allows a committee lead to resurrect a rejected item in their committee', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-lead-resurrect',
+        title: 'lead resurrecting',
+        status: 'rejected',
+        proposerUserId: USER_ID,
+        workingGroupId: wgId,
+      });
+
+      // USER_ID is the lead of WG_SLUG per the test setup at line 130
+      authState.userId = USER_ID;
+      authState.email = 'mc@example.com';
+      adminState.isAdmin = false;
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ status: 'pending_review' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
   });
 
   // ---------------------------------------------------------------------------
