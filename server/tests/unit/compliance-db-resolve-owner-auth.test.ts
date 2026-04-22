@@ -32,6 +32,14 @@ function mockRow(overrides: Record<string, unknown>) {
     oauth_client_id: null,
     oauth_client_secret_encrypted: null,
     oauth_client_secret_iv: null,
+    oauth_cc_token_endpoint: null,
+    oauth_cc_client_id: null,
+    oauth_cc_client_secret_encrypted: null,
+    oauth_cc_client_secret_iv: null,
+    oauth_cc_scope: null,
+    oauth_cc_resource: null,
+    oauth_cc_audience: null,
+    oauth_cc_auth_method: null,
     ...overrides,
   };
   mockedQuery.mockResolvedValueOnce({ rows: [base], rowCount: 1, command: '', oid: 0, fields: [] });
@@ -188,6 +196,136 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toEqual({ type: 'bearer', token: 'static-bearer-plaintext' });
     // Exactly one decrypt call: the OAuth path must not execute.
     expect(mockedDecrypt).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns oauth_client_credentials shape when configured', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_scope: 'adcp',
+      oauth_cc_resource: 'https://agent.example.com',
+      oauth_cc_audience: 'https://agent.example.com',
+      oauth_cc_auth_method: 'basic',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toEqual({
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'cc-secret-plaintext',
+        scope: 'adcp',
+        resource: 'https://agent.example.com',
+        audience: 'https://agent.example.com',
+        auth_method: 'basic',
+      },
+    });
+
+    const _typed: ResolvedOwnerAuth = auth!;
+    void _typed;
+  });
+
+  it('returns oauth_client_credentials without optional fields when none are saved', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toEqual({
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'cc-secret-plaintext',
+      },
+    });
+  });
+
+  it('drops (and logs warn on) an unrecognized oauth_cc_auth_method value', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      // A stale value from a migration or a rogue write — the resolver drops
+      // it rather than poisoning the return type. The warn log surfaces the
+      // write-path validation gap; this test asserts only the behavior, the
+      // log is observed via the test runner's stderr capture.
+      oauth_cc_auth_method: 'client_secret_post',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toEqual({
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'cc-secret-plaintext',
+      },
+    });
+  });
+
+  it('returns undefined when token_endpoint is set but client_id is missing (partial row)', async () => {
+    // Partial rows shouldn't happen given the write-path validation, but are
+    // defensive-guarded here — a botched migration or manual DB write must
+    // not lead to emitting an invalid { credentials } shape to the SDK.
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      // client_id intentionally null
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toBeUndefined();
+  });
+
+  it('returns undefined when client_secret_encrypted is set but client_secret_iv is missing', async () => {
+    // Symmetric to the auth-code path's half-written-row guard.
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      // iv intentionally null — can't decrypt without it
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toBeUndefined();
+  });
+
+  it('prefers auth-code OAuth over client-credentials when both are present', async () => {
+    mockRow({
+      oauth_access_token_encrypted: 'enc_access',
+      oauth_access_token_iv: 'iv_access',
+      oauth_refresh_token_encrypted: 'enc_refresh',
+      oauth_refresh_token_iv: 'iv_refresh',
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+    });
+    mockedDecrypt.mockImplementation((encrypted: string) => {
+      if (encrypted === 'enc_access') return 'access-plaintext';
+      if (encrypted === 'enc_refresh') return 'refresh-plaintext';
+      throw new Error(`unexpected decrypt call: ${encrypted}`);
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    // Auth-code with a refresh token has zero round-trip cost; client-creds
+    // always pays an exchange. Prefer the cheaper path when both exist.
+    expect(auth).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access-plaintext', refresh_token: 'refresh-plaintext' },
+    });
   });
 
   it('returns undefined when the query throws', async () => {
