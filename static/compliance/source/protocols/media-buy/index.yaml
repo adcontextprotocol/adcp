@@ -441,7 +441,9 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
