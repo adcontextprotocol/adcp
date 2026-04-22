@@ -1176,10 +1176,14 @@
         // The test endpoint exchanges at the AS and discards the token, so
         // the operator gets same-second confirmation instead of waiting for
         // the next compliance heartbeat. See #2809.
+        //
+        // Button has no data-agent-url of its own — the handler reads from
+        // the parent form's already-escaped dataset. Prevents any chance of
+        // attribute-breakout if a future caller passes an un-escaped URL.
         form.innerHTML =
           '<div class="agent-connect-msg" style="color:var(--color-success-600);">Credentials saved.</div>' +
           '<div style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2);">' +
-            '<button class="agent-cc-test-now" data-agent-url="' + agentUrl + '">Test now</button>' +
+            '<button class="agent-cc-test-now">Test now</button>' +
             '<span style="font-size:var(--text-sm);color:var(--color-text-secondary);">Exchanges a token at the AS and discards it.</span>' +
           '</div>' +
           '<div class="agent-cc-test-result" style="margin-top:var(--space-2);"></div>';
@@ -1197,20 +1201,63 @@
       }
     });
 
+    // One-line actionable hints keyed off the SDK's ClientCredentialsExchangeError
+    // kind / oauth_error. Aimed at a non-engineer ad-ops operator: "here's the
+    // first thing to check." The primary (technical) line stays intact so
+    // engineers can copy-paste into issues; the hint is a muted second line.
+    function ccTestHint(err) {
+      const byOAuth = {
+        invalid_client: 'Check client_id and client_secret for typos or trailing whitespace.',
+        invalid_scope: 'Remove the scope field or confirm the value with the AS operator.',
+        unauthorized_client: 'This client isn\'t allowed to use the client_credentials grant. Ask the AS operator.',
+        invalid_request: 'The AS rejected the request shape. Double-check token_endpoint and auth_method (Basic vs Body).',
+        invalid_grant: 'The grant was rejected. Common cause: credentials revoked or the audience/resource is wrong.',
+      };
+      if (err.oauth_error && byOAuth[err.oauth_error]) return byOAuth[err.oauth_error];
+      if (err.kind === 'network') return 'Check that token_endpoint is correct and the AS is reachable from this server.';
+      if (err.kind === 'malformed') return 'The AS response wasn\'t valid OAuth. Confirm token_endpoint points at the token URL, not the authorize URL.';
+      return '';
+    }
+
     // "Test now" button: POST to /oauth-client-credentials/test and show the
     // typed result inline (success latency, or SDK ClientCredentialsExchangeError
     // kind + message + oauth_error if the AS returned one).
     document.addEventListener('click', async function(e) {
       const btn = e.target.closest('.agent-cc-test-now');
       if (!btn) return;
-      const agentUrl = btn.dataset.agentUrl;
       const form = btn.closest('.agent-connect-form');
-      const resultEl = form?.querySelector('.agent-cc-test-result');
+      if (!form) return;
+      // Read from the parent form's already-escaped data attribute rather
+      // than re-embedding the URL in the button's own HTML.
+      const agentUrl = form.dataset.agentUrl;
+      const resultEl = form.querySelector('.agent-cc-test-result');
       if (!resultEl) return;
 
       btn.disabled = true;
       btn.textContent = 'Testing...';
       resultEl.textContent = '';
+      resultEl.innerHTML = '';
+
+      const setResult = (primary, hint, color, extraHtml) => {
+        resultEl.style.color = color;
+        const primaryNode = document.createElement('div');
+        primaryNode.textContent = primary;
+        resultEl.appendChild(primaryNode);
+        if (hint) {
+          const hintNode = document.createElement('div');
+          hintNode.style.fontSize = 'var(--text-xs)';
+          hintNode.style.color = 'var(--color-text-secondary)';
+          hintNode.style.marginTop = '2px';
+          hintNode.textContent = hint;
+          resultEl.appendChild(hintNode);
+        }
+        if (extraHtml) {
+          const extra = document.createElement('div');
+          extra.style.marginTop = 'var(--space-1)';
+          extra.innerHTML = extraHtml;
+          resultEl.appendChild(extra);
+        }
+      };
 
       try {
         const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/oauth-client-credentials/test', {
@@ -1220,31 +1267,45 @@
         });
         const data = await res.json().catch(() => ({}));
 
-        if (!res.ok) {
-          resultEl.style.color = 'var(--color-error-600)';
-          resultEl.textContent = data.error || ('Request failed: ' + res.status);
+        if (res.status === 429) {
+          setResult('Testing too fast — wait a moment and retry.', '', 'var(--color-error-600)', '');
+        } else if (!res.ok) {
+          setResult(data.error || ('Request failed: ' + res.status), '', 'var(--color-error-600)', '');
         } else if (data.ok) {
-          resultEl.style.color = 'var(--color-success-600)';
-          resultEl.textContent = '✅ Token exchange succeeded in ' + data.latency_ms + 'ms.';
+          // Subtle exit affordance on success so operators can return to the
+          // dashboard (which reloads the compliance card with fresh auth
+          // state). No auto-reload — the retest loop stays available.
+          setResult(
+            '✅ Token exchange succeeded in ' + data.latency_ms + 'ms.',
+            '',
+            'var(--color-success-600)',
+            '<a href="#" class="agent-cc-reload" style="font-size:var(--text-sm);">Reload to refresh the dashboard →</a>',
+          );
         } else {
           // Typed failure from the SDK.
           const err = data.error || {};
-          resultEl.style.color = 'var(--color-error-600)';
           let text = '❌ ' + (err.message || 'Exchange failed') + ' (' + (err.kind || 'unknown') + ')';
           if (err.oauth_error) {
             text += ' — AS returned ' + err.oauth_error;
             if (err.oauth_error_description) text += ': ' + err.oauth_error_description;
           }
           if (err.http_status) text += ' [HTTP ' + err.http_status + ']';
-          resultEl.textContent = text;
+          setResult(text, ccTestHint(err), 'var(--color-error-600)', '');
         }
       } catch (err) {
-        resultEl.style.color = 'var(--color-error-600)';
-        resultEl.textContent = 'Test request failed: ' + err.message;
+        setResult('Test request failed: ' + err.message, '', 'var(--color-error-600)', '');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Test now';
       }
+    });
+
+    // Reload handler for the success-state "Reload to refresh" link.
+    document.addEventListener('click', function(e) {
+      const link = e.target.closest('.agent-cc-reload');
+      if (!link) return;
+      e.preventDefault();
+      location.reload();
     });
 
     // OAuth authorize button
