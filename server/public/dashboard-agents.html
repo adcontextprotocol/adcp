@@ -258,7 +258,8 @@
     .agent-connect-form input { min-width: 260px; }
     .agent-connect-save,
     .agent-oauth-start,
-    .agent-cc-save {
+    .agent-cc-save,
+    .agent-cc-test-now {
       background: var(--color-primary-600);
       color: white;
       border: none;
@@ -269,10 +270,12 @@
     }
     .agent-connect-save:hover,
     .agent-oauth-start:hover,
-    .agent-cc-save:hover { background: var(--color-primary-700); }
+    .agent-cc-save:hover,
+    .agent-cc-test-now:hover { background: var(--color-primary-700); }
     .agent-connect-save:disabled,
     .agent-oauth-start:disabled,
-    .agent-cc-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-cc-save:disabled,
+    .agent-cc-test-now:disabled { opacity: 0.6; cursor: not-allowed; }
     .agent-oauth-start { align-self: flex-end; }
     .agent-connect-msg {
       font-size: var(--text-xs);
@@ -1169,8 +1172,17 @@
           throw new Error(data.error || 'Failed to save credentials');
         }
 
-        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Credentials saved. Compliance check will run on the next heartbeat cycle.</div>';
-        setTimeout(() => location.reload(), 1500);
+        // Replace the form with a save-confirmation + a "Test now" button.
+        // The test endpoint exchanges at the AS and discards the token, so
+        // the operator gets same-second confirmation instead of waiting for
+        // the next compliance heartbeat. See #2809.
+        form.innerHTML =
+          '<div class="agent-connect-msg" style="color:var(--color-success-600);">Credentials saved.</div>' +
+          '<div style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2);">' +
+            '<button class="agent-cc-test-now" data-agent-url="' + agentUrl + '">Test now</button>' +
+            '<span style="font-size:var(--text-sm);color:var(--color-text-secondary);">Exchanges a token at the AS and discards it.</span>' +
+          '</div>' +
+          '<div class="agent-cc-test-result" style="margin-top:var(--space-2);"></div>';
       } catch (err) {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save credentials';
@@ -1182,6 +1194,56 @@
         }
         msg.style.color = 'var(--color-error-600)';
         msg.textContent = err.message;
+      }
+    });
+
+    // "Test now" button: POST to /oauth-client-credentials/test and show the
+    // typed result inline (success latency, or SDK ClientCredentialsExchangeError
+    // kind + message + oauth_error if the AS returned one).
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-cc-test-now');
+      if (!btn) return;
+      const agentUrl = btn.dataset.agentUrl;
+      const form = btn.closest('.agent-connect-form');
+      const resultEl = form?.querySelector('.agent-cc-test-result');
+      if (!resultEl) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+      resultEl.textContent = '';
+
+      try {
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/oauth-client-credentials/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          resultEl.style.color = 'var(--color-error-600)';
+          resultEl.textContent = data.error || ('Request failed: ' + res.status);
+        } else if (data.ok) {
+          resultEl.style.color = 'var(--color-success-600)';
+          resultEl.textContent = '✅ Token exchange succeeded in ' + data.latency_ms + 'ms.';
+        } else {
+          // Typed failure from the SDK.
+          const err = data.error || {};
+          resultEl.style.color = 'var(--color-error-600)';
+          let text = '❌ ' + (err.message || 'Exchange failed') + ' (' + (err.kind || 'unknown') + ')';
+          if (err.oauth_error) {
+            text += ' — AS returned ' + err.oauth_error;
+            if (err.oauth_error_description) text += ': ' + err.oauth_error_description;
+          }
+          if (err.http_status) text += ' [HTTP ' + err.http_status + ']';
+          resultEl.textContent = text;
+        }
+      } catch (err) {
+        resultEl.style.color = 'var(--color-error-600)';
+        resultEl.textContent = 'Test request failed: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test now';
       }
     });
 
