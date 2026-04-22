@@ -74,6 +74,7 @@ import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
+import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
@@ -4174,10 +4175,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
     try {
       const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+      const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
 
       let profile;
       try {
-        const caps = await testCapabilityDiscovery(agentUrl, { ...(auth && { auth }) });
+        const caps = await testCapabilityDiscovery(agentUrl, { ...(sdkAuth && { auth: sdkAuth }) });
         profile = caps.profile;
 
         // The SDK swallows the agent's 401 into steps[0].error; surface it as
@@ -4406,11 +4408,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard:${agentUrl}` });
 
         const complyResult = await comply(agentUrl, {
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
-          ...(auth && { auth }),
+          ...(sdkAuth && { auth: sdkAuth }),
         });
 
         if (complyResult.overall_status === 'auth_required') {
@@ -4505,13 +4508,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-compare:${agentUrl}` });
         const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             timeout_ms: 90_000,
             storyboards: storyboardIds,
-            ...(auth && { auth }),
+            ...(sdkAuth && { auth: sdkAuth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             timeout_ms: 90_000,

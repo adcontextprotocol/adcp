@@ -19,6 +19,7 @@ import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
+import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
@@ -59,11 +60,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     const startTime = Date.now();
     try {
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
+      const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
         timeout_ms: 60_000,
-        auth,
+        auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
       };
 
