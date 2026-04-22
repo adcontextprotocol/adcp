@@ -385,7 +385,14 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           creatives:
-            - creative_id: "$context.creative_id"
+            # Buyer-authoritative id set in sync_creative_with_assignment —
+            # use it literally instead of round-tripping through
+            # `$context.creative_id`. That context key is populated from
+            # the seller's response at `creatives[0].creative_id`; sellers
+            # whose envelope doesn't surface that exact path resolve to
+            # undefined and the template engine strips the creative,
+            # leaving `creatives: undefined` which fails pre-flight zod.
+            - creative_id: "acme_reuse_banner_001"
               name: "Reassigned creative"
               format_id:
                 agent_url: "https://your-platform.example.com"
@@ -397,7 +404,7 @@ phases:
                   width: 300
                   height: 250
           assignments:
-            - creative_id: "$context.creative_id"
+            - creative_id: "acme_reuse_banner_001"
               package_id: "$context.second_package_id"
           idempotency_key: "creative-fate-reassign-v1"
           context:

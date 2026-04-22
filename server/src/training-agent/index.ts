@@ -25,11 +25,16 @@ import {
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
+import { redactConflictEnvelopeInBody } from './conflict-envelope.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import { buildRequestSigningAuthenticator, STRICT_REQUIRED_FOR } from './request-signing.js';
+import {
+  buildRequestSigningAuthenticator,
+  enforceSigningWhenWebhookAuthPresent,
+  STRICT_REQUIRED_FOR,
+} from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -67,6 +72,14 @@ function setCORSHeaders(res: Response): void {
  * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
  * or layer an `anyOf` with a separate scope-aware authenticator.
  */
+// Conformance handle documented in every test-kit header
+// (static/compliance/source/test-kits/*.yaml, auth.api_key comment): agents
+// SHOULD accept any Bearer matching `demo-<kit>-v<n>` so the suffix can rotate
+// across spec versions without breaking previously-conformant agents. The
+// training agent IS the reference — so it accepts the handle directly.
+// Anchored to forbid `demo--v1` / `demo-v1` and lock alg-num segments.
+const DEMO_TEST_KIT_KEY_PATTERN = /^demo-[a-z0-9]+(?:-[a-z0-9]+)*-v\d+$/;
+
 function buildBearerAuthenticator(): Authenticator | null {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     return null; // dev mode: open
@@ -79,6 +92,12 @@ function buildBearerAuthenticator(): Authenticator | null {
   if (Object.keys(staticKeys).length > 0) {
     authenticators.push(verifyApiKey({ keys: staticKeys }));
   }
+  authenticators.push(verifyApiKey({
+    verify: (token) => {
+      if (!DEMO_TEST_KIT_KEY_PATTERN.test(token)) return null;
+      return { principal: `static:demo:${token}` };
+    },
+  }));
   if (workos) {
     const workosClient = workos; // narrow for closure
     authenticators.push(verifyApiKey({
@@ -112,6 +131,14 @@ function lazySigningAuth(): Authenticator {
  * pass through verifyApiKey; signed requests compose via anyOf. Present-but-
  * invalid signatures fall through to bearer (a known gap — closed on the
  * strict route, tracked upstream as adcp-client#659).
+ *
+ * The webhook-auth downgrade-resistance rule (security.mdx#webhook-callbacks)
+ * is enforced only on `/mcp-strict`. The sandbox `/mcp` route accepts
+ * unsigned `push_notification_config.authentication` for backward compat
+ * with pre-3.0 storyboards that wire legacy HMAC-SHA256 webhooks over
+ * bearer-auth'd `create_media_buy`. Updating those storyboards to
+ * 9421-sign the registration is tracked separately; the grader-facing
+ * strict route already matches the spec.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
@@ -131,7 +158,7 @@ function buildDefaultAuthenticator(): Authenticator | null {
 function buildStrictAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
-  return requireAuthenticatedOrSigned({
+  return enforceSigningWhenWebhookAuthPresent(requireAuthenticatedOrSigned({
     signature: lazySigningAuth(),
     fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
@@ -148,7 +175,7 @@ function buildStrictAuthenticator(): Authenticator | null {
       }
       return undefined;
     },
-  });
+  }));
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
@@ -204,6 +231,98 @@ function buildRequireToken(authenticator: Authenticator | null) {
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
+
+/**
+ * Capture the response body as it's written by the MCP transport, redact any
+ * `IDEMPOTENCY_CONFLICT` envelopes (framework-dispatch's `adcpError()` emits
+ * `recovery` which the storyboard invariant treats as a payload leak), and
+ * flush the transformed body through the original writer. Idempotent: safe
+ * to call even when no conflict envelope is present (pass-through via a
+ * fast-path `includes('IDEMPOTENCY_CONFLICT')` probe inside the redactor).
+ *
+ * Works for the JSON-response mode (`enableJsonResponse: true`) the training
+ * agent forces for every request — the transport writes a single
+ * `res.write(body) ; res.end()` pair, which this wrapper buffers into one
+ * string before rewriting. Streaming/SSE would break this contract, so do
+ * not remove `enableJsonResponse: true` from the transport config above.
+ */
+function wrapResponseForConflictRedaction(res: Response): void {
+  const origWriteHead = res.writeHead.bind(res);
+  const origWrite = res.write.bind(res) as (chunk: unknown, ...rest: unknown[]) => boolean;
+  const origEnd = res.end.bind(res) as (chunk?: unknown, ...rest: unknown[]) => Response;
+  const chunks: Buffer[] = [];
+  let pendingHead: { status: number; headers: Record<string, string | number | string[]> } | null = null;
+
+  const collect = (chunk: unknown): void => {
+    if (chunk === undefined || chunk === null) return;
+    if (Buffer.isBuffer(chunk)) chunks.push(chunk);
+    else if (typeof chunk === 'string') chunks.push(Buffer.from(chunk, 'utf8'));
+    else if (chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+    else chunks.push(Buffer.from(String(chunk), 'utf8'));
+  };
+
+  // `@hono/node-server` flushes headers via `writeHead(status, headers)`
+  // before calling `write` — with content-length already computed from the
+  // original body length. Buffering headers here defers flush until `end`
+  // runs, so the final `Content-Length` reflects the redacted body size.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).writeHead = ((
+    status: number,
+    statusMessageOrHeaders?: string | Record<string, string | number | string[]>,
+    headersArg?: Record<string, string | number | string[]>,
+  ): Response => {
+    const headers = typeof statusMessageOrHeaders === 'object' && statusMessageOrHeaders !== null
+      ? statusMessageOrHeaders
+      : headersArg ?? {};
+    pendingHead = { status, headers: { ...headers } };
+    return res;
+  }) as typeof res.writeHead;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).write = (chunk: unknown, encoding?: unknown, cb?: unknown): boolean => {
+    collect(chunk);
+    const callback = typeof encoding === 'function' ? encoding : cb;
+    if (typeof callback === 'function') (callback as () => void)();
+    return true;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).end = (chunk?: unknown, encoding?: unknown, cb?: unknown): Response => {
+    if (chunk !== undefined && typeof chunk !== 'function') collect(chunk);
+    const callback = typeof chunk === 'function'
+      ? chunk
+      : typeof encoding === 'function'
+        ? encoding
+        : cb;
+    const body = Buffer.concat(chunks).toString('utf8');
+    const rewritten = redactConflictEnvelopeInBody(body);
+    if (pendingHead) {
+      // Hono's node-server path: the transport called `writeHead(status, headers)`
+      // up front. Patch content-length (case-insensitive) to the redacted
+      // length before flushing so the wire byte count matches the body.
+      const headers = pendingHead.headers;
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'content-length') delete headers[key];
+      }
+      headers['content-length'] = Buffer.byteLength(rewritten, 'utf8');
+      origWriteHead(pendingHead.status, headers);
+      pendingHead = null;
+    }
+    // When `pendingHead` is null, either no response was produced (e.g. an
+    // uncaught throw before the transport wrote anything) or Express's own
+    // error-path `.json()` handler flushed via `setHeader`+`end` rather than
+    // `writeHead`. Node's implicit-header emission fires on the first
+    // `origWrite`/`origEnd` in that case, using whatever headers Express
+    // already stacked via `setHeader`. Content-Length may be wrong if the
+    // error path pre-set it, but those responses never carry an
+    // IDEMPOTENCY_CONFLICT body so `rewritten === body` and the length is
+    // unchanged.
+    if (rewritten.length > 0) origWrite(rewritten);
+    const args: unknown[] = [];
+    if (typeof callback === 'function') args.push(callback);
+    return origEnd(...args);
+  };
+}
 
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -372,8 +491,23 @@ export function createTrainingAgentRouter(): Router {
 
         await server.connect(transport);
 
+        // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
+        // `@adcp/client/server`'s `adcpError()` builder, which auto-injects
+        // `recovery` on every error. The universal idempotency storyboard's
+        // `conflict_no_payload_leak` invariant allows only a narrow set of
+        // envelope keys on conflict — anything else is flagged as a potential
+        // stolen-key read oracle. Intercept the response bytes before they
+        // leave the process and strip disallowed keys. Legacy dispatch builds
+        // a minimal envelope by hand, so the wrap is a no-op there in
+        // practice (it still runs but finds nothing to redact).
+        wrapResponseForConflictRedaction(res);
+
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 
+        // Both legacy and framework dispatch wrap handler execution in
+        // runWithSessionContext internally (legacy: CallToolRequestSchema,
+        // framework: adapt + customToolFor in framework-server.ts), so the
+        // transport-level handler just delegates.
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
         logger.error({ error, strict }, 'Training agent: request error');

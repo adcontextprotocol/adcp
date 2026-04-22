@@ -35,9 +35,8 @@
                 "description": "Action taken for this audience. 'status' is present when action is created, updated, or unchanged. 'status' is absent when action is deleted or failed."
               },
               "status": {
-                "type": "string",
-                "enum": ["processing", "ready", "too_small"],
-                "description": "Matching status. Present when action is created, updated, or unchanged; absent when action is deleted or failed. 'processing': platform is still matching members against its user base. 'ready': audience is available for targeting, matched_count is populated. 'too_small': matched audience is below the platform's minimum size — add more members and re-sync."
+                "$ref": "/schemas/enums/audience-status.json",
+                "description": "Matching status. Present when action is created, updated, or unchanged; absent when action is deleted or failed."
               },
               "uploaded_count": {
                 "type": "integer",

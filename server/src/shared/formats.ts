@@ -576,6 +576,19 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
           requirements: { mime_types: ['image/jpeg', 'image/png'], max_file_size_bytes: 5_000_000 } },
       ],
     },
+    {
+      // Catalog format used by `sales_social` storyboard's DPA creative step.
+      // Matches the carousel pattern documented at docs/creative/channels/carousels.mdx.
+      format_id: { agent_url: agentUrl, id: 'product_carousel_3_to_10' },
+      name: 'Product carousel (3–10 items)',
+      description: 'Dynamic product carousel with 3–10 catalog-driven items, headline, and click target.',
+      renders: [{ role: 'primary', dimensions: { width: 1200, height: 1200 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'impression_pixel', asset_type: 'url', asset_role: 'tracking', required: false },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'destination', required: true },
+      ],
+    },
   ];
 }
 
@@ -620,4 +633,5 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   video_30s: ['olv', 'ctv'],
   native_post: ['social'],
   native_content: ['display'],
+  product_carousel_3_to_10: ['social', 'display'],
 };

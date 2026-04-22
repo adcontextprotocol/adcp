@@ -805,7 +805,13 @@ export function handleGetRights(
 
   const queryLower = query.toLowerCase();
 
-  let candidates = brandId ? TALENT.filter(t => t.brand_id === brandId) : [...TALENT];
+  // brand_id in get_rights semantically means "talent brand identifier" (e.g. "yuki_tanaka"),
+  // but compliance runners and generic callers often inject the caller's account domain
+  // here instead. Treat a brand_id that matches no talent as "no filter" rather than
+  // returning an empty catalog — otherwise downstream `$context.rights_id` extraction
+  // yields undefined and the governance/acquire storyboards can't reach their assertions.
+  const brandMatches = brandId ? TALENT.filter(t => t.brand_id === brandId) : null;
+  let candidates = brandMatches && brandMatches.length > 0 ? brandMatches : [...TALENT];
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>

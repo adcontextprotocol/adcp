@@ -352,6 +352,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         caller: { type: 'string', format: 'uri' },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
@@ -377,6 +379,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
@@ -397,6 +401,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string', description: 'Single plan ID (convenience alias for plan_ids)' },
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
