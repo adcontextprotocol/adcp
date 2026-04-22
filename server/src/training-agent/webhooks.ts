@@ -20,6 +20,7 @@ import {
 import type { SignerKey } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
 import { createLogger } from '../logger.js';
+import { createWebhookFetch } from './webhook-fetch.js';
 
 const logger = createLogger('training-agent-webhooks');
 
@@ -240,10 +241,15 @@ export function getWebhookSigningKey(): SignerKey {
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const { signer } = ensureKey();
+  // Production (`NODE_ENV=production`, i.e. fly.io) refuses webhook delivery
+  // to private/loopback/metadata addresses. Dev and CI need loopback for
+  // conformance storyboards using `http://127.0.0.1:<port>` receivers.
+  const allowPrivateIp = process.env.NODE_ENV !== 'production';
   emitter = createWebhookEmitter({
     signerKey: signer,
     idempotencyKeyStore: memoryWebhookKeyStore(),
     userAgent: 'adcp-training-agent/1.0',
+    fetch: createWebhookFetch({ allowPrivateIp }),
   });
   return emitter;
 }
