@@ -38,23 +38,21 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 35→27 temporarily after @adcp/client 5.6→5.8.1 bump (adcp#2663)
-            # surfaced stricter schema checks; recovered to 36 in adcp#2666 by
-            # fixing training-agent fixtures (creative format asset_type/
-            # catalog_type/dimensions.unit), adding required total_budget on
-            # get_media_buys, and tightening validate_property_delivery
-            # response shape.
-            min_clean_storyboards: 36
-            min_passing_steps: 295
+            # 36→44 after cross-agent format references stopped rejecting
+            # storyboards that point at creative.adcontextprotocol.org for
+            # format_id.agent_url (sales_social, catalog_driven). The seller
+            # only validates format_ids it hosts itself.
+            min_clean_storyboards: 44
+            min_passing_steps: 318
           - mode: framework
             flag_value: '1'
-            # Framework path is opt-in and trails legacy until zod parity
-            # lands. Gate keeps it from going backwards while we close the gap.
-            # Rebaselined alongside the legacy recovery in adcp#2666: the
-            # training-agent fixture fixes bought back the same 237→241
-            # passing-step delta for the framework path.
-            min_clean_storyboards: 21
-            min_passing_steps: 241
+            # 21→37 after wrapping framework dispatch in
+            # runWithSessionContext + flushDirtySessions so created media
+            # buys / creatives / governance state persist across MCP calls
+            # under the framework path (parity with legacy). Also picks up
+            # the cross-agent format-reference delta.
+            min_clean_storyboards: 37
+            min_passing_steps: 308
     steps:
       - uses: actions/checkout@v6
 

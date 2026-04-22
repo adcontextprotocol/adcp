@@ -25,7 +25,7 @@ import {
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
-import { startSessionCleanup } from './state.js';
+import { startSessionCleanup, runWithSessionContext, flushDirtySessions } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
@@ -326,7 +326,8 @@ export function createTrainingAgentRouter(): Router {
         const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
         const ctx: TrainingContext = { mode: 'open', principal, strict };
 
-        server = useFrameworkServer()
+        const framework = useFrameworkServer();
+        server = framework
           ? createFrameworkTrainingAgentServer(ctx)
           : createTrainingAgentServer(ctx);
 
@@ -374,7 +375,19 @@ export function createTrainingAgentRouter(): Router {
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 
-        await transport.handleRequest(req, res, req.body);
+        // Legacy path wraps dispatch in runWithSessionContext inside
+        // createTrainingAgentServer's CallToolRequestSchema handler. The
+        // framework owns dispatch, so we wrap here so session mutations
+        // (created media buys, creatives, governance state) persist across
+        // MCP calls under framework mode.
+        if (framework) {
+          await runWithSessionContext(async () => {
+            await transport.handleRequest(req, res, req.body);
+            await flushDirtySessions();
+          });
+        } else {
+          await transport.handleRequest(req, res, req.body);
+        }
       } catch (error) {
         logger.error({ error, strict }, 'Training agent: request error');
         if (!res.headersSent) {

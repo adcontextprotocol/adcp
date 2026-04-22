@@ -1772,11 +1772,24 @@ describe('sync_creatives handler', () => {
     const { result } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
         creative_id: 'cr_bad_format',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
+        format_id: { agent_url: getAgentUrl(), id: 'nonexistent_format' },
       }],
     });
     expect(result.code).toBeDefined();
     expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('accepts format_id referencing a remote creative agent without local validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_remote_format',
+        format_id: { agent_url: 'https://creative.adcontextprotocol.org', id: 'product_carousel_3_to_10' },
+      }],
+    });
+    const creatives = result.creatives as Array<Record<string, unknown>> | undefined;
+    expect(creatives).toHaveLength(1);
+    expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
   });
 
   it('processes creative-to-package assignments', async () => {

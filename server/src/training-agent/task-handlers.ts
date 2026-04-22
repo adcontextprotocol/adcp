@@ -601,6 +601,51 @@ export function invalidateCache(): void {
   cachedProposals = null;
 }
 
+/**
+ * Merge products and pricing options seeded via comply_test_controller
+ * (`seed_product`, `seed_pricing_option`) into the in-memory product map
+ * used for create/validate flows. Seeded fixtures are permissive objects
+ * (spec: additionalProperties: true) — we synthesize the minimum shape
+ * the handlers consult (pricing_options with pricing_model/floor_price/
+ * fixed_price/etc) so fixture-driven storyboards can reference products
+ * that don't live in the static catalog.
+ */
+function overlaySeededProducts(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, import('@adcp/client').Product>,
+): void {
+  const { seededProducts, seededPricingOptions } = session.complyExtensions;
+  if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
+
+  const pricingByProduct = new Map<string, Array<Record<string, unknown>>>();
+  for (const [key, pxFx] of seededPricingOptions) {
+    const sep = key.indexOf(':');
+    const productId = sep > 0 ? key.slice(0, sep) : key;
+    const list = pricingByProduct.get(productId) ?? [];
+    list.push(pxFx);
+    pricingByProduct.set(productId, list);
+  }
+
+  const productIds = new Set<string>([
+    ...seededProducts.keys(),
+    ...pricingByProduct.keys(),
+  ]);
+  for (const productId of productIds) {
+    const existing = productMap.get(productId);
+    const fixture = seededProducts.get(productId) ?? {};
+    const seededPricing = pricingByProduct.get(productId);
+    const merged = {
+      ...(existing ?? {}),
+      ...fixture,
+      product_id: productId,
+      pricing_options: seededPricing && seededPricing.length > 0
+        ? seededPricing
+        : (existing?.pricing_options ?? []),
+    } as unknown as import('@adcp/client').Product;
+    productMap.set(productId, merged);
+  }
+}
+
 // ── Channel aliases for brief matching (module-scoped for perf) ──
 
 const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
@@ -1332,6 +1377,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -1921,6 +1967,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
+  const ownAgentUrl = getAgentUrl();
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -1935,8 +1982,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
-    // Validate format_id
-    if (formatId?.id && !validFormatIds.has(formatId.id)) {
+    // Validate format_id only when the format is claimed against this agent.
+    // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
+    // resolved by the referenced creative agent at render time — the seller
+    // just stores the pointer.
+    const isLocalFormat = !formatId?.agent_url || formatId.agent_url === ownAgentUrl;
+    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
