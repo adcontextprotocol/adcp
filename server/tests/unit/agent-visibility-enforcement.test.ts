@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AgentConfig } from '../../src/types.js';
 
-// `demotePublicAgentsOnTierDowngrade` now uses `getPool()` + raw SQL with
-// `SELECT … FOR UPDATE` so the read and write can't interleave with a
-// concurrent publish. The mocks below emulate the client contract that
-// the service depends on: BEGIN / SELECT / UPDATE / COMMIT / ROLLBACK.
+/**
+ * `demotePublicAgentsOnTierDowngrade` uses `getPool()` + raw SQL with
+ * `SELECT … FOR UPDATE` so the read and write can't interleave with a
+ * concurrent publish. The mocks below emulate the client contract that
+ * the service depends on: BEGIN / SELECT / UPDATE / COMMIT / ROLLBACK.
+ */
 vi.mock('../../src/db/client.js', () => {
   const release = vi.fn();
   const client: { query: ReturnType<typeof vi.fn>; release: typeof release } = {
@@ -31,16 +33,20 @@ type SelectRow = {
   primary_brand_domain: string | null;
 };
 
+type RecordedQuery = { sql: string; params: unknown[] };
+
 /**
  * Wire the pg client mock so the tx flow (BEGIN → SELECT FOR UPDATE →
- * UPDATE → COMMIT) behaves as described, and capture the UPDATE args
- * for assertion.
+ * UPDATE → COMMIT) behaves as described. Records all queries so tests
+ * can assert the exact SQL + params, not just that *some* UPDATE ran.
  */
-function mockProfileTx(rows: SelectRow[]): { updateArgs: unknown[][] } {
+function mockProfileTx(rows: SelectRow[]): { recorded: RecordedQuery[]; updateArgs: unknown[][] } {
+  const recorded: RecordedQuery[] = [];
   const updateArgs: unknown[][] = [];
   __client.query.mockReset();
   __client.release.mockReset();
   __client.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+    recorded.push({ sql, params: params ?? [] });
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rowCount: 0, rows: [] };
     }
@@ -53,18 +59,13 @@ function mockProfileTx(rows: SelectRow[]): { updateArgs: unknown[][] } {
     }
     throw new Error(`Unexpected query: ${sql}`);
   });
-  return { updateArgs };
+  return { recorded, updateArgs };
 }
 
 describe('demotePublicAgentsOnTierDowngrade', () => {
-  let memberDb: any;
   let brandDb: any;
 
   beforeEach(() => {
-    memberDb = {
-      getProfileByOrgId: vi.fn(),
-      updateProfileByOrgId: vi.fn(),
-    };
     brandDb = {
       getDiscoveredBrandByDomain: vi.fn(),
       updateManifestAgents: vi.fn().mockResolvedValue(undefined),
@@ -78,7 +79,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('no-op when old tier had no API access', async () => {
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_academic', null, memberDb, brandDb,
+      'org1', 'individual_academic', null, brandDb,
     );
     expect(result).toBeNull();
     expect(__connect).not.toHaveBeenCalled();
@@ -86,35 +87,48 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('no-op when new tier still has API access', async () => {
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'company_icl', 'individual_professional', memberDb, brandDb,
+      'org1', 'company_icl', 'individual_professional', brandDb,
     );
     expect(result).toBeNull();
     expect(__connect).not.toHaveBeenCalled();
   });
 
+  it('locks the profile row with SELECT FOR UPDATE on the supplied orgId', async () => {
+    // Mechanism test — regressions that drop FOR UPDATE or pass the
+    // wrong org param are the exact thing this PR's transactional
+    // rewrite is meant to prevent.
+    const { recorded } = mockProfileTx([
+      { id: 'p1', agents: [agent('https://a', 'public')], primary_brand_domain: null },
+    ]);
+    await demotePublicAgentsOnTierDowngrade('org-target', 'individual_professional', null, brandDb);
+    const selectProfile = recorded.find(r => r.sql.includes('SELECT id, agents, primary_brand_domain'));
+    expect(selectProfile, 'should issue a SELECT for the profile row').toBeTruthy();
+    expect(selectProfile!.sql).toMatch(/FOR UPDATE/);
+    expect(selectProfile!.params[0]).toBe('org-target');
+  });
+
   it('no-op when org has no profile', async () => {
-    mockProfileTx([]);
+    const { recorded } = mockProfileTx([]);
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', null, memberDb, brandDb,
+      'org1', 'individual_professional', null, brandDb,
     );
     expect(result).toBeNull();
-    // Should open a tx, see 0 rows, ROLLBACK, not UPDATE
-    const queries = __client.query.mock.calls.map((c: any[]) => c[0]);
-    expect(queries).toContain('BEGIN');
-    expect(queries).toContain('ROLLBACK');
-    expect(queries.some((q: string) => q.startsWith?.('UPDATE'))).toBe(false);
+    const sqls = recorded.map(r => r.sql);
+    expect(sqls).toContain('BEGIN');
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls.some(q => q.trim().startsWith('UPDATE'))).toBe(false);
   });
 
   it('no-op when profile has no public agents', async () => {
     const agents = [agent('https://a.example', 'private'), agent('https://b.example', 'members_only')];
-    mockProfileTx([{ id: 'p1', agents, primary_brand_domain: null }]);
+    const { recorded } = mockProfileTx([{ id: 'p1', agents, primary_brand_domain: null }]);
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', 'individual_academic', memberDb, brandDb,
+      'org1', 'individual_professional', 'individual_academic', brandDb,
     );
     expect(result).toBeNull();
-    const queries = __client.query.mock.calls.map((c: any[]) => c[0]);
-    expect(queries).toContain('ROLLBACK');
-    expect(queries.some((q: string) => q.trim?.().startsWith('UPDATE member_profiles'))).toBe(false);
+    const sqls = recorded.map(r => r.sql);
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls.some(q => q.trim().startsWith('UPDATE member_profiles'))).toBe(false);
   });
 
   it('demotes public agents to members_only on Professional → Explorer', async () => {
@@ -127,11 +141,10 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       { id: 'p1', agents, primary_brand_domain: null },
     ]);
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', 'individual_academic', memberDb, brandDb,
+      'org1', 'individual_professional', 'individual_academic', brandDb,
     );
     expect(result).toEqual({ orgId: 'org1', demotedCount: 1, brandJsonCleared: false });
     expect(updateArgs).toHaveLength(1);
-    // First UPDATE param is the new agents JSON; assert the public entry flipped.
     const writtenAgents = JSON.parse(updateArgs[0][0] as string);
     expect(writtenAgents).toEqual([
       agent('https://pub.example', 'members_only'),
@@ -145,7 +158,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: null },
     ]);
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'company_leader', null, memberDb, brandDb,
+      'org1', 'company_leader', null, brandDb,
     );
     expect(result?.demotedCount).toBe(1);
   });
@@ -164,7 +177,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       },
     });
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', null, memberDb, brandDb,
+      'org1', 'individual_professional', null, brandDb,
     );
     expect(result?.brandJsonCleared).toBe(true);
     expect(brandDb.updateManifestAgents).toHaveBeenCalledWith(
@@ -185,14 +198,14 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       },
     });
     const result = await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', null, memberDb, brandDb,
+      'org1', 'individual_professional', null, brandDb,
     );
     expect(result?.brandJsonCleared).toBe(false);
     expect(brandDb.updateManifestAgents).not.toHaveBeenCalled();
   });
 
   it('commits the profile tx before touching brand.json (so a failed manifest write does not orphan the JSONB update)', async () => {
-    mockProfileTx([
+    const { recorded } = mockProfileTx([
       { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: 'acme.example' },
     ]);
     brandDb.getDiscoveredBrandByDomain.mockResolvedValue({
@@ -200,15 +213,12 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       brand_manifest: { agents: [{ url: 'https://p.example', type: 'brand', id: 'p' }] },
     });
     await demotePublicAgentsOnTierDowngrade(
-      'org1', 'individual_professional', null, memberDb, brandDb,
+      'org1', 'individual_professional', null, brandDb,
     );
-    const queries = __client.query.mock.calls.map((c: any[]) => c[0]);
-    const commitAt = queries.indexOf('COMMIT');
+    const sqls = recorded.map(r => r.sql);
+    const commitAt = sqls.indexOf('COMMIT');
     expect(commitAt).toBeGreaterThan(-1);
-    // brand.json write happens after client.release() via the pool, so by
-    // design it can't be in __client.query.mock.calls — no need to assert
-    // ordering there. Instead, verify UPDATE ran before COMMIT.
-    const updateAt = queries.findIndex((q: string) => q.trim?.().startsWith('UPDATE member_profiles'));
+    const updateAt = sqls.findIndex(q => q.trim().startsWith('UPDATE member_profiles'));
     expect(updateAt).toBeLessThan(commitAt);
   });
 });

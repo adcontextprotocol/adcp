@@ -7,12 +7,18 @@
  * neither can be smuggled past the per-agent /publish tier check.
  */
 
-import { isValidAgentVisibility } from '../types.js';
+import { isValidAgentVisibility, isValidAgentType } from '../types.js';
 import type { AgentConfig, AgentVisibility } from '../types.js';
 
 export interface VisibilityWarning {
   code: 'visibility_downgraded';
-  agent_url: unknown;
+  /**
+   * String identifier for what got downgraded — an agent URL, or the
+   * sentinel `'profile'` when the profile-level `is_public` flag was
+   * the target. Coerced to string at emit time so the wire shape is
+   * trustworthy for clients that render it.
+   */
+  agent_url: string;
   requested: 'public';
   applied: 'members_only';
   reason: 'tier_required';
@@ -36,10 +42,11 @@ export function gateAgentVisibilityForCaller(
     } else {
       visibility = 'private';
     }
+    const url = typeof a.url === 'string' ? a.url : String(a.url ?? '');
     if (visibility === 'public' && !callerHasApi) {
       warnings.push({
         code: 'visibility_downgraded',
-        agent_url: a.url,
+        agent_url: url,
         requested: 'public',
         applied: 'members_only',
         reason: 'tier_required',
@@ -47,11 +54,15 @@ export function gateAgentVisibilityForCaller(
       });
       visibility = 'members_only';
     }
+    // Drop unknown `type` values instead of casting — the field flows
+    // into brand.json (`agentEntry.type`) so an arbitrary tenant string
+    // would become a durable artifact in other members' manifests.
+    const typeValue = typeof a.type === 'string' && isValidAgentType(a.type) ? a.type : undefined;
     const cleaned: AgentConfig = {
-      url: String(a.url ?? ''),
+      url,
       visibility,
       ...(typeof a.name === 'string' ? { name: a.name } : {}),
-      ...(typeof a.type === 'string' ? { type: a.type as AgentConfig['type'] } : {}),
+      ...(typeValue ? { type: typeValue } : {}),
     };
     return cleaned;
   });

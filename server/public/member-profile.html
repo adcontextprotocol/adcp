@@ -2242,15 +2242,37 @@
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
+        // Server may have coerced visibility settings the caller isn't
+        // eligible for (e.g. public → members_only on a non-API-access
+        // tier). Surface those warnings so the user knows we didn't
+        // silently persist what they asked for.
+        const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        const downgrades = warnings.filter(w => w && w.code === 'visibility_downgraded');
+
         // If this was a new profile creation, redirect to dashboard with success message
         if (wasNewProfile) {
           const orgParam = currentOrgId ? `&org=${currentOrgId}` : '';
-          window.location.href = `/dashboard?profile_created=true${orgParam}`;
+          const warnParam = downgrades.length ? `&visibility_downgraded=${downgrades.length}` : '';
+          window.location.href = `/dashboard?profile_created=true${orgParam}${warnParam}`;
           return;
         }
 
-        // For updates, show success message and stay on page
-        showSuccess('Profile saved successfully!');
+        // For updates, show success message and stay on page.
+        // If visibility entries got downgraded, pin the reason above the
+        // generic banner so the user sees the upgrade CTA.
+        if (downgrades.length > 0) {
+          const agents = downgrades.map(w => w.agent_url).filter(Boolean);
+          const detail = agents.length
+            ? ` Affected agents: ${agents.join(', ')}.`
+            : '';
+          showError(
+            `Saved, but ${downgrades.length} agent${downgrades.length > 1 ? 's' : ''} could not be listed publicly — ` +
+            `public listing requires Professional tier or higher, so they were stored as members_only instead.${detail} ` +
+            `Upgrade at /membership to publish publicly.`
+          );
+        } else {
+          showSuccess('Profile saved successfully!');
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Profile';
 

@@ -6,7 +6,6 @@
  * API-access members while respecting the gate on public listing.
  */
 
-import { MemberDatabase } from '../db/member-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getPool } from '../db/client.js';
 import {
@@ -44,7 +43,6 @@ export async function demotePublicAgentsOnTierDowngrade(
   orgId: string,
   oldTier: MembershipTier | null,
   newTier: MembershipTier | null,
-  memberDb: MemberDatabase = new MemberDatabase(),
   brandDb: BrandDatabase = new BrandDatabase(),
 ): Promise<DemoteResult | null> {
   if (!hasApiAccess(oldTier)) return null;
@@ -143,11 +141,6 @@ export async function demotePublicAgentsOnTierDowngrade(
     { orgId, oldTier, newTier, demotedCount: demotedUrls.size, brandJsonCleared },
     'Demoted public agents to members_only after tier downgrade'
   );
-
-  // Kept for compatibility — MemberDatabase / BrandDatabase args are no
-  // longer used for the transactional path, but callers that pass them
-  // for testing shouldn't need updating yet.
-  void memberDb;
 
   return { orgId, demotedCount: demotedUrls.size, brandJsonCleared };
 }

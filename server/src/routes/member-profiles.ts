@@ -321,6 +321,26 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const { agents: gatedAgents, warnings: createWarnings } =
         gateAgentVisibilityForCaller(agents, createCallerHasApi);
 
+      // Same tier gate for the profile-level `is_public` flag. The
+      // `/visibility` PUT route gates this through hasActiveSubscription
+      // (line 1343), but the POST create and PUT bulk-update paths
+      // previously accepted the raw body value — same smuggle class as
+      // the agent-visibility bug this PR fixes.
+      let effectiveIsPublic = is_public === true;
+      if (effectiveIsPublic && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          effectiveIsPublic = false;
+          createWarnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; stored as private instead.',
+          });
+        }
+      }
+
       const profile = await memberDb.createProfile({
         workos_organization_id: targetOrgId,
         display_name,
@@ -338,7 +358,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         headquarters,
         markets: markets || [],
         tags: tags || [],
-        is_public: is_public ?? false,
+        is_public: effectiveIsPublic,
         show_in_carousel: show_in_carousel ?? false,
       });
 
@@ -519,6 +539,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
         updates.agents = gated.agents;
         warnings = gated.warnings;
+      }
+
+      // Same gate for the profile-level `is_public` flag. The dedicated
+      // `/visibility` PUT route already gates this; the bulk-profile
+      // update path previously forwarded the raw body value, reopening
+      // the same smuggle a non-paying caller could use on POST create.
+      if (updates.is_public === true && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          updates.is_public = false;
+          warnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; left as private.',
+          });
+        }
       }
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
