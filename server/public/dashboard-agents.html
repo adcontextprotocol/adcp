@@ -942,15 +942,15 @@
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<button class="agent-connect-toggle agent-action-link" data-card-id="' + cardId + '" data-agent-url="' + escapeHtml(agent.url) + '">Connect agent</button>' : ''}
+                <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
                 <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
-            ${!hasAuth ? '<div id="' + cardId + '-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">' +
-              buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id) +
-              '</div>' : ''}
+            <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
+              ${buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+            </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
             <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
@@ -1160,6 +1160,49 @@
         }
         msg.style.color = 'var(--color-error-600)';
         msg.textContent = err.message;
+      }
+    });
+
+    // OAuth "Authorize with agent" button surfaced inline in storyboard panels
+    // when the server returns needs_oauth. Mirrors the connect-form flow:
+    // ensure agent_context, then redirect to /api/oauth/agent/start.
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-oauth-challenge-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      let agentContextId = btn.dataset.agentContextId;
+
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = 'Starting OAuth...';
+
+      try {
+        if (!agentContextId) {
+          const connectRes = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({}),
+          });
+          if (!connectRes.ok) {
+            const data = await connectRes.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to create agent context');
+          }
+          const connectData = await connectRes.json();
+          agentContextId = connectData.agent_context_id;
+          if (!agentContextId) throw new Error('Failed to create agent context');
+        }
+
+        const returnTo = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = '/api/oauth/agent/start'
+          + '?agent_context_id=' + encodeURIComponent(agentContextId)
+          + '&return_to=' + encodeURIComponent(returnTo);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        console.error('OAuth challenge failed:', err);
+        alert(err.message || 'Failed to start OAuth flow');
       }
     });
 
@@ -1422,6 +1465,22 @@
         }
       }
 
+      // Shared: render a "Connect via OAuth" prompt when an agent 401s with
+      // a WWW-Authenticate: Bearer challenge and no refreshable token is stored.
+      function renderOAuthChallenge(agentUrl, agentContextId, reason) {
+        const safeReason = reason
+          ? '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(String(reason)) + '</div>'
+          : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
+        const ctxAttr = agentContextId ? ' data-agent-context-id="' + escapeHtml(agentContextId) + '"' : '';
+        return (
+          '<div style="padding:var(--space-3);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);">'
+          + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
+          + safeReason
+          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
+          + '</div>'
+        );
+      }
+
       // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
@@ -1500,6 +1559,11 @@
 
           // Non-2xx — surface specific reason before falling back
           const errBody = await res.json().catch(() => ({}));
+
+          if (errBody.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
+            return;
+          }
 
           if (errBody.needs_auth) {
             panel.innerHTML = '<div style="padding:var(--space-4) 0;color:var(--color-text-secondary);font-size:var(--text-sm);">Your agent requires authentication to discover tools. Authorize or save an auth token using the connect form above, then try again.</div>';
@@ -1709,6 +1773,11 @@
             return;
           }
 
+          if (result.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error);
+            return;
+          }
+
           // Render result and next step
           const resultEl = panel.querySelector('.step-runner-result');
           const cls = result.skipped ? 'skip' : result.passed ? 'pass' : 'fail';
@@ -1798,6 +1867,11 @@
 
           const data = await res.json();
           progressEl.remove();
+
+          if (res.status === 422 && data.needs_oauth) {
+            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error);
+            return;
+          }
 
           let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
           html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
@@ -1973,9 +2047,15 @@
 
     function escapeHtml(str) {
       if (!str) return '';
-      const d = document.createElement('div');
-      d.textContent = str;
-      return d.innerHTML;
+      // textContent → innerHTML escapes &, <, > but leaves " and ' intact,
+      // which is unsafe in double-quoted attribute contexts — this file uses
+      // escapeHtml both for text and for data-* attributes.
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
   </script>
 </body>

@@ -276,10 +276,12 @@ phases:
         stateful: true
 
         sample_request:
-          brand:
-            domain: 'test.example'
-          operator: 'test.example'
-          sandbox: true
+          accounts:
+            - brand:
+                domain: 'test.example'
+              operator: 'test.example'
+              billing: 'operator'
+              sandbox: true
 
           idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_account_sync_accounts_for_state"
           context:
@@ -919,6 +921,7 @@ phases:
           Return a session with a session_id.
 
         sample_request:
+          intent: "comply test — initiate deterministic SI session"
           identity:
             user_type: 'consumer'
           supported_capabilities:

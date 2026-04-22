@@ -199,8 +199,10 @@ phases:
             - audience_id: "adcp-test-audience-001"
               name: "AdCP test audience"
               add:
-                - hashed_email: "a000000000000000000000000000000000000000000000000000000000000000"
-                - hashed_phone: "b000000000000000000000000000000000000000000000000000000000000000"
+                - external_id: "adcp-user-0001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000000"
+                - external_id: "adcp-user-0002"
+                  hashed_phone: "b000000000000000000000000000000000000000000000000000000000000000"
 
           idempotency_key: "$generate:uuid_v4#audience_sync_audience_sync_create_audience"
           context:

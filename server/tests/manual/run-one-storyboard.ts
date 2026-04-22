@@ -12,8 +12,6 @@ import { listAllComplianceStoryboards, runStoryboard, getComplianceCacheDir } fr
 import type { Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
 import { StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
-// Install our stricter `context.no_secret_echo` over the SDK default (adcp-client#751).
-import '../../src/compliance/assertions/index.js';
 
 const AUTH_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN ?? 'storyboard-diag-token';
 process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;

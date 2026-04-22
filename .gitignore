@@ -16,10 +16,6 @@ server/node_modules
 /dist/schemas/registry.*
 /dist/compliance/latest
 /dist/compliance/v*
-# TS compile output from server/src/compliance/** lands here; the spec
-# tarball only publishes YAML / JSON so the compiled JS never belongs in
-# git even though /dist/compliance is otherwise tracked for release artifacts.
-/dist/compliance/assertions
 /dist/protocol/latest.tgz
 /dist/protocol/latest.tgz.sha256
 /dist/protocol/latest.tgz.sig

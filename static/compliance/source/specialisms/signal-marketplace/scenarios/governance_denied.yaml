@@ -121,6 +121,9 @@ phases:
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   categories: ["budget_authority"]
           idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_signal_agent_setup_sync_governance"
         validations:

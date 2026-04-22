@@ -114,7 +114,6 @@ phases:
           accounts:
             - brand:
                 domain: "amsterdam-steakhouse.example"
-                name: "Amsterdam Steakhouse"
               operator: "pinnacle-agency.example"
               billing: "operator"
               sandbox: true
@@ -640,19 +639,19 @@ phases:
           events:
             - event_id: "evt_001"
               event_type: "purchase"
-              timestamp: "2026-04-15T19:30:00Z"
+              event_time: "2026-04-15T19:30:00Z"
               content_ids: ["ribeye_36oz"]
               value: 89.00
               currency: "USD"
             - event_id: "evt_002"
               event_type: "lead"
-              timestamp: "2026-04-15T20:15:00Z"
+              event_time: "2026-04-15T20:15:00Z"
               content_ids: ["wagyu_flight"]
               value: 195.00
               currency: "USD"
             - event_id: "evt_003"
               event_type: "page_view"
-              timestamp: "2026-04-15T20:45:00Z"
+              event_time: "2026-04-15T20:45:00Z"
               content_ids: ["seafood_tower"]
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_conversion_tracking_log_events"
