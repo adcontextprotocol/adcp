@@ -30,9 +30,27 @@
  * Swap `<` for the full-width `＜` inside any `<untrusted_proposer_input>`
  * or `</untrusted_proposer_input>` sequence so a malicious submitter
  * can't close our wrapper tag from inside.
+ *
+ * The regex intentionally tolerates whitespace, attributes, case, and
+ * unterminated / newline-delimited forms — Sonnet's tokenizer
+ * generalises the boundary across these variants, so the neutralizer
+ * must match the same lenient space. Examples caught:
+ *
+ *   </untrusted_proposer_input>    ← literal close
+ *   <UNTRUSTED_PROPOSER_INPUT>     ← case variation
+ *   < untrusted_proposer_input >   ← internal whitespace
+ *   <untrusted_proposer_input foo="bar">   ← attributes
+ *   <untrusted_proposer_input\n    ← unterminated + newline
  */
 export function neutralizeUntrustedTags(raw: string): string {
-  return raw.replace(/<\/?untrusted_proposer_input>/gi, (m) => m.replace(/</g, '＜'));
+  // Matches both opening and closing forms, optional whitespace around
+  // the slash, word-boundary anchored on the tag name so we don't eat
+  // substrings of other tags, and an unterminated suffix (no `>`) so
+  // attackers can't stream past our regex with a dangling open tag.
+  return raw.replace(
+    /<\s*\/?\s*untrusted_proposer_input\b[^>]*>?/gi,
+    (m) => m.replace(/</g, '＜'),
+  );
 }
 
 /**

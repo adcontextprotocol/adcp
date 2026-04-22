@@ -133,25 +133,29 @@ export function createIllustrationToolHandlers(
     }
 
     try {
-      // Check monthly quota (separate from the session-level tool limit)
+      // Look up perspective and verify author BEFORE surfacing quota
+      // state. Using different error strings for "not found", "not
+      // author", and "over quota" would let a non-author probe for
+      // existence of unpublished drafts by slug — see the security
+      // review for #2794. Collapse "doesn't exist" and "not yours" to
+      // one opaque response, and only reveal quota state to people
+      // who actually have access to this perspective.
+      const perspective = await illustrationDb.getPerspectiveWithIllustration(slug);
+      const isAuthor = perspective
+        ? await illustrationDb.isAuthorOfPerspective(perspective.id, userId)
+        : false;
+      if (!perspective || !isAuthor) {
+        return JSON.stringify({ error: 'Perspective not found or you are not an author of it.' });
+      }
+
+      // Check monthly quota (5/month per user — separate from the
+      // session-level 10/10min tool limit above).
       const monthlyCount = await illustrationDb.countMonthlyGenerations(userId);
       if (monthlyCount >= 5) {
         return JSON.stringify({
           error: 'You\'ve reached the monthly illustration limit (5 per month).',
           generations_this_month: monthlyCount,
         });
-      }
-
-      // Look up perspective
-      const perspective = await illustrationDb.getPerspectiveWithIllustration(slug);
-      if (!perspective) {
-        return JSON.stringify({ error: 'Perspective not found with that slug.' });
-      }
-
-      // Verify the user is an author of this perspective
-      const isAuthor = await illustrationDb.isAuthorOfPerspective(perspective.id, userId);
-      if (!isAuthor) {
-        return JSON.stringify({ error: 'Only authors can generate illustrations for their own articles.' });
       }
 
       // Generate
