@@ -73,6 +73,7 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
@@ -3527,13 +3528,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
   /**
-   * Verify the authenticated user belongs to the organization that owns this agent.
-   * Returns true if ownership is confirmed, false otherwise.
+   * Resolve the workos_organization_id of the org that owns this agent,
+   * for the authenticated user. Returns null if the user is not a member
+   * of any org whose member_profile lists the agent (403 case).
+   *
+   * Mirrors the query driving the `auth-status` endpoint so the org id the
+   * UI surfaces ("Auth configured via OAuth") is the one we consult for
+   * Test-your-agent credentials.
    */
-  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+  async function resolveAgentOwnerOrg(userId: string, agentUrl: string): Promise<string | null> {
     try {
-      const result = await query(
-        `SELECT 1 FROM member_profiles mp
+      const result = await query<{ workos_organization_id: string }>(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
          JOIN organization_memberships om
            ON om.workos_organization_id = mp.workos_organization_id
          WHERE mp.agents @> $1::jsonb
@@ -3541,10 +3548,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
          LIMIT 1`,
         [JSON.stringify([{ url: agentUrl }]), userId],
       );
-      return result.rows.length > 0;
+      return result.rows[0]?.workos_organization_id ?? null;
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+    return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
   }
 
   function validateAgentUrlParam(raw: string): string | null {
@@ -3909,18 +3920,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-    if (!isOwner) {
+    const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+    if (!orgId) {
       return res.status(403).json({ error: "You do not have permission to test this agent" });
     }
 
     try {
-      let auth;
-      try {
-        auth = await complianceDb.resolveOwnerAuth(agentUrl);
-      } catch (authErr) {
-        logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
-      }
+      const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
 
       let profile;
       try {
@@ -4049,8 +4055,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
@@ -4059,12 +4065,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        let auth;
-        try {
-          auth = await complianceDb.resolveOwnerAuth(agentUrl);
-        } catch (authErr) {
-          logger.debug({ err: authErr, agentUrl }, "Auth resolution failed for step run");
-        }
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
 
         const { context, dry_run } = req.body;
         if (context && (typeof context !== "object" || Array.isArray(context))) {
@@ -4125,8 +4126,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
@@ -4135,8 +4136,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Resolve agent auth
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
 
         const complyResult = await comply(agentUrl, {
           timeout_ms: 90_000,
@@ -4216,8 +4216,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
@@ -4226,7 +4226,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
         const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
