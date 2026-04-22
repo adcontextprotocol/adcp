@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop, '2.6.x']
   push:
-    branches: [main]
+    branches: [main, develop, '2.6.x']
 
 concurrency:
   group: build-check-${{ github.ref }}
@@ -37,3 +37,15 @@ jobs:
 
       - name: Repo unit tests
         run: npm run test:unit
+
+      - name: Validate schemas
+        run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
+
+      - name: Check policy registry publication completeness
+        run: npm run check:registry
+
+      - name: Check platform-agnosticism (no vendor tokens in normative field names)
+        run: npm run test:platform-agnostic
+
+      - name: HMAC webhook conformance (verifier + signer)
+        run: npm run test:hmac-vectors && npm run test:hmac-signer-conformance
