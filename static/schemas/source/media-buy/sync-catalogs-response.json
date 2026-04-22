@@ -22,7 +22,8 @@
             "properties": {
               "catalog_id": {
                 "type": "string",
-                "description": "Catalog ID from the request"
+                "description": "Catalog ID from the request",
+                "x-entity": "catalog"
               },
               "action": {
                 "$ref": "/schemas/enums/catalog-action.json",
@@ -35,7 +36,7 @@
               "item_count": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Total number of items in the catalog after sync"
+                "description": "Total number of items in the catalog after sync. Required when action is 'created', 'updated', or 'unchanged'. Omitted on 'failed' and 'deleted'."
               },
               "items_approved": {
                 "type": "integer",
@@ -114,7 +115,30 @@
               "catalog_id",
               "action"
             ],
-            "additionalProperties": true
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "created",
+                        "updated",
+                        "unchanged"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "item_count"
+                  ]
+                }
+              }
+            ]
           }
         },
         "sandbox": {

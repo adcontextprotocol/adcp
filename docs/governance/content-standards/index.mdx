@@ -187,11 +187,17 @@ The threshold answers the key buyer question: "If I accept your local model, how
 
 ## Policies
 
-Content Standards uses **natural language prompts** rather than rigid keyword lists:
+Content Standards uses **addressable policies** — an array of policy entries, each with a policy_id, enforcement, and natural-language policy text. Same shape as registry-published policies, so bespoke buyer rules and shared registry policies are interchangeable. Validation findings reference `policy_id` to identify which policy triggered:
 
 ```json
 {
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
+  "policies": [
+    { "policy_id": "no_violence", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid content depicting violence, weapons, or physical aggression." },
+    { "policy_id": "no_controversial_politics", "policy_categories": ["brand_suitability"], "enforcement": "must", "policy": "Avoid controversial political content." },
+    { "policy_id": "no_adult_themes", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Avoid adult, sexual, or mature themes." },
+    { "policy_id": "no_hate_speech", "policy_categories": ["brand_safety"], "enforcement": "must", "policy": "Block hate speech and illegal activities." },
+    { "policy_id": "no_sedentary_glorification", "policy_categories": ["brand_suitability"], "enforcement": "should", "policy": "Avoid content that portrays sedentary lifestyle positively." }
+  ],
   "calibration_exemplars": {
     "pass": [
       {
@@ -214,6 +220,18 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly.
 
 See [Artifacts](./artifacts) for details on artifact structure and secured asset access.
+
+## Versioning and mid-flight amendments
+
+Content standards carry a `version` field and MAY be amended while campaigns are running. `update_content_standards` creates a new version for audit purposes rather than mutating the previous one.
+
+AdCP 3.0 default: **pinned at buy time.** Unless otherwise declared, a media buy references the version of the standards that was in effect when its `create_media_buy` was approved, and subsequent amendments do **not** retroactively apply to in-flight delivery on that buy. This is the conservative default because it prevents a mid-campaign amendment from silently re-characterizing already-approved delivery.
+
+Governance agents MAY mark an individual policy as continuously re-evaluated by declaring `evaluation_mode: continuous` on the policy entry (default is `pinned`). Use `continuous` for policies that must track regulatory changes without re-approval — emerging regulatory disclosures, new legal prohibitions, accessibility requirements. Use the default `pinned` for brand-voice, taxonomy, and commercial preferences where stability across a flight is the desired behavior.
+
+When a policy is `continuous`, a finding generated against a newer version **MUST** carry both the evaluation-time version and the pinned-at-buy version on the finding, so downstream audit can reconstruct which version applied. The governance agent **MUST** emit the finding to the buying agent via the media buy's `push_notification_config` when one is configured, and the finding **MUST** be retrievable through the buy's standard status surface regardless. Delivery-adjustment decisions remain with the buyer. When a policy is `pinned`, the pinned version applies for the life of the buy; the governance agent **MAY** still surface advisory findings based on later versions but **MUST NOT** mark them as enforcement failures against the pinned buy.
+
+AdCP 3.0 does not define a mid-flight re-pin mechanism. A buyer that wants to adopt a newer standards version across all pinned policies replaces the buy — cancel the existing buy via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) and issue a new [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) whose governance block references the current version. This is a heavyweight path: a new approval is required, pacing history resets, and in-flight delivery may have makegood implications. It is deliberately the only 3.0 mechanism; `standards_version` on `update_media_buy` and partial re-pin are out of scope for 3.0.
 
 ## Scoped Standards
 
@@ -308,13 +326,6 @@ See [calibrate_content](./tasks/calibrate_content) for the full task specificati
 | [calibrate_content](./tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
 | [get_media_buy_artifacts](./tasks/get_media_buy_artifacts) | Retrieve content artifacts from a media buy |
 | [validate_content_delivery](./tasks/validate_content_delivery) | Batch validation of content artifacts |
-
-## Typical Providers
-
-- **IAS** - Integral Ad Science
-- **DoubleVerify** - Brand suitability and verification
-- **Scope3** - Sustainability-focused brand suitability with prompt-based policies
-- **Custom** - Brand-specific implementations
 
 ## Future: Secure Enclaves
 

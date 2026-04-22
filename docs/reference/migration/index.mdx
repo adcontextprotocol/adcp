@@ -9,9 +9,17 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 
 This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades); for SDK versions that support 3.0 see [Schemas and SDKs](/docs/building/schemas-and-sdks#adcp-3-0-support).
 
+<Warning>
+**v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
+</Warning>
+
 <Info>
 **Starting from v2?** See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for the 8 minimum requirements to pass storyboard testing before working through this full migration.
 </Info>
+
+<Warning>
+**Upgrading from rc.3?** The [rc.3 → 3.0 prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) cover additional breaking changes: capabilities model simplification, `account` required on `update_media_buy`, `preview_creative` schema flattening, `signal_id` required on signals, governance lifecycle changes, and the `pending_activation` status split.
+</Warning>
 
 ## Migration checklist
 
@@ -42,7 +50,14 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
 | Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
 | Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
-| Capabilities | `compliance_testing` protocol in `supported_protocols` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
+| Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
+| Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/implementation/security) |
+| Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/implementation/security) |
+| Webhook signing | Unified on RFC 9421 profile, baseline-required for sellers; HMAC fallback deprecated (removed in 4.0) | New requirement | [Webhooks](/docs/building/implementation/webhooks) |
+| Webhook idempotency | `idempotency_key` required on every webhook payload | New requirement | [Webhooks § Reliability](/docs/building/implementation/webhooks) |
+| Governance | `governance_context` is a signed JWS verified via governance agent JWKS | Restructure | [Governance](/docs/governance/campaign) |
+| IO approval | `MediaBuy.pending_approval` removed — approval is a task-layer object | Restructure | [Media buy lifecycle](/docs/media-buy/media-buys) |
+| Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/docs/governance/annex-iii-obligations) |
 
 <Warning>
 `buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
@@ -63,9 +78,11 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 ## Running v2 and v3 side by side
 
-During migration, you can run v2 and v3 handlers in parallel. AdCP does not define a version negotiation mechanism at the transport level.
+Dual-support is a temporary migration tool, not a long-term posture. After August 1, 2026, v3-only is the required configuration — see the [v2 sunset page](/docs/reference/v2-sunset).
 
-1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. If it succeeds, the seller supports v3. If the seller only exposes v2 tools (no `get_adcp_capabilities`), use your v2 code path.
+During migration, sellers can accept both v2 and v3 traffic and buyers can route to each seller on the correct version:
+
+1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. A successful response means the seller supports v3; buyers declare their version via `adcp_major_version` and sellers advertise the versions they accept via `major_versions`. See [version negotiation](/docs/reference/versioning#version-negotiation) for the full flow. A seller that does not respond to `get_adcp_capabilities` is v2-only.
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 

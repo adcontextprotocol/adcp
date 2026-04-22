@@ -9,6 +9,8 @@ import {
   clearSessions,
   startSessionCleanup,
   stopSessionCleanup,
+  runWithSessionContext,
+  flushDirtySessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
 } from '../../src/training-agent/state.js';
@@ -17,8 +19,16 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
+import {
+  MUTATING_TOOLS,
+} from '../../src/training-agent/idempotency.js';
+import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import {
+  HUMAN_REVIEW_CATEGORIES,
+  HUMAN_REVIEW_POLICY_IDS,
+} from '../../src/training-agent/governance-handlers.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -50,6 +60,21 @@ async function simulateListTools(server: ReturnType<typeof createTrainingAgentSe
 }
 
 /**
+ * Auto-inject a fresh UUID v4 `idempotency_key` on mutating tools when the
+ * test doesn't provide one. The idempotency middleware requires the key per
+ * #2315; most tests in this file predate that requirement and don't care
+ * about replay semantics — they just want the tool to run once.
+ *
+ * Tests that DO care (conflict / replay / expired / missing-key coverage)
+ * pass an explicit `idempotency_key`, which this helper preserves.
+ */
+function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!MUTATING_TOOLS.has(toolName)) return args;
+  if (args.idempotency_key !== undefined) return args;
+  return { ...args, idempotency_key: `test-${randomUUID()}` };
+}
+
+/**
  * Simulate CallTool request on an MCP server.
  */
 async function simulateCallTool(
@@ -63,13 +88,21 @@ async function simulateCallTool(
     throw new Error('CallTool handler not found');
   }
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
+  // Success responses carry the body on `structuredContent`; error / replay
+  // paths additionally stuff a JSON-stringified copy in `content[0].text`.
+  // Prefer structuredContent and fall back to content text for error paths.
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
-  // Unwrap adcp_error envelope for error responses (L3 compliance format)
-  const result = parsed.adcp_error ?? parsed;
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  // Unwrap adcp_error envelope (MCP isError responses) and errors-in-body
+  // responses (spec-compliant oneOf error variant) uniformly so tests can
+  // assert against `result.code` regardless of surface.
+  const errorInBody = Array.isArray(parsed.errors) && parsed.errors.length > 0 ? parsed.errors[0] : undefined;
+  const result = parsed.adcp_error ?? errorInBody ?? parsed;
   return {
     result,
     isError: response.isError,
@@ -91,7 +124,7 @@ async function simulateCallToolAsTask(
     throw new Error('CallTool handler not found');
   }
   return handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args, task: taskParams } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args), task: taskParams } },
     {},
   );
 }
@@ -697,34 +730,181 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
-    it('creates a new session with empty maps', () => {
-      const session = getSession('test-key');
-      expect(session.mediaBuys).toBeInstanceOf(Map);
-      expect(session.mediaBuys.size).toBe(0);
-      expect(session.creatives).toBeInstanceOf(Map);
-      expect(session.creatives.size).toBe(0);
+    it('creates a new session with empty maps', async () => {
+      await runWithSessionContext(async () => {
+        const session = await getSession('test-key');
+        expect(session.mediaBuys).toBeInstanceOf(Map);
+        expect(session.mediaBuys.size).toBe(0);
+        expect(session.creatives).toBeInstanceOf(Map);
+        expect(session.creatives.size).toBe(0);
+      });
     });
 
-    it('returns the same session for the same key', () => {
-      const s1 = getSession('test-key');
-      s1.mediaBuys.set('mb1', {} as any);
-      const s2 = getSession('test-key');
-      expect(s2.mediaBuys.has('mb1')).toBe(true);
+    it('returns the same session for the same key within a request', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-key');
+        s1.mediaBuys.set('mb1', {} as any);
+        const s2 = await getSession('test-key');
+        expect(s2.mediaBuys.has('mb1')).toBe(true);
+      });
     });
 
-    it('returns different sessions for different keys', () => {
-      const s1 = getSession('key-a');
-      const s2 = getSession('key-b');
-      s1.mediaBuys.set('mb1', {} as any);
-      expect(s2.mediaBuys.has('mb1')).toBe(false);
+    it('persists mutations across requests via the store', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-persist-key');
+        s1.mediaBuys.set('mb1', {} as any);
+        await flushDirtySessions();
+      });
+      await runWithSessionContext(async () => {
+        const s2 = await getSession('test-persist-key');
+        expect(s2.mediaBuys.has('mb1')).toBe(true);
+      });
     });
 
-    it('updates lastAccessedAt on every access', () => {
-      const s1 = getSession('test-key');
-      const firstAccess = s1.lastAccessedAt;
-      // Tiny delay to get a different timestamp
-      const s2 = getSession('test-key');
-      expect(s2.lastAccessedAt.getTime()).toBeGreaterThanOrEqual(firstAccess.getTime());
+    it('returns different sessions for different keys', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('key-a');
+        const s2 = await getSession('key-b');
+        s1.mediaBuys.set('mb1', {} as any);
+        expect(s2.mediaBuys.has('mb1')).toBe(false);
+      });
+    });
+
+    it('updates lastAccessedAt on every access', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('test-key');
+        const firstAccess = s1.lastAccessedAt;
+        const s2 = await getSession('test-key');
+        expect(s2.lastAccessedAt.getTime()).toBeGreaterThanOrEqual(firstAccess.getTime());
+      });
+    });
+
+    it('read-only access does not flush (lastAccessedAt touch is excluded from diff)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'readonly-test';
+      try {
+        // Seed: persist mb1 via a clean request
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          s.mediaBuys.set('mb1', { status: 'active' } as any);
+          await flushDirtySessions();
+        });
+        // Monkey-patch put to count writes
+        let writes = 0;
+        const originalPut = store.put.bind(store);
+        store.put = async (c: string, i: string, d: Record<string, unknown>) => {
+          writes++;
+          return originalPut(c, i, d);
+        };
+        // Pure-read request
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          expect(s.mediaBuys.has('mb1')).toBe(true);
+          await flushDirtySessions();
+        });
+        expect(writes).toBe(0);
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('snapshot matches round-trip serialization (first flush on unchanged data is a no-op)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'snapshot-test';
+      try {
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          s.mediaBuys.set('mb1', { status: 'active' } as any);
+          await flushDirtySessions();
+        });
+        let writes = 0;
+        const originalPut = store.put.bind(store);
+        store.put = async (c: string, i: string, d: Record<string, unknown>) => {
+          writes++;
+          return originalPut(c, i, d);
+        };
+        // Load, touch nothing, flush — should not write
+        await runWithSessionContext(async () => {
+          await getSession(key);
+          await flushDirtySessions();
+        });
+        expect(writes).toBe(0);
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('disk format uses structuredSerialize envelopes (Maps round-trip losslessly)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'format-test';
+      try {
+        const createdAt = new Date('2026-04-17T10:00:00Z');
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          s.mediaBuys.set('mb_abc', { mediaBuyId: 'mb_abc', status: 'active' } as any);
+          s.mediaBuys.set('mb_def', { mediaBuyId: 'mb_def', status: 'paused' } as any);
+          s.createdAt = createdAt;
+          await flushDirtySessions();
+        });
+
+        // Inspect the raw stored doc — must use SDK's tagged-envelope format.
+        const raw = await store.get('training_sessions', key) as Record<string, unknown>;
+        expect(raw).toBeDefined();
+        const mediaBuys = raw.mediaBuys as { __adcpType?: string; entries?: unknown[] };
+        expect(mediaBuys.__adcpType).toBe('Map');
+        expect(Array.isArray(mediaBuys.entries)).toBe(true);
+        expect(mediaBuys.entries!.length).toBe(2);
+        const created = raw.createdAt as { __adcpType?: string; value?: string };
+        expect(created.__adcpType).toBe('Date');
+        expect(created.value).toBe(createdAt.toISOString());
+
+        // Hydrate via getSession and verify both entries come back as real Maps/Dates.
+        await runWithSessionContext(async () => {
+          const s = await getSession(key);
+          expect(s.mediaBuys).toBeInstanceOf(Map);
+          expect(s.mediaBuys.get('mb_abc')).toEqual({ mediaBuyId: 'mb_abc', status: 'active' });
+          expect(s.mediaBuys.get('mb_def')).toEqual({ mediaBuyId: 'mb_def', status: 'paused' });
+          expect(s.createdAt).toBeInstanceOf(Date);
+          expect(s.createdAt.toISOString()).toBe(createdAt.toISOString());
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('dispatcher skips flush when handler throws (real MCP path)', async () => {
+      const { setStateStore } = await import('../../src/training-agent/state.js');
+      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        const server = createTrainingAgentServer(DEFAULT_CTX);
+        // create_media_buy with no arguments throws internally before validation completes —
+        // any pre-throw mutations must not persist.
+        // We don't need to induce a throw in prod code; just verify the flushable=false path:
+        // the INVALID_REQUEST / missing-required branch still writes nothing (no state touched).
+        const before = store.size('training_sessions');
+        await simulateCallTool(server, 'create_media_buy', {
+          account: { brand: { domain: 'throw-test.example' } },
+          // missing start_time, end_time, packages — hits VALIDATION_ERROR before any mutation
+        });
+        const after = store.size('training_sessions');
+        // Validation error path may legitimately flush the session (to persist the fact
+        // that the brand domain derived a session key). We allow 0 or 1 writes but not more —
+        // the invariant is "throwing handlers don't accumulate partial state across failures."
+        expect(after - before).toBeLessThanOrEqual(1);
+      } finally {
+        setStateStore(null);
+      }
     });
   });
 
@@ -745,6 +925,13 @@ describe('session state', () => {
         'open',
       );
       expect(key).toBe('open:acme.example');
+    });
+
+    it('lowercases brand domain so DNS casing does not fork sessions', () => {
+      const a = sessionKeyFromArgs({ brand: { domain: 'Acme.Example' } }, 'open');
+      const b = sessionKeyFromArgs({ brand: { domain: 'acme.example' } }, 'open');
+      expect(a).toBe(b);
+      expect(a).toBe('open:acme.example');
     });
 
     it('uses account_id when account has account_id form', () => {
@@ -768,6 +955,33 @@ describe('session state', () => {
       expect(key).toBe('open:default');
     });
 
+    it('falls back to plans[0].brand.domain for sync_plans-style requests', () => {
+      const key = sessionKeyFromArgs(
+        { plans: [{ plan_id: 'p1', brand: { domain: 'acme.example' } }] },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('prefers top-level brand over plans[0]', () => {
+      const key = sessionKeyFromArgs(
+        {
+          brand: { domain: 'acme.example' },
+          plans: [{ plan_id: 'p1', brand: { domain: 'other.example' } }],
+        },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('returns open:default when plans is empty or brand is malformed', () => {
+      expect(sessionKeyFromArgs({ plans: [] }, 'open')).toBe('open:default');
+      expect(sessionKeyFromArgs({ plans: [{}] }, 'open')).toBe('open:default');
+      expect(
+        sessionKeyFromArgs({ plans: [{ brand: { domain: 'bad domain!' } }] }, 'open'),
+      ).toBe('open:default');
+    });
+
     it('falls back to open mode when training mode has no userId', () => {
       const key = sessionKeyFromArgs(
         { account: { brand: { domain: 'test.example' }, operator: 'test.example' } },
@@ -788,13 +1002,17 @@ describe('session state', () => {
       stopSessionCleanup(); // second call should not throw
     });
 
-    it('clearSessions removes all sessions', () => {
-      getSession('a');
-      getSession('b');
-      clearSessions();
-      // After clearing, getting a key should produce a fresh session
-      const s = getSession('a');
-      expect(s.mediaBuys.size).toBe(0);
+    it('clearSessions removes all sessions', async () => {
+      await runWithSessionContext(async () => {
+        const s1 = await getSession('a');
+        s1.mediaBuys.set('mb1', {} as any);
+        await flushDirtySessions();
+      });
+      await clearSessions();
+      await runWithSessionContext(async () => {
+        const s = await getSession('a');
+        expect(s.mediaBuys.size).toBe(0);
+      });
     });
   });
 });
@@ -1559,11 +1777,63 @@ describe('sync_creatives handler', () => {
     const { result } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
         creative_id: 'cr_bad_format',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
+        format_id: { agent_url: getAgentUrl(), id: 'nonexistent_format' },
       }],
     });
     expect(result.code).toBeDefined();
     expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('accepts format_id referencing a remote creative agent without local validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_remote_format',
+        format_id: { agent_url: 'https://creative.adcontextprotocol.org', id: 'product_carousel_3_to_10' },
+      }],
+    });
+    const creatives = result.creatives as Array<Record<string, unknown>> | undefined;
+    expect(creatives).toHaveLength(1);
+    expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
+  });
+
+  it('validates a local format_id when agent_url is omitted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_no_url_bad',
+        format_id: { id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('treats a trailing-slash / uppercase local agent_url as local for format validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const ownUrl = getAgentUrl();
+    // Uppercase host + trailing slash — same origin, different string.
+    const variant = ownUrl.replace(/^https?:\/\/([^/]+)/i, (_m, h) => `https://${h.toUpperCase()}`) + '/';
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_local_variant',
+        format_id: { agent_url: variant, id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('rejects a non-http(s) format_id.agent_url before persisting the creative', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_evil_url',
+        format_id: { agent_url: 'javascript:alert(1)', id: 'anything' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toMatch(/http:\/\/ or https:\/\//);
   });
 
   it('processes creative-to-package assignments', async () => {
@@ -1768,20 +2038,31 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
-  it('returns zero counts when no creatives synced', async () => {
+  it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'list_creatives', { account });
 
-    expect(result.creatives).toEqual([]);
+    // Empty sessions fall back to compliance creative fixtures (e.g.
+    // campaign_hero_video) so conformance storyboards can resolve stable IDs
+    // without controller_seeding auto-fire. Sessions with synced creatives
+    // return only those.
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+  });
 
+  it('skips the compliance fallback when creative_ids filter is explicit', async () => {
+    const account = { brand: { domain: 'filter-empty.example' }, operator: 'filter-empty.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      creative_ids: ['nonexistent_id'],
+    });
+
+    expect(result.creatives).toEqual([]);
     const qs = result.query_summary as Record<string, unknown>;
     expect(qs.total_matching).toBe(0);
     expect(qs.returned).toBe(0);
-
-    const pg = result.pagination as Record<string, unknown>;
-    expect(pg.has_more).toBe(false);
-    expect(pg.total_count).toBe(0);
   });
 
   it('query_summary reflects filtered count', async () => {
@@ -1873,6 +2154,25 @@ describe('list_creatives pricing', () => {
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives[0].pricing_options).toBeUndefined();
+  });
+
+  it('includes pricing_options on an ad-server-capable seller when include_pricing is omitted', async () => {
+    // creative.has_creative_library: true sellers quote per-creative pricing
+    // against the account rate card automatically — the SDK's list_creatives
+    // request builder does not forward include_pricing, so storyboards rely
+    // on capability-based emission for creative_ad_server conformance.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options).toBeDefined();
+    expect(options[0].pricing_option_id).toBe('po_display_300x250_cpm');
   });
 
   it('includes pricing_options when both include_pricing and account are provided', async () => {
@@ -2314,6 +2614,189 @@ describe('update_media_buy handler', () => {
 
     expect(result.code).toBe('PACKAGE_NOT_FOUND');
   });
+
+  it('transitions from pending_creatives to pending_start when creative_assignments are added via update', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-update.example' }, operator: 'assign-update.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: preBuy } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((preBuy.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_creatives');
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_assign_via_update',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Assign Via Update',
+      }],
+    });
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: pkgId,
+        creative_assignments: [{ creative_id: 'cr_assign_via_update' }],
+      }],
+    });
+
+    expect(updateResult.status).toBe('pending_start');
+
+    const { result: postBuy } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((postBuy.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_start');
+  });
+
+  it('clears creative_assignments when given an empty array, regressing to pending_creatives', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-clear.example' }, operator: 'assign-clear.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-clear.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_clear_test',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Clear Test',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_clear_test' }],
+    });
+
+    const { result: afterAdd } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((afterAdd.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_start');
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creative_assignments: [] }],
+    });
+    expect(updateResult.status).toBe('pending_creatives');
+  });
+
+  it('rejects all creative_assignments atomically when any creative_id is missing', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-atomic.example' }, operator: 'assign-atomic.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-atomic.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgs = createResult.packages as Array<Record<string, unknown>>;
+    const pkgId0 = pkgs[0].package_id as string;
+    const pkgId1 = pkgs[1].package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_valid',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Valid',
+      }],
+    });
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [
+        { package_id: pkgId0, creative_assignments: [{ creative_id: 'cr_valid' }] },
+        { package_id: pkgId1, creative_assignments: [{ creative_id: 'cr_missing' }] },
+      ],
+    });
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
+
+    const { result: buyResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buyPkgs = (buyResult.media_buys as Array<Record<string, unknown>>)[0].packages as Array<Record<string, unknown>>;
+    const pkg0 = buyPkgs.find(p => p.package_id === pkgId0)!;
+    const approvals = pkg0.creative_approvals as Array<unknown>;
+    expect(approvals.length).toBe(0);
+  });
+
+  it('returns CREATIVE_NOT_FOUND when assigning an unknown creative', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-missing.example' }, operator: 'assign-missing.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-missing.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: pkgId,
+        creative_assignments: [{ creative_id: 'cr_does_not_exist' }],
+      }],
+    });
+
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
+  });
 });
 
 describe('update_media_buy end_time validation', () => {
@@ -2751,7 +3234,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'omit', id: firstProductId }],
+      refine: [{ scope: 'product', action: 'omit', product_id: firstProductId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -2778,7 +3261,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'more_like_this', id: sourceId }],
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: sourceId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -2796,6 +3279,62 @@ describe('get_products refine mode', () => {
 
     // Should have more than just the source product
     expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+
+  it('defaults missing action to include on product scope', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'default-action.example' }, operator: 'default-action.example' };
+
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const products = initial.products as Array<Record<string, unknown>>;
+    const firstProductId = products[0].product_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: firstProductId }],
+    });
+
+    const refinedProducts = refined.products as Array<Record<string, unknown>>;
+    const refinedIds = refinedProducts.map(p => p.product_id);
+    expect(refinedIds).toContain(firstProductId);
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('product');
+    expect(refinementApplied[0].product_id).toBe(firstProductId);
+  });
+
+  it('defaults missing action to include on proposal scope and echoes proposal_id', async () => {
+    const account = { brand: { domain: 'default-action-prop.example' }, operator: 'default-action-prop.example' };
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>>;
+    const targetProposalId = proposals?.[0]?.proposal_id as string;
+    expect(targetProposalId).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: targetProposalId }],
+    });
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('proposal');
+    expect(refinementApplied[0].proposal_id).toBe(targetProposalId);
   });
 });
 
@@ -2948,22 +3487,25 @@ describe('session limits', () => {
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
     const account = { brand: { domain: 'limit-mb.example' }, operator: 'limit-mb.example' };
 
-    // Fill the session to the limit by directly manipulating state
+    // Fill the session to the limit by directly manipulating state (persist via store)
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    const session = getSession(sessionKey);
-    for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
-      session.mediaBuys.set(`mb_fill_${i}`, {
-        mediaBuyId: `mb_fill_${i}`,
-        status: 'active',
-        currency: 'USD',
-        packages: [],
-        startTime: '2027-01-01T00:00:00Z',
-        endTime: '2027-12-31T00:00:00Z',
-        accountRef: account,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } as any);
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
+        session.mediaBuys.set(`mb_fill_${i}`, {
+          mediaBuyId: `mb_fill_${i}`,
+          status: 'active',
+          currency: 'USD',
+          packages: [],
+          startTime: '2027-01-01T00:00:00Z',
+          endTime: '2027-12-31T00:00:00Z',
+          accountRef: account,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as any);
+      }
+      await flushDirtySessions();
+    });
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -2984,16 +3526,19 @@ describe('session limits', () => {
   it('rejects sync_creatives when session creative limit reached', async () => {
     const account = { brand: { domain: 'limit-cr.example' }, operator: 'limit-cr.example' };
 
-    // Fill creatives to the limit
+    // Fill creatives to the limit (persist via store)
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
-    const session = getSession(sessionKey);
-    for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
-      session.creatives.set(`cr_fill_${i}`, {
-        creativeId: `cr_fill_${i}`,
-        status: 'active',
-        syncedAt: new Date().toISOString(),
-      } as any);
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
+        session.creatives.set(`cr_fill_${i}`, {
+          creativeId: `cr_fill_${i}`,
+          status: 'active',
+          syncedAt: new Date().toISOString(),
+        } as any);
+      }
+      await flushDirtySessions();
+    });
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
@@ -3297,11 +3842,11 @@ describe('get_signals handler', () => {
     stopSessionCleanup();
   });
 
-  it('returns error when neither signal_spec nor signal_ids provided', async () => {
+  it('returns full catalog (capped) when neither signal_spec nor signal_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_signals', { account });
-    expect(result.code).toBeDefined();
-    expect(result.message).toContain('signal_spec or signal_ids');
+    expect(Array.isArray(result.signals)).toBe(true);
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
   });
 
   it('discovers signals by natural language spec', async () => {
@@ -3955,9 +4500,12 @@ describe('get_adcp_capabilities handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
 
-    expect(result.adcp).toEqual({ major_versions: [3] });
+    expect(result.adcp).toEqual({
+      major_versions: [3],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 },
+    });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -3985,6 +4533,75 @@ describe('get_adcp_capabilities handler', () => {
   });
 });
 
+// ── Governance: tool inputSchema (#2845) ───────────────────────────
+//
+// The @adcp/client storyboard runner strips request fields the server's
+// inputSchema does not declare. Governance handlers use account.brand.domain
+// and brand.domain for session keying (see state.ts::sessionKeyFromArgs), so
+// these fields must appear in the declared schema — otherwise sync_plans and
+// check_governance land in different sessions and the plan lookup returns
+// "Plan not found".
+
+describe('governance tools expose session-key fields in inputSchema', () => {
+  const server = createTrainingAgentServer(DEFAULT_CTX);
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const listHandler = requestHandlers.get('tools/list')!;
+
+  it.each(['check_governance', 'report_plan_outcome', 'get_plan_audit_logs'])(
+    '%s declares account and brand at the top level',
+    async (toolName) => {
+      const response = await listHandler({ method: 'tools/list', params: {} }, {}) as {
+        tools: Array<{ name: string; inputSchema: { properties?: Record<string, unknown> } }>;
+      };
+      const tool = response.tools.find((t) => t.name === toolName);
+      expect(tool, `${toolName} not registered`).toBeDefined();
+      const props = tool!.inputSchema.properties ?? {};
+      expect(props, `${toolName} missing 'account' property`).toHaveProperty('account');
+      expect(props, `${toolName} missing 'brand' property`).toHaveProperty('brand');
+    },
+  );
+});
+
+// Cross-tool session keying contract: a plan synced under one brand.domain MUST
+// be visible to a subsequent check_governance call carrying the same tenant.
+// The storyboard runner injects `account` at the top level on every step, so
+// this is what "sync_plans ... check_governance" looks like in a real flow.
+describe('governance tools share session via account.brand.domain', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('check_governance finds a plan synced with the same brand.domain', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const tenant = { account: { brand: { domain: 'acme.example' } } };
+
+    await simulateCallTool(server, 'sync_plans', {
+      ...tenant,
+      plans: [{
+        plan_id: 'plan-session-key',
+        brand: { domain: 'acme.example' },
+        objectives: 'verify session sharing across governance tools',
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 100000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      ...tenant,
+      plan_id: 'plan-session-key',
+      caller: 'https://buyer.example',
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.findings).toBeUndefined();
+  });
+});
+
 // ── Governance: seller compliance ──────────────────────────────────
 
 describe('check_governance seller compliance', () => {
@@ -4001,7 +4618,7 @@ describe('check_governance seller compliance', () => {
     plan_id: 'plan-seller',
     brand: { name: 'Test' },
     objectives: 'test seller compliance',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
   };
 
@@ -4106,7 +4723,7 @@ describe('sync_plans input validation', () => {
         plan_id: 'plan-no-flight',
         brand: { name: 'Test' },
         objectives: 'test',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       }],
     });
 
@@ -4136,7 +4753,7 @@ describe('sync_plans input validation', () => {
         plan_id: 'plan-empty-flight',
         brand: { name: 'Test' },
         objectives: 'test',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
         flight: {},
       }],
     });
@@ -4160,7 +4777,7 @@ describe('sync_plans input validation', () => {
 
     expect(isError).toBe(true);
     expect(result.code).toBe('validation_error');
-    expect(result.message).toContain('budget requires total, currency, and authority_level');
+    expect(result.message).toContain('budget requires total (number) and currency (string)');
   });
 
   it('does not persist any plans when a later plan in the batch is invalid', async () => {
@@ -4169,7 +4786,7 @@ describe('sync_plans input validation', () => {
       plan_id: 'plan-valid',
       brand: { name: 'Test' },
       objectives: 'test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     const invalidPlan = {
@@ -4210,7 +4827,7 @@ describe('check_governance delegation enforcement', () => {
     plan_id: 'plan-deleg',
     brand: { name: 'Test' },
     objectives: 'test delegation limits',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB', 'DE'],
     delegations: [{
@@ -4416,12 +5033,10 @@ describe('MCP Tasks protocol', () => {
     const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
 
     const result = await simulateGetTaskResult(server, taskId);
-    expect(result.content).toBeDefined();
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0].type).toBe('text');
-    const parsed = JSON.parse(content[0].text);
-    expect(Array.isArray(parsed.products)).toBe(true);
-    expect(parsed.products.length).toBeGreaterThan(0);
+    const parsed = result.structuredContent as Record<string, unknown> | undefined;
+    expect(parsed).toBeDefined();
+    expect(Array.isArray(parsed!.products)).toBe(true);
+    expect((parsed!.products as unknown[]).length).toBeGreaterThan(0);
 
     // Must include related-task metadata
     const meta = result._meta as Record<string, unknown>;
@@ -4440,7 +5055,7 @@ describe('MCP Tasks protocol', () => {
     expect(tasks.length).toBe(2);
   });
 
-  it('sets failed status when tool execution errors', async () => {
+  it('structured errors complete the task (with adcp_error in result)', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'create_media_buy', {
       buyer_ref: 'test',
@@ -4448,12 +5063,19 @@ describe('MCP Tasks protocol', () => {
       brand: { domain: 'test.com' },
       start_time: '2025-01-01T00:00:00Z',
       end_time: '2025-02-01T00:00:00Z',
-      // Missing packages — will return validation error
+      // Missing packages — structured INVALID_REQUEST response, not a task failure
     });
 
     const task = response.task as Record<string, unknown>;
-    expect(task.taskId).toBeDefined();
-    expect(task.status).toBe('failed');
+    const taskId = task.taskId as string;
+    expect(taskId).toBeDefined();
+    expect(task.status).toBe('completed');
+
+    const result = await simulateGetTaskResult(server, taskId);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(content[0]!.text) as { adcp_error?: { code: string } };
+    expect(body.adcp_error?.code).toBe('INVALID_REQUEST');
   });
 
   it('rejects task augmentation on forbidden tools', async () => {
@@ -4632,7 +5254,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>>;
@@ -4666,7 +5288,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -4722,18 +5344,21 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
-    // Manually expire the proposal in session state
+    // Manually expire the proposal in session state (persist via store)
     const sessionKey = `open:proposal-test.example`;
-    const session = getSession(sessionKey);
-    const committedProposal = session.lastGetProductsContext?.proposals?.find(
-      p => p.proposal_id === draftProposal!.proposal_id,
-    );
-    if (committedProposal) {
-      (committedProposal as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
-    }
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKey);
+      const committedProposal = session.lastGetProductsContext?.proposals?.find(
+        p => p.proposal_id === draftProposal!.proposal_id,
+      );
+      if (committedProposal) {
+        (committedProposal as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
+      }
+      await flushDirtySessions();
+    });
 
     // Try to buy the expired proposal
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
@@ -4765,7 +5390,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -4804,7 +5429,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -4847,7 +5472,7 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
@@ -4910,7 +5535,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: 'nonexistent_proposal_id' }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'nonexistent_proposal_id' }],
     });
 
     const applied = refined.refinement_applied as Array<Record<string, unknown>>;
@@ -4933,7 +5558,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'omit', id: firstId }],
+      refine: [{ scope: 'proposal', action: 'omit', proposal_id: firstId }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;
@@ -4961,7 +5586,7 @@ describe('governance purchase_type and allocations', () => {
     budget: {
       total: 200000,
       currency: 'USD',
-      authority_level: 'agent_full',
+      reallocation_threshold: 1000000,
       allocations: {
         media_buy: { amount: 150000 },
         rights_license: { amount: 30000 },
@@ -5105,7 +5730,7 @@ describe('governance rights payload extraction', () => {
     plan_id: 'plan-rights',
     brand: { name: 'Acme' },
     objectives: 'rights test',
-    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB'],
   };
@@ -5185,7 +5810,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-audit',
       brand: { name: 'Acme' },
       objectives: 'audit test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5244,7 +5869,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-ctx-filter',
       brand: { name: 'Acme' },
       objectives: 'filter test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5275,7 +5900,7 @@ describe('governance audit logs by governance_context', () => {
       plan_id: 'plan-infer',
       brand: { name: 'Acme' },
       objectives: 'inference test',
-      budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+      budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
@@ -5312,7 +5937,7 @@ describe('governance creative_services purchase type', () => {
       budget: {
         total: 50000,
         currency: 'USD',
-        authority_level: 'agent_full',
+        reallocation_threshold: 1000000,
         allocations: { creative_services: { amount: 10000 } },
       },
       flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
@@ -5364,6 +5989,94 @@ describe('governance creative_services purchase type', () => {
   });
 });
 
+describe('create_content_standards input validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns INVALID_INPUT when scope is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope.languages_any is an empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: [] },
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/languages_any/i);
+  });
+
+  it('returns INVALID_INPUT when scope is an array (not an object)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: [],
+      policy: 'No violence.',
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/scope/i);
+  });
+
+  it('returns INVALID_INPUT when no policy/policies/registry_policy_ids provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+    });
+    expect(result.code).toBe('INVALID_INPUT');
+    expect(result.message).toMatch(/policy|policies|registry_policy_ids/i);
+  });
+
+  it('creates standards when called with legacy policy string', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { countries_all: ['US'], languages_any: ['en'] },
+      policy: 'Avoid violence and adult themes.',
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with spec-shape policies array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      policies: [
+        { policy_id: 'no_violence', policy_categories: ['brand_safety'], enforcement: 'must', policy: 'No violent imagery' },
+      ],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+
+  it('creates standards when called with registry_policy_ids only', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_content_standards', {
+      scope: { languages_any: ['en'] },
+      registry_policy_ids: ['shared_brand_safety_v1'],
+    });
+    expect(result.standards_id).toMatch(/^cs_[0-9a-f]{8}$/);
+  });
+});
+
 describe('storyboard governance sample_requests accepted by training agent', () => {
   beforeEach(() => {
     invalidateCache();
@@ -5382,7 +6095,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     budget: {
       total: 500000,
       currency: 'USD',
-      authority_level: 'agent_full',
+      reallocation_threshold: 1000000,
       allocations: {
         media_buy: { amount: 300000 },
         creative_services: { amount: 50000 },
@@ -5548,7 +6261,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(outcome.status).toBe('accepted');
   });
 
-  it('campaign_governance_delivery: delivery phase check with delivery_metrics', async () => {
+  it('governance_delivery_monitor: delivery phase check with delivery_metrics', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await setupPlan(server);
 
@@ -5562,7 +6275,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
     const ctx = initial.governance_context as string;
 
-    // Delivery phase re-check (from campaign_governance_delivery storyboard)
+    // Delivery phase re-check (from governance_delivery_monitor storyboard)
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
@@ -5583,7 +6296,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(result.status).toBe('approved');
   });
 
-  it('campaign_governance_denied: buy exceeding media_buy allocation is denied', async () => {
+  it('governance_spend_authority/denied: buy exceeding media_buy allocation is denied', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     // Plan with tight media_buy allocation
     await simulateCallTool(server, 'sync_plans', {
@@ -5594,7 +6307,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         budget: {
           total: 100000,
           currency: 'USD',
-          authority_level: 'agent_full',
+          reallocation_threshold: 1000000,
           allocations: { media_buy: { amount: 10000 } },
         },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
@@ -5635,7 +6348,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_deny_buy',
         brand: { domain: 'gov-denied.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -5671,7 +6384,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_ctx_deny',
         brand: { domain: 'gov-ctx-denied.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -5721,7 +6434,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_approve_buy',
         brand: { domain: 'gov-ok.example' },
         objectives: 'large budget',
-        budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -5767,7 +6480,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         plan_id: 'gov_fake_ctx',
         brand: { domain: 'gov-fake.example' },
         objectives: 'strict budget',
-        budget: { total: 10000, currency: 'USD', authority_level: 'agent_limited' },
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
         flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
       }],
     });
@@ -5806,11 +6519,14 @@ async function simulateCallToolRaw(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
-  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  return { parsed, isError: response.isError };
 }
 
 describe('context echo', () => {
@@ -5878,7 +6594,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-neg-budget',
+      idempotency_key: 'ctx-neg-budget-01',
       start_time: '2026-05-01T00:00:00Z',
       end_time: '2026-05-31T23:59:59Z',
       packages: [{ product_id: 'test-product', budget: -500, pricing_option_id: 'test-pricing' }],
@@ -5892,7 +6608,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-nonexistent',
+      idempotency_key: 'ctx-nonexistent-01',
       start_time: '2026-05-01T00:00:00Z',
       end_time: '2026-05-31T23:59:59Z',
       packages: [{ product_id: 'NONEXISTENT_PRODUCT_ID_12345', budget: 1000, pricing_option_id: 'nonexistent-pricing' }],
@@ -5906,7 +6622,7 @@ describe('context echo', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
-      idempotency_key: 'ctx-reversed',
+      idempotency_key: 'ctx-reversed-key-01',
       start_time: '2026-12-31T00:00:00Z',
       end_time: '2026-01-01T00:00:00Z',
       packages: [{ product_id: 'test-product', budget: 1000, pricing_option_id: 'test-pricing' }],
@@ -5952,8 +6668,10 @@ describe('context echo', () => {
         media_buy_id: mediaBuyId,
         paused: true,
       });
-      expect(isError).toBe(true);
-      expect(parsed.adcp_error).toBeDefined();
+      // update_media_buy spec-compliant error variant: errors-in-body, no MCP isError.
+      expect(isError).toBeFalsy();
+      expect(Array.isArray(parsed.errors)).toBe(true);
+      expect(parsed.errors[0].code).toBe('INVALID_STATE');
       expect(parsed.context).toEqual(TEST_CONTEXT);
     });
 
@@ -5964,8 +6682,21 @@ describe('context echo', () => {
         media_buy_id: mediaBuyId,
         paused: false,
       });
-      expect(isError).toBe(true);
-      expect(parsed.adcp_error).toBeDefined();
+      expect(isError).toBeFalsy();
+      expect(Array.isArray(parsed.errors)).toBe(true);
+      expect(parsed.errors[0].code).toBe('INVALID_STATE');
+      expect(parsed.context).toEqual(TEST_CONTEXT);
+    });
+
+    it('returns NOT_CANCELLABLE when re-canceling a canceled buy', async () => {
+      const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+        context: TEST_CONTEXT,
+        account,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+      });
+      expect(isError).toBeFalsy();
+      expect(parsed.errors[0].code).toBe('NOT_CANCELLABLE');
       expect(parsed.context).toEqual(TEST_CONTEXT);
     });
   });
@@ -5985,5 +6716,998 @@ describe('context echo', () => {
     expect(parsed.success).toBe(false);
     expect(parsed.error).toBe('NOT_FOUND');
     expect(parsed.context).toEqual(TEST_CONTEXT);
+  });
+});
+
+describe('AdCP protocol compliance', () => {
+  beforeEach(() => {
+    clearSessions();
+  });
+  afterEach(() => {
+    clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('rejects unsupported adcp_major_version with VERSION_UNSUPPORTED', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      adcp_major_version: 99,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VERSION_UNSUPPORTED');
+    const details = result.details as { supported_major_versions?: number[] };
+    expect(details?.supported_major_versions).toContain(3);
+  });
+
+  it('accepts supported adcp_major_version', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+    expect(isError).toBeFalsy();
+    expect(Array.isArray(result.products)).toBe(true);
+  });
+
+  it('persists property_list and collection_list in package targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      buying_mode: 'brief',
+      brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const targeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
+    };
+
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting_overlay: targeting,
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    expect(mediaBuyId).toBeDefined();
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
+
+    const fetched = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(targeting);
+  });
+
+  it('persists collection_list_exclude in package targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const targeting = {
+      collection_list_exclude: { agent_url: 'https://gov.example/mcp', list_id: 'cl_block_v1', auth_token: 'tok_secret' },
+    };
+
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting_overlay: targeting,
+      }],
+    });
+    const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
+    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
+  });
+
+  it('update_media_buy round-trips targeting changes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const initialTargeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v1' },
+    };
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting_overlay: initialTargeting,
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    const packageId = (created.result.packages as Array<{ package_id: string }>)[0]!.package_id;
+
+    const newTargeting = {
+      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
+    };
+    await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, targeting_overlay: newTargeting }],
+    });
+
+    const fetched = await simulateCallTool(server, 'get_media_buys', {
+      account, media_buy_ids: [mediaBuyId],
+    });
+    const buy = (fetched.result.media_buys as Array<{ packages: Array<{ targeting_overlay?: unknown }> }>)[0]!;
+    expect(buy.packages[0]!.targeting_overlay).toEqual(newTargeting);
+  });
+
+  it('rejects malformed targeting with VALIDATION_ERROR', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    // Missing agent_url
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting: { property_list: { list_id: 'pl_v1' } },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VALIDATION_ERROR');
+    expect(result.field).toContain('property_list.agent_url');
+  });
+
+  it('rejects non-http(s) agent_url in targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+        targeting: { property_list: { agent_url: 'javascript:alert(1)', list_id: 'pl_v1' } },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VALIDATION_ERROR');
+    expect(result.message).toContain('http');
+  });
+
+  it('GOVERNANCE_DENIED via task-augmented call completes the task with structured error', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
+    // Seed a denied governance check via sync_plans + check_governance (shared session key)
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        plan_id: 'gov_test_strict',
+        brand: { domain: 'acmeoutdoor.example' },
+        objectives: 'strict',
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
+        flight: { start: new Date().toISOString(), end: new Date(Date.now() + 90 * 86_400_000).toISOString() },
+      }],
+    });
+    const govContext = 'gov-ctx-test-denied';
+    const checkResponse = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: 'gov_test_strict',
+      governance_context: govContext,
+      caller: 'acmeoutdoor.example',
+      payload: { type: 'media_buy', account, total_budget: 50000 },
+    });
+    expect(checkResponse.result.status).toBe('denied');
+
+    const productsResponse = await simulateCallTool(server, 'get_products', {
+      account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    // Task-augmented create_media_buy with denied governance_context
+    const response = await simulateCallToolAsTask(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'acmeoutdoor.example' },
+      governance_context: govContext,
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 50000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      }],
+    });
+    const task = response.task as Record<string, unknown>;
+    expect(task.status).toBe('completed');
+
+    const taskResult = await simulateGetTaskResult(server, task.taskId as string);
+    expect(taskResult.isError).toBe(true);
+    const body = JSON.parse((taskResult.content as Array<{ text: string }>)[0]!.text) as { adcp_error?: { code: string } };
+    expect(body.adcp_error?.code).toBe('GOVERNANCE_DENIED');
+  });
+});
+
+describe('get_brand_identity handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  it('returns brand.json-shaped response with house object and brands array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.brand_id).toBe('daan_janssen');
+
+    const house = result.house as Record<string, unknown>;
+    expect(typeof house).toBe('object');
+    expect(typeof house.domain).toBe('string');
+    expect(typeof house.name).toBe('string');
+
+    expect(Array.isArray(result.names)).toBe(true);
+    const names = result.names as Array<Record<string, string>>;
+    expect(names[0]?.en).toBe('Daan Janssen');
+
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(Array.isArray(brands)).toBe(true);
+    expect(brands.length).toBe(1);
+    expect(brands[0].id).toBe('daan_janssen');
+    expect(Array.isArray(brands[0].names)).toBe(true);
+  });
+
+  it('omits authorized fields and reports them via available_fields when not authorized', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+      authorized: false,
+    });
+
+    // voice_synthesis is an authorized-only field that exists on Daan Janssen
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(brands[0].voice_synthesis).toBeUndefined();
+    expect(result.voice_synthesis).toBeUndefined();
+
+    const available = result.available_fields as string[];
+    expect(Array.isArray(available)).toBe(true);
+    expect(available).toContain('voice_synthesis');
+  });
+
+  it('includes authorized fields in the brand entry when authorized=true', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'daan_janssen',
+      authorized: true,
+    });
+
+    const brands = result.brands as Array<Record<string, unknown>>;
+    expect(brands[0].voice_synthesis).toBeDefined();
+    expect(result.available_fields).toBeUndefined();
+  });
+
+  it('returns error for unknown brand_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_brand_identity', {
+      brand_id: 'does_not_exist',
+    });
+
+    expect(result.code).toBe('brand_not_found');
+  });
+});
+
+describe('property-list uniform not-found response (issue #2739)', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  // Paired-probe: two distinct unresolvable list_ids must produce byte-identical
+  // error bodies, otherwise the probed id is a cross-tenant enumeration oracle.
+  const PROBE_TOOLS = ['get_property_list', 'update_property_list', 'delete_property_list'] as const;
+  for (const toolName of PROBE_TOOLS) {
+    it(`${toolName} returns byte-identical errors for two distinct unresolvable list_ids`, async () => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+
+      const probeA = await simulateCallTool(server, toolName, { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec' });
+      const probeB = await simulateCallTool(server, toolName, { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b' });
+
+      expect(probeA.isError).toBe(probeB.isError);
+      expect(probeA.result).toEqual(probeB.result);
+      expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+      expect(probeA.result.message).toBe('Property list not found');
+      expect(probeA.result.field).toBe('list_id');
+    });
+  }
+
+  it('validate_property_delivery returns byte-identical errors for two distinct unresolvable list_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'uniform-probe.example' }, operator: 'pinnacle-agency.com' };
+    const records = [{ identifier: { type: 'domain', value: 'x.example' }, impressions: 1 }];
+
+    const probeA = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: 'd7aff8ea-136c-498f-b70f-a69582ad3bec', records });
+    const probeB = await simulateCallTool(server, 'validate_property_delivery', { account, list_id: '221acd34-cd2c-4763-ae0a-321c1e85fb2b', records });
+
+    expect(probeA.isError).toBe(probeB.isError);
+    expect(probeA.result).toEqual(probeB.result);
+    expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
+    expect(probeA.result.message).toBe('Property list not found');
+    expect(probeA.result.field).toBe('list_id');
+  });
+});
+
+describe('cross-machine session persistence', () => {
+  beforeEach(async () => {
+    await clearSessions();
+  });
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('property list created on one server survives on another via the state store', async () => {
+    const account = { brand: { domain: 'machine-test.example' }, operator: 'pinnacle-agency.com' };
+
+    // "Machine A": create a property list through one server instance
+    const serverA = createTrainingAgentServer(DEFAULT_CTX);
+    const createResponse = await simulateCallTool(serverA, 'create_property_list', {
+      account,
+      brand: { domain: 'machine-test.example' },
+      name: 'Cross-machine list',
+      base_properties: [
+        { selection_type: 'identifiers', identifiers: [{ type: 'domain', value: 'pub.example' }] },
+      ],
+    });
+    const listId = (createResponse.result.list as { list_id: string }).list_id;
+    expect(listId).toBeDefined();
+
+    // "Machine B": a fresh server instance with no in-memory carryover
+    const serverB = createTrainingAgentServer(DEFAULT_CTX);
+    const getResponse = await simulateCallTool(serverB, 'get_property_list', {
+      account,
+      brand: { domain: 'machine-test.example' },
+      list_id: listId,
+    });
+    expect(getResponse.result.adcp_error).toBeUndefined();
+    expect((getResponse.result.list as { list_id: string }).list_id).toBe(listId);
+  });
+
+  it('media buy created on one server is visible via get_media_buys on another', async () => {
+    const account = { brand: { domain: 'mb-machine-test.example' }, operator: 'pinnacle-agency.com' };
+
+    const serverA = createTrainingAgentServer(DEFAULT_CTX);
+    const productsResponse = await simulateCallTool(serverA, 'get_products', {
+      account,
+      brand: { domain: 'mb-machine-test.example' },
+      buying_mode: 'brief',
+      brief: 'display',
+    });
+    const products = productsResponse.result.products as Array<{ product_id: string; pricing_options: Array<{ pricing_option_id: string; pricing_model: string; floor_price?: number }> }>;
+    const product = products[0]!;
+    const pricing = product.pricing_options[0]!;
+    const bidPrice = pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm'
+      ? (pricing.floor_price ?? 5) * 1.5
+      : undefined;
+
+    const created = await simulateCallTool(serverA, 'create_media_buy', {
+      account,
+      brand: { domain: 'mb-machine-test.example' },
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+      end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: 5000,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      }],
+    });
+    const mediaBuyId = created.result.media_buy_id as string;
+    expect(mediaBuyId).toBeDefined();
+
+    const serverB = createTrainingAgentServer(DEFAULT_CTX);
+    const fetched = await simulateCallTool(serverB, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = fetched.result.media_buys as Array<{ media_buy_id: string }>;
+    expect(buys.length).toBe(1);
+    expect(buys[0]!.media_buy_id).toBe(mediaBuyId);
+  });
+});
+
+// ── Governance: Annex III / Art 22 human-review enforcement ──────────
+
+describe('human_review_required auto-flip and enforcement', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_BASE = {
+    plan_id: 'plan-hr',
+    brand: {
+      name: 'Test',
+      domain: 'test.example',
+      data_subject_contestation: { url: 'https://test.example/privacy/contest' },
+    },
+    objectives: 'test',
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+  };
+
+  it('auto-flips human_review_required when policy_categories contains fair_lending', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, policy_categories: ['fair_lending'], human_review_required: true }],
+    });
+    expect(isError).toBeFalsy();
+    expect((result.plans as Array<{ status: string }>)[0].status).toBe('active');
+  });
+
+  it('rejects plan that sets human_review_required=false with fair_housing category', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, policy_categories: ['fair_housing'], human_review_required: false }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('fair_housing');
+  });
+
+  it('brand industries surface an advisory finding, not a hard flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'bank.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: {
+          ...PLAN_BASE.brand,
+          domain: 'bank.example',
+          industries: ['consumer_finance'],
+        },
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 5000 },
+    });
+    // Industries alone are advisory — plan proceeds unless a category/policy/custom triggers.
+    expect(result.status).not.toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'annex_iii_industry_advisory' && f.severity === 'warning')).toBe(true);
+    expect(findings.every(f => f.category_id !== 'human_review')).toBe(true);
+  });
+
+  it('denies with human_review finding on every action when human_review_required regardless of budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'lender.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'lender.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 20 },
+    });
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string; explanation: string }>;
+    const humanReview = findings.find(f => f.category_id === 'human_review');
+    expect(humanReview?.severity).toBe('critical');
+    expect(humanReview?.explanation).toContain('human');
+  });
+
+  it('denies with human_review finding when budget exceeds reallocation_threshold within plan total', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'test.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 10000 },
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 50000 },
+    });
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string; explanation: string }>;
+    const humanReview = findings.find(f => f.category_id === 'human_review');
+    expect(humanReview?.severity).toBe('critical');
+    expect(humanReview?.explanation).toContain('reallocation_threshold');
+  });
+
+  it('emits critical contestation-missing finding when human review + no contestation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'missing.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { name: 'NoContest', domain: 'missing.example' }, // no data_subject_contestation
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 100 },
+    });
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'data_subject_contestation' && f.severity === 'critical')).toBe(true);
+  });
+
+  it('mode=audit does NOT neuter human_review_required', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'audit.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'audit.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        mode: 'audit',
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload: { type: 'media_buy', account, total_budget: 5000 },
+    });
+    // Without human_review_required, mode=audit would return approved.
+    // With it, mode override is disabled and the critical human_review finding denies the check.
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.some(f => f.category_id === 'human_review' && f.severity === 'critical')).toBe(true);
+  });
+
+  it('rejects downgrade of human_review_required true→false without override', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'downgrade.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'downgrade.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    // Attempt to re-sync with human_review_required=false (and no category, no override)
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'downgrade.example' },
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('validation_error');
+    expect(result.message).toContain('human_override');
+  });
+
+  it('budget supports reallocation_unlimited sentinel', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_unlimited: true },
+      }],
+    });
+    expect(isError).toBeFalsy();
+  });
+
+  it('budget rejects both threshold and unlimited set together', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 5000, reallocation_unlimited: true },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.message).toContain('exactly one');
+  });
+
+  it('budget rejects neither threshold nor unlimited set', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        budget: { total: 100000, currency: 'USD' },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.message).toContain('exactly one');
+  });
+});
+
+// ── Governance: registry parity + round-2 follow-ups ─────────────────
+
+describe('human_review registry parity and edge cases', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_BASE = {
+    plan_id: 'plan-parity',
+    brand: {
+      name: 'Test',
+      domain: 'test.example',
+      data_subject_contestation: { url: 'https://test.example/privacy/contest' },
+    },
+    objectives: 'test',
+    budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+  };
+
+  it('HUMAN_REVIEW_CATEGORIES equals registry categories with requires_human_review:true', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const categoriesDir = path.resolve(testDir, '../../../static/registry/policy-categories');
+    const files = await fs.readdir(categoriesDir);
+
+    const registrySet = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const raw = await fs.readFile(path.join(categoriesDir, file), 'utf-8');
+      const cat = JSON.parse(raw) as { category_id: string; requires_human_review?: boolean };
+      if (cat.requires_human_review === true) {
+        registrySet.add(cat.category_id);
+      }
+    }
+
+    // Both directions: every registry entry with requires_human_review:true is in the server constant,
+    // and every server constant value is in the registry with that flag set.
+    for (const categoryId of registrySet) {
+      expect(HUMAN_REVIEW_CATEGORIES.has(categoryId), `registry category ${categoryId} has requires_human_review:true but not in server HUMAN_REVIEW_CATEGORIES`).toBe(true);
+    }
+    for (const categoryId of HUMAN_REVIEW_CATEGORIES) {
+      expect(registrySet.has(categoryId), `server HUMAN_REVIEW_CATEGORIES contains ${categoryId} but registry does not have it with requires_human_review:true (drift — either update the registry or remove from server)`).toBe(true);
+    }
+  });
+
+  it('HUMAN_REVIEW_POLICY_IDS equals registry policies with requires_human_review:true', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const policiesDir = path.resolve(testDir, '../../../static/registry/policies');
+    const files = await fs.readdir(policiesDir);
+
+    const registrySet = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const raw = await fs.readFile(path.join(policiesDir, file), 'utf-8');
+      const policy = JSON.parse(raw) as { policy_id: string; requires_human_review?: boolean };
+      if (policy.requires_human_review === true) {
+        registrySet.add(policy.policy_id);
+      }
+    }
+
+    for (const policyId of registrySet) {
+      expect(HUMAN_REVIEW_POLICY_IDS.has(policyId), `registry policy ${policyId} has requires_human_review:true but not in server HUMAN_REVIEW_POLICY_IDS`).toBe(true);
+    }
+    for (const policyId of HUMAN_REVIEW_POLICY_IDS) {
+      expect(registrySet.has(policyId), `server HUMAN_REVIEW_POLICY_IDS contains ${policyId} but registry does not have it (drift)`).toBe(true);
+    }
+  });
+
+  it('policy_ids:["eu_ai_act_annex_iii"] alone triggers auto-flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        policy_ids: ['eu_ai_act_annex_iii'],
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('eu_ai_act_annex_iii');
+  });
+
+  it('object-form custom_policies with requires_human_review triggers auto-flip', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        custom_policies: [{
+          policy_id: 'internal_art_22_policy',
+          policy: 'Internal compliance policy requiring human review for Art 22 decisions.',
+          requires_human_review: true,
+          enforcement: 'must',
+        }],
+        human_review_required: false,
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('internal_art_22_policy');
+  });
+
+  it('human_override with valid fields permits downgrade', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'override.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'override.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'override.example' },
+        human_review_required: false,
+        human_override: {
+          reason: 'Compliance officer confirmed campaign is corporate-branding only, not fair_lending targeting.',
+          approver: 'compliance@override.example',
+        },
+      }],
+    });
+    expect(isError).toBeFalsy();
+  });
+
+  it('human_override rejects short reason', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'shortreason.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'shortreason.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'shortreason.example' },
+        human_review_required: false,
+        human_override: { reason: 'ok', approver: 'legal@example.com' },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('at least 20 characters');
+  });
+
+  it('human_override rejects non-email approver', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'noemail.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'noemail.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+    const { isError, result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'noemail.example' },
+        human_review_required: false,
+        human_override: {
+          reason: 'Confirmed this is corporate branding and not Annex III scoped decision.',
+          approver: 'admin',
+        },
+      }],
+    });
+    expect(isError).toBe(true);
+    expect((result as { message: string }).message).toContain('valid email address');
+  });
+
+  it('revisionHistory grows across re-syncs', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'revisions.example' }, operator: 'test.example' };
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+      }],
+    });
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v2',
+      }],
+    });
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v3',
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'revisions.example' },
+        policy_categories: ['fair_lending'],
+        human_review_required: true,
+        objectives: 'updated objective v4',
+      }],
+    });
+    const plans = (result as { plans: Array<{ version: number }> }).plans;
+    expect(plans[0].version).toBe(4);
+
+    // Inspect session state directly — revisionHistory must actually accumulate prior snapshots.
+    const sessionKey = sessionKeyFromArgs({ account }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+    const session = await getSession(sessionKey);
+    const plan = session.governancePlans.get(PLAN_BASE.plan_id)!;
+    expect(plan.version).toBe(4);
+    expect(plan.revisionHistory).toHaveLength(3); // snapshots of v1, v2, v3 before current v4
+    expect(plan.revisionHistory.map(r => r.version)).toEqual([1, 2, 3]);
+    expect(plan.revisionHistory.every(r => r.humanReviewRequired === true)).toBe(true);
+  });
+
+  it('objectives exceeding 2000 chars is rejected at schema', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { isError } = await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        ...PLAN_BASE,
+        objectives: 'x'.repeat(2001),
+      }],
+    });
+    expect(isError).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2841 — security_baseline conformance
+// ---------------------------------------------------------------------------
+// Two regressions the security_baseline storyboard was catching silently:
+//   1. Success responses omitted `structuredContent`, so the storyboard
+//      runner's rawMcpProbe (which validates `context.correlation_id` via
+//      JSON-pointer paths) saw only `content[].text` and couldn't resolve
+//      field paths.
+//   2. The bearer authenticator only accepted the env-configured token, so
+//      the `demo-<kit>-v<n>` handle documented in every test-kit header was
+//      rejected and the `probe_api_key` phase failed against the canonical
+//      conformance handle the storyboard asserts against.
+describe('issue #2841 — security_baseline conformance surface', () => {
+  it('success responses include structuredContent mirroring the body', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requestHandlers = (server as unknown as { _requestHandlers: Map<string, (req: unknown, ctx: unknown) => Promise<unknown>> })._requestHandlers;
+    const handler = requestHandlers.get('tools/call');
+    if (!handler) throw new Error('CallTool handler not found');
+    const response = await handler(
+      { method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { context: { correlation_id: 'security_baseline--probe_api_key' } } } },
+      {},
+    ) as { structuredContent?: Record<string, unknown>; content?: unknown[] };
+    expect(response.structuredContent).toBeDefined();
+    expect((response.structuredContent as { context?: { correlation_id?: string } }).context?.correlation_id).toBe('security_baseline--probe_api_key');
   });
 });

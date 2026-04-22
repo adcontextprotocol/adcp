@@ -43,32 +43,62 @@ async function validateExample(data, schemaId, description) {
   totalTests++;
   try {
     // Create fresh AJV instance for each validation
-    const ajv = new Ajv({ 
+    const ajv = new Ajv({
       allErrors: true,
       verbose: false,
       strict: false,
+      discriminator: true,
       loadSchema: loadExternalSchema
     });
     addFormats(ajv);
-    
+
     // Load the specific schema
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-    
+
     // Compile and validate
     const validate = await ajv.compileAsync(schema);
     const isValid = validate(data);
-    
+
     if (isValid) {
       log(`✅ ${description}`, 'success');
       passedTests++;
     } else {
-      const errors = validate.errors.map(err => 
+      const errors = validate.errors.map(err =>
         `${err.instancePath || 'root'}: ${err.message}`
       ).join('; ');
       log(`❌ ${description}: ${errors}`, 'error');
       failedTests++;
     }
+  } catch (error) {
+    log(`❌ ${description}: ${error.message}`, 'error');
+    failedTests++;
+  }
+}
+
+async function expectInvalid(data, schemaId, description, errorPatterns) {
+  totalTests++;
+  try {
+    const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(ajv);
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const validate = await ajv.compileAsync(schema);
+    const isValid = validate(data);
+    if (isValid) {
+      log(`❌ ${description}: expected schema violation but passed`, 'error');
+      failedTests++;
+      return;
+    }
+    const errorText = (validate.errors || []).map(e => `${e.instancePath || ''}: ${e.message} ${JSON.stringify(e.params || {})}`).join(' | ');
+    const missing = (errorPatterns || []).filter(p => !(p instanceof RegExp ? p.test(errorText) : errorText.includes(p)));
+    if (missing.length > 0) {
+      log(`❌ ${description}: invalid as expected, but error text missing expected patterns ${JSON.stringify(missing)} — got: ${errorText}`, 'error');
+      failedTests++;
+      return;
+    }
+    log(`✅ ${description}`, 'success');
+    passedTests++;
   } catch (error) {
     log(`❌ ${description}: ${error.message}`, 'error');
     failedTests++;
@@ -154,6 +184,7 @@ async function runTests() {
   // Conversion tracking examples
   await validateExample(
     {
+      "idempotency_key": "d4a8e1b2-0123-489f-0123-45678901234d",
       "account": { "account_id": "acct_12345" },
       "event_sources": [
         {
@@ -214,6 +245,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "idempotency_key": "3f9a2d1b-7c4e-4f5a-9b2c-1a3b4c5d6e7f",
       "event_source_id": "website_pixel",
       "events": [
         {
@@ -304,6 +336,7 @@ async function runTests() {
       },
       "assets": {
         "brief": {
+          "asset_type": "brief",
           "name": "Holiday Sale 2025",
           "objective": "conversion",
           "compliance": {
@@ -327,11 +360,13 @@ async function runTests() {
       },
       "assets": {
         "product_catalog": {
+          "asset_type": "catalog",
           "type": "product",
           "catalog_id": "winter-products",
           "tags": ["beverage"]
         },
         "banner_image": {
+          "asset_type": "image",
           "url": "https://cdn.example.com/banner.jpg",
           "width": 300,
           "height": 250
@@ -525,8 +560,10 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-7c9e1d",
-      "user_token": "opaque-streamhaus-token-abc123",
-      "uid_type": "uid2",
+      "identities": [
+        { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
+        { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
+      ],
       "package_ids": [
         "pkg-outdoor-display",
         "pkg-outdoor-ctv",
@@ -584,8 +621,8 @@ async function runTests() {
           "creative_manifest": {
             "format_id": { "agent_url": "https://streamhaus.example", "id": "sponsored_recommendation" },
             "assets": {
-              "headline": { "content": "Built for rocky trails" },
-              "body": { "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
+              "headline": { "asset_type": "text", "content": "Built for rocky trails" },
+              "body": { "asset_type": "text", "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
             }
           }
         }
@@ -600,8 +637,11 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-9b2c",
-      "user_token": "tok_hk82mfp1",
-      "uid_type": "uid2",
+      "identities": [
+        { "user_token": "tok_hk82mfp1", "uid_type": "uid2" },
+        { "user_token": "ID5*aB3xY...", "uid_type": "id5" },
+        { "user_token": "a1b2c3d4e5f6...", "uid_type": "hashed_email" }
+      ],
       "consent": {
         "gdpr": true,
         "tcf_consent": "CPx2XYZABC..."
@@ -610,6 +650,73 @@ async function runTests() {
     },
     '/schemas/tmp/identity-match-request.json',
     'TMP Identity Match request with consent (context-and-identity walkthrough)'
+  );
+
+  // Identity Match request — single-identity minItems:1 boundary (ai-assistant surface)
+  await validateExample(
+    {
+      "type": "identity_match_request",
+      "request_id": "id-e5f6g7h8",
+      "identities": [
+        { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
+      ],
+      "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — single identity (ai-assistant walkthrough)'
+  );
+
+  // Identity Match request — maxItems:3 upper boundary (4 identities MUST fail)
+  await expectInvalid(
+    {
+      "type": "identity_match_request",
+      "request_id": "id-boundary-4",
+      "identities": [
+        { "user_token": "a", "uid_type": "uid2" },
+        { "user_token": "b", "uid_type": "id5" },
+        { "user_token": "c", "uid_type": "rampid" },
+        { "user_token": "d", "uid_type": "hashed_email" }
+      ],
+      "package_ids": ["pkg-1"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
+  );
+
+  // get_products refine[] — migration regressions for the `id` → `product_id`/`proposal_id` rename (adcp#2775).
+  // These fixtures exercise exactly the payload shape a pre-rename orchestrator would send today, so the test
+  // proves the schema rejects it with a migration-diagnosable error.
+  await expectInvalid(
+    {
+      "buying_mode": "refine",
+      "refine": [{ "scope": "product", "id": "prod_video_premium", "action": "include" }]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] product with old `id` field is rejected and error flags the unknown property',
+    ['product_id', /additionalProperties|must NOT have additional propert/i]
+  );
+
+  await expectInvalid(
+    {
+      "buying_mode": "refine",
+      "refine": [{ "scope": "proposal", "id": "prop_balanced_v1", "action": "finalize" }]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] proposal with old `id` field is rejected and error flags the unknown property',
+    ['proposal_id', /additionalProperties|must NOT have additional propert/i]
+  );
+
+  // Happy path — optional `action` defaults to include server-side; schema must accept the minimal shape.
+  await validateExample(
+    {
+      "buying_mode": "refine",
+      "refine": [
+        { "scope": "product",  "product_id":  "prod_video_premium" },
+        { "scope": "proposal", "proposal_id": "prop_balanced_v1", "ask": "shift 20% to video" }
+      ]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] with new prefixed ids and omitted action (defaults to include)'
   );
 
   // Print results

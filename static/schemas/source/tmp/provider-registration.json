@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/provider-registration.json",
   "title": "TMP Provider Registration",
-  "description": "Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning.",
+  "description": "Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated against SSRF, and dynamic registration endpoints MUST authenticate callers — see docs/trusted-match/specification#provider-registration-security.",
   "type": "object",
   "properties": {
     "provider_id": {
@@ -12,7 +12,7 @@
     "endpoint": {
       "type": "string",
       "format": "uri",
-      "description": "Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. Must be HTTPS in production."
+      "description": "Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. MUST be HTTPS in production, validated against the canonical reserved IPv4 and IPv6 ranges, with the TCP connection pinned to the validated IP (DNS re-resolution alone is insufficient against rebinding). See docs/trusted-match/specification#provider-registration-security and docs/building/implementation/security#webhook-url-validation-ssrf."
     },
     "context_match": {
       "type": "boolean",
@@ -33,7 +33,7 @@
     },
     "uid_types": {
       "type": "array",
-      "description": "Identity types this provider can resolve. The router filters Identity Match providers whose uid_types includes the request's uid_type. MUST be present and non-empty when identity_match is true.",
+      "description": "Identity types this provider can resolve. The router selects Identity Match providers whose uid_types overlaps with any uid_type in the request's identities array. MUST be present and non-empty when identity_match is true.",
       "items": {
         "$ref": "/schemas/enums/uid-type.json"
       },

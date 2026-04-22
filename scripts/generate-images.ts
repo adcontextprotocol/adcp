@@ -19,6 +19,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as fs from "fs";
 import * as path from "path";
+import { createHash } from "crypto";
+import sharp from "sharp";
+import { signC2PA, isC2PASigningEnabled } from "../server/src/services/c2pa.js";
 
 const STYLES: Record<string, string> = {
   addie: `Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
@@ -101,6 +104,7 @@ async function generateAndSaveImage(
   genAI: GoogleGenerativeAI,
   prompt: string,
   outputPath: string,
+  style: string,
 ): Promise<Buffer | null> {
   const model = genAI.getGenerativeModel({
     model: "gemini-3.1-flash-image-preview",
@@ -119,16 +123,57 @@ async function generateAndSaveImage(
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      const buffer = Buffer.from(part.inlineData.data, "base64");
-      fs.writeFileSync(outputPath, buffer);
-      console.log(`  Saved: ${outputPath} (${(buffer.length / 1024).toFixed(0)} KB)`);
-      return buffer;
+      const rawBuffer = Buffer.from(part.inlineData.data, "base64");
+      const finalBuffer = await signStoryboardIfEnabled(rawBuffer, outputPath, prompt, style);
+      fs.writeFileSync(outputPath, finalBuffer);
+      console.log(`  Saved: ${outputPath} (${(finalBuffer.length / 1024).toFixed(0)} KB)`);
+      return finalBuffer;
     }
   }
 
   const text = response.text();
   console.error(`  No image generated. Response: ${text.slice(0, 200)}`);
   return null;
+}
+
+/**
+ * Embed an AAO C2PA manifest into a freshly generated storyboard PNG when
+ * signing is enabled in the local environment. Returns the unsigned buffer
+ * and warns if signing fails — docs storyboards are a build-time artifact
+ * and a single failure should not break a batch run.
+ */
+async function signStoryboardIfEnabled(
+  buffer: Buffer,
+  outputPath: string,
+  prompt: string,
+  style: string,
+): Promise<Buffer> {
+  if (!isC2PASigningEnabled()) return buffer;
+  try {
+    // Re-encode to PNG before signing. Gemini occasionally returns webp/jpeg
+    // variants that c2pa-node rejects with "type is unsupported"; normalizing
+    // through sharp guarantees the bytes match the image/png mimeType the
+    // signer declares. failOn:'error' + .rotate() apply EXIF orientation and
+    // drop upstream metadata so the C2PA manifest is the sole provenance.
+    const pngBuffer = await sharp(buffer, { failOn: "error" })
+      .rotate()
+      .png()
+      .toBuffer();
+    const signed = signC2PA(pngBuffer, {
+      claimGenerator: "AAO Docs Storyboard Generator",
+      title: path.basename(outputPath),
+      softwareAgent: { name: "gemini-3.1-flash-image-preview", version: "preview" },
+      attributes: {
+        style,
+        relative_path: path.relative(process.cwd(), outputPath),
+        prompt_sha256: createHash("sha256").update(prompt).digest("hex"),
+      },
+    });
+    return signed.signedBuffer;
+  } catch (err) {
+    console.warn(`  ⚠ C2PA signing failed for ${outputPath}: ${(err as Error).message}`);
+    return buffer;
+  }
 }
 
 async function generateImage(
@@ -146,7 +191,7 @@ async function generateImage(
 
   console.log(`Generating: ${entry.filename}...`);
 
-  const buffer = await generateAndSaveImage(genAI, fullPrompt, outputPath);
+  const buffer = await generateAndSaveImage(genAI, fullPrompt, outputPath, options.style);
   if (!buffer) return;
 
   if (!options.validate) return;
@@ -166,7 +211,7 @@ async function generateImage(
     console.log(`  Retrying with "no text" directive (attempt ${options.maxRetries - retriesLeft + 1}/${options.maxRetries})...`);
     retriesLeft--;
     const retryPrompt = `${baseStyle}\n\n${entry.prompt}\n\nDo not include any text, words, or labels in the image.`;
-    const retryBuffer = await generateAndSaveImage(genAI, retryPrompt, outputPath);
+    const retryBuffer = await generateAndSaveImage(genAI, retryPrompt, outputPath, options.style);
     if (!retryBuffer) return;
 
     console.log(`  Validating retry...`);

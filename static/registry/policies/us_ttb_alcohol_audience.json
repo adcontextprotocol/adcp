@@ -1,5 +1,6 @@
 {
   "policy_id": "us_ttb_alcohol_audience",
+  "source": "registry",
   "version": "1.0.0",
   "name": "US TTB — Alcohol Advertising Audience Restrictions",
   "description": "Requires alcohol advertising to target legal drinking age audiences and comply with TTB advertising regulations (27 CFR Parts 4, 5, 7).",

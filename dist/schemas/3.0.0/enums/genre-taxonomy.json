@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/enums/genre-taxonomy.json",
+  "title": "Genre Taxonomy",
+  "description": "Taxonomy systems for genre classification. When declared, genre values should be valid identifiers within the specified taxonomy.",
+  "type": "string",
+  "enum": [
+    "iab_content_3.0",
+    "iab_content_2.2",
+    "gracenote",
+    "eidr",
+    "apple_genres",
+    "google_genres",
+    "roku",
+    "amazon_genres",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "iab_content_3.0": "IAB Tech Lab Content Taxonomy 3.0 — industry standard for digital content classification. Maps to OpenRTB cattax=6.",
+    "iab_content_2.2": "IAB Tech Lab Content Taxonomy 2.2 — previous version, still widely used. Maps to OpenRTB cattax=2.",
+    "gracenote": "Gracenote genre classification — entertainment metadata standard for TV, film, and music. Supports multi-level genre hierarchies; hierarchy-aware matching is the seller's responsibility.",
+    "eidr": "EIDR genre classification — ISO 10528 for audiovisual content identification",
+    "apple_genres": "Apple App Store / Apple TV genre taxonomy",
+    "google_genres": "Google Play / Google TV genre taxonomy",
+    "roku": "Roku Channel Store / Roku TV genre taxonomy",
+    "amazon_genres": "Amazon Fire TV / Freevee genre taxonomy",
+    "custom": "Publisher-defined genre taxonomy with free-form values. Buyer and seller must negotiate the vocabulary out of band."
+  }
+}

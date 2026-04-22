@@ -3,6 +3,8 @@
   "$id": "/schemas/brand/acquire-rights-request.json",
   "title": "Acquire Rights Request",
   "description": "Binding contractual request to acquire rights from a brand agent. Parallels create_media_buy — the buyer selects a pricing_option_id from a get_rights response and provides campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,11 +15,13 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "Rights offering identifier from get_rights response"
+      "description": "Rights offering identifier from get_rights response",
+      "x-entity": "rights_grant"
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "Selected pricing option from the rights offering"
+      "description": "Selected pricing option from the rights offering",
+      "x-entity": "vendor_pricing_option"
     },
     "buyer": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -88,7 +92,8 @@
       "type": "string",
       "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response rather than creating a duplicate acquisition. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -98,6 +103,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "rights_id",
     "pricing_option_id",
     "buyer",

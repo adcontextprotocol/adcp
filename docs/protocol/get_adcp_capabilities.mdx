@@ -11,12 +11,12 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
-- **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative, compliance_testing)?
+- **Protocol support** - Which protocols (media_buy, signals, governance, sponsored_intelligence, creative, brand)?
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
-**Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
-**Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
+**Request Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
@@ -65,7 +65,7 @@ Version Negotiation Flow:
 | Field | Type | Description |
 |-------|------|-------------|
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns `VERSION_UNSUPPORTED` if not in range. When omitted, the seller assumes the highest major version it supports. |
-| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `compliance_testing`). If omitted, returns all supported protocols. |
+| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
 
 ## Response Structure
 
@@ -75,17 +75,65 @@ Core AdCP protocol information:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[1]`) |
+| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
+| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
 
-### supported_protocols
+#### idempotency
 
-Array of domain protocols this seller supports:
+Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
 
 ```json
 {
-  "supported_protocols": ["media_buy"]
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  }
 }
 ```
+
+Sellers that do not support replay dedup declare it explicitly:
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": false }
+  }
+}
+```
+
+**Verifying the declaration.** `idempotency.supported: true` is a trust-bearing claim that enables buyers to safely retry spend-committing operations. A compromised or buggy seller could advertise `true` while silently ignoring keys, causing buyer double-spend on retry. Buyers and conformance runners SHOULD probe the declaration with a deliberate payload-mutation replay: send two requests with the same `idempotency_key` but different canonical payloads — a conformant seller MUST return `IDEMPOTENCY_CONFLICT` on the second. Sellers declaring `supported: true` MUST pass this probe as part of the baseline compliance storyboard before the declaration is considered verified.
+
+### supported_protocols
+
+AdCP protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/protocols/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../protocols/media-buy/`).
+
+```json
+{
+  "supported_protocols": ["media_buy", "creative"]
+}
+```
+
+Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
+
+### specialisms
+
+Optional specialization claims. Each entry corresponds to a narrow storyboard at `/compliance/{version}/specialisms/{id}/`. Every specialism rolls up to one protocol in `supported_protocols` — claiming `sales-guaranteed` requires `media_buy`. The runner rejects a specialism whose parent protocol is missing.
+
+```json
+{
+  "specialisms": ["sales-guaranteed", "creative-template"]
+}
+```
+
+See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/latest/enums/specialism.json) for the authoritative list.
 
 ### account
 
@@ -353,14 +401,17 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [1] },
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["governance"],
   "governance": {
     "property_features": [
       { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
       { "feature_id": "registry:uk_hfss", "type": "binary", "description": "UK HFSS advertising restrictions compliance" },
-      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" }
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://vendor.example.com/methodology/carbon-score" }
     ],
     "creative_features": [
       { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "description": "EU AI Act Article 50 — AI-generated content disclosure" },
@@ -382,19 +433,45 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### compliance_testing
 
-Compliance testing capabilities. Only present if `compliance_testing` is in `supported_protocols`. Indicates this agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller).
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
 
-Storyboard runners check for `compliance_testing` in `supported_protocols` before running deterministic testing steps. If the agent does not declare compliance testing support, controller-dependent storyboard steps cannot be validated.
+Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
-Agents that implement `comply_test_controller` SHOULD declare `compliance_testing` in `supported_protocols` and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
 
 :::note
 Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
 :::
+
+### webhook_signing
+
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
+| `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
+| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+
+**Example:**
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
 
 ### extensions_supported
 
@@ -402,21 +479,40 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
+| `extensions_supported` | string[] | Extension namespaces (e.g., `["iab_tcf", "iab_gpp"]`) |
 
 Extension schemas are published in the [AdCP extension registry](/docs/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json
 {
-  "extensions_supported": ["scope3", "garm", "iab_tcf"]
+  "extensions_supported": ["iab_tcf", "iab_gpp", "acmecorp"]
 }
 ```
 
+### experimental_features
+
+Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
+
+Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
+
+**Example:**
+```json
+{
+  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
+}
+```
+
+See [experimental status](/docs/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
+
 This tells buyers:
-- Product responses may include `ext.scope3` with Scope3 sustainability data
-- Creative policies may include `ext.garm` with GARM brand suitability categorizations
 - Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
 
 ## The Capability Contract
 
@@ -461,8 +557,8 @@ if (result.supported_protocols.includes('media_buy')) {
   }
 
   // Check AXE integrations (legacy — new integrations use TMP via trusted_match on products)
-  if (mediaBuy.execution?.axe_integrations?.includes('https://agentic.scope3.com')) {
-    console.log('Scope3 AXE integration available');
+  if (mediaBuy.execution?.axe_integrations?.includes('https://axe.example.com')) {
+    console.log('AXE integration available');
   }
 
   // Check geo targeting
@@ -542,7 +638,7 @@ async function findCompatibleSellers(sellers, requirements) {
 const sellers = await findCompatibleSellers(
   ['https://seller1.com/mcp', 'https://seller2.com/mcp'],
   {
-    axeIntegration: 'https://agentic.scope3.com',
+    axeIntegration: 'https://axe.example.com',
     postalCodeTargeting: true,
     contentStandards: true
   }
@@ -575,7 +671,7 @@ const products = await client.getProducts({
       { level: 'postal_area', system: 'us_zip' }
     ],
     // Only include if seller supports this AXE (legacy — new integrations use TMP)
-    required_axe_integrations: ['https://agentic.scope3.com']
+    required_axe_integrations: ['https://axe.example.com']
   }
 });
 
@@ -653,7 +749,8 @@ const buy = await client.createMediaBuy({
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [1]
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
   "account": {
@@ -666,7 +763,7 @@ const buy = await client.createMediaBuy({
       "property_list_filtering": true
     },
     "execution": {
-      "axe_integrations": ["https://agentic.scope3.com"],
+      "axe_integrations": ["https://axe.example.com"],
       "creative_specs": {
         "vast_versions": ["4.0", "4.1", "4.2"],
         "mraid_versions": ["3.0"],
@@ -719,7 +816,7 @@ const buy = await client.createMediaBuy({
       "primary_countries": ["US", "CA"]
     }
   },
-  "extensions_supported": ["scope3"],
+  "extensions_supported": ["acmecorp"],
   "last_updated": "2025-01-23T10:00:00Z"
 }
 ```
@@ -735,7 +832,7 @@ This tells buyers:
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
 - **Audience targeting**: Accepts hashed email, hashed phone, UID2, and RampID; minimum matched audience size of 500; matching latency 1–24 hours
 - **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
-- **Extensions**: Scope3 sustainability data in `ext.scope3`
+- **Extensions**: Vendor-specific data in `ext.acmecorp`
 
 ### Multi-protocol agent
 
@@ -745,7 +842,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [3]
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy", "creative"],
   "account": {

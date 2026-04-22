@@ -7,7 +7,8 @@
   "properties": {
     "account_id": {
       "type": "string",
-      "description": "Unique identifier for this account"
+      "description": "Unique identifier for this account",
+      "x-entity": "account"
     },
     "name": {
       "type": "string",
@@ -32,7 +33,8 @@
     "operator": {
       "type": "string",
       "description": "Domain of the entity operating this account. When the brand operates directly, this is the brand's domain.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "x-entity": "operator"
     },
     "billing": {
       "type": "string",
@@ -120,7 +122,7 @@
     },
     "reporting_bucket": {
       "type": "object",
-      "description": "Cloud storage bucket where the seller delivers offline reporting files for this account. Seller provisions a dedicated bucket or a per-account prefix within a shared bucket, and grants the buyer read access out-of-band. Access MUST be scoped so each account can only read its own prefix. Only present when the seller supports offline delivery (reporting_delivery_methods includes 'offline' in capabilities).",
+      "description": "Cloud storage bucket where the seller delivers offline reporting files for this account. Seller provisions a dedicated bucket or a per-account prefix within a shared bucket, and grants the buyer read access out-of-band. Access MUST be scoped at the IAM layer so each account can only read its own prefix — bucket-wide grants are non-compliant even with per-account prefixes. Seller MUST revoke access when the account's status transitions to inactive, suspended, or closed. See security considerations for offline delivery in docs/media-buy/media-buys/optimization-reporting. Only present when the seller supports offline delivery (reporting_delivery_methods includes 'offline' in capabilities).",
       "properties": {
         "protocol": {
           "$ref": "/schemas/enums/cloud-storage-protocol.json",
@@ -175,7 +177,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "URL to documentation for configuring buyer read access to this bucket (IAM role, service account, etc.)"
+          "description": "URL to documentation for configuring buyer read access to this bucket (IAM role, service account, etc.). Operator-facing documentation — buyer agents MUST NOT auto-fetch this URL; surface it to a human operator. If an implementation fetches it (for preview), apply webhook URL SSRF validation and do not pass the fetched content into an LLM context without indirect-prompt-injection guarding. See docs/media-buy/media-buys/optimization-reporting#security-considerations-for-offline-delivery."
         }
       },
       "required": ["protocol", "bucket", "file_retention_days"],

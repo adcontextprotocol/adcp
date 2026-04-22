@@ -857,8 +857,24 @@
     </style>
   `;
 
+  // Build subscribe form markup. Shared by the footer column and the
+  // end-of-story inline card. `variant` tunes spacing only.
+  function buildSubscribeFormHTML(variant) {
+    const wrapperClass = variant === 'inline' ? 'aao-subscribe aao-subscribe--inline' : 'aao-subscribe aao-subscribe--footer';
+    const source = variant === 'inline' ? 'story-inline' : 'footer';
+    return '<form class="' + wrapperClass + '" data-subscribe-source="' + source + '" novalidate>' +
+      '<label class="aao-subscribe__label" for="aao-subscribe-' + variant + '">Get The Prompt &mdash; weekly industry news</label>' +
+      '<div class="aao-subscribe__row">' +
+        '<input id="aao-subscribe-' + variant + '" class="aao-subscribe__input" type="email" name="email" autocomplete="email" placeholder="you@example.com" required>' +
+        '<button class="aao-subscribe__btn" type="submit">Subscribe</button>' +
+      '</div>' +
+      '<p class="aao-subscribe__hint">We\'ll email a one-click link to confirm. Unsubscribe any time.</p>' +
+      '<p class="aao-subscribe__status" role="status" aria-live="polite"></p>' +
+    '</form>';
+  }
+
   // Build footer HTML
-  function buildFooterHTML() {
+  function buildFooterHTML(showSubscribe) {
     const currentYear = new Date().getFullYear();
 
     // Footer URLs - use relative on local, full AAO URLs on production
@@ -877,6 +893,7 @@
             <div class="aao-footer__column aao-footer__column--brand">
               <div class="aao-footer__brand-name">AgenticAdvertising.org</div>
               <p class="aao-footer__brand-mission">The trade association for agentic advertising. We develop open standards, certify practitioners, and bring together the companies building the future of AI-powered media.</p>
+              ${showSubscribe ? buildSubscribeFormHTML('footer') : ''}
               <div class="aao-footer__social">
                 <a href="https://www.linkedin.com/company/agenticadvertisingorg" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
                   <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
@@ -913,11 +930,15 @@
               </ul>
             </div>
           </div>
+          <div class="aao-footer__disclosure">
+            Built with AI. Content on this site is authored or assisted by Addie, Sage, and other AI agents operated by AAO. See our <a href="/ai-disclosure">AI disclosure</a> for what's AI-authored, what's AI-assisted, and how to request human review.
+          </div>
           <div class="aao-footer__bottom">
             <div class="aao-footer__legal">
               <a href="/api/agreement?type=privacy_policy">Privacy</a>
               <a href="/api/agreement?type=terms_of_service">Terms</a>
               <a href="/api/agreement?type=bylaws">Bylaws</a>
+              <a href="/ai-disclosure">AI Disclosure</a>
             </div>
             <div class="aao-footer__copyright">
               &copy; ${currentYear} Agentic Advertising Organization
@@ -1016,9 +1037,25 @@
         color: #fff;
       }
 
-      .aao-footer__bottom {
+      .aao-footer__disclosure {
         border-top: 1px solid #374151;
         padding-top: 1.5rem;
+        margin-bottom: 1.5rem;
+        font-size: 0.8125rem;
+        line-height: 1.6;
+        color: #9ca3af;
+      }
+
+      .aao-footer__disclosure a {
+        color: #d1d5db;
+        text-decoration: underline;
+      }
+
+      .aao-footer__disclosure a:hover {
+        color: #fff;
+      }
+
+      .aao-footer__bottom {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -1081,6 +1118,94 @@
         .admin-layout .aao-footer {
           margin-left: 0;
         }
+      }
+
+      /* Subscribe form — shared by footer column and end-of-story card */
+      .aao-subscribe {
+        margin: 1.25rem 0 0;
+      }
+      .aao-subscribe__label {
+        display: block;
+        font-size: 0.8125rem;
+        color: #d1d5db;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+      }
+      .aao-subscribe__row {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .aao-subscribe__input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #374151;
+        background: #0f1113;
+        color: #f3f4f6;
+        border-radius: 6px;
+        font-size: 0.875rem;
+      }
+      .aao-subscribe__input:focus {
+        outline: 2px solid var(--color-brand, #2563eb);
+        outline-offset: 0;
+        border-color: transparent;
+      }
+      .aao-subscribe__btn {
+        padding: 0.5rem 0.875rem;
+        background: var(--color-brand, #2563eb);
+        color: #fff;
+        border: 1px solid var(--color-brand, #2563eb);
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .aao-subscribe__btn:hover {
+        opacity: 0.92;
+      }
+      .aao-subscribe__btn:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .aao-subscribe__hint {
+        font-size: 0.75rem;
+        color: #9ca3af;
+        margin: 0.5rem 0 0;
+      }
+      .aao-subscribe__status {
+        font-size: 0.8125rem;
+        margin: 0.5rem 0 0;
+        min-height: 1.2em;
+        color: #d1d5db;
+      }
+      .aao-subscribe--done .aao-subscribe__row,
+      .aao-subscribe--done .aao-subscribe__hint {
+        display: none;
+      }
+
+      /* Inline story variant — lighter surface, centered card */
+      .aao-subscribe--inline {
+        background: var(--color-bg-subtle, #f8fafc);
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 2.5rem auto;
+        max-width: 640px;
+      }
+      .aao-subscribe--inline .aao-subscribe__label {
+        color: var(--color-text-heading, #111827);
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .aao-subscribe--inline .aao-subscribe__input {
+        background: #fff;
+        color: #111827;
+        border-color: var(--color-border, #e5e7eb);
+      }
+      .aao-subscribe--inline .aao-subscribe__hint,
+      .aao-subscribe--inline .aao-subscribe__status {
+        color: var(--color-gray-600, #6b7280);
       }
     </style>
   `;
@@ -1299,18 +1424,34 @@
       document.body.insertAdjacentHTML('afterbegin', navHTML);
     }
 
+    // Subscribe surfaces are for non-logged-in visitors only — signed-in users
+    // manage email preferences from their dashboard and see the opt-in modal.
+    const showSubscribe = !config.user;
+
     // Insert footer at end of body (or replace placeholder if exists)
     const footerPlaceholder = document.getElementById('adcp-footer');
     if (footerPlaceholder) {
-      footerPlaceholder.outerHTML = buildFooterHTML();
+      footerPlaceholder.outerHTML = buildFooterHTML(showSubscribe);
     } else {
       // Only auto-insert footer if there's no existing footer element
       // This prevents duplicate footers on pages like index.html that have their own
       const existingFooter = document.querySelector('footer');
       if (!existingFooter) {
-        document.body.insertAdjacentHTML('beforeend', buildFooterHTML());
+        document.body.insertAdjacentHTML('beforeend', buildFooterHTML(showSubscribe));
       }
     }
+
+    // Inject inline subscribe card before the footer on story pages.
+    // Keeps individual story HTML files unchanged.
+    if (showSubscribe && currentPath.startsWith('/stories/') && currentPath !== '/stories/' && currentPath !== '/stories/index.html') {
+      const footerEl = document.querySelector('footer.aao-footer') || document.querySelector('footer');
+      if (footerEl && !document.querySelector('.aao-subscribe--inline')) {
+        footerEl.insertAdjacentHTML('beforebegin', buildSubscribeFormHTML('inline'));
+      }
+    }
+
+    // Wire up any subscribe forms present on the page
+    setupSubscribeForms();
 
     // Setup dropdown toggle
     setupDropdown();
@@ -1322,6 +1463,49 @@
     if (config.user) {
       checkMarketingOptIn();
     }
+  }
+
+  function setupSubscribeForms() {
+    const forms = document.querySelectorAll('form.aao-subscribe');
+    forms.forEach((form) => {
+      if (form.dataset.subscribeWired === '1') return;
+      form.dataset.subscribeWired = '1';
+
+      const input = form.querySelector('.aao-subscribe__input');
+      const btn = form.querySelector('.aao-subscribe__btn');
+      const status = form.querySelector('.aao-subscribe__status');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = (input.value || '').trim();
+        if (!email) return;
+
+        btn.disabled = true;
+        status.textContent = 'Sending confirmation...';
+
+        try {
+          const res = await fetch(apiBaseUrl + '/api/newsletter/subscribe', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, source: form.dataset.subscribeSource || 'unknown' }),
+          });
+          if (res.status === 429) {
+            btn.disabled = false;
+            status.textContent = 'Too many requests — please try again in a minute.';
+            return;
+          }
+          if (!res.ok) {
+            throw new Error('subscribe failed');
+          }
+          form.classList.add('aao-subscribe--done');
+          status.textContent = 'Check your inbox for a one-click confirmation link.';
+        } catch {
+          btn.disabled = false;
+          status.textContent = 'Could not send right now. Please try again.';
+        }
+      });
+    });
   }
 
   function isSafeImageUrl(url) {

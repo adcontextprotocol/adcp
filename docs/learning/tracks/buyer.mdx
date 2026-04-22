@@ -39,10 +39,19 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
     Architecture patterns for agents that coordinate across multiple sellers.
   </Card>
   <Card title="Pricing models" icon="tag" href="/docs/media-buy/advanced-topics/pricing-models">
-    CPM, flat rate, performance-based — how pricing works across sellers.
+    `pricing_options[]` on products, buyer selects by `pricing_option_id`: CPM, vCPM, CPP, CPA, flat rate, time.
+  </Card>
+  <Card title="Accountability terms" icon="handshake" href="/docs/media-buy/advanced-topics/accountability">
+    `performance_standards`, `measurement_terms`, and `cancellation_policy` — negotiable on guaranteed buys.
   </Card>
   <Card title="Targeting" icon="crosshairs" href="/docs/media-buy/advanced-topics/targeting">
     Targeting options, audience overlays, and geo-targeting.
+  </Card>
+  <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
+    Declare `adcp_major_version` on requests; sellers respond with `VERSION_UNSUPPORTED` when incompatible.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/docs/building/implementation/error-handling">
+    Error taxonomy: transient, correctable, terminal. Includes `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `VERSION_UNSUPPORTED`.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
     How your campaigns execute at impression time: context match, identity match, and cross-publisher frequency capping.
@@ -59,8 +68,11 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 
 - **Multi-agent buying** — query multiple sellers in parallel, compare, allocate, execute
 - **Orchestration pattern** — discover, evaluate, allocate, execute, monitor
-- **Order lifecycle** — `confirmed_at` on creation, pause/resume, cancellation via `update_media_buy`, terminal states
-- **Valid actions** — `get_media_buys` returns `valid_actions` so agents know what operations are permitted
+- **Order lifecycle** — `pending_creatives` → `pending_start` → `active`; check `valid_actions` from `get_media_buys` before acting. S1 covers the full state machine and recovery
+- **Version negotiation** — declare `adcp_major_version` on every request; handle `VERSION_UNSUPPORTED` by selecting a compatible seller or downgrading the payload
+- **Pricing selection** — products return `pricing_options[]`; buyer selects one via `pricing_option_id` in `create_media_buy`
+- **Negotiated accountability** — for guaranteed buys, propose `measurement_terms` / `performance_standards`; seller accepts, adjusts, or returns `TERMS_REJECTED`. S1 covers the recovery patterns
+- **Account required on updates** — `update_media_buy` takes `account` + `media_buy_id`; omitting `account` is a protocol error
 - **Audience targeting** — `sync_audiences` for custom segments
 - **Impression-time execution** — campaigns activate through TMP at serve time; frequency caps, audience eligibility, and brand suitability are enforced via Identity Match without exposing user data to buyers alongside content context
 - **Account setup** — `sync_accounts` to establish billing before buying
@@ -127,7 +139,8 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
 - **Content standards** — automated compliance checking via MCP-based brand agents
 - **The Oracle model** — using AI to evaluate brand safety at scale
 - **Supply chain preferences** — suitability, safety, and sustainability requirements
-- **Campaign governance** — campaign plans define authorized parameters; `check_governance` validates every transaction before execution
+- **Campaign governance** — campaign plans define authorized parameters; `check_governance` validates every transaction before execution, returns a `governance_context` token you attach to the buy envelope, and uses `purchase_type` to scope which rules apply (`media_buy`, `rights_license`, `signal_activation`, `creative_services`)
+- **Governance denial recovery** — `GOVERNANCE_DENIED` is a correctable buyer-side decision, not a transport error: fix targeting, creative, or plan reference and retry. S4 goes deeper on the correlation model
 - **Policy registry** — shared compliance policies (regulations and standards) referenced by ID, not written per-brand
 - **Governance adoption** — governance agents support incremental adoption (audit → advisory → enforce) as an internal configuration, not a protocol field
 - **Policy categories** — regulatory regimes (`children_directed`, `fair_housing`, `fair_lending`) that plans declare and governance agents enforce
@@ -177,10 +190,11 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 ### Key concepts
 
 - **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
-- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native formats
+- **Preview modes** — `preview_creative` supports single, batch, and variant requests — choose the mode that fits the workflow (S2 covers the tradeoffs)
+- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native, and broadcast formats. Broadcast manifests carry `industry_identifiers[]` (Ad-ID, ISCI) — S2 goes deep
 - **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
 - **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
-- **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
+- **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control. SI is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `sponsored_intelligence.core`); session lifecycle and UI components may change between 3.x releases with at least 6 weeks' notice.
 
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module C3."
@@ -198,7 +212,7 @@ Create a working buyer agent that discovers products and executes media buys. Us
 
 - Account setup with `sync_accounts`
 - Product discovery from at least 2 sellers
-- Media buy creation with targeting and budget
+- Media buy creation with targeting and budget — including a fresh UUID v4 `idempotency_key` per logical buy, and correct retry behavior that resends the identical payload with the same key on network failure (the mechanics of what the seller does with the key — replay, conflict, expired — are taught in [S1: Media buy](/docs/learning/specialist/media-buy))
 - Creative sync with at least 1 format
 - Campaign monitoring via delivery reporting
 
@@ -211,6 +225,12 @@ npx @adcp/client test-mcp get_products '{"brief":"your campaign brief"}'
 ```
 
 See [Validate Your Agent](/docs/building/validate-your-agent) for CLI setup and the full testing workflow.
+
+### Validating across sellers
+
+Buyer agents don't claim specialisms — specialisms describe what sellers offer. But your buyer agent should handle every specialism it expects to transact against. The storyboards a seller passes (declared via `supported_protocols` and `specialisms` in their `get_adcp_capabilities`) tell you what behaviors to expect.
+
+Review the [Compliance Catalog](/docs/building/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
 
 ### Assessment rubric
 

@@ -3,6 +3,7 @@
   "$id": "/schemas/governance/report-plan-outcome-response.json",
   "title": "Report Plan Outcome Response",
   "description": "Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that manages the plan. Sellers report delivery data via check_governance with phase 'delivery', not via this task.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "outcome_id": {
@@ -68,6 +69,11 @@
       },
       "additionalProperties": false
     },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -79,5 +85,5 @@
     "outcome_id",
     "status"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

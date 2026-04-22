@@ -1134,6 +1134,11 @@
       <span id="backLinkText">Back to Working Groups</span>
     </a>
 
+    <!-- Parent breadcrumb (shown on subgroup pages) -->
+    <div id="parentBreadcrumb" style="display: none; margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+      Subgroup of <a id="parentLink" href="#" style="color: var(--color-brand); text-decoration: none;"></a>
+    </div>
+
     <!-- Group Header -->
     <div class="group-header">
       <div class="group-header-top">
@@ -1199,6 +1204,14 @@
       <div id="descriptionContent" class="description-content"></div>
     </div>
 
+    <!-- Subgroups Section (parent pages only) -->
+    <div id="subgroupsSection" class="content-section" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">Subgroups</h2>
+      </div>
+      <div id="subgroupsList" style="display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));"></div>
+    </div>
+
     <!-- Documents Section -->
     <div id="documentsSection" class="content-section" style="display: none;">
       <div class="section-header">
@@ -1253,13 +1266,21 @@
     <div id="postsSection" class="content-section" style="display: none;">
       <div class="section-header">
         <h2 class="section-title">Posts & Updates</h2>
-        <button id="newPostBtn" class="btn btn-primary" style="display: none;" onclick="createPost()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Post
-        </button>
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <div id="postsFilter" style="display: none; font-size: var(--text-sm);">
+            <label style="display: inline-flex; align-items: center; gap: var(--space-1); cursor: pointer;">
+              <input type="checkbox" id="postsIncludeSubgroups" checked onchange="loadPosts()">
+              Include subgroups
+            </label>
+          </div>
+          <button id="newPostBtn" class="btn btn-primary" style="display: none;" onclick="createPost()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Post
+          </button>
+        </div>
       </div>
       <div id="postsList" class="posts-list"></div>
     </div>
@@ -1487,6 +1508,31 @@
       // Update meta tags
       updateMetaTags();
 
+      // Parent breadcrumb (subgroup pages only)
+      if (currentGroup.parent) {
+        const breadcrumb = document.getElementById('parentBreadcrumb');
+        const link = document.getElementById('parentLink');
+        link.href = `/working-groups/${currentGroup.parent.slug}`;
+        link.textContent = currentGroup.parent.name;
+        breadcrumb.style.display = 'block';
+      }
+
+      // Subgroups section (parent pages only)
+      if (currentGroup.subgroups && currentGroup.subgroups.length > 0) {
+        const section = document.getElementById('subgroupsSection');
+        const list = document.getElementById('subgroupsList');
+        list.innerHTML = currentGroup.subgroups.map(sg => `
+          <a href="/working-groups/${escapeHtml(sg.slug)}" style="display: block; padding: var(--space-4); border: 1px solid var(--color-gray-200); border-radius: var(--radius-md); text-decoration: none; color: inherit; background: var(--color-bg-card);">
+            <div style="font-weight: var(--font-semibold); margin-bottom: var(--space-1); color: var(--color-text-heading);">${escapeHtml(sg.name)}${sg.is_private ? ' <span style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-normal);">· Private</span>' : ''}</div>
+            ${sg.description ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">${escapeHtml(sg.description.slice(0, 140))}${sg.description.length > 140 ? '…' : ''}</div>` : ''}
+            <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">${sg.member_count} ${sg.member_count === 1 ? 'member' : 'members'}</div>
+          </a>
+        `).join('');
+        section.style.display = 'block';
+        // When there are subgroups, show the posts filter toggle so parent pages can narrow down
+        document.getElementById('postsFilter').style.display = 'block';
+      }
+
       // Header
       document.getElementById('groupName').textContent = currentGroup.name;
 
@@ -1599,7 +1645,9 @@
 
     async function loadPosts() {
       try {
-        const response = await fetch(`/api/working-groups/${currentSlug}/posts`);
+        const includeSubs = document.getElementById('postsIncludeSubgroups')?.checked;
+        const qs = includeSubs === false ? '?include_subgroups=false' : '';
+        const response = await fetch(`/api/working-groups/${currentSlug}/posts${qs}`);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -1627,6 +1675,10 @@
         }
 
         postsList.innerHTML = postsData.map(post => {
+          const fromSubgroup = post.source_group && post.source_group.id !== currentGroup.id
+            ? `<span style="display: inline-flex; align-items: center; padding: 1px 6px; font-size: var(--text-xs); background: var(--color-info-100); color: var(--color-info-700); border-radius: var(--radius-sm); text-decoration: none;">from ${escapeHtml(post.source_group.name)}</span>`
+            : '';
+
           // For link posts, link directly to external URL
           // For article posts, use onclick to open the article view
           if (post.content_type === 'link' && post.external_url) {
@@ -1645,19 +1697,22 @@
                   ${post.external_site_name ? `<span>${escapeHtml(post.external_site_name)}</span>` : ''}
                   ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
                   ${post.is_members_only ? `<span class="badge-members-only">members only</span>` : ''}
+                  ${fromSubgroup}
                 </div>
                 ${post.excerpt ? `<div class="post-excerpt">${escapeHtml(post.excerpt)}</div>` : ''}
               </a>
             `;
           } else {
+            const articleSlug = post.source_group ? post.source_group.slug : currentSlug;
             return `
-              <a href="/working-groups/${currentSlug}#post-${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
+              <a href="/working-groups/${escapeHtml(articleSlug)}#post-${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
                 <div class="post-title">${escapeHtml(post.title)}</div>
                 <div class="post-meta">
                   <span>${formatDate(post.published_at)}</span>
                   ${post.author_name ? `<span>by ${escapeHtml(post.author_name)}</span>` : ''}
                   ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
                   ${post.is_members_only ? `<span class="badge-members-only">members only</span>` : ''}
+                  ${fromSubgroup}
                 </div>
                 ${post.excerpt ? `<div class="post-excerpt">${escapeHtml(post.excerpt)}</div>` : ''}
               </a>

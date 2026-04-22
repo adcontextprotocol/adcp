@@ -9,8 +9,8 @@ description: "activate_signal is the AdCP task for pushing audience segments to 
 
 **Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json)
 
 The `activate_signal` task handles the entire activation lifecycle, including:
 - Initiating the activation request
@@ -21,6 +21,7 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/implementation/security#idempotency) for normative semantics. |
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
@@ -477,7 +478,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 ## Error Codes
 
 ### Activation Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
+- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist or is not accessible to the calling account (`error.field` identifies the failing parameter)
 - `ACTIVATION_FAILED`: Could not activate signal for unspecified reasons
 - `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
 - `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions

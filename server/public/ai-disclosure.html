@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Disclosure - AgenticAdvertising.org</title>
+  <meta name="description" content="How AgenticAdvertising.org uses AI — what's AI-authored, what's AI-assisted, model and provider disclosure, and how to request human review.">
+  <meta property="og:title" content="AI Disclosure - AgenticAdvertising.org">
+  <meta property="og:description" content="How AgenticAdvertising.org uses AI — what's AI-authored, what's AI-assisted, model and provider disclosure, and how to request human review.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/ai-disclosure">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    .ai-disclosure-content h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: var(--space-10) 0 var(--space-4);
+      scroll-margin-top: 140px;
+    }
+
+    .ai-disclosure-content h2:first-child {
+      margin-top: 0;
+    }
+
+    .ai-disclosure-content p {
+      margin-bottom: var(--space-4);
+    }
+
+    .ai-disclosure-content ul {
+      margin: var(--space-4) 0;
+      padding-left: var(--space-6);
+    }
+
+    .ai-disclosure-content li {
+      margin-bottom: var(--space-3);
+      line-height: var(--leading-relaxed);
+    }
+
+    .ai-disclosure-content hr {
+      border: none;
+      border-top: 1px solid var(--color-border);
+      margin: var(--space-10) 0;
+    }
+
+    .ai-disclosure-content a {
+      color: var(--color-brand);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <section class="hero hero--clean">
+    <div class="hero-container">
+      <h1>AI Disclosure</h1>
+      <p class="hero-subtitle">How AgenticAdvertising.org uses AI — what's AI-authored, what's AI-assisted, model and provider disclosure, and how to request human review.</p>
+    </div>
+  </section>
+
+  <nav class="sub-nav">
+    <div class="sub-nav-inner">
+      <div class="sub-nav-links">
+        <a href="#authored" class="active">AI-authored</a>
+        <a href="#assisted">AI-assisted</a>
+        <a href="#models">Models</a>
+        <a href="#data">Data</a>
+        <a href="#review">Human review</a>
+        <a href="#provenance">Provenance</a>
+        <a href="#regulatory">Regulatory</a>
+        <a href="#conflicts">Conflicts</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="panel ai-disclosure-content">
+    <div class="panel-text">
+      <p class="drop">AgenticAdvertising.org uses AI extensively to write content, generate imagery, ship code, and run operations. This page names every surface where that happens, the models behind it, and how to request human review.</p>
+
+      <h2 id="authored">What's AI-authored</h2>
+      <p>These surfaces are written primarily by an AI agent operated by AAO, with human editorial oversight:</p>
+      <ul>
+        <li><strong>Addie</strong> — AAO's teaching assistant and chat agent. All Addie chat responses are AI-generated.</li>
+        <li><strong>Sage</strong> — the AdCP protocol explainer agent. Protocol Q&amp;A in the docs chat is answered by Sage.</li>
+        <li><strong>The Prompt</strong> — our biweekly newsletter, authored in first person as Addie. The Prompt is editorial and is also a marketing surface for AAO; read it as both.</li>
+        <li><strong>The Build</strong> — our triweekly technical newsletter, authored by Sage.</li>
+        <li><strong>Member portraits</strong> — graphic-novel-style illustrations for members are AI-generated.</li>
+        <li><strong>Certification grading</strong> — Addie grades the free Basics track against a fixed rubric of 3&ndash;5 required demonstrations per module, and also grades the paid Practitioner and Specialist tracks. AAO is both the issuer and the grader of these credentials; we disclose this conflict rather than deny it, and human review of any grading decision is available on request (see below).</li>
+      </ul>
+
+      <h2 id="assisted">What's AI-assisted</h2>
+      <p>Most of the rest of AAO's public surface is built with AI coding assistants, reviewed by humans before publishing. This includes:</p>
+      <ul>
+        <li>The protocol schemas and documentation (<a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer">docs.adcontextprotocol.org</a>)</li>
+        <li>The open-source reference implementations</li>
+        <li>The admin tools operated by AAO staff</li>
+        <li>Most public-facing code in the <a href="https://github.com/adcontextprotocol" target="_blank" rel="noopener noreferrer">adcontextprotocol</a> organization</li>
+      </ul>
+      <p>We don't mark individual paragraphs or pull requests as AI-assisted &mdash; the default is that AI tools were involved.</p>
+
+      <h2 id="models">Model and provider disclosure</h2>
+      <ul>
+        <li><strong>Addie and Sage</strong> run on Anthropic Claude models.</li>
+        <li><strong>Image generation</strong> (member portraits, illustrations) uses Google Gemini image models.</li>
+        <li><strong>Protocol development</strong> uses Claude Code and other agentic development tools.</li>
+      </ul>
+
+      <h2 id="data">Data handling</h2>
+      <ul>
+        <li><strong>Addie and Sage chat</strong> &mdash; conversations are logged to improve teaching quality and to allow appeals on grading decisions. Logs are retained by AAO and not used by model providers for training. EU/UK residents: chat inputs are processed on our behalf by Anthropic; see our <a href="/api/agreement?type=privacy_policy">privacy policy</a> for the current data-processor chain and transfer mechanism.</li>
+        <li><strong>Grading decisions</strong> &mdash; the required-demonstrations, the Addie interaction that produced the credit, and the resulting assessment are retained so that a learner (or a regulator) can reconstruct the decision.</li>
+        <li><strong>Member portraits</strong> &mdash; AI-generated images are produced from member-provided inputs; the prompt and generated image are retained on the member's profile.</li>
+      </ul>
+
+      <h2 id="review">Human review</h2>
+      <p>You can request human review on any AI-generated surface. Target turnaround is <strong>five business days</strong>; complex cert appeals may take longer.</p>
+      <ul>
+        <li><strong>Certification grading</strong> &mdash; if you believe Addie's assessment of your work was wrong, email <a href="mailto:help@agenticadvertising.org">help@agenticadvertising.org</a> for human review by AAO staff.</li>
+        <li><strong>Content corrections</strong> &mdash; factual errors in Addie's teaching, Sage's protocol explanations, or any AI-authored content can be reported via <a href="https://github.com/adcontextprotocol/adcp/issues" target="_blank" rel="noopener noreferrer">GitHub issues</a> or <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg" target="_blank" rel="noopener noreferrer">Slack</a>.</li>
+        <li><strong>Protocol guidance</strong> &mdash; Sage is not a substitute for legal or regulatory advice. For compliance-sensitive questions, consult qualified counsel.</li>
+      </ul>
+
+      <h2 id="provenance">Content provenance (C2PA)</h2>
+      <p>Every AI-generated image AAO publishes carries an embedded <a href="https://c2pa.org/" target="_blank" rel="noopener noreferrer">C2PA</a> manifest signed by AAO:</p>
+      <ul>
+        <li><strong>Member portraits</strong> &mdash; also carry a visible &ldquo;AI&rdquo; badge in the bottom-right corner (CA SB 942 visible-disclosure path).</li>
+        <li><strong>Newsletter cover art</strong> &mdash; The Prompt and The Build covers, including the copies that ship in subscriber email and render as OpenGraph share cards.</li>
+        <li><strong>Perspective article hero images</strong> &mdash; every editorial illustration attached to a published perspective.</li>
+        <li><strong>Docs walkthrough and concept illustrations</strong> &mdash; the panel PNGs embedded throughout the docs site's walkthroughs and concept explainers.</li>
+      </ul>
+      <p>The manifest identifies Google Gemini as the generating software agent, marks the asset as <code>trainedAlgorithmicMedia</code> per the IPTC digital-source-type vocabulary, and includes a timestamp plus a SHA-256 of the generation prompt (not the prompt itself &mdash; portraits are generated from member-provided descriptions we do not want to republish). AAO signs with a self-signed P-256 certificate held in production secrets. CAI trust-list inclusion is a future step; today, public verifiers will show the signature as cryptographically valid but flag <em>&ldquo;issuer not on trust list.&rdquo;</em></p>
+      <p><strong>Verify any AAO image</strong> at <a href="https://contentcredentials.org/verify" target="_blank" rel="noopener noreferrer">contentcredentials.org/verify</a> by uploading the file or pasting its URL.</p>
+      <p>For editorial illustrations and docs storyboards where a visible mark would undermine the graphic-novel aesthetic, the C2PA manifest is the sole disclosure surface. CA SB 942's visible-disclosure rule targets upstream generative-AI providers rather than downstream publishers, so this placement is defensible for AAO &mdash; but it is a deliberate choice, not an oversight.</p>
+      <p>If you find an AAO-generated image that does not carry a manifest, please <a href="https://github.com/adcontextprotocol/adcp/issues" target="_blank" rel="noopener noreferrer">open an issue</a> &mdash; we treat missing provenance as a bug.</p>
+
+      <h2 id="regulatory">Regulatory posture</h2>
+      <p>This disclosure is informed by the FTC Endorsement Guides (2023), EU AI Act Art 50, and California SB 942. It has not been reviewed by outside counsel.</p>
+      <ul>
+        <li><strong>EU AI Act Art 50(2)</strong> and <strong>CA SB 942</strong> require machine-readable provenance on AI-generated images and video &mdash; see the <a href="#provenance">content provenance</a> section above for how we satisfy this.</li>
+        <li><strong>FTC Endorsement Guides</strong> apply to endorsements and testimonials for compensation. They are not activated by general AI authorship; we call them out here for completeness, not because we claim they are satisfied by this page alone.</li>
+      </ul>
+      <p>If you believe a specific AI surface falls short of an applicable standard, let us know.</p>
+
+      <h2 id="conflicts">Institutional conflicts</h2>
+      <p>AI authorship and evaluation by AAO intersect with AAO's broader governance in ways readers should know:</p>
+      <ul>
+        <li>AAO is both the issuer and the grader of its certifications (Addie evaluates coursework and grants credentials AAO sells).</li>
+        <li>AAO's founder's other company (Scope3) contributed funding and foundational IP &mdash; see the <a href="https://docs.adcontextprotocol.org/docs/faq#how-is-aao-related-to-scope3" target="_blank" rel="noopener noreferrer">FAQ entry</a> for the full relationship.</li>
+      </ul>
+      <p>The governance framework, board composition, and recusal rules are set out in <a href="https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md" target="_blank" rel="noopener noreferrer">CHARTER.md</a>, with the authoritative board list and funding disclosures at <a href="/governance">agenticadvertising.org/governance</a>.</p>
+
+      <hr>
+      <p>Material changes to how AI is used at AAO will be reflected on this page.</p>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    const navLinks = document.querySelectorAll('.sub-nav-links a');
+    const headings = document.querySelectorAll('.ai-disclosure-content h2[id]');
+
+    function updateActiveNav() {
+      const scrollPos = window.scrollY + 160;
+      let currentId = null;
+      headings.forEach(h => {
+        if (h.offsetTop <= scrollPos) currentId = h.getAttribute('id');
+      });
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (currentId && link.getAttribute('href') === '#' + currentId) {
+          link.classList.add('active');
+        }
+      });
+    }
+
+    window.addEventListener('scroll', updateActiveNav);
+    updateActiveNav();
+
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (!href.startsWith('#')) return;
+        e.preventDefault();
+        const target = document.getElementById(href.slice(1));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+  <script src="/nav.js"></script>
+</body>
+</html>

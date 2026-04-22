@@ -8,8 +8,9 @@ For comprehensive security guidance, see our [Security Documentation](https://do
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 2.x     | :white_check_mark: |
-| < 2.0   | :x:                |
+| 3.x     | :white_check_mark: |
+| 2.5     | :white_check_mark: (security-only until August 1, 2026 — see [v2 sunset](https://docs.adcontextprotocol.org/docs/reference/v2-sunset)) |
+| < 2.5   | :x:                |
 
 ## Reporting a Vulnerability
 

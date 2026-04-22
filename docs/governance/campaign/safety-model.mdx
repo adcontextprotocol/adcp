@@ -31,6 +31,16 @@ flowchart LR
 
 No party grades its own homework. The orchestrator cannot skip governance because the seller checks independently. The seller cannot deliver something different from what was approved because the governance agent has a record of the planned delivery.
 
+## Verifiable approvals
+
+Every governance approval is cryptographically signed by the governance agent. The approval token rides along with the purchase request; sellers check the signature before committing, and **regulators or auditors can verify the same token independently, without cooperating with the governance vendor that issued it**.
+
+That independence is the whole point. A design where the only way to reconstruct the approval trail is to subpoena the vendor that issued it is not an audit trail — it's a vendor dependency. Signed tokens turn the audit trail into something a data subject, a regulator, or an opposing counsel can examine on their own.
+
+The signed token also binds the approval to a specific plan, a specific seller, a specific phase of the media buy, and a unique transaction identifier. A token approving a $500K flight for Seller A cannot be silently reused to authorize a $500K flight at Seller B, nor can an approval for Q1 be replayed in Q3.
+
+See [Signed Governance Context](/docs/building/implementation/security#signed-governance-context) for the implementer-facing profile (claim set, key discovery, revocation, verification rules).
+
 ## Separation of duties
 
 Three roles with non-overlapping responsibilities:
@@ -66,6 +76,21 @@ Budget is committed based on confirmed outcomes, not intended actions:
 If a seller reduces the amount, the governance agent commits the actual amount and flags the discrepancy. If the action fails, the governance agent commits zero. Budget state reflects reality, not intent.
 
 Concurrent media buys are handled through optimistic concurrency control or budget reservation, preventing concurrent approvals that together exceed the plan budget.
+
+## Two dimensions of autonomy
+
+Campaign Governance separates agent autonomy into two independent dimensions. Both are evaluated on every action; neither overrides the other.
+
+| Field | Dimension | What it controls |
+|-------|-----------|------------------|
+| `budget.reallocation_threshold` | Operational | Maximum reallocation the agent can execute without escalation. `0` requires approval for every reallocation; a value at or above `budget.total` is effectively unlimited. |
+| `plan.human_review_required` | Regulatory | Whether decisions affecting individuals require human review before execution |
+
+`reallocation_threshold` is about money movement: how much can the agent shift between sellers or channels without asking? `human_review_required` is about the nature of the decision: does the decision fall under a regime (GDPR Art 22 automated decision-making, EU AI Act Annex III use cases, fair housing/lending/employment) that legally requires a human in the loop?
+
+The governance agent sets `human_review_required: true` automatically when resolved policies or policy_categories carry `requires_human_review: true`. Annex III use cases and Art 22-triggering verticals flip the flag regardless of how permissive `reallocation_threshold` is. A plan with unlimited reallocation can still require human review on every action if the underlying vertical demands it.
+
+This separation means an organization can grant broad reallocation autonomy for operational efficiency while preserving non-negotiable human review on the categories of decisions where human judgment is the regulatory requirement.
 
 ## Confidence and explainability
 
@@ -103,7 +128,7 @@ A brand buying direct with no agency and no policy team still gets:
 - Seller-side verification via governance checks
 - Full audit trail via `get_plan_audit_logs`
 
-Set [`authority_level: "agent_limited"`](/docs/governance/campaign/specification#budget-authority-levels) with a `reallocation_threshold` to define guardrails. The governance agent handles the rest.
+Set a [`reallocation_threshold`](/docs/governance/campaign/specification#budget-reallocation) on the budget to define guardrails. The governance agent handles the rest.
 
 ## Comparison to manual processes
 

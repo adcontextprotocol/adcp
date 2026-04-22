@@ -3,6 +3,7 @@
   "$id": "/schemas/account/sync-governance-request.json",
   "title": "Sync Governance Request",
   "description": "Sync governance agent endpoints against specific accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously synced agents on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -10,6 +11,13 @@
       "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
       "minimum": 1,
       "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `account` gives resource-level dedup, but governance changes emit audit events and can trigger reapproval flows — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "accounts": {
       "type": "array",
@@ -95,6 +103,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "accounts"
   ],
   "additionalProperties": true,
@@ -102,6 +111,7 @@
     {
       "description": "Sync governance agents on explicit accounts (by account_id)",
       "data": {
+        "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
         "accounts": [
           {
             "account": {
@@ -128,6 +138,7 @@
     {
       "description": "Sync governance agents on implicit accounts (by brand + operator)",
       "data": {
+        "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
         "accounts": [
           {
             "account": {

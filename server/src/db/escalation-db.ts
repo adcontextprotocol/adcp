@@ -48,6 +48,11 @@ export interface Escalation {
   resolved_by: string | null;
   resolved_at: Date | null;
   resolution_notes: string | null;
+  /** Optional: the perspective this escalation is about. Approving the
+   *  perspective auto-resolves this escalation. */
+  perspective_id: string | null;
+  /** Optional: denormalized slug for easy admin display without a join. */
+  perspective_slug: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -65,6 +70,8 @@ export interface EscalationInput {
   summary: string;
   original_request?: string;
   addie_context?: string;
+  perspective_id?: string;
+  perspective_slug?: string;
 }
 
 export interface EscalationFilters {
@@ -84,8 +91,9 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
     `INSERT INTO addie_escalations (
       thread_id, message_id, slack_user_id, workos_user_id, user_display_name,
       user_email, user_slack_handle,
-      category, priority, summary, original_request, addie_context
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      category, priority, summary, original_request, addie_context,
+      perspective_id, perspective_slug
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *`,
     [
       input.thread_id || null,
@@ -100,9 +108,41 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
       input.summary,
       input.original_request || null,
       input.addie_context || null,
+      input.perspective_id || null,
+      input.perspective_slug || null,
     ]
   );
   return result.rows[0];
+}
+
+/**
+ * Auto-resolve any open escalations linked to the given perspective.
+ *
+ * Called after a reviewer approves a perspective — the draft Addie filed
+ * about that post is no longer relevant, so the escalation queue cleans
+ * itself up. Returns the ids of the escalations that were resolved so
+ * the caller can log or notify.
+ *
+ * Only touches `status = 'open'` escalations; acknowledged / in_progress
+ * ones are left alone since a human may be actively working them.
+ */
+export async function resolveEscalationsForPerspective(
+  perspectiveId: string,
+  resolvedBy: string,
+  notes: string
+): Promise<number[]> {
+  const result = await query<{ id: number }>(
+    `UPDATE addie_escalations
+     SET status = 'resolved',
+         resolved_by = $2,
+         resolved_at = NOW(),
+         resolution_notes = $3,
+         updated_at = NOW()
+     WHERE perspective_id = $1 AND status = 'open'
+     RETURNING id`,
+    [perspectiveId, resolvedBy, notes]
+  );
+  return result.rows.map(r => r.id);
 }
 
 /**

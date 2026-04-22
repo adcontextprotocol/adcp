@@ -90,7 +90,8 @@ AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json",
+  "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
   "accounts": [
     {
       "brand": { "domain": "acmeoutdoor.com" },
@@ -121,7 +122,7 @@ With AdCP, `get_products` sends the same brief to every connected seller. Sam de
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
   "buying_mode": "brief",
   "brief": "Premium sports video inventory, Q2 2026, targeting 25-45 males interested in outdoor recreation. Budget $50K across CTV and display.",
   "brand": { "domain": "acmeoutdoor.com" }
@@ -163,12 +164,12 @@ But Sam isn't done. He likes StreamHaus's sports package but wants to shift budg
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
   "buying_mode": "refine",
   "refine": [
     {
       "scope": "product",
-      "id": "streamhaus_sports_ctv_q2",
+      "product_id": "streamhaus_sports_ctv_q2",
       "action": "more_like_this",
       "ask": "More CTV inventory like this, willing to go up to $35 CPM"
     },
@@ -198,7 +199,7 @@ First, Maya discovers what each seller accepts:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/list-creative-formats-request.json",
   "type": "video"
 }
 ```
@@ -209,7 +210,8 @@ Then Maya briefs the creative agent. One brief produces all formats:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/build-creative-request.json",
+  "idempotency_key": "c1d2e3f4-a5b6-4789-c012-789012345678",
   "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
   "brand": { "domain": "acmeoutdoor.com" },
   "target_format_ids": [
@@ -227,7 +229,8 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
+  "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "creatives": [
     {
@@ -235,7 +238,7 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
       "name": "Acme Summer CTV 30s",
       "format_id": { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" },
       "assets": {
-        "video": { "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
+        "video": { "asset_type": "video", "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
       }
     }
   ]
@@ -256,7 +259,8 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json",
+  "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "brand": { "domain": "acmeoutdoor.com" },
   "start_time": "2026-04-01T00:00:00Z",
@@ -274,6 +278,10 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 For sellers that generate creative — AI assistants, conversational ad platforms — the media buy can include a brief instead of pre-built assets. The seller's creative agent generates on the fly, pulling from the brand identity and campaign context. Both models — provided creative and generative creative — use the same `create_media_buy` task.
 
 `update_media_buy` handles mid-flight changes: shift budget between packages, adjust flight dates, swap creative assignments. No need to cancel and recreate.
+
+<Card title="The trust surface underneath" icon="shield-check">
+That `idempotency_key` on Sam's request isn't decorative. Pinnacle's buyer agent signs the POST with RFC 9421 HTTP Message Signatures before it leaves the network. StreamHaus verifies Pinnacle's signature against the JWKS it publishes in `adagents.json`, then accepts the buy. When the campaign moves from `pending_start` to `active`, StreamHaus posts a signed webhook back to Pinnacle's orchestrator — same signature profile, keys published in its own `agents[]` entry under `adcp_use: "webhook-signing"`. If Sam's laptop drops the response and his agent retries, the `idempotency_key` makes the second call safe — StreamHaus returns the original buy with `replayed: true` instead of charging twice. Governance approvals ride along as signed JWS tokens on `check_governance` so no agent in the chain can forge Jordan's sign-off. See the [Security guide](/docs/building/implementation/security).
+</Card>
 
 ---
 
@@ -297,7 +305,8 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json",
+  "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "audiences": [
     {
@@ -313,7 +322,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json",
   "signal_spec": "Outdoor recreation enthusiasts near sporting goods retailers, 25-45"
 }
 ```
@@ -322,7 +331,8 @@ Kai's Meridian Geo returns matching signal segments with pricing, coverage, and 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json",
+  "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
   "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
   "destinations": [
     { "type": "platform", "platform": "streamhaus" }
@@ -348,7 +358,7 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/governance/check-governance-request.json",
   "plan_id": "acme_outdoor_q2_plan",
   "caller": "https://buyer.pinnacle-agency.com/a2a",
   "tool": "create_media_buy",
@@ -426,7 +436,8 @@ For deeper performance tracking, AdCP provides two more tools:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/log-event-request.json",
+  "idempotency_key": "a5b6c7d8-e9f0-4123-a456-123456789012",
   "event_source_id": "acme_website_pixel",
   "events": [
     {
@@ -444,7 +455,8 @@ For deeper performance tracking, AdCP provides two more tools:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/provide-performance-feedback-request.json",
+  "idempotency_key": "b6c7d8e9-f0a1-4234-b567-234567890123",
   "media_buy_id": "mb_acme_q2_001",
   "measurement_period": {
     "start": "2026-04-01T00:00:00Z",
@@ -466,7 +478,8 @@ Acme Outdoor has a Shopify store with 200 products. They want their catalog avai
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "catalogs": [
     {
@@ -497,7 +510,7 @@ https://novamotors.com/.well-known/brand.json
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
   "house": {
     "domain": "novamotors.com",
     "name": "Nova Motors"
@@ -557,6 +570,8 @@ AdCP doesn't assume a single AI handles everything. Specialized agents handle wh
 - **Orchestrators** coordinate the workflow and make sure humans approve what matters
 
 These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
+
+**How you know an agent does what it claims:** Every agent tells the network which broad areas it handles and which specific flows it supports — and those claims are testable. The protocol ships compliance storyboards that a runner executes against the agent. If it passes, the claim is verifiable. See the [Compliance Catalog](/docs/building/compliance-catalog).
 
 ## Brief to live ads
 
@@ -678,7 +693,7 @@ go get github.com/adcontextprotocol/adcp-go/adcp
 </CodeGroup>
 
 - **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
-- **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-python)
+- **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-client-python)
 - **Go**: [adcp-go](https://github.com/adcontextprotocol/adcp-go)
 
 ## Open-source examples
@@ -688,6 +703,8 @@ The [Prebid Sales Agent](https://github.com/prebid/salesagent) is a full-stack s
 ## Organization
 
 AdCP is a project of [AgenticAdvertising.org](https://agenticadvertising.org), an industry organization of publishers, platforms, agencies, and technology providers advancing open standards for AI-powered advertising. Members join AgenticAdvertising.org to develop and adopt the protocol.
+
+Foundation governance — structure, voting classes, Board composition, specification lifecycle, and conduct rules — is summarized in the repository's [CHARTER](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) and published at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
 
 ## Need help?
 

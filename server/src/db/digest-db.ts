@@ -540,8 +540,13 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        o.journey_stage,
        om.seat_type,
        COALESCE((SELECT COUNT(*) FROM working_group_memberships wgm WHERE wgm.workos_user_id = u.workos_user_id AND wgm.status = 'active'), 0)::int AS wg_count,
-       COALESCE((SELECT COUNT(*) FROM certification_attempts ca WHERE ca.workos_user_id = u.workos_user_id AND ca.status = 'completed'), 0)::int AS cert_modules_completed,
-       COALESCE((SELECT COUNT(DISTINCT module_id) FROM certification_modules WHERE is_active = TRUE), 0)::int AS cert_total_modules,
+       COALESCE((SELECT COUNT(*) FROM learner_progress lp
+                 JOIN certification_modules cm ON cm.id = lp.module_id
+                 WHERE lp.workos_user_id = u.workos_user_id
+                   AND lp.status IN ('completed', 'tested_out')
+                   AND cm.track_id = active_track.track_id), 0)::int AS cert_modules_completed,
+       COALESCE((SELECT COUNT(*) FROM certification_modules
+                 WHERE track_id = active_track.track_id), 0)::int AS cert_total_modules,
        COALESCE(o.subscription_status = 'active', FALSE) AS is_member,
        (u.first_name IS NOT NULL AND u.last_name IS NOT NULL) AS has_profile
      FROM users u
@@ -549,6 +554,19 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        ON om.workos_user_id = u.workos_user_id
      LEFT JOIN organizations o
        ON o.workos_organization_id = om.workos_organization_id
+     -- "Active track" = the track the user most recently touched. A learner
+     -- halfway through track A who briefly opens a track-B module will get
+     -- B-scoped counts on the next digest; that's the intended nudge behavior.
+     -- module_id tiebreaker keeps the choice deterministic across identical
+     -- updated_at values (possible on backfills or same-request writes).
+     LEFT JOIN LATERAL (
+       SELECT cm.track_id
+       FROM learner_progress lp
+       JOIN certification_modules cm ON cm.id = lp.module_id
+       WHERE lp.workos_user_id = u.workos_user_id
+       ORDER BY lp.updated_at DESC, lp.module_id DESC
+       LIMIT 1
+     ) active_track ON TRUE
      WHERE u.email IS NOT NULL
        AND u.email != ''
        AND NOT EXISTS (
@@ -633,15 +651,18 @@ export async function setDigestCoverImage(
   digestId: number,
   imageData: Buffer,
   promptUsed: string,
+  c2paSignedAt?: Date,
+  c2paManifestDigest?: string,
 ): Promise<boolean> {
   if (imageData.length > MAX_COVER_IMAGE_SIZE) {
     throw new Error(`Cover image too large: ${(imageData.length / 1024 / 1024).toFixed(1)} MB`);
   }
   const result = await query(
     `UPDATE weekly_digests
-     SET cover_image_data = $2, cover_prompt_used = $3
+     SET cover_image_data = $2, cover_prompt_used = $3,
+         cover_c2pa_signed_at = $4, cover_c2pa_manifest_digest = $5
      WHERE id = $1 AND status = 'draft'`,
-    [digestId, imageData, promptUsed],
+    [digestId, imageData, promptUsed, c2paSignedAt ?? null, c2paManifestDigest ?? null],
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -652,9 +673,20 @@ export async function setDigestCoverImage(
  */
 export async function getDigestCoverImageWithPrompt(
   editionDate: string,
-): Promise<{ imageData: Buffer; promptUsed: string } | null> {
-  const result = await query<{ cover_image_data: Buffer; cover_prompt_used: string | null }>(
-    `SELECT cover_image_data, cover_prompt_used FROM weekly_digests
+): Promise<{
+  imageData: Buffer;
+  promptUsed: string;
+  c2paSignedAt: Date | null;
+  c2paManifestDigest: string | null;
+} | null> {
+  const result = await query<{
+    cover_image_data: Buffer;
+    cover_prompt_used: string | null;
+    cover_c2pa_signed_at: Date | null;
+    cover_c2pa_manifest_digest: string | null;
+  }>(
+    `SELECT cover_image_data, cover_prompt_used, cover_c2pa_signed_at, cover_c2pa_manifest_digest
+     FROM weekly_digests
      WHERE edition_date = $1 AND cover_image_data IS NOT NULL`,
     [editionDate],
   );
@@ -662,6 +694,8 @@ export async function getDigestCoverImageWithPrompt(
   return {
     imageData: result.rows[0].cover_image_data,
     promptUsed: result.rows[0].cover_prompt_used || 'Unknown',
+    c2paSignedAt: result.rows[0].cover_c2pa_signed_at,
+    c2paManifestDigest: result.rows[0].cover_c2pa_manifest_digest,
   };
 }
 

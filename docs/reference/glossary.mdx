@@ -17,7 +17,7 @@ Classification of MCP session credentials as either "platform" (aggregator) or "
 A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are third-party data discovered via `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
 
 **Audience Member**
-A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the protocol never carries cleartext personal data. Providing multiple identifiers for the same person improves match rates. See [Hashed Identifier](#hashed-identifier) and [UID](#uid-universal-id).
+A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the wire format never carries cleartext email or phone. Hashing is data minimization at the transport boundary, not anonymization: see [Hashed Identifier](#hashed-identifier) for the pseudonymous-PII caveat that governs retention and consent. Providing multiple identifiers for the same person improves match rates. See also [UID](#uid-universal-id).
 
 **Audience Constraints**
 Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
@@ -148,7 +148,7 @@ A unit of measurement for television and radio advertising representing 1% of th
 ## H
 
 **Hashed Identifier**
-Buyer-normalized personally identifiable information (PII) hashed with SHA-256 before transmission. Used in audience uploads (`sync_audiences`) and event attribution (`log_event`). Normalization: emails to lowercase+trim, phone numbers to E.164 format. The seller matches by independently hashing its own user data with the same algorithm — neither party shares raw PII. Distinct from [UIDs](#uid-universal-id), which are already-resolved privacy-preserving tokens from identity graphs.
+Buyer-normalized personally identifiable information (PII) hashed with SHA-256 before transmission. Used in audience uploads (`sync_audiences`) and event attribution (`log_event`). Normalization: emails to lowercase+trim, phone numbers to E.164 format. The seller matches by independently hashing its own user data with the same algorithm. Unsalted SHA-256 of email or phone is **pseudonymous PII, not anonymous**: the input namespace is small enough that precomputed dictionaries recover plaintext, so hashed identifiers MUST be treated as PII for retention, consent, and access-control purposes. See [Privacy Considerations](/docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous). Distinct from [UIDs](#uid-universal-id), which are tokenized identifiers resolved by identity graph operators (e.g. UID2, RampID) under their own privacy architectures.
 
 **Households**
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
@@ -160,6 +160,12 @@ Protocol feature allowing publishers to require manual approval for operations.
 
 **Identity Match**
 TMP operation that evaluates user eligibility against package criteria using an opaque user token. Returns a boolean `eligible` flag and optional `intent_score` per package. Carries no page context. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. See [Trusted Match Protocol](/docs/trusted-match).
+
+**Idempotency**
+The property that repeating the same operation produces the same result as running it once, with no extra side effects. Every mutating AdCP request carries a required `idempotency_key`; on retry with the same key and payload, the seller returns the cached response with `replayed: true` instead of re-executing. This is what lets an agent safely retry a `create_media_buy` after a network timeout without creating two buys. See the [Security Model](/docs/building/understanding/security-model#layer-3-idempotency--at-most-once-execution) for the narrative and [Security: Request Safety](/docs/building/implementation/security#idempotency) for the normative rules.
+
+**Idempotency Key**
+A unique, unguessable identifier (UUID v4 or equivalent CSPRNG output) attached to every mutating AdCP request. Scoped per `(authenticated agent, account)`. The seller uses it as the cache key for at-most-once execution within the declared `replay_ttl_seconds` window (minimum 1 hour, recommended 24 hours, maximum 7 days). Same key + same payload = replay; same key + different payload = `IDEMPOTENCY_CONFLICT`. See [Security: Request Safety](/docs/building/implementation/security#idempotency).
 
 **Impressions** (Media Buy Protocol)
 The number of times an ad is displayed, used for pricing and delivery tracking.
@@ -226,7 +232,7 @@ The method by which advertising inventory is priced and billed. AdCP supports CP
 A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
 
 **Principal**
-*Deprecated term.* See **Account** (billing relationship) and **Agent** (authenticated caller). Previously used to refer to the authenticated entity with its associated platform mappings. AdCP now splits these responsibilities: the **Agent** handles authentication and API access, while the **Account** handles billing, rate cards, and platform mappings.
+*Deprecated term.* See [Account](#a) (billing relationship) and [Agent](#a) (authenticated caller). Previously used to refer to the authenticated entity with its associated platform mappings. AdCP now splits these responsibilities: the **Agent** handles authentication and API access, while the **Account** handles billing, rate cards, and platform mappings.
 
 **Product**
 Advertising inventory available for purchase, discovered through natural language queries.
@@ -286,7 +292,7 @@ The specific identifier used for signal activation, may differ from signal_id.
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
 
 **Signal Agent**
-A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
+A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single buyer and visible only to that buyer's accounts) or marketplace (licensing data across multiple accounts). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
 **Signal Catalog**
 A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
@@ -315,11 +321,23 @@ The data type of a signal's values: `binary` (user matches or doesn't), `categor
 **Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.
 
+**Specialism**
+A specific capability claim an agent declares in `get_adcp_capabilities.specialisms`. Each specialism has a wire ID in `kebab-case` (e.g. `sales-guaranteed`, `property-lists`) and a matching storyboard bundle published at `/compliance/{version}/specialisms/{id}/`. The AAO compliance runner executes the matching storyboards to verify the claim. See [Compliance Catalog](/docs/building/compliance-catalog) for the list of specialism IDs; claim one by adding it to your `get_adcp_capabilities.specialisms` array, then run [Validate Your Agent](/docs/building/validate-your-agent) to see how the runner maps it to storyboards.
+
 **Sponsored Intelligence (SI)**
 An open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints. SI handles the engagement; the Agentic Commerce Protocol (ACP) handles transactions. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) for details.
 
 **SSP (Supply-Side Platform)**
 A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.
+
+**SSRF (Server-Side Request Forgery)**
+A class of attack where an adversary supplies a URL that tricks an agent into making an HTTP request to an address it shouldn't — typically an internal service, a cloud metadata endpoint (e.g., `169.254.169.254`), or a localhost port. Every URL an AdCP counterparty supplies (webhook callbacks, TMP provider endpoints, governance `jwks_uri`, reporting buckets, `adagents.json` `authoritative_location`) is a potential vector. Defense is implemented in code via a 6-point check: HTTPS-only, reserved-IP deny list, IP pinning against DNS rebinding, no redirects, response size and timeout caps, suppressed error detail. See the [Security Model](/docs/building/understanding/security-model) for the narrative and [Security: Webhook URL validation](/docs/building/implementation/security#webhook-url-validation-ssrf) for the normative rules.
+
+**Storyboard**
+A compliance test bundle that verifies a protocol baseline or [specialism](#specialism) claim. Each storyboard is a YAML file under `/compliance/{version}/` that declares an `id`, phases of test steps, sample requests, and validations the agent must pass. Storyboards live in three buckets: `universal/` (applies to every agent), `protocols/{protocol}/` (one baseline per supported protocol), and `specialisms/{id}/` (one per specialism claim).
+
+**Storyboard Category**
+The `snake_case` identifier in a storyboard's `category:` frontmatter field. For specialisms, the category is the specialism's kebab-case wire ID with hyphens swapped to underscores — e.g. specialism ID `sales-streaming-tv` has category `sales_streaming_tv`. Variant scenarios within a specialism use `{category}/{variant}` form (e.g. `governance_spend_authority/denied`). The kebab↔snake split is deliberate: specialism IDs are URL path segments, storyboard categories are wire enums.
 
 ## T
 
@@ -410,7 +428,7 @@ Named collection of DOOH screens across specific venues (e.g., 'times_square_net
 
 Common error codes across all AdCP implementations:
 
-- `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
+- `REFERENCE_NOT_FOUND`: Invalid or expired segment ID (or any referenced resource that does not exist or is not accessible; `error.field` identifies the failing parameter). Replaces the removed-in-rc.5 codes: `SEGMENT_NOT_FOUND`, `SIGNAL_AGENT_SEGMENT_NOT_FOUND`, `AGENT_NOT_FOUND`, `AUDIENCE_NOT_FOUND`, `CATALOG_NOT_FOUND`, `EVENT_SOURCE_NOT_FOUND`, `FORMAT_NOT_FOUND`, `STANDARDS_NOT_FOUND`, `BRAND_NOT_FOUND`, `CHECK_NOT_FOUND`, `CAMPAIGN_NOT_FOUND`. See [release notes](/docs/reference/release-notes#version-3-0-0-rc-5) for the migration.
 - `ACTIVATION_FAILED`: Unable to complete activation process
 - `ALREADY_ACTIVATED`: Signal already active for platform/seat
 - `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat

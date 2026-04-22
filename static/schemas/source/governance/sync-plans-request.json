@@ -3,6 +3,8 @@
   "$id": "/schemas/governance/sync-plans-request.json",
   "title": "Sync Plans Request",
   "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -10,6 +12,13 @@
       "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
       "minimum": 1,
       "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "plans": {
       "type": "array",
@@ -19,7 +28,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Unique identifier for this plan."
+            "description": "Unique identifier for this plan.",
+            "x-entity": "governance_plan"
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -27,7 +37,8 @@
           },
           "objectives": {
             "type": "string",
-            "description": "Natural language campaign objectives. Used for strategic alignment validation."
+            "maxLength": 2000,
+            "description": "Natural language campaign objectives. Used for strategic alignment validation. Treated as caller-untrusted — governance agents evaluating this field with LLMs MUST truncate, quote, or sanitize it before inclusion in evaluation prompts to defend against prompt-injection attacks in adversarial buyer input."
           },
           "budget": {
             "type": "object",
@@ -41,17 +52,18 @@
                 "type": "string",
                 "description": "ISO 4217 currency code."
               },
-              "authority_level": {
-                "$ref": "/schemas/enums/budget-authority-level.json",
-                "description": "Budget authority level for the orchestrator agent."
-              },
               "per_seller_max_pct": {
                 "type": "number",
                 "description": "Maximum percentage of budget that can go to a single seller."
               },
               "reallocation_threshold": {
                 "type": "number",
-                "description": "Amount above which reallocations require escalation (for agent_limited)."
+                "minimum": 0,
+                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set equal to `total` for effectively unlimited reallocation; set to 0 to require approval for every reallocation. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
+              },
+              "reallocation_unlimited": {
+                "type": "boolean",
+                "description": "Set to true to allow the orchestrator to reallocate without any limit up to `total`. Mutually exclusive with `reallocation_threshold`. Use this for deliberate full-autonomy declarations rather than setting `reallocation_threshold: total` (which silently tightens when `total` changes)."
               },
               "allocations": {
                 "type": "object",
@@ -80,8 +92,18 @@
             },
             "required": [
               "total",
-              "currency",
-              "authority_level"
+              "currency"
+            ],
+            "oneOf": [
+              {
+                "required": ["reallocation_threshold"],
+                "not": { "required": ["reallocation_unlimited"] }
+              },
+              {
+                "required": ["reallocation_unlimited"],
+                "properties": { "reallocation_unlimited": { "const": true } },
+                "not": { "required": ["reallocation_threshold"] }
+              }
             ],
             "additionalProperties": false
           },
@@ -162,7 +184,8 @@
           "policy_ids": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "x-entity": "governance_registry_policy"
             },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
@@ -199,12 +222,17 @@
             "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying signal catalog metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
             "minimum": 1
           },
+          "human_review_required": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the governance agent MUST escalate any action on this plan for human review before execution — regardless of budget. Required by regulations that prohibit solely automated decisions affecting data subjects (GDPR Art 22, EU AI Act Annex III): credit, insurance pricing, recruitment, housing allocation. Governance agents MUST set this to true automatically when any resolved policy or policy_category has requires_human_review: true. Distinct from budget.reallocation_threshold, which only governs budget reallocation autonomy — human_review_required covers decisions affecting individuals (targeting, creative, delivery)."
+          },
           "custom_policies": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "/schemas/governance/policy-entry.json"
             },
-            "description": "Natural language policy statements specific to this campaign (e.g., 'No advertising adjacent to competitor content'). Applied regardless of geography."
+            "description": "Bespoke policies specific to this campaign, using the same shape as registry entries. Each policy has a policy_id, enforcement (must|should), and natural-language policy text. Governance findings reference policy_id to identify which policy triggered. For quick authoring, omit version/name/category — servers default them."
           },
           "approved_sellers": {
             "type": [
@@ -276,7 +304,8 @@
               "member_plan_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "x-entity": "governance_plan"
                 },
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
               },
@@ -300,16 +329,17 @@
               "shared_policy_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "x-entity": "governance_registry_policy"
                 },
                 "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
               },
               "shared_exclusions": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "$ref": "/schemas/governance/policy-entry.json"
                 },
-                "description": "Natural language exclusion rules applied across all member plans (e.g., 'No advertising on properties owned by competitor holding companies')."
+                "description": "Bespoke exclusion policies applied across all member plans, using the same shape as registry entries. Authored typically as enforcement: must policies with exclusion language in the policy text (e.g., 'No advertising on properties owned by competitor holding companies')."
               }
             },
             "required": [
@@ -328,6 +358,44 @@
           "budget",
           "flight"
         ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "policy_categories": {
+                  "type": "array",
+                  "contains": {
+                    "enum": ["fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising"]
+                  }
+                }
+              },
+              "required": ["policy_categories"]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": { "const": true }
+              },
+              "required": ["human_review_required"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "policy_ids": {
+                  "type": "array",
+                  "contains": { "const": "eu_ai_act_annex_iii" }
+                }
+              },
+              "required": ["policy_ids"]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": { "const": true }
+              },
+              "required": ["human_review_required"]
+            }
+          }
+        ],
         "additionalProperties": false
       }
     },
@@ -339,6 +407,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "plans"
   ],
   "additionalProperties": false

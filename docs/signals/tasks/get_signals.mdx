@@ -9,8 +9,8 @@ description: "get_signals is the AdCP task for discovering audience and contextu
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json)
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
@@ -97,7 +97,7 @@ The response structure is identical across protocols, with only the transport wr
       "pricing_options": [
         {
           "pricing_option_id": "string",
-          "model": "cpm | percent_of_media | flat_fee",
+          "model": "cpm | percent_of_media | flat_fee | per_unit | custom",
           "...": "..."
         }
       ]
@@ -112,7 +112,10 @@ The response structure is identical across protocols, with only the transport wr
   - **signal_agent_segment_id**: Unique identifier for the signal
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
-  - **signal_type**: Type of signal (marketplace, custom, owned)
+  - **signal_type**: Type of signal. One of:
+    - `marketplace` — resold third-party segment (provider authorization verifiable via the provider's `adagents.json`)
+    - `owned` — first-party segment derived from data the signal agent directly owns
+    - `custom` — agent-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
   - **data_provider**: Name of the data provider
   - **coverage_percentage**: Percentage of audience coverage
   - **deployments**: Array of destination deployments
@@ -123,10 +126,12 @@ The response structure is identical across protocols, with only the transport wr
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
     - **pricing_option_id**: Unique identifier for this pricing option
-    - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - **model**: Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
     - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
     - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
     - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
+    - `model: "per_unit"` — `unit` (what is counted), `unit_price` (cost per one unit), `currency` (ISO 4217)
+    - `model: "custom"` — `description` (human-readable), `metadata` (structured parameters), `currency` (optional). Escape hatch for performance kickers, tiered volume, hybrid formulas, or any construct the standard models cannot express. Buyers SHOULD route custom pricing through operator review before commitment.
 
 Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
@@ -577,7 +582,7 @@ Discover all available deployments across platforms:
   - **signal_agent_segment_id** (string): Universal identifier for the signal
   - **name** (string): Human-readable signal name
   - **description** (string): Detailed signal description
-  - **signal_type** (string): Type of signal (marketplace, custom, owned)
+  - **signal_type** (string): `marketplace` (resold third-party), `owned` (agent's first-party data), or `custom` (agent-native segment built on demand)
   - **data_provider** (string): Provider of the signal data
   - **coverage_percentage** (number): Estimated reach percentage
   - **deployments** (array): Platform-specific deployment information
@@ -588,14 +593,18 @@ Discover all available deployments across platforms:
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
   - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
-    - **model** (string): Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - **model** (string): Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
 
 ## Error Codes
 
 ### Discovery Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
-- `AGENT_NOT_FOUND`: Private signal agent not visible to this principal
-- `AGENT_ACCESS_DENIED`: Principal not authorized for this signal agent
+- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist,
+  OR a private signal agent is not visible to this account. The same code is
+  returned whether the resource exists but is unauthorized or truly does not
+  exist — sellers MUST NOT distinguish the two (see `error.field` to
+  identify which typed parameter failed to resolve). See the uniform-response
+  MUST in error-handling.mdx.
+- `AGENT_ACCESS_DENIED`: Authenticated agent's credentials did not authorize access to this signal agent
 
 ### Discovery Warnings
 - `PRICING_UNAVAILABLE`: Pricing data temporarily unavailable for one or more platforms

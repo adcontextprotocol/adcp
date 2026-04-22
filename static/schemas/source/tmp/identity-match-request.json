@@ -30,13 +30,26 @@
       "type": "string",
       "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
     },
-    "user_token": {
-      "type": "string",
-      "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated"
-    },
-    "uid_type": {
-      "$ref": "/schemas/enums/uid-type.json",
-      "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+    "identities": {
+      "type": "array",
+      "description": "Identity tokens for the user, each tagged with its type. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches. Entry order is not semantically significant; buyers use their own preference order when multiple entries resolve. Duplicate `(uid_type, user_token)` pairs MUST NOT appear; routers MAY reject or dedupe. `maxItems: 3` matches the TMPX plaintext budget (~120 bytes after HPKE overhead fits three 32-byte tokens); exceeding it forces buyer-side truncation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_token": {
+            "type": "string",
+            "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII."
+          },
+          "uid_type": {
+            "$ref": "/schemas/enums/uid-type.json",
+            "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+          }
+        },
+        "required": ["user_token", "uid_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 3
     },
     "consent": {
       "type": "object",
@@ -78,8 +91,7 @@
   "required": [
     "type",
     "request_id",
-    "user_token",
-    "uid_type",
+    "identities",
     "package_ids"
   ],
   "additionalProperties": false

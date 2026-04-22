@@ -19,6 +19,7 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
+import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
@@ -27,8 +28,9 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
+import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -43,7 +45,9 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
+import { findOrCreateUserByEmail } from "./auth/workos-client.js";
+import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -111,8 +115,10 @@ import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
-import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
+import { serveHtmlWithMetaTags, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
+import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
@@ -308,11 +314,17 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null) {
+  // Trust a pre-resolved isAdmin (set by enrichUserWithAdmin / dev-user flag).
+  // Fall back to ADMIN_EMAILS for callers that haven't enriched yet.
   let isAdmin = false;
   if (user) {
-    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-    isAdmin = adminEmails.includes(user.email.toLowerCase());
+    if (typeof user.isAdmin === 'boolean') {
+      isAdmin = user.isAdmin;
+    } else {
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+      isAdmin = adminEmails.includes(user.email.toLowerCase());
+    }
   }
 
   return {
@@ -335,7 +347,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null): string {
   const config = buildAppConfig(user);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
@@ -471,34 +483,14 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
-    // Serve JSON schemas as static files before any other middleware.
-    // These are high-traffic, read-only JSON files that don't need body parsing,
-    // cookies, CSRF, or session handling.
+    // Serve JSON schemas (aliases + static files + discovery) before body-parsing,
+    // cookie, and CSRF middleware so these high-traffic reads stay cheap.
     const distPath = process.env.NODE_ENV === 'production'
       ? __dirname
       : path.join(__dirname, "../../dist");
-    const schemasPath = path.join(distPath, 'schemas');
-    // Use a middleware wrapper so setHeaders can see the *request* path.
-    // express.static resolves symlinks, so checking the file path would
-    // incorrectly mark aliases (latest, v2.5) as immutable when they
-    // resolve to a versioned directory on disk.
-    const schemasStatic = express.static(schemasPath, {
-      maxAge: '10m',
-      etag: true,
-      lastModified: true,
-      setHeaders: (res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      }
-    });
-    this.app.use('/schemas', (req, res, next) => {
-      // Only direct versioned paths (/schemas/2.5.3/...) are immutable.
-      // Aliases (/latest/, /v2.5/, /v1/) use the 10m default + ETag so
-      // caches revalidate after the alias target changes.
-      if (/^\/\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?\//.test(req.path)) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      }
-      schemasStatic(req, res, next);
-    });
+    mountSchemasRoutes(this.app, path.join(distPath, 'schemas'));
+    mountComplianceRoutes(this.app, path.join(distPath, 'compliance'));
+    mountProtocolRoutes(this.app, path.join(distPath, 'protocol'));
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
@@ -524,173 +516,20 @@ export class HTTPServer {
           req.path.startsWith('/api/slack/')) {
         next();
       } else {
-        express.json({ limit: '10mb' })(req, res, next);
+        // `verify` captures raw body bytes before JSON parses them — required
+        // for RFC 9421 request-signature verification on the training-agent
+        // `/mcp` endpoint, which rehashes the exact bytes the signer signed.
+        // Cheap (one utf-8 decode per request) and unused elsewhere.
+        express.json({
+          limit: '10mb',
+          verify: (req, _res, buf) => {
+            (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+          },
+        })(req, res, next);
       }
     });
     this.app.use(cookieParser());
     this.app.use(csrfProtection);
-
-    // Schema version aliasing and discovery (static serving handled above, before middleware)
-
-    // Cache for schema version directories (refreshed every 60 seconds)
-    let versionCache: { versions: string[], timestamp: number } | null = null;
-    const CACHE_TTL_MS = 60 * 1000;
-
-    async function getSchemaVersions(): Promise<string[]> {
-      const now = Date.now();
-      if (versionCache && (now - versionCache.timestamp) < CACHE_TTL_MS) {
-        return versionCache.versions;
-      }
-
-      const entries = await fs.readdir(schemasPath, { withFileTypes: true });
-      const versions = entries
-        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?$/.test(e.name))
-        .map(e => e.name)
-        .sort((a, b) => {
-          // Sort by semver (descending), prereleases come after stable
-          const parseVersion = (v: string) => {
-            const [base, prerelease] = v.split('-');
-            const [major, minor, patch] = base.split('.').map(Number);
-            return { major, minor, patch, prerelease };
-          };
-          const av = parseVersion(a);
-          const bv = parseVersion(b);
-          if (av.major !== bv.major) return bv.major - av.major;
-          if (av.minor !== bv.minor) return bv.minor - av.minor;
-          if (av.patch !== bv.patch) return bv.patch - av.patch;
-          // Stable versions come before prereleases (no prerelease = higher precedence)
-          if (!av.prerelease && bv.prerelease) return -1;
-          if (av.prerelease && !bv.prerelease) return 1;
-          // Both have prereleases, sort descending (beta.3 before beta.1)
-          if (av.prerelease && bv.prerelease) return bv.prerelease.localeCompare(av.prerelease);
-          return 0;
-        });
-
-      versionCache = { versions, timestamp: now };
-      return versions;
-    }
-
-    function parseSemver(version: string): { major: number, minor: number, patch: number, prerelease?: string } {
-      const [base, prerelease] = version.split('-');
-      const [major, minor, patch] = base.split('.').map(Number);
-      return { major, minor, patch, prerelease };
-    }
-
-    function findMatchingVersion(versions: string[], requestedMajor: number, requestedMinor?: number): string | undefined {
-      // Find the latest version that matches the requested major (and optionally minor)
-      return versions.find(v => {
-        const { major, minor } = parseSemver(v);
-        if (major !== requestedMajor) return false;
-        if (requestedMinor !== undefined && minor !== requestedMinor) return false;
-        return true;
-      });
-    }
-
-    // Middleware to resolve version aliases (e.g., v2.5 → 2.5.1)
-    // This handles cases where symlinks don't exist (e.g., in Docker)
-    this.app.use('/schemas', async (req, res, next) => {
-      // Match version alias patterns: /v2/, /v2.5/, /v2.6/, /v1/
-      const versionMatch = req.path.match(/^\/v(\d+)(?:\.(\d+))?(\/.*)?$/);
-      if (!versionMatch) {
-        return next();
-      }
-
-      const requestedMajor = parseInt(versionMatch[1], 10);
-      const requestedMinor = versionMatch[2] ? parseInt(versionMatch[2], 10) : undefined;
-      const restOfPath = versionMatch[3] || '/';
-
-      // Special case: v1 always points to latest
-      if (requestedMajor === 1 && requestedMinor === undefined) {
-        req.url = '/latest' + restOfPath;
-        return next();
-      }
-
-      try {
-        const versions = await getSchemaVersions();
-        const targetVersion = findMatchingVersion(versions, requestedMajor, requestedMinor);
-
-        if (targetVersion) {
-          req.url = '/' + targetVersion + restOfPath;
-        }
-      } catch {
-        // If we can't read the directory, let static middleware handle it
-      }
-      next();
-    });
-
-    // Redirect version directory requests to index.json
-    // e.g., /schemas/2.6.0/ → /schemas/2.6.0/index.json
-    this.app.use('/schemas', (req, res, next) => {
-      // Match paths like /2.6.0/ or /latest/ (directory requests)
-      if (req.path.match(/^\/(\d+\.\d+\.\d+|latest)\/$/)) {
-        return res.redirect(req.path + 'index.json');
-      }
-      next();
-    });
-
-    // Schema discovery endpoint - returns available versions and aliases
-    this.app.get('/schemas/', async (req, res) => {
-      try {
-        const versions = await getSchemaVersions();
-        const latestPerMinor: Record<string, string> = {};
-        let latestMajorVersion: string | undefined;
-
-        for (const version of versions) {
-          const { major, minor } = parseSemver(version);
-          const minorKey = `${major}.${minor}`;
-
-          // First version in sorted list is the overall latest
-          if (!latestMajorVersion) {
-            latestMajorVersion = version;
-          }
-
-          // Track latest patch for each minor
-          if (!latestPerMinor[minorKey]) {
-            latestPerMinor[minorKey] = version;
-          }
-        }
-
-        // Build aliases list
-        const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
-
-        // Major version aliases (e.g., v2 -> 2.6.0)
-        if (latestMajorVersion) {
-          const { major } = parseSemver(latestMajorVersion);
-          aliases.push({
-            alias: `v${major}`,
-            resolves_to: latestMajorVersion,
-            path: `/schemas/v${major}/`
-          });
-        }
-
-        // Minor version aliases (e.g., v2.5 -> 2.5.1)
-        for (const [minorKey, version] of Object.entries(latestPerMinor)) {
-          aliases.push({
-            alias: `v${minorKey}`,
-            resolves_to: version,
-            path: `/schemas/v${minorKey}/`
-          });
-        }
-
-        // Sort aliases for consistent output
-        aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
-
-        res.json({
-          versions: versions.map(v => ({
-            version: v,
-            path: `/schemas/${v}/`
-          })),
-          aliases,
-          latest: {
-            path: "/schemas/latest/",
-            note: "Development version, may differ from released versions"
-          }
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Failed to list schema versions');
-        res.status(500).json({ error: "Failed to list schema versions" });
-      }
-    });
 
     // Serve brand.json for both AAO domains.
     // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
@@ -802,6 +641,7 @@ export class HTTPServer {
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         // Inject config
         const configScript = getAppConfigScript(user);
@@ -921,6 +761,7 @@ export class HTTPServer {
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
+      await enrichUserWithAdmin(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -1703,6 +1544,89 @@ export class HTTPServer {
       }
     });
 
+    // Newsletter subscribe for non-members.
+    // Writes a pending confirmation keyed by email (no WorkOS user yet) and
+    // sends a branded transactional email via Resend. The WorkOS user is
+    // provisioned only when the recipient clicks the confirm link, which
+    // proves they control the inbox. Response is always a generic 200 to
+    // prevent email enumeration.
+    const SUBSCRIBE_SOURCES = new Set(['footer', 'story-inline', 'unknown']);
+    const TOKEN_HEX_LENGTH = 64;
+    const PER_EMAIL_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+
+    this.app.post('/api/newsletter/subscribe', newsletterSubscribeRateLimiter, async (req, res) => {
+      const { email: rawEmail, source: rawSource } = req.body ?? {};
+      const emailCheck = validateEmail(rawEmail);
+      if (!emailCheck.valid) {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+      const email = (rawEmail as string).trim().toLowerCase();
+      const source = typeof rawSource === 'string' && SUBSCRIBE_SOURCES.has(rawSource) ? rawSource : 'unknown';
+
+      try {
+        // Per-email cooldown: if a pending confirmation was issued in the
+        // last 10 minutes, skip sending a duplicate email. Limits grief-spam
+        // against a specific inbox even from distributed IPs.
+        const existing = await pendingConfirmationsDb.getByEmail(email);
+        if (existing && Date.now() - existing.created_at.getTime() < PER_EMAIL_RESEND_COOLDOWN_MS) {
+          logger.info({ source }, 'Newsletter subscribe throttled (per-email cooldown)');
+          return res.json({ ok: true });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await pendingConfirmationsDb.upsert({ email, token, source, expiresAt });
+
+        const confirmUrl = `${process.env.BASE_URL || 'https://agenticadvertising.org'}/newsletter/confirm?token=${token}`;
+        const sent = await sendNewsletterConfirmation({ to: email, confirmUrl, source });
+
+        if (sent) {
+          logger.info({ source }, 'Newsletter subscribe initiated');
+        } else {
+          logger.warn({ source }, 'Newsletter subscribe email not sent; token remains valid for retry');
+        }
+      } catch (error) {
+        logger.error({ err: error, source }, 'Newsletter subscribe failed');
+        // Still return 200 to prevent enumeration; the user just won't get an email.
+      }
+
+      res.json({ ok: true });
+    });
+
+    // Newsletter confirmation landing. Validates the single-use token, then
+    // provisions the WorkOS user and flips marketing_opt_in to true. Does NOT
+    // log the user in — that happens later via normal OAuth if they return.
+    // The 256-bit unpredictable token serves as CSRF defense on this GET.
+    this.app.get('/newsletter/confirm', newsletterConfirmRateLimiter, async (req, res) => {
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      // Reject malformed tokens without touching the DB.
+      if (token.length !== TOKEN_HEX_LENGTH || !/^[0-9a-f]+$/.test(token)) {
+        return res.redirect('/welcome-subscribed.html?error=invalid');
+      }
+
+      try {
+        const pending = await pendingConfirmationsDb.getByToken(token);
+        if (!pending) {
+          return res.redirect('/welcome-subscribed.html?error=expired');
+        }
+
+        const user = await findOrCreateUserByEmail(pending.email);
+        await emailPrefsDb.setMarketingOptIn({
+          workos_user_id: user.id,
+          email: user.email,
+          optIn: true,
+        });
+        await pendingConfirmationsDb.deleteByEmail(pending.email);
+
+        invalidateMemberContextCache();
+        logger.info({ userId: user.id }, 'Newsletter subscribe confirmed');
+        res.redirect('/welcome-subscribed.html');
+      } catch (error) {
+        logger.error({ err: error }, 'Newsletter confirm failed');
+        res.redirect('/welcome-subscribed.html?error=expired');
+      }
+    });
+
     // Resubscribe for authenticated users
     this.app.post('/api/email-preferences/resubscribe-me', requireAuth, async (req, res) => {
       try {
@@ -1742,6 +1666,7 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
@@ -1781,6 +1706,7 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
+        await enrichUserWithAdmin(user);
 
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
@@ -1844,22 +1770,16 @@ export class HTTPServer {
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      // User is populated by optionalAuth middleware if authenticated
-      let isAdmin = false;
-      if (req.user) {
-        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-        isAdmin = adminEmails.includes(req.user.email.toLowerCase());
-      }
-
       let user = null;
       if (req.user) {
         await enrichUserWithMembership(req.user as any);
+        await enrichUserWithAdmin(req.user as any);
         user = {
           id: req.user.id,
           email: req.user.email,
           firstName: req.user.firstName,
           lastName: req.user.lastName,
-          isAdmin,
+          isAdmin: !!(req.user as any).isAdmin,
           isMember: !!(req.user as any).isMember,
         };
       }
@@ -3516,6 +3436,17 @@ export class HTTPServer {
               subscription,
             });
 
+            // Captured inside the fresh-activation block for use in the
+            // post-UPDATE autopublish + notification dispatch below. Kept
+            // out of that later block so the listing isn't flipped public
+            // until the organizations row reflects the activated membership.
+            let activationAdminContext: {
+              userEmail: string;
+              workosUserId: string;
+              firstName?: string;
+              productName?: string;
+            } | undefined;
+
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
               if (org) {
@@ -3642,55 +3573,17 @@ export class HTTPServer {
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
 
-                    // Send thank you to org admin group DM (fire-and-forget)
-                    (async () => {
-                      try {
-                        // Get org admins/owners
-                        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-                          organizationId: org.workos_organization_id,
-                        });
-                        const adminEmails: string[] = [];
-                        for (const membership of orgMemberships.data) {
-                          if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-                            try {
-                              const adminUser = await workos!.userManagement.getUser(membership.userId);
-                              if (adminUser.email) {
-                                adminEmails.push(adminUser.email);
-                              }
-                            } catch {
-                              // Skip if can't fetch user
-                            }
-                          }
-                        }
-
-                        if (adminEmails.length > 0) {
-                          // Compute seat limits for the welcome message
-                          const { getSeatLimits } = await import('./db/organization-db.js');
-                          const welcomeUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
-                          const seatLimits = getSeatLimits(welcomeUpdate.membership_tier);
-
-                          await notifySubscriptionThankYou({
-                            orgId: org.workos_organization_id,
-                            orgName: org.name || 'Organization',
-                            adminEmails,
-                            seatLimits,
-                          });
-                        }
-                      } catch (err) {
-                        logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send thank you to admin group DM');
-                      }
-                    })();
-
-                    // Send welcome email to new member
-                    sendWelcomeEmail({
-                      to: userEmail,
-                      organizationName: org.name || 'Unknown Organization',
-                      productName,
+                    // Capture the admin-facing touch context so the post-UPDATE
+                    // block can auto-publish the listing and thread the result
+                    // into the thank-you DM + welcome email. Deferring the
+                    // notifications avoids publishing a directory listing
+                    // before the organizations row reflects activation.
+                    activationAdminContext = {
+                      userEmail,
                       workosUserId: workosUser.id,
-                      workosOrganizationId: org.workos_organization_id,
-                      isPersonal: org.is_personal || false,
                       firstName: workosUser.firstName || undefined,
-                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+                      productName,
+                    };
 
                     // Record to org_activities for prospect tracking
                     const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
@@ -3777,6 +3670,22 @@ export class HTTPServer {
                   ]
                 );
 
+                // Enforce the visibility gate for any tier change, including
+                // full cancellation (new tier becomes null). The helper is a
+                // no-op when the new tier still has API access.
+                if (oldTier && oldTier !== subUpdate.membership_tier) {
+                  const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
+                  try {
+                    await demotePublicAgentsOnTierDowngrade(
+                      org.workos_organization_id,
+                      oldTier as MembershipTier,
+                      (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                    );
+                  } catch (err) {
+                    logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to demote public agents on tier downgrade');
+                  }
+                }
+
                 // Detect tier change and notify admins
                 if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
@@ -3818,6 +3727,95 @@ export class HTTPServer {
                 // (subscription status affects is_member and subscription fields)
                 invalidateMemberContextCache();
                 invalidateMembershipCache(org.workos_organization_id);
+
+                // Auto-publish the directory listing and fire the welcome
+                // touch — only after the organizations row reflects an active
+                // membership. Autopublish is gated on an active/trial/past_due
+                // status so renewals and tier changes don't clobber a later
+                // manual unpublish (#2583). Notifications fire even if the
+                // subscription was created in a non-active status (e.g.,
+                // incomplete), matching prior behavior — just without the
+                // listing section. Failures never throw: the unpublished-
+                // backlog admin endpoint surfaces orgs we missed.
+                if (event.type === 'customer.subscription.created' && activationAdminContext) {
+                  let listingNotice: { slug: string; action: 'created' | 'published' } | undefined;
+                  if ((TIER_PRESERVING_STATUSES as readonly string[]).includes(subUpdate.subscription_status)) {
+                    try {
+                      const autopublishResult = await ensureMemberProfilePublished({
+                        orgId: org.workos_organization_id,
+                        orgName: org.name ?? '',
+                        source: `stripe:${event.type}`,
+                      });
+                      if (
+                        (autopublishResult.action === 'created' || autopublishResult.action === 'published') &&
+                        autopublishResult.slug
+                      ) {
+                        listingNotice = {
+                          slug: autopublishResult.slug,
+                          action: autopublishResult.action,
+                        };
+                      }
+                    } catch (err) {
+                      logger.error(
+                        { err, orgId: org.workos_organization_id },
+                        'Failed to auto-publish member profile on activation',
+                      );
+                    }
+                  }
+
+                  const { getSeatLimits } = await import('./db/organization-db.js');
+                  const seatLimits = getSeatLimits(subUpdate.membership_tier);
+                  const capturedAdmin = activationAdminContext;
+                  const orgIdForDispatch = org.workos_organization_id;
+                  const orgNameForDispatch = org.name;
+                  const isPersonalForDispatch = org.is_personal;
+
+                  // Thank-you DM (fire-and-forget)
+                  (async () => {
+                    try {
+                      const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                        organizationId: orgIdForDispatch,
+                      });
+                      const adminEmails: string[] = [];
+                      for (const membership of orgMemberships.data) {
+                        if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                          try {
+                            const adminUser = await workos!.userManagement.getUser(membership.userId);
+                            if (adminUser.email) {
+                              adminEmails.push(adminUser.email);
+                            }
+                          } catch {
+                            // Skip if can't fetch user
+                          }
+                        }
+                      }
+
+                      if (adminEmails.length > 0) {
+                        await notifySubscriptionThankYou({
+                          orgId: orgIdForDispatch,
+                          orgName: orgNameForDispatch || 'Organization',
+                          adminEmails,
+                          seatLimits,
+                          listing: listingNotice,
+                        });
+                      }
+                    } catch (err) {
+                      logger.warn({ err, orgId: orgIdForDispatch }, 'Failed to send thank you to admin group DM');
+                    }
+                  })();
+
+                  // Welcome email (fire-and-forget)
+                  sendWelcomeEmail({
+                    to: capturedAdmin.userEmail,
+                    organizationName: orgNameForDispatch || 'Unknown Organization',
+                    productName: capturedAdmin.productName,
+                    workosUserId: capturedAdmin.workosUserId,
+                    workosOrganizationId: orgIdForDispatch,
+                    isPersonal: isPersonalForDispatch || false,
+                    firstName: capturedAdmin.firstName,
+                    listing: listingNotice,
+                  }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+                }
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -4013,6 +4011,22 @@ export class HTTPServer {
                 // Invalidate member context cache
                 invalidateMemberContextCache();
                 invalidateMembershipCache(org.workos_organization_id);
+
+                // Auto-publish directory listing on fresh invoice activation.
+                // The UPDATE above is guarded by `subscription_status != 'active'`,
+                // so reaching here means this was an actual transition to active.
+                try {
+                  await ensureMemberProfilePublished({
+                    orgId: org.workos_organization_id,
+                    orgName: org.name ?? '',
+                    source: `stripe:${event.type}`,
+                  });
+                } catch (err) {
+                  logger.error(
+                    { err, orgId: org.workos_organization_id },
+                    'Failed to auto-publish member profile on invoice activation',
+                  );
+                }
               }
 
               // Record revenue event
@@ -5568,9 +5582,12 @@ Disallow: /api/admin/
     // Serve admin pages
     // Note: /admin/prospects route is now in routes/admin.ts
 
-    this.app.get('/admin/members', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-members.html');
-    });
+    // /admin/members was folded into /admin/accounts (members filter tab).
+    // Billing actions live on the account detail page.
+    this.app.get('/admin/members', requireAuth, requireAdmin, (_req, res) =>
+      res.redirect(301, '/admin/accounts?view=members'));
+    this.app.get('/admin/members/:orgId', requireAuth, requireAdmin, (req, res) =>
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`));
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
@@ -5595,7 +5612,11 @@ Disallow: /api/admin/
           `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
                   p.tags,
                   p.external_url, p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
@@ -5664,7 +5685,11 @@ Disallow: /api/admin/
                   p.excerpt, p.content, p.tags,
                   p.external_url, p.external_site_name,
                   p.author_name, p.author_title,
-                  p.featured_image_url, p.status, p.published_at,
+                  COALESCE(p.featured_image_url,
+                    CASE WHEN p.illustration_id IS NOT NULL
+                         THEN '/api/perspectives/' || p.slug || '/card.png'
+                         ELSE NULL END) AS featured_image_url,
+                  p.status, p.published_at,
                   p.content_origin, p.source_type, p.updated_at,
                   wg.slug as committee_slug, wg.name as committee_name
            FROM perspectives p
@@ -5679,6 +5704,80 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'GET /api/admin/content/:id error');
         res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // POST /api/admin/content/:id/social-drafts - Generate LinkedIn + X drafts
+    // for a published perspective. Written for admins drafting promo copy
+    // inline (no chat round-trip).
+    this.app.post('/api/admin/content/:id/social-drafts', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isLLMConfigured()) {
+          return res.status(503).json({ error: 'LLM not configured' });
+        }
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT slug, title, excerpt, content, category
+           FROM perspectives WHERE id = $1`,
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Content not found' });
+        }
+        const p = result.rows[0];
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const publishedUrl = `${baseUrl}/perspectives/${p.slug}`;
+
+        const system = `You draft promotional social posts for articles published by AgenticAdvertising.org.
+
+Write as someone sharing the piece, not as a corporate account. Confident but not combative. Specific over abstract. React to the idea, don't summarize.
+
+Rules:
+- No emojis, no hashtags.
+- LinkedIn: 2-3 short paragraphs, 800-1200 chars. First line must work as a hook before "see more". End with the article URL on its own line.
+- X/Twitter: under 270 chars total including the URL (URLs count as 23 chars via t.co wrapping). End with the URL.
+- Do not invent facts, statistics, or quotes. Only reference what the article actually says.
+- Do not open with "Just read..." or "Interesting article...". Lead with the idea.
+- Do not end with engagement-bait questions.
+
+Return ONLY valid JSON, no markdown fences:
+{"linkedin": "...", "x": "..."}`;
+
+        const articleBody = typeof p.content === 'string' ? p.content.slice(0, 4000) : '';
+        const prompt = `<article>
+<title>${p.title}</title>
+<summary>${p.excerpt || ''}</summary>
+${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}</url>
+<body>${articleBody}</body>
+</article>`;
+
+        try {
+          const response = await complete({
+            system,
+            prompt,
+            model: 'primary',
+            maxTokens: 1500,
+            operationName: 'admin-social-drafts',
+          });
+          let text = response.text.trim();
+          if (text.startsWith('```')) {
+            text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          }
+          const parsed = JSON.parse(text);
+          res.json({
+            linkedin: typeof parsed.linkedin === 'string' ? parsed.linkedin : '',
+            x: typeof parsed.x === 'string' ? parsed.x : '',
+            article_url: publishedUrl,
+          });
+        } catch (llmError) {
+          logger.error({ err: llmError, contentId: id }, 'Social draft generation failed');
+          res.status(502).json({ error: 'Failed to generate posts. Try again in a moment.' });
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'POST /api/admin/content/:id/social-drafts error');
+        res.status(500).json({ error: 'Failed to generate social drafts' });
       }
     });
 
@@ -6182,13 +6281,17 @@ Disallow: /api/admin/
         if (memberships.data.length > 0) {
           const primaryOrgId = memberships.data[0].organizationId;
           const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-          orgDb.recordUserLogin({
-            workos_user_id: user.id,
-            workos_organization_id: primaryOrgId,
-            user_name: userName,
-          }).catch((err) => {
-            logger.error({ error: err, userId: user.id }, 'Failed to record user login');
-          });
+          // Ensure the org exists locally first — startup sync can miss orgs
+          // created in WorkOS after boot, and org_activities FKs to organizations.
+          orgDb.ensureOrganizationExists(workos!, primaryOrgId)
+            .then(() => orgDb.recordUserLogin({
+              workos_user_id: user.id,
+              workos_organization_id: primaryOrgId,
+              user_name: userName,
+            }))
+            .catch((err) => {
+              logger.error({ error: err, userId: user.id }, 'Failed to record user login');
+            });
 
           // Update relationship model from web login (fire and forget)
           relationshipDb.resolvePersonId({ workos_user_id: user.id, email: user.email })
@@ -6694,9 +6797,13 @@ Disallow: /api/admin/
           })
         );
 
-        // Check if user is admin
+        // Check if user is admin via aao-admin working group (primary) or
+        // ADMIN_EMAILS env var (fallback). Must match requireAdmin middleware
+        // so the admin UI and backend agree on who sees admin surfaces.
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-        const isAdmin = adminEmails.includes(user.email.toLowerCase());
+        const isAdminByEmail = adminEmails.includes(user.email.toLowerCase());
+        const isAdminByWorkingGroup = await isWebUserAAOAdmin(user.id);
+        const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;
@@ -8232,13 +8339,29 @@ Disallow: /api/admin/
     });
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
-    this.app.use((err: Error & { status?: number; statusCode?: number }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    this.app.use((err: Error & { status?: number; statusCode?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       const status = err.status || err.statusCode || 500;
 
       // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
       if (status === 416) {
         logger.debug({ path: req.path }, 'Range not satisfiable');
         return res.status(416).end();
+      }
+
+      // body-parser malformed JSON / payload errors are client errors, not server issues
+      if (status === 400 && (err.type === 'entity.parse.failed' || err.type === 'entity.verify.failed' || err.type === 'encoding.unsupported')) {
+        logger.warn({ path: req.path, method: req.method, type: err.type, msg: err.message }, 'Malformed request body');
+        return res.status(400).json({ error: 'Malformed request body', type: err.type });
+      }
+      if (status === 413) {
+        logger.warn({ path: req.path, method: req.method }, 'Request body too large');
+        return res.status(413).json({ error: 'Request body too large' });
+      }
+
+      // Any other 4xx thrown by middleware is a client error, not an unhandled server error
+      if (status >= 400 && status < 500) {
+        logger.warn({ err, path: req.path, method: req.method, status }, 'Client error');
+        return res.status(status).json({ error: err.message || 'Bad request' });
       }
 
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');

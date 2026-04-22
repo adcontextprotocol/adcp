@@ -15,6 +15,16 @@ This specialist module tests your mastery of the creative protocol. You'll work 
 
 Passing earns the **AdCP specialist — Creative** credential.
 
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the `creative` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
+| `creative-generative` | stable | Generative creative agent producing assets on demand |
+| `creative-template` | stable | Creative template and transformation agent |
+
 ## What you'll demonstrate
 
 - Identify the three creative agent interaction models and explain when each applies
@@ -22,7 +32,10 @@ Passing earns the **AdCP specialist — Creative** credential.
 - Work with stateful ad servers: browse a creative library, generate tags per media buy, track delivery
 - Work with stateful sales agents: push creatives, preview in the publisher's environment
 - Adapt a single creative concept across multiple channels and formats
-- Understand creative agent pricing: how rates are established via accounts, how `list_creatives` shows your rate, how `build_creative` returns cost, and how `report_usage` closes the loop
+- Use `preview_creative` in all three request modes — single, batch (5–10× faster for many creatives), and variant (retrieve historical renders from `get_creative_delivery`) — and choose `output_format: "html"` when bypassing the iframe speeds rendering
+- Understand creative agent pricing: the `pricing_options[]` array on discovery responses, how `pricing_option_id` flows through `build_creative` and `report_usage`, and why CPM ad servers show zero `vendor_cost` at build time while transformation agents do not
+- Reason about tracker-slot presence — a format supports third-party measurement only if its `assets` array declares a tracker slot (e.g., `impression_tracker`). Broadcast formats intentionally omit tracker slots; measurement comes from panel and STB data via `billing_measurement`
+- Attach `industry_identifiers[]` to broadcast manifests with the correct `creative-identifier-type` (`ad_id`, `isci`, `clearcast_clock`), and give each cut (`:15` vs `:30`) its own Ad-ID
 - Reason about format edge cases, accessibility, and provenance
 
 ## Prerequisite reading
@@ -64,6 +77,9 @@ Passing earns the **AdCP specialist — Creative** credential.
   </Card>
   <Card title="Channel guides" icon="tv" href="/docs/creative/channels/video">
     Channel-specific specs for video, display, audio, DOOH, and carousels.
+  </Card>
+  <Card title="Broadcast TV" icon="clapperboard" href="/docs/creative/channels/broadcast">
+    Broadcast formats, `industry_identifiers[]` (`ad_id`, `isci`, `clearcast_clock`), Ad-ID integration, and why broadcast formats omit tracker slots.
   </Card>
   <Card title="Generative creative" icon="wand-magic-sparkles" href="/docs/creative/generative-creative">
     AI-generated creative workflows and best practices.
@@ -145,6 +161,9 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 6. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
 7. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
 8. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
+9. **Preview modes** — Run `preview_creative` as `request_type: "single"`, then `"batch"` (submit 5 creatives in one call and measure the speedup), then `"variant"` against a prior `get_creative_delivery` result. Compare `output_format: "url"` vs `"html"` for rendering latency.
+10. **Tracker-slot audit** — For each sandbox format, inspect the `assets` array and determine whether it supports third-party measurement. Explain why assigning a DoubleVerify pixel to a broadcast spot won't work, and which `billing_measurement` vendor would instead.
+11. **Broadcast identifiers** — Build a broadcast manifest with distinct `industry_identifiers[]` for `:15` and `:30` cuts of the same spot. Verify the `creative-identifier-type` values and explain why each cut needs its own Ad-ID.
 
 ## Assessment
 

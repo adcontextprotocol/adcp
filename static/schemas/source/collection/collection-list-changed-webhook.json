@@ -5,6 +5,13 @@
   "description": "Webhook notification sent when a collection list's resolved collections change. Contains a summary only — recipients must call get_collection_list to retrieve the updated collections.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook event. Governance agents MUST generate a cryptographically random value (UUID v4 recommended) per distinct list-change event and reuse the same key on every retry. Recipients MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential) — keys from different governance agents are independent.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "event": {
       "type": "string",
       "const": "collection_list_changed",
@@ -12,7 +19,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the collection list that changed"
+      "description": "ID of the collection list that changed",
+      "x-entity": "collection_list"
     },
     "list_name": {
       "type": "string",
@@ -49,12 +57,12 @@
     },
     "signature": {
       "type": "string",
-      "description": "Cryptographic signature of the webhook payload, signed with the agent's private key. Recipients MUST verify this signature."
+      "description": "HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes} using the secret exchanged out-of-band when the seller registered with the governance agent. Recipients MUST verify against the X-ADCP-Signature and X-ADCP-Timestamp headers using timing-safe comparison and MUST reject requests where |now - timestamp| > 300 seconds. The body copy of this field is a convenience only — the headers are authoritative. See docs/building/implementation/security#webhook-security."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["event", "list_id", "resolved_at", "signature"],
+  "required": ["idempotency_key", "event", "list_id", "resolved_at", "signature"],
   "additionalProperties": false
 }

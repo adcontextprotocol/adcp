@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/update-rights-response.json",
   "title": "Update Rights Response",
   "description": "Result of a rights update request. Returns updated terms and re-issued credentials on success, or errors if the update cannot be applied.",
+  "x-status": "experimental",
   "type": "object",
   "oneOf": [
     {
@@ -10,7 +11,8 @@
       "properties": {
         "rights_id": {
           "type": "string",
-          "description": "Rights grant identifier"
+          "description": "Rights grant identifier",
+          "x-entity": "rights_grant"
         },
         "terms": {
           "$ref": "/schemas/brand/rights-terms.json",

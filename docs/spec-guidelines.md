@@ -189,6 +189,52 @@ All `$ref` paths should be absolute from schema root:
 "$ref": "../../enums/asset-content-type.json"
 ```
 
+## Platform Agnosticism
+
+**RULE**: Normative schema **field names** MUST NOT represent a specific vendor's version of a general concept. Platform-specific fields belong under `ext.{vendor}`.
+
+**Why**: AdCP is a protocol, not a platform. A field named `google_campaign_id` or `ttd_line_id` at the top level of a schema bakes one vendor's data model into the spec and creates lock-in. The protocol is credible as an open standard only to the extent that its normative field surface is vendor-neutral.
+
+**How**: Vendor-specific fields belong in the `ext.{vendor}` namespace (schema: `/schemas/core/ext.json`, source: `static/schemas/source/core/ext.json`). `ext` is `additionalProperties: true` — the namespacing is a convention enforced by review, not by JSON Schema.
+
+```json
+// ❌ BAD: vendor name in a normative field (a general concept dressed up as a vendor)
+{
+  "google_campaign_id": "abc123"
+}
+
+// ✅ GOOD: vendor-specific under ext
+{
+  "ext": {
+    "gam": { "campaign_id": "abc123" }
+  }
+}
+```
+
+### External system identifiers
+
+Names that reference **canonical external identifier spaces** are legitimate in both field names and enum values. The distinction is not "does it contain a vendor token" but "does it represent *that vendor's version of something the protocol already has a general concept for*":
+
+- `google_campaign_id` (bad) — a vendor-specific ID for a concept the protocol already models (`media_buy_id`). Move to `ext.gam`.
+- `apple_podcast_id` (legitimate) — a canonical identifier for a specific Apple Podcasts item. There is no general concept to map to; the Apple Podcasts namespace is *the* namespace.
+- `nielsen_dma` (legitimate) — the industry-standard geographic division, not "Nielsen's version of geography."
+
+Existing examples of legitimate patterns:
+
+- Distribution-platform identifier types: `amazon_music_id`, `roku_channel_id` in `distribution-identifier-type.json` (enum values)
+- Feed formats: `google_merchant_center`, `facebook_catalog`, `openai_product_feed` in `brand.json` (enum values)
+- Measurement/data identifiers: `nielsen_dma` in `get-adcp-capabilities-response` (field name)
+- Platform IDs: `apple_podcast_id`, `apple_id` (field names)
+
+The rule to apply: if the name asks "which vendor-equivalent version of something AdCP models?" (bad — use `ext`), reject; if the name asks "which externally-defined system/format/identifier space?" (legitimate), allow. When allowing a field name, add it to `tests/check-platform-agnostic.cjs` `FIELD_ALLOWLIST` with a one-line justification.
+
+### Reviewer checklist
+
+- Reject a new top-level or request/response field whose name is `{vendor}_{general_concept}` (e.g., `google_campaign_id`, `ttd_line_id`).
+- Accept an enum value naming an externally-defined system, format, or identifier space.
+- Vendor names in **example blocks** (email addresses, sample IDs) are fine.
+- When uncertain, ask: "Is this field or value representing *one vendor's version of something the protocol already has a general concept for*?" If yes, it belongs under `ext.{vendor}`.
+
 ## Breaking Changes
 
 ### What Constitutes a Breaking Change

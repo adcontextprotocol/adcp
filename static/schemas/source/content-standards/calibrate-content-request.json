@@ -3,6 +3,7 @@
   "$id": "/schemas/content-standards/calibrate-content-request.json",
   "title": "Calibrate Content Request",
   "description": "Request parameters for evaluating content during calibration. Multi-turn dialogue is handled at the protocol layer via contextId.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -23,7 +24,8 @@
       "type": "string",
       "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -33,6 +35,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "standards_id",
     "artifact"
   ]

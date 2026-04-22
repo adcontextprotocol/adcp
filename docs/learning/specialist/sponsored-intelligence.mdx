@@ -11,9 +11,17 @@ description: "AdCP specialist module S5: Sponsored Intelligence. Monetizing AI c
 **Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
 </Info>
 
+<Note>
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent object shape, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Assessments in this module cover current protocol surfaces; credentials will be flagged for targeted recertification when experimental SI surfaces change — the same policy that applies to every experimental surface. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 This specialist module covers how advertising works in AI: generative creative from brand assets and catalogs, the reversed data flow where buyers push data into platforms instead of bid requests flowing out, and SI Chat Protocol where brands engage users in multi-turn conversations. Addie evaluates both your hands-on work and your understanding of when and why Sponsored Intelligence fits.
 
 Passing earns the **AdCP specialist — Sponsored Intelligence** credential.
+
+## Sponsored Intelligence as a full protocol
+
+In 3.0, Sponsored Intelligence was promoted from a specialism to a full protocol. An agent that supports SI declares `sponsored_intelligence` in `supported_protocols` on `get_adcp_capabilities` — not as a specialism. The compliance runner executes the SI domain baseline storyboard at `/compliance/{version}/domains/sponsored-intelligence/` plus every universal storyboard. See the [Compliance Catalog](/docs/building/compliance-catalog).
 
 ## What you'll demonstrate
 

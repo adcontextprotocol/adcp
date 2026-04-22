@@ -13,7 +13,7 @@ import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeade
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
-import { invalidateWebAdminStatusCache } from "../addie/mcp/admin-tools.js";
+import { invalidateWebAdminStatusCache, isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
@@ -357,7 +357,7 @@ export function createCommitteeRouters(): {
   adminApiRouter.post('/', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { name, slug, description, slack_channel_url, is_private, status, display_order,
-              leader_user_ids, committee_type, region } = req.body;
+              leader_user_ids, committee_type, region, parent_id } = req.body;
 
       if (!name || !slug) {
         return res.status(400).json({
@@ -428,7 +428,7 @@ export function createCommitteeRouters(): {
 
       const group = await workingGroupDb.createWorkingGroup({
         name, slug, description, slack_channel_url: finalSlackChannelUrl, is_private, status, display_order,
-        leader_user_ids, committee_type, region: finalRegion
+        leader_user_ids, committee_type, region: finalRegion, parent_id: parent_id || null
       });
 
       // Auto-sync members from Slack channel if a channel was linked to a chapter or event
@@ -453,6 +453,17 @@ export function createCommitteeRouters(): {
           : null,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (
+        message.includes('cycle') ||
+        message.includes('own parent') ||
+        message.includes('Parent working group not found') ||
+        message.includes('limited to two levels') ||
+        message.includes('cannot have subgroups') ||
+        message.includes('while subgroups exist')
+      ) {
+        return res.status(400).json({ error: 'Invalid hierarchy', message });
+      }
       logger.error({ err: error }, 'Create working group error:');
       res.status(500).json({
         error: 'Failed to create working group',
@@ -552,6 +563,17 @@ export function createCommitteeRouters(): {
         sync_result: syncResult,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (
+        message.includes('cycle') ||
+        message.includes('own parent') ||
+        message.includes('Parent working group not found') ||
+        message.includes('limited to two levels') ||
+        message.includes('cannot have subgroups') ||
+        message.includes('while subgroups exist')
+      ) {
+        return res.status(400).json({ error: 'Invalid hierarchy', message });
+      }
       logger.error({ err: error }, 'Update working group error:');
       res.status(500).json({
         error: 'Failed to update working group',
@@ -699,7 +721,34 @@ export function createCommitteeRouters(): {
     }
   });
 
+  // POST /api/admin/working-groups/:slug/topics/:topicSlug/graduate
+  // Promote a topic on the given working group into a full subgroup.
+  const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,99}$/;
+  adminApiRouter.post('/:slug/topics/:topicSlug/graduate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { slug, topicSlug } = req.params;
+      if (!SLUG_PATTERN.test(slug) || !SLUG_PATTERN.test(topicSlug)) {
+        return res.status(400).json({ error: 'Invalid slug format' });
+      }
+      const result = await workingGroupDb.graduateTopicToSubgroup(slug, topicSlug);
+      invalidateMemberContextCache();
+      res.status(201).json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      if (
+        message.includes('not found') ||
+        message.includes('Cannot graduate') ||
+        message.includes('hierarchy is two levels')
+      ) {
+        return res.status(400).json({ error: 'Graduate failed', message });
+      }
+      logger.error({ err: error }, 'Graduate topic error');
+      res.status(500).json({ error: 'Failed to graduate topic', message });
+    }
+  });
+
   // GET /api/admin/working-groups/:id/interest - Get users who expressed interest in a committee
+
   adminApiRouter.get('/:id/interest', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -928,17 +977,64 @@ export function createCommitteeRouters(): {
       const memberships = await workingGroupDb.getMembershipsByWorkingGroup(group.id);
 
       let isMember = false;
+      let isFamilyMember = false;
       if (user?.id) {
         isMember = await workingGroupDb.isMember(group.id, user.id);
+        isFamilyMember = isMember || await workingGroupDb.isFamilyMember(group.id, user.id);
       }
+
+      // Hierarchy context: parent summary (if any) and list of direct subgroups
+      // filtered by visibility (private subgroups only visible to family members).
+      const parent = group.parent_id
+        ? await workingGroupDb.getWorkingGroupById(group.parent_id)
+        : null;
+
+      // Private subgroups show up only for people who are direct members of
+      // that subgroup, or for AAO admins. Parent membership alone does not
+      // unlock private subgroup visibility.
+      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const allSubgroups = await workingGroupDb.listSubgroups(group.id);
+      const visibleSubgroups: typeof allSubgroups = [];
+      for (const sg of allSubgroups) {
+        if (sg.status !== 'active') continue;
+        if (!sg.is_private || isAAOAdmin) {
+          visibleSubgroups.push(sg);
+          continue;
+        }
+        if (user?.id && await workingGroupDb.isMember(sg.id, user.id)) {
+          visibleSubgroups.push(sg);
+        }
+      }
+
+      const subgroupSummaries = await Promise.all(
+        visibleSubgroups.map(async sg => {
+          const sgMembers = await workingGroupDb.getMembershipsByWorkingGroup(sg.id);
+          return {
+            id: sg.id,
+            slug: sg.slug,
+            name: sg.name,
+            description: sg.description,
+            committee_type: sg.committee_type,
+            is_private: sg.is_private,
+            slack_channel_url: sg.slack_channel_url,
+            member_count: sgMembers.length,
+          };
+        })
+      );
+
+      const familyMemberCount = await workingGroupDb.countFamilyMembers(group.id);
 
       res.json({
         working_group: {
           ...group,
           member_count: memberships.length,
           memberships,
+          parent: parent ? { id: parent.id, slug: parent.slug, name: parent.name } : null,
+          subgroups: subgroupSummaries,
+          family_member_count: familyMemberCount,
         },
         is_member: isMember,
+        is_family_member: isFamilyMember,
       });
     } catch (error) {
       logger.error({ err: error }, 'Get working group error');
@@ -978,18 +1074,53 @@ export function createCommitteeRouters(): {
         }
       }
 
+      // Aggregate from the group plus its subgroups the caller may see.
+      // Private subgroups the caller isn't a member of are filtered out.
+      const includeSubgroups = req.query.include_subgroups !== 'false';
+      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const targetIds = includeSubgroups
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, user?.id ?? null, { isAdmin: isAAOAdmin })
+        : [group.id];
+
       const result = await pool.query(
-        `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
-          external_url, external_site_name, author_name, author_title,
-          featured_image_url, published_at, tags, is_members_only
-        FROM perspectives
-        WHERE working_group_id = $1 AND status = 'published'
-          AND (is_members_only = false OR $2 = true)
-        ORDER BY published_at DESC NULLS LAST`,
-        [group.id, isMember]
+        `SELECT p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt, p.content,
+          p.external_url, p.external_site_name, p.author_name, p.author_title,
+          p.featured_image_url, p.published_at, p.tags, p.is_members_only,
+          p.working_group_id,
+          wg.id as source_group_id, wg.slug as source_group_slug, wg.name as source_group_name
+        FROM perspectives p
+        JOIN working_groups wg ON wg.id = p.working_group_id
+        WHERE p.working_group_id = ANY($1::uuid[]) AND p.status = 'published'
+          AND (p.is_members_only = false OR $2 = true)
+        ORDER BY p.published_at DESC NULLS LAST`,
+        [targetIds, isMember]
       );
 
-      res.json({ posts: result.rows });
+      const posts = result.rows.map(row => ({
+        id: row.id,
+        slug: row.slug,
+        content_type: row.content_type,
+        title: row.title,
+        subtitle: row.subtitle,
+        category: row.category,
+        excerpt: row.excerpt,
+        content: row.content,
+        external_url: row.external_url,
+        external_site_name: row.external_site_name,
+        author_name: row.author_name,
+        author_title: row.author_title,
+        featured_image_url: row.featured_image_url,
+        published_at: row.published_at,
+        tags: row.tags,
+        is_members_only: row.is_members_only,
+        source_group: {
+          id: row.source_group_id,
+          slug: row.source_group_slug,
+          name: row.source_group_name,
+        },
+      }));
+
+      res.json({ posts });
     } catch (error) {
       logger.error({ err: error }, 'Get working group posts error');
       res.status(500).json({
@@ -1002,6 +1133,7 @@ export function createCommitteeRouters(): {
   publicApiRouter.get('/:slug/events', optionalAuth, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
+      const user = req.user;
 
       const group = await workingGroupDb.getWorkingGroupBySlug(slug);
 
@@ -1012,8 +1144,12 @@ export function createCommitteeRouters(): {
         });
       }
 
-      // Get events linked to this committee (published only for public view)
-      const events = await eventsDb.getEventsByCommittee(group.id, { includeUnpublished: false });
+      const includeSubgroups = req.query.include_subgroups !== 'false';
+      const targetIds = includeSubgroups
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, user?.id ?? null)
+        : [group.id];
+
+      const events = await eventsDb.getEventsByCommittee(targetIds, { includeUnpublished: false });
 
       res.json(events);
     } catch (error) {
@@ -1403,6 +1539,21 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/working-groups/:slug/posts - Create a post in a working group (members)
+  //
+  // This is NOT the editorial review path. Posts created here are scoped
+  // to the working group's internal feed (members-only by default) and
+  // skip the pending_review → approve pipeline that applies to
+  // Perspectives (via proposeContentForUser). The two surfaces are
+  // distinct: Perspectives are public editorial; WG posts are
+  // group-internal discussion.
+  //
+  // Invariants enforced below (see #2712):
+  //   - Caller must be a member of the WG (403 otherwise).
+  //   - Non-leaders cannot set is_members_only=false — if a non-lead
+  //     could post publicly here, this endpoint would become a
+  //     second-class editorial publish path. Leaders may opt to
+  //     publish publicly within their own WG since they already have
+  //     committee-lead authority over that WG's content.
   publicApiRouter.post('/:slug/posts', requireAuth, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
@@ -1428,7 +1579,22 @@ export function createCommitteeRouters(): {
       }
 
       const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
-      const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
+      // Non-leaders CANNOT opt out of members_only. Reject any explicit
+      // non-true value (`false`, `0`, `"false"`, `null`) with a 403 so the
+      // abuse signal surfaces in logs rather than being silently coerced.
+      // Omitting the field entirely is fine — we default to members-only.
+      if (!isLeader && is_members_only !== undefined && is_members_only !== true) {
+        return res.status(403).json({
+          error: 'Permission denied',
+          message: 'Only committee leaders can create public (non-members-only) posts in this working group. Submit via the Perspectives flow for editorial review instead.',
+        });
+      }
+      // For leaders, normalize the field to a strict boolean so a
+      // `0`/`"false"`/`null` value doesn't accidentally create a public
+      // post the leader didn't intend.
+      const finalMembersOnly = isLeader
+        ? (is_members_only === undefined ? true : Boolean(is_members_only))
+        : true;
 
       if (!title || !post_slug) {
         return res.status(400).json({

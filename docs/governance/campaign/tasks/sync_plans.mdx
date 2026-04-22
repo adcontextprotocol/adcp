@@ -7,6 +7,10 @@ description: "sync_plans pushes campaign plans with budget limits, channels, fli
 
 # sync_plans
 
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, authorized markets, and compliance policies -- and serves as the source of truth for all validation.
 
 ## Request
@@ -25,9 +29,8 @@ Push campaign plans to the governance agent. A plan defines the authorized param
         "budget": {
           "total": 500000,
           "currency": "USD",
-          "authority_level": "agent_limited",
-          "per_seller_max_pct": 40,
           "reallocation_threshold": 25000,
+          "per_seller_max_pct": 40,
           "allocations": {
             "media_buy": { "amount": 400000 },
             "rights_license": { "amount": 75000 },
@@ -102,7 +105,7 @@ Push campaign plans to the governance agent. A plan defines the authorized param
 
 Plans originate in external systems -- an agency's planning tool, a brand's budget system, an insertion order. `sync_plans` pushes them to the governance agent so it knows what to validate against.
 
-Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions.
+Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards versions follow a separate pinned-at-buy rule — see [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
 
 Multiple campaigns (identified by `governance_context` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
@@ -114,6 +117,10 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
+
+## Plan-hash preimage
+
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/docs/building/implementation/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
 
 ## Fields
 
@@ -128,9 +135,8 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].budget` | object | Yes | Budget parameters. |
 | `plans[].budget.total` | number | Yes | Total authorized budget. |
 | `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
-| `plans[].budget.authority_level` | enum | Yes | `agent_full`, `agent_limited`, or `human_required`. See [specification](/docs/governance/campaign/specification#budget-authority-levels). |
+| `plans[].budget.reallocation_threshold` | number | Yes | Amount the agent may reallocate without escalation. `0` requires human approval for every reallocation; a value at or above `budget.total` is effectively unlimited. See [specification](/docs/governance/campaign/specification#budget-reallocation). |
 | `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
-| `plans[].budget.reallocation_threshold` | number | No | Amount above which reallocations require escalation (for `agent_limited`). |
 | `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
 | `plans[].flight` | object | Yes | Authorized flight dates. Governed actions with dates outside this window are rejected. |
@@ -218,7 +224,7 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
-| `BRAND_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. |
+| `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
 | `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
 
 ## Related tasks

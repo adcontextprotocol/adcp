@@ -391,6 +391,23 @@
     .btn-success:hover {
       background: var(--color-success-700);
     }
+    .btn-danger {
+      background: var(--color-error-600);
+      color: white;
+    }
+    .btn-danger:hover {
+      background: var(--color-error-700);
+    }
+    .btn-danger:disabled {
+      background: var(--color-error-200);
+      cursor: not-allowed;
+    }
+    .sync-status {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .sync-status.sync-success { color: var(--color-success-600); }
+    .sync-status.sync-error { color: var(--color-error-600); }
 
     /* Owner selector */
     .owner-selector {
@@ -817,6 +834,28 @@
             </div>
           </div>
 
+          <!-- Billing (subscription, Stripe, payment history, workspace deletion) -->
+          <div class="card" id="billingCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+              <h2 style="margin-bottom: 0;">Billing</h2>
+              <span id="billingSyncStatus" class="sync-status"></span>
+            </div>
+            <div id="billingSummary" class="empty-state" style="margin-bottom: var(--space-3);">
+              <!-- Populated by JS -->
+            </div>
+            <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+              <button class="btn btn-sm btn-secondary" id="billingStripeLink" style="display: none;"
+                onclick="openStripeCustomer()">View in Stripe</button>
+              <button class="btn btn-sm btn-secondary" onclick="syncAccountBilling()" id="billingSyncBtn">
+                Sync from Stripe
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="openPaymentHistory()">Payment History</button>
+              <button class="btn btn-sm btn-danger" onclick="openDeleteWorkspaceModal()" style="margin-left: auto;">
+                Delete Workspace
+              </button>
+            </div>
+          </div>
+
           <!-- Company Profile (enrichment) -->
           <div class="card" id="companyProfileCard" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -865,6 +904,7 @@
               <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
             </div>
             <div class="collapsible-content" id="membersContent" style="margin-top: var(--space-4);">
+              <div id="paidStatusSummary" style="display: none; padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary);"></div>
               <!-- Website Members -->
               <div id="membersSectionWrapper">
                 <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Website Members</h3>
@@ -1442,6 +1482,50 @@
     </div>
   </div>
 
+  <!-- Payment History Modal -->
+  <div id="paymentHistoryModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="paymentHistoryTitle">Payment History</h2>
+        <button class="modal-close" onclick="closeModal('paymentHistoryModal')">&times;</button>
+      </div>
+      <div id="paymentHistoryBody" style="padding: var(--space-4);">
+        <div class="empty-state">Loading payment history...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Workspace Modal -->
+  <div id="deleteWorkspaceModal" class="modal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-header">
+        <h2>Delete Workspace</h2>
+        <button class="modal-close" onclick="closeModal('deleteWorkspaceModal')">&times;</button>
+      </div>
+      <div style="padding: var(--space-4);">
+        <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <strong style="color: var(--color-warning-800);">This action cannot be undone.</strong>
+          <div style="color: var(--color-warning-700); font-size: var(--text-sm); margin-top: var(--space-1);">
+            Deleting this workspace will remove all associated data including member profiles, join requests, and audit logs.
+            Workspaces with payment history or an active subscription cannot be deleted.
+          </div>
+        </div>
+        <div id="deleteWorkspaceError" style="display: none; background: var(--color-error-50); border: 1px solid var(--color-error-200); color: var(--color-error-700); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);"></div>
+        <p>To confirm, type the workspace name:</p>
+        <p><code id="deleteWorkspaceName" style="background: var(--color-gray-100); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);"></code></p>
+        <input type="text" id="deleteWorkspaceInput" placeholder="Type workspace name to confirm"
+          style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin: var(--space-3) 0;"
+          oninput="updateDeleteWorkspaceButton()">
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeModal('deleteWorkspaceModal')">Cancel</button>
+          <button class="btn btn-danger" id="confirmDeleteWorkspaceBtn" onclick="confirmDeleteWorkspace()" disabled>
+            Delete Workspace
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let accountData = null;
     let currentUserId = null;
@@ -1645,6 +1729,34 @@
       // Set total user count in header
       document.getElementById('memberCount').textContent = totalUserCount > 0 ? `(${totalUserCount})` : '';
 
+      // Paid status summary: subscription + seat breakdown
+      const paidSummaryEl = document.getElementById('paidStatusSummary');
+      if (memberCount > 0 || a.subscription) {
+        const contributorCount = (a.members || []).filter(m => (m.seat_type || 'contributor') === 'contributor').length;
+        const communityCount = (a.members || []).filter(m => m.seat_type === 'community_only').length;
+        const parts = [];
+        if (a.subscription) {
+          const statusClass = a.subscription.status === 'active' ? 'status-active' : 'status-prospect';
+          const label = a.subscription.product_name || a.subscription.status || 'subscription';
+          parts.push(`<span class="status-badge ${statusClass}" style="font-size: var(--text-xs);">${escapeHtml(label)}</span>`);
+          if (a.subscription.current_period_end) {
+            parts.push(`renews ${formatDate(a.subscription.current_period_end)}`);
+          }
+          if (a.subscription.canceled_at) {
+            parts.push(`canceled ${formatDate(a.subscription.canceled_at)}`);
+          }
+        } else {
+          parts.push(`<span class="status-badge status-prospect" style="font-size: var(--text-xs);">no subscription</span>`);
+        }
+        if (memberCount > 0) {
+          parts.push(`${contributorCount} contributor${contributorCount === 1 ? '' : 's'}, ${communityCount} community`);
+        }
+        paidSummaryEl.innerHTML = parts.join(' &middot; ');
+        paidSummaryEl.style.display = '';
+      } else {
+        paidSummaryEl.style.display = 'none';
+      }
+
       // Website members
       if (a.members && a.members.length > 0) {
         // Show migrate button if there are members
@@ -1670,17 +1782,27 @@
           </li>`;
         }
 
+        const SEAT_LABELS = {
+          contributor: 'Contributor',
+          community_only: 'Community',
+        };
         for (const m of a.members) {
           const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
           const role = m.role || 'member';
+          const seat = m.seat_type || 'contributor';
+          const seatLabel = SEAT_LABELS[seat] || seat;
+          const joinedLabel = m.joined_at ? `Joined ${formatDate(m.joined_at)}` : '';
           membersHtml += `<li data-member-id="${escapeHtml(m.id)}" data-current-role="${escapeHtml(role)}">
             <span class="member-name-link" onclick="viewMemberContext(this.parentElement.dataset.memberId)">${escapeHtml(name)}</span>
+            <span class="status-badge status-prospect" style="margin-left: var(--space-2); font-size: var(--text-xs);">${escapeHtml(seatLabel)}</span>
             <select class="role-select" onchange="updateUserRole(this.parentElement.dataset.memberId, this.value, this.parentElement.dataset.currentRole)">
               <option value="member" ${role === 'member' ? 'selected' : ''}>Member</option>
               <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
               <option value="owner" ${role === 'owner' ? 'selected' : ''}>Owner</option>
             </select>
-            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</div>
+            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">
+              ${escapeHtml(m.email)}${joinedLabel ? ` &middot; ${escapeHtml(joinedLabel)}` : ''}
+            </div>
           </li>`;
         }
         document.getElementById('membersList').innerHTML = membersHtml;
@@ -1738,6 +1860,9 @@
 
       // Pending invoices (with void buttons)
       renderPendingInvoices();
+
+      // Billing (Stripe link, sync, payment history, delete workspace)
+      renderBillingCard();
 
       // Populate team dropdowns
       populateTeamDropdowns();
@@ -2599,6 +2724,180 @@
 
     function closeModal(id) {
       document.getElementById(id).classList.remove('show');
+    }
+
+    // Billing actions (sync, payment history, delete workspace)
+    function renderBillingCard() {
+      const a = accountData;
+      const sub = a.subscription || {};
+      const summary = document.getElementById('billingSummary');
+      const stripeBtn = document.getElementById('billingStripeLink');
+
+      const parts = [];
+      const status = sub.status || 'none';
+      parts.push(`<div>Status: <strong>${escapeHtml(status)}</strong></div>`);
+
+      if (sub.amount) {
+        const amount = (sub.amount / 100).toFixed(2);
+        const interval = sub.interval ? `/${escapeHtml(sub.interval)}` : '';
+        parts.push(`<div>Amount: <strong>$${amount}${interval}</strong></div>`);
+      }
+      if (sub.current_period_end) {
+        parts.push(`<div>Renews: <strong>${formatDate(sub.current_period_end)}</strong></div>`);
+      }
+      if (a.stripe_customer_id) {
+        parts.push(`<div style="color: var(--color-text-muted); font-size: var(--text-xs);">Stripe: ${escapeHtml(a.stripe_customer_id)}</div>`);
+        stripeBtn.style.display = '';
+      } else {
+        stripeBtn.style.display = 'none';
+        parts.push(`<div style="color: var(--color-text-muted); font-size: var(--text-xs);">Not linked to Stripe</div>`);
+      }
+
+      summary.innerHTML = parts.join('');
+      summary.classList.remove('empty-state');
+    }
+
+    function openStripeCustomer() {
+      if (!accountData?.stripe_customer_id) return;
+      window.open(`https://dashboard.stripe.com/test/customers/${accountData.stripe_customer_id}`, '_blank');
+    }
+
+    async function syncAccountBilling() {
+      const btn = document.getElementById('billingSyncBtn');
+      const statusEl = document.getElementById('billingSyncStatus');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+      statusEl.className = 'sync-status';
+      statusEl.textContent = '';
+
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}/sync`, { method: 'POST' });
+        if (!response.ok) throw new Error(`Sync failed (${response.status})`);
+        const result = await response.json();
+
+        const parts = [];
+        if (result.workos?.success) parts.push('WorkOS ✓');
+        else if (result.workos?.error) parts.push(`WorkOS: ${result.workos.error}`);
+        if (result.stripe?.success) parts.push('Stripe ✓');
+        else if (result.stripe?.error) parts.push(`Stripe: ${result.stripe.error}`);
+
+        statusEl.textContent = parts.join(' · ');
+        statusEl.className = `sync-status ${result.success ? 'sync-success' : 'sync-error'}`;
+
+        if (result.updated) {
+          setTimeout(() => loadAccount(), 1200);
+        }
+      } catch (err) {
+        statusEl.className = 'sync-status sync-error';
+        statusEl.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    async function openPaymentHistory() {
+      const modal = document.getElementById('paymentHistoryModal');
+      const body = document.getElementById('paymentHistoryBody');
+      const title = document.getElementById('paymentHistoryTitle');
+      title.textContent = `Payment History - ${accountData?.name || 'Account'}`;
+      body.innerHTML = '<div class="empty-state">Loading payment history...</div>';
+      modal.classList.add('show');
+
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}/payments`);
+        if (!response.ok) throw new Error('Failed to load payment history');
+        const payments = await response.json();
+
+        if (payments.length === 0) {
+          body.innerHTML = '<div class="empty-state">No payment history</div>';
+          return;
+        }
+
+        body.innerHTML = payments.map(p => {
+          const date = new Date(p.event_timestamp).toLocaleString();
+          const amount = (Math.abs(p.amount_cents) / 100).toFixed(2);
+          const currency = (p.currency || 'USD').toUpperCase();
+          const isRefund = p.event_type === 'refund';
+          const isFailed = p.event_type === 'payment_failed';
+          const labels = {
+            refund: '🔄 Refund',
+            payment_failed: '❌ Payment Failed',
+            subscription_initial: '🎉 Initial Subscription',
+            subscription_recurring: '💳 Recurring Payment',
+          };
+          const label = labels[p.event_type] || escapeHtml(p.event_type || '');
+          const borderColor = isRefund || isFailed ? 'var(--color-error-300)' : 'var(--color-brand)';
+          const amountColor = isRefund || isFailed ? 'var(--color-error-600)' : 'var(--color-text-heading)';
+          const sign = isRefund ? '-' : '';
+
+          return `
+            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${borderColor}; background: var(--color-gray-50); border-radius: var(--radius-sm);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <div style="font-weight: 600;">${label}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">${escapeHtml(date)}</div>
+                </div>
+                <div style="font-weight: 600; color: ${amountColor};">${sign}$${amount} ${currency}</div>
+              </div>
+              ${p.product_name ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(p.product_name)}</div>` : ''}
+              ${p.stripe_invoice_id ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Invoice: ${escapeHtml(p.stripe_invoice_id)}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state" style="color: var(--color-error-600);">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function openDeleteWorkspaceModal() {
+      const name = accountData?.name || '';
+      document.getElementById('deleteWorkspaceName').textContent = name;
+      document.getElementById('deleteWorkspaceInput').value = '';
+      document.getElementById('deleteWorkspaceError').style.display = 'none';
+      document.getElementById('confirmDeleteWorkspaceBtn').disabled = true;
+      document.getElementById('deleteWorkspaceModal').classList.add('show');
+    }
+
+    function updateDeleteWorkspaceButton() {
+      const input = document.getElementById('deleteWorkspaceInput').value;
+      document.getElementById('confirmDeleteWorkspaceBtn').disabled = input !== (accountData?.name || '');
+    }
+
+    async function confirmDeleteWorkspace() {
+      const btn = document.getElementById('confirmDeleteWorkspaceBtn');
+      const errorEl = document.getElementById('deleteWorkspaceError');
+      const name = accountData?.name || '';
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      errorEl.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmation: name }),
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+          errorEl.textContent = result.message || result.error || 'Failed to delete workspace';
+          errorEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = originalText;
+          return;
+        }
+
+        closeModal('deleteWorkspaceModal');
+        window.location.href = '/admin/accounts';
+      } catch (err) {
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     }
 
     function toggleSection(header) {

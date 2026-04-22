@@ -3,6 +3,7 @@
   "$id": "/schemas/core/signal-id.json",
   "title": "Signal ID",
   "description": "Universal signal identifier. Uses 'source' as discriminator: 'catalog' for signals from a data provider's published catalog (verifiable), 'agent' for agent-native signals (not externally verifiable).",
+  "x-entity": "signal",
   "discriminator": {
     "propertyName": "source"
   },

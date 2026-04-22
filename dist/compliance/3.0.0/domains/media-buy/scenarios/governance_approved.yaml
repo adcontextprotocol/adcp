@@ -1,0 +1,186 @@
+id: media_buy_seller/governance_approved
+version: "1.0.0"
+title: "Seller creates buy when governance approves"
+category: media_buy_seller
+summary: "Verifies that the seller creates a media buy when governance approves the transaction."
+track: media_buy
+required_tools:
+  - sync_governance
+  - get_products
+  - create_media_buy
+
+narrative: |
+  This is a multi-agent test. The test harness sets up a permissive governance plan on
+  a governance agent with a $100K budget, then registers that agent with the seller.
+  The buyer creates a $25K buy which falls within limits.
+
+  When the seller calls check_governance during create_media_buy, the governance agent
+  approves. The seller must confirm the buy normally.
+
+  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
+  Override with --governance-agent-url to use a custom governance agent.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Any media buy seller with governance support"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent that supports sync_plans and check_governance.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: governance_plan_setup
+    title: "Set up permissive governance plan"
+    narrative: |
+      Create a governance plan on the governance agent with a high budget ($100K).
+      The subsequent $25K buy will fall within these limits and should be approved.
+
+    steps:
+      - id: sync_plans
+        title: "Create permissive governance plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expected: |
+          The governance agent acknowledges the plan with a plan_id.
+        sample_request:
+          idempotency_key: "comply-gov-approved-sync-plans-v1"
+          plans:
+            - plan_id: "comply-gov-approved-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Q2 outdoor lifestyle campaign — display and video"
+              budget:
+                total: 100000
+                currency: "USD"
+                reallocation_threshold: 100000
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
+              countries: ["US", "CA"]
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: seller_setup
+    title: "Account and governance registration on seller"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with seller"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_seller_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with seller"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge the governance agent registration.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  categories: ["budget_authority", "brand_policy"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_seller_setup_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: buy_approved
+    title: "Create buy within governance limits"
+    steps:
+      - id: get_products_brief
+        title: "Discover products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+      - id: create_media_buy
+        title: "Create buy (governance approves)"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds — governance approved because the $25K buy is within
+          the plan's $100K budget.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "outdoor_display_q2"
+              budget: 15000
+              pricing_option_id: "cpm_standard"
+            - product_id: "outdoor_video_q2"
+              budget: 10000
+              pricing_option_id: "cpm_standard"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_buy_approved_create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"

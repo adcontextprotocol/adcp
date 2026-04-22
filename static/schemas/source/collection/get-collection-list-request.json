@@ -13,7 +13,12 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the collection list to retrieve"
+      "description": "ID of the collection list to retrieve",
+      "x-entity": "collection_list"
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts and the list_id is not globally unique within that scope; optional otherwise."
     },
     "resolve": {
       "type": "boolean",

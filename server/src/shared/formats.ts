@@ -23,7 +23,7 @@ interface AssetRequirements {
   min_duration_ms?: number;
   max_duration_ms?: number;
   min_resolution_dpi?: number;
-  catalog_types?: string[];
+  catalog_type?: string;
 }
 
 interface IndividualAsset {
@@ -313,7 +313,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true }, min_width: 200, max_width: 400 } }],
       assets: [
         { item_type: 'individual', asset_id: 'catalog', asset_type: 'catalog', asset_role: 'product_feed', required: true,
-          requirements: { catalog_types: ['product'] } },
+          requirements: { catalog_type: 'product' } },
       ],
     },
 
@@ -386,7 +386,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true }, min_width: 150, max_width: 300 } }],
       assets: [
         { item_type: 'individual', asset_id: 'catalog', asset_type: 'catalog', asset_role: 'product_feed', required: true,
-          requirements: { catalog_types: ['product'] } },
+          requirements: { catalog_type: 'product' } },
         { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
           requirements: { url_type: 'click_through' } },
       ],
@@ -437,9 +437,9 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'print_full_page' },
       name: 'Print full page',
       description: 'Full-page print ad. High-resolution image with bleed area. Delivered as print-ready PDF.',
-      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'in' } }],
+      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'inches' } }],
       assets: [
-        { item_type: 'individual', asset_id: 'artwork', asset_type: 'file', asset_role: 'print_creative', required: true,
+        { item_type: 'individual', asset_id: 'artwork', asset_type: 'image', asset_role: 'print_creative', required: true,
           requirements: { mime_types: ['application/pdf'], min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
       ],
     },
@@ -452,8 +452,141 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
-        { item_type: 'individual', asset_id: 'audio', asset_type: 'file', asset_role: 'radio_spot', required: true,
+        { item_type: 'individual', asset_id: 'audio', asset_type: 'audio', asset_role: 'radio_spot', required: true,
           requirements: { mime_types: ['audio/wav', 'audio/mpeg'], max_file_size_bytes: 20000000 } },
+      ],
+    },
+
+    // ── Linear / broadcast TV ─────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'broadcast_30s' },
+      name: 'Broadcast TV 30s',
+      description: 'Linear broadcast TV spot, 30 seconds. Broadcast-quality video delivered per network trafficking specs.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video_file', asset_type: 'video', asset_role: 'broadcast_spot', required: true,
+          requirements: { mime_types: ['video/mp4', 'video/quicktime'], min_width: 1920, min_height: 1080, min_duration_ms: 30000, max_duration_ms: 30000, max_file_size_bytes: 500_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'broadcast_15s' },
+      name: 'Broadcast TV 15s',
+      description: 'Linear broadcast TV spot, 15 seconds. Broadcast-quality video delivered per network trafficking specs.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 15000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video_file', asset_type: 'video', asset_role: 'broadcast_spot', required: true,
+          requirements: { mime_types: ['video/mp4', 'video/quicktime'], min_width: 1920, min_height: 1080, min_duration_ms: 15000, max_duration_ms: 15000, max_file_size_bytes: 300_000_000 } },
+      ],
+    },
+
+    // ── CTV / streaming video ─────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'ssai_30s' },
+      name: 'SSAI video 30s',
+      description: 'Server-side ad insertion video spot, 30 seconds. CTV/OTT delivery via VAST/SSAI.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], min_width: 1280, min_height: 720, min_duration_ms: 30000, max_duration_ms: 30000, max_file_size_bytes: 200_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'preroll_15s' },
+      name: 'Pre-roll video 15s',
+      description: 'Online video pre-roll ad, 15 seconds.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 15000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], min_width: 1280, min_height: 720, min_duration_ms: 15000, max_duration_ms: 15000, max_file_size_bytes: 100_000_000 } },
+      ],
+    },
+
+    // ── Social ────────────────────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'native_feed' },
+      name: 'Native social feed',
+      description: 'Native in-feed social post with image, headline, and click URL.',
+      renders: [{ role: 'primary', dimensions: { width: 1080, height: 1080 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], min_width: 1080, min_height: 1080, max_file_size_bytes: 10_000_000 } },
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true,
+          requirements: { max_file_size_bytes: 40 } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'clickthrough', required: true, requirements: { url_type: 'clickthrough' } },
+      ],
+    },
+
+    // ── Generative creative ───────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'display_300x250_generative' },
+      name: 'Generative display 300x250',
+      description: 'Display ad generated from a creative brief, 300x250. Brief describes copy + visual direction; optional logo + click URL are seeded to the generator.',
+      renders: [{ role: 'primary', dimensions: { width: 300, height: 250 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'brief', asset_type: 'text', asset_role: 'creative_brief', required: true },
+        { item_type: 'individual', asset_id: 'logo', asset_type: 'image', asset_role: 'logo', required: false,
+          requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'clickthrough', required: false },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'video_30s_generative' },
+      name: 'Generative video 30s',
+      description: 'Video spot generated from a creative brief, 1920x1080 @30s. Brief describes the narrative; optional logo is seeded to the generator.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'brief', asset_type: 'text', asset_role: 'creative_brief', required: true },
+        { item_type: 'individual', asset_id: 'logo', asset_type: 'image', asset_role: 'logo', required: false,
+          requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
+    // Storyboard-hardcoded format ids (creative_lifecycle, creative_sales_agent).
+    // Aliased to close-enough shapes; storyboards pass a format_id string
+    // and don't care about subtle shape differences.
+    {
+      format_id: { agent_url: agentUrl, id: 'video_30s' },
+      name: '30-second video',
+      description: 'Standard 30-second video spot, 1920x1080.',
+      renders: [{ role: 'primary', dimensions: { width: 1920, height: 1080 }, duration_ms: 30000 }],
+      assets: [
+        { item_type: 'individual', asset_id: 'video', asset_type: 'video', asset_role: 'video_ad', required: true,
+          requirements: { mime_types: ['video/mp4'], max_file_size_bytes: 50_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'native_post' },
+      name: 'Native social post',
+      description: 'Native social feed post with image or short video.',
+      renders: [{ role: 'primary', dimensions: { width: 1080, height: 1080 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
+    {
+      format_id: { agent_url: agentUrl, id: 'native_content' },
+      name: 'Native content placement',
+      description: 'Native content placement with headline, image, and body copy.',
+      renders: [{ role: 'primary', dimensions: { width: 1200, height: 630 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'body', asset_type: 'text', asset_role: 'body', required: false },
+        { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
+          requirements: { mime_types: ['image/jpeg', 'image/png'], max_file_size_bytes: 5_000_000 } },
+      ],
+    },
+    {
+      // Catalog format used by `sales_social` storyboard's DPA creative step.
+      // Matches the carousel pattern documented at docs/creative/channels/carousels.mdx.
+      format_id: { agent_url: agentUrl, id: 'product_carousel_3_to_10' },
+      name: 'Product carousel (3–10 items)',
+      description: 'Dynamic product carousel with 3–10 catalog-driven items, headline, and click target.',
+      renders: [{ role: 'primary', dimensions: { width: 1200, height: 1200 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline', asset_type: 'text', asset_role: 'headline', required: true },
+        { item_type: 'individual', asset_id: 'impression_pixel', asset_type: 'url', asset_role: 'tracking', required: false },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'destination', required: true },
       ],
     },
   ];
@@ -490,4 +623,15 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   ai_sponsored_agent: ['display'],
   print_full_page: ['print'],
   radio_spot: ['radio'],
+  broadcast_30s: ['linear_tv'],
+  broadcast_15s: ['linear_tv'],
+  ssai_30s: ['ctv'],
+  preroll_15s: ['olv'],
+  native_feed: ['social'],
+  display_300x250_generative: ['display'],
+  video_30s_generative: ['olv', 'ctv'],
+  video_30s: ['olv', 'ctv'],
+  native_post: ['social'],
+  native_content: ['display'],
+  product_carousel_3_to_10: ['social', 'display'],
 };

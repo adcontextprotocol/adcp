@@ -32,16 +32,41 @@ import {
 const logger = createLogger('mcp-routes');
 
 /**
- * Externally-reachable URL of this server.
- * Used as the OAuth issuer URL and for resource metadata.
+ * Externally-reachable URL of this server. Used as the OAuth issuer URL
+ * and for resource metadata.
  *
- * In production, BASE_URL defaults to https://agenticadvertising.org.
- * In development, defaults to http://localhost:{PORT}.
+ * In production, BASE_URL is set deliberately (e.g. `https://agenticadvertising.org`).
+ * In development the default is `http://localhost:{PORT}`.
+ *
+ * Some deployment environments (e.g. conductor dev workspaces) leave
+ * `BASE_URL="/"` in the shell, which previously passed the `||` guard,
+ * stripped to `""` via `.replace(/\/$/, '')`, and then threw
+ * `TypeError: Invalid URL` at `mcpAuthRouter` setup — the server would
+ * refuse to start. Validate the value and fall through to the default
+ * when it's empty / whitespace / not a parseable URL. Any operator that
+ * actually set BASE_URL to something valid is still authoritative.
  */
-const MCP_SERVER_URL = (
-  process.env.BASE_URL ||
-  `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`
-).replace(/\/$/, '');
+export function resolveMCPServerURL(): string {
+  const raw = process.env.BASE_URL;
+  if (typeof raw === 'string') {
+    const trimmed = raw.replace(/\/$/, '').trim();
+    if (trimmed) {
+      try {
+        new URL(trimmed);
+        return trimmed;
+      } catch {
+        logger.warn(
+          { baseUrl: raw },
+          'BASE_URL is set but does not parse as a URL — falling back to the development default',
+        );
+      }
+    }
+  }
+  const port = process.env.PORT || process.env.CONDUCTOR_PORT || '3000';
+  return `http://localhost:${port}`;
+}
+
+const MCP_SERVER_URL = resolveMCPServerURL();
 
 /**
  * Rate limiter for MCP endpoint

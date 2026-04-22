@@ -23,27 +23,32 @@
       "minimum": 0,
       "description": "Number of impressions from this record"
     },
-    "violations": {
+    "features": {
       "type": "array",
-      "description": "Specific violations found (only present for non_compliant records)",
+      "description": "Per-feature breakdown for this record. SHOULD include all failed and warning features. MAY include passed features. For property validation the buyer authored the requirement, so the `requirement` that was not met MAY be echoed back on failures — this is contract data, not evaluator IP.",
       "items": {
         "type": "object",
         "properties": {
-          "code": {
-            "type": "string",
-            "description": "Machine-readable violation code"
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable violation description"
-          },
           "feature_id": {
             "type": "string",
-            "description": "ID of the feature that caused the violation (only present for feature_failed violations)"
+            "description": "Which feature was evaluated. Data features come from the governance agent's feature catalog (e.g., 'mfa_score', 'carbon_score'). Record-level structural checks use reserved namespaces: 'record:list_membership', 'record:excluded', 'delivery:seller_authorization', 'delivery:click_url_presence'. Reserved prefixes: 'record:', 'delivery:'."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "warning", "unevaluated"]
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "Registry policy ID that triggered this result. Enables programmatic routing by looking up the policy in the registry.",
+            "x-entity": "governance_registry_policy"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Directional human-readable explanation of the result."
           },
           "requirement": {
             "type": "object",
-            "description": "The feature requirement that was not met (only present for feature_failed violations)",
+            "description": "The feature requirement that was not met. MAY be present on failed features when the caller authored the requirement (e.g., feature_requirements on a property list). The buyer set these thresholds — echoing them back enables fix-and-retry loops without looking up the list definition.",
             "properties": {
               "min_value": {
                 "type": "number",
@@ -60,9 +65,15 @@
               }
             },
             "additionalProperties": false
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
           }
         },
-        "required": ["code", "message"],
+        "required": ["feature_id", "status"],
         "additionalProperties": false
       }
     },

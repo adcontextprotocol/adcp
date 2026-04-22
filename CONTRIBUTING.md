@@ -14,6 +14,12 @@ Before contributing please see:
 - [RELEASING.md](https://github.com/adcontextprotocol/adcp/blob/main/RELEASING.md)
 - [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md)
 
+## Schema conventions
+Before adding or modifying schemas, read the [Specification Guidelines](https://github.com/adcontextprotocol/adcp/blob/main/docs/spec-guidelines.md). In particular, normative (non-`ext`) schema fields must not reference specific platforms or vendors by name — platform-specific fields belong in the `ext.{vendor}` namespace. Reviewers will flag violations.
+
+## Examples and sample data
+Docs, storyboards, and test vectors use **fictional brands and entities only** — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names in `static/compliance/source/test-kits/`. Real brand, agency, publisher, or vendor names do not appear in normative examples. See the editorial rule in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and the universal fictional-entity registry at `static/compliance/source/universal/fictional-entities.yaml`. Reviewers will flag real-brand usage in examples the same way they flag vendor leakage in schemas.
+
 ## Issues
 [adcontextprotocol.org](http://adcontextprotocol.org/) contains documentation that may help answer questions you have about using AdCP.
 If you can't find the answer there, try searching for a similar issue on the [issues page](https://github.com/adcontextprotocol/adcp/issues).

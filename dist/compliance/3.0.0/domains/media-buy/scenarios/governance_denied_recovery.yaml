@@ -1,0 +1,243 @@
+id: media_buy_seller/governance_denied_recovery
+version: "1.0.0"
+title: "Seller accepts corrected buy after governance denial"
+category: media_buy_seller
+summary: "Verifies that a buyer can recover from GOVERNANCE_DENIED by shrinking the buy to within plan limits and retrying."
+track: media_buy
+required_tools:
+  - sync_governance
+  - get_products
+  - create_media_buy
+
+narrative: |
+  GOVERNANCE_DENIED is a correctable error, not a dead end. The buyer must be able to
+  read the denial findings, adjust the media buy, and retry. This scenario exercises the
+  full loop: strict governance plan ($10K), failed $50K buy that is denied, then a
+  corrected $8K buy that fits within the plan and is approved.
+
+  The seller must propagate the governance findings unchanged so the buyer can identify
+  exactly which constraint was violated (budget authority, brand policy, etc.) and
+  correct it.
+
+  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
+  Override with --governance-agent-url to use a custom governance agent.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Any media buy seller with governance support"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent that supports sync_plans and check_governance.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: governance_plan_setup
+    title: "Set up strict governance plan"
+    narrative: |
+      Create a governance plan with a $10K budget. The initial $50K buy will exceed this
+      limit; the retry at $8K will fit.
+
+    steps:
+      - id: sync_plans
+        title: "Create strict governance plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expected: |
+          The governance agent acknowledges the plan.
+        sample_request:
+          idempotency_key: "comply-gov-recovery-sync-plans-v1"
+          plans:
+            - plan_id: "comply-gov-recovery-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Strict-budget plan for denial + recovery validation"
+              budget:
+                total: 10000
+                currency: "USD"
+                reallocation_threshold: 5000
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
+              countries: ["US"]
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: seller_setup
+    title: "Account and governance registration on seller"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with seller"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_denied_recovery_seller_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with seller"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge the governance agent registration.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  categories: ["budget_authority"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_denied_recovery_seller_setup_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: buy_denied
+    title: "Initial buy exceeds plan — governance denies"
+    steps:
+      - id: get_products_brief
+        title: "Discover products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content. Q2 flight."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+      - id: create_media_buy_denied
+        title: "Attempt $50K buy — denied"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        stateful: true
+        expected: |
+          The buy is rejected with GOVERNANCE_DENIED. The response includes findings
+          from the governance agent explaining which constraint was exceeded.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "gov-recovery-initial-denied-v1"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 50000
+              pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "governance_denied_recovery--create_media_buy_denied"
+        validations:
+          - check: error_code
+            value: "GOVERNANCE_DENIED"
+            description: "Error code is GOVERNANCE_DENIED"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_denied_recovery--create_media_buy_denied"
+            description: "Response echoes context.correlation_id verbatim on error responses (echo contract applies to both success and failure)"
+
+  - id: buy_retried
+    title: "Corrected buy within plan — governance approves"
+    narrative: |
+      The buyer reads the denial findings, shrinks the budget to $8K (within the $10K
+      plan), and retries with a fresh idempotency_key. The seller consults governance
+      again, which now approves.
+
+    steps:
+      - id: create_media_buy_retry
+        title: "Retry with $8K — approved"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds. Governance approves because $8K fits within the $10K plan
+          budget. The seller returns a media_buy_id.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "gov-recovery-retry-approved-v1"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 8000
+              pricing_option_id: "$context.pricing_option_id"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id after governance approves"

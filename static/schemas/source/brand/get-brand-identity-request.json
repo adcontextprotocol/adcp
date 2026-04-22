@@ -13,7 +13,8 @@
     },
     "brand_id": {
       "type": "string",
-      "description": "Brand identifier from brand.json brands array"
+      "description": "Brand identifier from brand.json brands array",
+      "x-entity": "advertiser_brand"
     },
     "fields": {
       "type": "array",

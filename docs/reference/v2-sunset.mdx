@@ -1,0 +1,71 @@
+---
+title: v2 Sunset
+sidebarTitle: v2 sunset
+description: "AdCP v2 is unsupported as of 3.0 GA. Security-only patches through August 1, 2026 (UTC); full deprecation thereafter. Begin migration to 3.0 now."
+"og:title": "AdCP — v2 Sunset"
+---
+
+<Warning>
+**AdCP v2 is not supported and is not safe for interoperable production on the AAO network.** v2 predates the accounts and governance protections that the AAO architecture committee considers essential for live multi-party campaigns. The last v2 release was 2.5.3 in January 2026. Begin migrating to [3.0](/docs/reference/whats-new-in-v3) now.
+</Warning>
+
+## Timeline
+
+| Date (UTC) | Event |
+|---|---|
+| **April 2026** (3.0 GA) | v2 no longer supported by AAO. Security-only patches begin. No feature work. |
+| **August 1, 2026** | v2 fully deprecated. No further patches. Reference documentation archived. |
+
+The v2 sunset is not tied to 4.0. v2 reaches end of life on its own schedule because 2.5 was an early, preliminary version — adoption remained small, and the architecture committee identified protections missing from v2 that cannot be backported without a major redesign. v2's shorter window is the documented exception to the [12-month previous-major support commitment](/docs/reference/versioning#support-window-for-previous-major); future majors will not invoke this exception.
+
+## What "unsupported" means
+
+As of 3.0 GA:
+
+- **No feature work.** 2.5.3 is the last v2 release. No further minor or patch work in the 2.x line, other than security advisories.
+- **No AAO certification.** Certification requires v3.0 or later.
+- **Not verified in the AAO registry.** Verified seller and agent status requires v3.x. v2-only agents can be registered but cannot be verified.
+- **Frozen schemas.** v2 schemas are frozen as of 2.5.3 and remain at their existing schema URLs. No new fields, tasks, or protocols.
+
+After August 1, 2026 (UTC), v2 is fully deprecated: security patches stop and reference documentation is archived. The 2.5.3 schema URLs continue to resolve so existing integrations do not break silently, but those schemas receive no further updates.
+
+## Why v2 is not safe for interoperable production
+
+v2 is missing protections that 3.0 treats as essential for live multi-party campaigns on the AAO network:
+
+- **No accounts protocol.** Buyers and sellers cannot negotiate account scope, operator authorization, or buyer identity resolution.
+- **No governance.** No structured content standards, audience bias validation, or property list governance.
+- **No campaign governance.** No signed proposals, approval workflow, or proposal lifecycle.
+- **Limited optimization and measurement.** No structured optimization goals, event source health, or streaming/audio delivery metrics.
+
+Running v2 on the AAO network means running without these protections. Private deployments with their own governance and identity layers are the operator's call — but the AAO network treats v2 as out of scope for supported production traffic.
+
+## What to do
+
+### If you run a v2 agent
+
+1. Read [What's new in v3](/docs/reference/whats-new-in-v3).
+2. Work through the [v2→v3 migration guide](/docs/reference/migration).
+3. Validate with [storyboard testing](/docs/reference/migration/v3-readiness).
+4. Complete migration before August 1, 2026 (UTC).
+
+### If you are a buyer integrating with v2 sellers
+
+1. Inventory which of your sellers are v2-only.
+2. Notify them of the August 1, 2026 (UTC) deprecation and share the [migration guide](/docs/reference/migration).
+3. Shift traffic to v3 sellers as they become available.
+
+### If you use the AAO registry
+
+Verified seller and agent status requires v3.x. v2-only agents can be registered but are not eligible for verification. As the registry rolls out verified-default discovery, v2-only entries will not surface by default; endpoints that return unverified entries remain available for operators who need them.
+
+## Dual-support during migration
+
+Sellers in mid-migration can temporarily support both versions using `get_adcp_capabilities` and the `major_versions` array — see [Running v2 and v3 side by side](/docs/reference/migration#running-v2-and-v3-side-by-side). Dual-support is a migration tool, not a long-term posture. After August 1, 2026 (UTC), v3-only is the required configuration.
+
+## Related
+
+- **[What's new in v3](/docs/reference/whats-new-in-v3)** — feature-by-feature summary of what 3.0 adds
+- **[Migration guide](/docs/reference/migration)** — breaking changes and deep-dive pages for every protocol area
+- **[v3 readiness checklist](/docs/reference/migration/v3-readiness)** — 8 minimum requirements for storyboard testing
+- **[Versioning & governance](/docs/reference/versioning)** — 3.x stability guarantees and release cadence

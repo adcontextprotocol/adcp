@@ -6,10 +6,6 @@ description: "validate_property_delivery checks delivery records against a prope
 
 # validate_property_delivery
 
-<Info>
-**AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
-</Info>
-
 Validates delivery records against a property list to determine compliance. Answers two questions:
 1. **Property compliance**: Did my impressions land on properties in my list?
 2. **Supply path authorization**: Was the sales agent authorized to sell that inventory?
@@ -86,10 +82,11 @@ Validates delivery records against a property list to determine compliance. Answ
       "identifier": { "type": "domain", "value": "sketchy-site.example" },
       "status": "non_compliant",
       "impressions": 47,
-      "violations": [
+      "features": [
         {
-          "code": "not_in_list",
-          "message": "Identifier not found in resolved property list"
+          "feature_id": "record:list_membership",
+          "status": "failed",
+          "explanation": "Identifier not found in resolved property list"
         }
       ]
     },
@@ -197,39 +194,40 @@ In the example above:
 - not_covered + unidentified impressions: 50 (excluded)
 - Compliance rate: 103 / (200 - 50) = 103 / 150 = 68.7%
 
-## Violation Codes
+## Feature Results
 
-| Code | Description |
-|------|-------------|
-| `not_in_list` | Identifier not found in the resolved property list |
-| `excluded` | Identifier explicitly excluded via `exclude_identifiers` filter |
-| `country_mismatch` | Property lacks feature data for required countries |
-| `channel_mismatch` | Property doesn't support required channels |
-| `feature_failed` | Property failed a `feature_requirements` filter |
+Every entry in `features[]` carries a `feature_id` and a `status`. Data features come from the governance agent's feature catalog (discovered via `get_adcp_capabilities`). Record-level structural checks use reserved namespaces so they sit in the same identity space as data features.
 
-### Feature Violation Details
+### Reserved feature_id prefixes
 
-When a property fails a feature requirement, the violation includes the feature details:
+| Prefix | Scope | Canonical feature_ids |
+|--------|-------|----------------------|
+| `record:` | Record-level structural checks | `record:list_membership`, `record:excluded`, `record:country_mismatch`, `record:channel_mismatch` |
+| `delivery:` | Delivery-path checks | `delivery:seller_authorization`, `delivery:click_url_presence` |
+
+Governance agents MAY add new checks within these namespaces and publish them in their feature catalog.
+
+### Feature-Level Failures
+
+When a property fails a specific feature requirement, the entry references the feature by id. The response carries the verdict and a directional explanation. When the caller authored the requirement (e.g., `feature_requirements` on a property list), the evaluator MAY echo the `requirement` back to enable fix-and-retry loops without re-reading the list definition.
 
 ```json
 {
   "identifier": { "type": "domain", "value": "low-quality-site.example" },
   "status": "non_compliant",
   "impressions": 150,
-  "violations": [
+  "features": [
     {
-      "code": "feature_failed",
-      "message": "Property failed mfa_score requirement (min: 85)",
       "feature_id": "mfa_score",
-      "requirement": {
-        "min_value": 85
-      }
+      "status": "failed",
+      "explanation": "Property below MFA score requirement",
+      "requirement": { "min_value": 85 }
     }
   ]
 }
 ```
 
-The `feature_id` and `requirement` fields are optional - they're included when the violation is due to a feature requirement filter.
+Oracle pattern: the response tells you **what** failed (feature_id) and **where to find the rule** (policy_id, optional). Evaluator internals (confidence thresholds, inference logic) stay hidden.
 
 ## Supply Path Authorization
 

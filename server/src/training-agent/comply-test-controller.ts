@@ -1,17 +1,36 @@
 /**
- * Comply test controller for the training agent.
+ * Training-agent wrapper around the SDK's comply_test_controller.
  *
- * Implements the TestControllerStore interface from @adcp/client backed
- * by session state — state machine transition tables, delivery/budget
- * simulations, etc. Dispatch and error handling are local since the
- * SDK's handleTestControllerRequest is not publicly exported.
+ * The SDK owns the scenario dispatcher, response envelope, and per-scenario
+ * enum validation (`@adcp/client` exports `handleTestControllerRequest`,
+ * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
+ * adds the two things the SDK intentionally leaves to the seller: a sandbox
+ * gate on the top-level `account.sandbox` flag, and a per-request
+ * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
-import { TestControllerError } from '@adcp/client';
+import {
+  CONTROLLER_SCENARIOS,
+  TestControllerError,
+  createSeedFixtureCache,
+  enforceMapCap,
+  handleTestControllerRequest,
+} from '@adcp/client';
 import type { TestControllerStore } from '@adcp/client';
-import type { TrainingContext, ToolArgs, SessionState, MediaBuyState } from './types.js';
+import type { BrandReference } from '@adcp/client';
+import type {
+  TrainingContext,
+  ToolArgs,
+  SessionState,
+  MediaBuyState,
+  CreativeState,
+  GovernancePlanState,
+  AccountRef,
+  BrandRef,
+  ComplyDeliveryAccumulator,
+  ComplyBudgetSimulation,
+} from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
-import { deriveStatus } from './task-handlers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -55,57 +74,21 @@ const SI_SESSION_TRANSITIONS: Record<string, string[]> = {
 
 const SI_SESSION_TERMINAL = new Set(['complete', 'terminated']);
 
-// ── Session extensions ────────────────────────────────────────────
-
-interface ComplyExtensions {
-  accountStatuses: Map<string, string>;
-  siSessions: Map<string, { status: string; terminationReason?: string }>;
-  deliverySimulations: Map<string, DeliveryAccumulator>;
-  budgetSimulations: Map<string, BudgetSimulation>;
-}
-
-interface DeliveryAccumulator {
-  impressions: number;
-  clicks: number;
-  reportedSpend: { amount: number; currency: string };
-  conversions: number;
-}
-
-interface BudgetSimulation {
-  spendPercentage: number;
-  computedSpend: { amount: number; currency: string };
-  budget: { amount: number; currency: string };
-}
-
-const complyExtensions = new WeakMap<SessionState, ComplyExtensions>();
-
-function getExtensions(session: SessionState): ComplyExtensions {
-  let ext = complyExtensions.get(session);
-  if (!ext) {
-    ext = {
-      accountStatuses: new Map(),
-      siSessions: new Map(),
-      deliverySimulations: new Map(),
-      budgetSimulations: new Map(),
-    };
-    complyExtensions.set(session, ext);
-  }
-  return ext;
-}
+// ── Session accessors (used by other handlers) ──────────────────────
 
 /** Get delivery simulation data for a media buy (used by get_media_buy_delivery). */
-export function getDeliverySimulation(session: SessionState, mediaBuyId: string): DeliveryAccumulator | undefined {
-  return complyExtensions.get(session)?.deliverySimulations.get(mediaBuyId);
+export function getDeliverySimulation(session: SessionState, mediaBuyId: string): ComplyDeliveryAccumulator | undefined {
+  return session.complyExtensions.deliverySimulations.get(mediaBuyId);
 }
 
 /** Get budget simulation data for an entity (used by get_account_financials). */
-export function getBudgetSimulation(session: SessionState, entityId: string): BudgetSimulation | undefined {
-  return complyExtensions.get(session)?.budgetSimulations.get(entityId);
+export function getBudgetSimulation(session: SessionState, entityId: string): ComplyBudgetSimulation | undefined {
+  return session.complyExtensions.budgetSimulations.get(entityId);
 }
 
 /** Get account status set by comply test controller. */
 export function getAccountStatus(session: SessionState, accountId: string): string | undefined {
-  return complyExtensions.get(session)?.accountStatuses.get(accountId);
+  return session.complyExtensions.accountStatuses.get(accountId);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -156,7 +139,7 @@ function createStore(session: SessionState): TestControllerStore {
     },
 
     async forceAccountStatus(accountId, status) {
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       const prev = ext.accountStatuses.get(accountId) ?? 'active';
 
       if (prev === status) {
@@ -164,6 +147,7 @@ function createStore(session: SessionState): TestControllerStore {
       }
 
       validateTransition(ACCOUNT_TRANSITIONS, ACCOUNT_TERMINAL, prev, status, 'account');
+      enforceMapCap(ext.accountStatuses, accountId, 'account statuses');
       ext.accountStatuses.set(accountId, status);
       return { success: true, previous_state: prev, current_state: status, message: `Account ${accountId} transitioned from ${prev} to ${status}` };
     },
@@ -207,7 +191,7 @@ function createStore(session: SessionState): TestControllerStore {
     },
 
     async forceSessionStatus(sessionId, status, terminationReason) {
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       const siSession = ext.siSessions.get(sessionId);
 
       if (!siSession) {
@@ -215,6 +199,7 @@ function createStore(session: SessionState): TestControllerStore {
         if (status === 'terminated' && !terminationReason) {
           throw new TestControllerError('INVALID_PARAMS', 'termination_reason is required when status = terminated');
         }
+        enforceMapCap(ext.siSessions, sessionId, 'si sessions');
         ext.siSessions.set(sessionId, { status, terminationReason });
         return { success: true, previous_state: 'active', current_state: status, message: `Session ${sessionId} transitioned from active to ${status}` };
       }
@@ -250,9 +235,10 @@ function createStore(session: SessionState): TestControllerStore {
       const conversions = params.conversions || 0;
       const reportedSpend = params.reported_spend;
 
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
       let cumulative = ext.deliverySimulations.get(mediaBuyId);
       if (!cumulative) {
+        enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
         cumulative = {
           impressions: 0,
           clicks: 0,
@@ -322,7 +308,8 @@ function createStore(session: SessionState): TestControllerStore {
 
       const computedSpend = Math.round(budgetAmount * (spendPercentage / 100) * 100) / 100;
 
-      const ext = getExtensions(session);
+      const ext = session.complyExtensions;
+      enforceMapCap(ext.budgetSimulations, entityId, 'budget simulations');
       ext.budgetSimulations.set(entityId, {
         spendPercentage,
         computedSpend: { amount: computedSpend, currency },
@@ -339,11 +326,140 @@ function createStore(session: SessionState): TestControllerStore {
         message: `Budget for ${entityId} set to ${spendPercentage}% consumed ($${computedSpend.toFixed(2)} of $${budgetAmount.toFixed(2)})`,
       };
     },
+
+    // ── Seed scenarios (spec: storyboard fixtures block) ──────────────
+    // Fixtures are permissive objects (spec: additionalProperties: true).
+    // Each seed method merges the fixture on top of sensible defaults and
+    // stores in the session. Idempotency (same ID + equivalent fixture
+    // returns success, same ID + different fixture returns INVALID_STATE)
+    // is enforced by the SDK's seed cache wired in handleComplyTestController.
+
+    async seedProduct(productId, fixture) {
+      const ext = session.complyExtensions;
+      enforceMapCap(ext.seededProducts, productId, 'seeded products');
+      ext.seededProducts.set(productId, { product_id: productId, ...(fixture ?? {}) });
+    },
+
+    async seedPricingOption(productId, pricingOptionId, fixture) {
+      const ext = session.complyExtensions;
+      const key = `${productId}:${pricingOptionId}`;
+      enforceMapCap(ext.seededPricingOptions, key, 'seeded pricing options');
+      ext.seededPricingOptions.set(key, {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        ...(fixture ?? {}),
+      });
+    },
+
+    async seedCreative(creativeId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.creatives, creativeId, 'creatives');
+      const existing = session.creatives.get(creativeId);
+      const now = new Date().toISOString();
+      const formatId = (fx.format_id as CreativeState['formatId']) ?? existing?.formatId ?? { id: 'display_300x250' };
+      session.creatives.set(creativeId, {
+        creativeId,
+        formatId,
+        name: (fx.name as string | undefined) ?? existing?.name,
+        status: (fx.status as string | undefined) ?? existing?.status ?? 'approved',
+        syncedAt: existing?.syncedAt ?? now,
+        manifest: (fx.manifest as CreativeState['manifest']) ?? existing?.manifest,
+        pricingOptionId: (fx.pricing_option_id as string | undefined) ?? existing?.pricingOptionId,
+      });
+    },
+
+    async seedPlan(planId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.governancePlans, planId, 'governance plans');
+      const existing = session.governancePlans.get(planId);
+      const fxBudget = (fx.budget as Record<string, unknown> | undefined) ?? {};
+      const fxFlight = (fx.flight as { start?: string; end?: string } | undefined) ?? {};
+      const now = new Date().toISOString();
+      const defaultFlightEnd = new Date(Date.now() + 90 * 86_400_000).toISOString();
+      session.governancePlans.set(planId, {
+        planId,
+        version: (fx.version as number | undefined) ?? existing?.version ?? 1,
+        status: (fx.status as GovernancePlanState['status']) ?? existing?.status ?? 'active',
+        brand: (fx.brand as BrandReference) ?? existing?.brand ?? { domain: 'acmeoutdoor.example' },
+        objectives: (fx.objectives as string | undefined) ?? existing?.objectives ?? 'seeded plan',
+        budget: {
+          total: (fxBudget.total as number | undefined) ?? existing?.budget.total ?? 0,
+          currency: (fxBudget.currency as string | undefined) ?? existing?.budget.currency ?? 'USD',
+          reallocationThreshold:
+            (fxBudget.reallocation_threshold as number | undefined)
+            ?? existing?.budget.reallocationThreshold
+            ?? 0,
+          reallocationUnlimited:
+            (fxBudget.reallocation_unlimited as boolean | undefined)
+            ?? existing?.budget.reallocationUnlimited
+            ?? false,
+          perSellerMaxPct:
+            (fxBudget.per_seller_max_pct as number | undefined) ?? existing?.budget.perSellerMaxPct,
+          allocations:
+            (fxBudget.allocations as GovernancePlanState['budget']['allocations'])
+            ?? existing?.budget.allocations,
+        },
+        humanReviewRequired:
+          (fx.human_review_required as boolean | undefined) ?? existing?.humanReviewRequired ?? false,
+        humanReviewAutoFlippedBy: existing?.humanReviewAutoFlippedBy ?? [],
+        humanOverride: existing?.humanOverride,
+        policyCategories: (fx.policy_categories as string[] | undefined) ?? existing?.policyCategories,
+        revisionHistory: existing?.revisionHistory ?? [],
+        flight: {
+          start: fxFlight.start ?? existing?.flight.start ?? now,
+          end: fxFlight.end ?? existing?.flight.end ?? defaultFlightEnd,
+        },
+        mode: (fx.mode as GovernancePlanState['mode']) ?? existing?.mode ?? 'enforce',
+        committedBudget: existing?.committedBudget ?? 0,
+        committedByType: existing?.committedByType ?? {},
+        syncedAt: existing?.syncedAt ?? now,
+      });
+    },
+
+    async seedMediaBuy(mediaBuyId, fixture) {
+      const fx = (fixture ?? {}) as Record<string, unknown>;
+      enforceMapCap(session.mediaBuys, mediaBuyId, 'media buys');
+      const existing = session.mediaBuys.get(mediaBuyId);
+      const now = new Date().toISOString();
+      session.mediaBuys.set(mediaBuyId, {
+        mediaBuyId,
+        accountRef:
+          (fx.account as AccountRef | undefined)
+          ?? existing?.accountRef
+          ?? { brand: { domain: 'acmeoutdoor.example' } },
+        brandRef: (fx.brand as BrandRef | undefined) ?? existing?.brandRef,
+        status: (fx.status as string | undefined) ?? existing?.status ?? 'active',
+        currency: (fx.currency as string | undefined) ?? existing?.currency ?? 'USD',
+        packages: (fx.packages as MediaBuyState['packages']) ?? existing?.packages ?? [],
+        startTime:
+          (fx.start_time as string | undefined) ?? existing?.startTime ?? now,
+        endTime:
+          (fx.end_time as string | undefined)
+          ?? existing?.endTime
+          ?? new Date(Date.now() + 30 * 86_400_000).toISOString(),
+        revision: existing?.revision ?? 1,
+        confirmedAt: existing?.confirmedAt ?? now,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        history: existing?.history ?? [{
+          revision: 1,
+          timestamp: now,
+          actor: 'seller',
+          action: 'seeded',
+          summary: 'Media buy seeded via comply_test_controller.seed_media_buy',
+        }],
+      });
+    },
   };
 }
 
 // ── Tool definition ───────────────────────────────────────────────
 
+const SCENARIO_ENUM = ['list_scenarios', ...Object.values(CONTROLLER_SCENARIOS)] as const;
+
+// JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
+// top-level `account` (sandbox gate) and `brand` (session keying) — both
+// exempt extensions per the SDK's documented wrapper pattern.
 export const COMPLY_TEST_CONTROLLER_TOOL = {
   name: 'comply_test_controller',
   description: 'Forces seller-side state transitions that a buyer agent cannot trigger directly — creative review outcomes, account status changes, delivery data, budget consumption. Sandbox only (requires account.sandbox: true). NOT for normal buyer operations. Call with scenario: "list_scenarios" first to see available scenarios and required params.',
@@ -354,15 +470,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
     properties: {
       scenario: {
         type: 'string',
-        enum: [
-          'list_scenarios',
-          'force_creative_status',
-          'force_account_status',
-          'force_media_buy_status',
-          'force_session_status',
-          'simulate_delivery',
-          'simulate_budget_spend',
-        ],
+        enum: [...SCENARIO_ENUM],
         description: 'The seller-side transition to trigger.',
       },
       params: {
@@ -376,105 +484,35 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
   },
 };
 
-// ── Scenario dispatch ─────────────────────────────────────────────
-
-const SCENARIO_MAP: Array<[keyof TestControllerStore, string]> = [
-  ['forceCreativeStatus', 'force_creative_status'],
-  ['forceAccountStatus', 'force_account_status'],
-  ['forceMediaBuyStatus', 'force_media_buy_status'],
-  ['forceSessionStatus', 'force_session_status'],
-  ['simulateDelivery', 'simulate_delivery'],
-  ['simulateBudgetSpend', 'simulate_budget_spend'],
-];
-
-function listScenarios(store: TestControllerStore): string[] {
-  return SCENARIO_MAP
-    .filter(([method]) => typeof store[method] === 'function')
-    .map(([, scenario]) => scenario);
-}
-
-async function dispatch(store: TestControllerStore, input: Record<string, unknown>): Promise<object> {
-  const scenario = input.scenario as string;
-  if (!scenario) {
-    return { success: false, error: 'INVALID_PARAMS', error_detail: 'Missing required field: scenario' };
-  }
-
-  if (scenario === 'list_scenarios') {
-    return { success: true, scenarios: listScenarios(store) };
-  }
-
-  const params = input.params as Record<string, unknown> | undefined;
-  try {
-    switch (scenario) {
-      case 'force_creative_status':
-        if (!store.forceCreativeStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.creative_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_creative_status requires params.creative_id and params.status' };
-        return await store.forceCreativeStatus(params.creative_id as string, params.status as never, params.rejection_reason as string | undefined);
-
-      case 'force_account_status':
-        if (!store.forceAccountStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.account_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_account_status requires params.account_id and params.status' };
-        return await store.forceAccountStatus(params.account_id as string, params.status as never);
-
-      case 'force_media_buy_status':
-        if (!store.forceMediaBuyStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.media_buy_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_media_buy_status requires params.media_buy_id and params.status' };
-        return await store.forceMediaBuyStatus(params.media_buy_id as string, params.status as never, params.rejection_reason as string | undefined);
-
-      case 'force_session_status': {
-        if (!store.forceSessionStatus) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.session_id || !params?.status) return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_session_status requires params.session_id and params.status' };
-        const validSessionStatuses = ['complete', 'terminated'];
-        if (!validSessionStatuses.includes(params.status as string)) return { success: false, error: 'INVALID_PARAMS', error_detail: `Invalid session status: ${params.status}` };
-        return await store.forceSessionStatus(params.session_id as string, params.status as 'complete' | 'terminated', params.termination_reason as string | undefined);
-      }
-
-      case 'simulate_delivery':
-        if (!store.simulateDelivery) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (!params?.media_buy_id) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_delivery requires params.media_buy_id' };
-        return await store.simulateDelivery(params.media_buy_id as string, {
-          impressions: params.impressions as number | undefined,
-          clicks: params.clicks as number | undefined,
-          reported_spend: params.reported_spend as { amount: number; currency: string } | undefined,
-          conversions: params.conversions as number | undefined,
-        });
-
-      case 'simulate_budget_spend':
-        if (!store.simulateBudgetSpend) return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: `Scenario not supported: ${scenario}` };
-        if (params?.spend_percentage === undefined || params?.spend_percentage === null) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_budget_spend requires params.spend_percentage' };
-        if (!params?.account_id && !params?.media_buy_id) return { success: false, error: 'INVALID_PARAMS', error_detail: 'simulate_budget_spend requires params.account_id or params.media_buy_id' };
-        return await store.simulateBudgetSpend({
-          account_id: params.account_id as string | undefined,
-          media_buy_id: params.media_buy_id as string | undefined,
-          spend_percentage: params.spend_percentage as number,
-        });
-
-      default:
-        return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'Unrecognized scenario name' };
-    }
-  } catch (err) {
-    if (err instanceof TestControllerError) {
-      return { success: false, error: err.code, error_detail: err.message, ...(err.currentState !== undefined && { current_state: err.currentState }) };
-    }
-    return { success: false, error: 'INTERNAL_ERROR', error_detail: 'An unexpected error occurred in the test controller store' };
-  }
-}
-
 // ── Main handler ──────────────────────────────────────────────────
 
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
-  // Sandbox gating
-  const account = (args as Record<string, unknown>).account as { sandbox?: boolean } | undefined;
-  if (!account?.sandbox) {
+  const rawArgs = args as Record<string, unknown>;
+
+  // Sandbox gate — spec: "If a comply_test_controller call references a
+  // non-sandbox account, the controller MUST return FORBIDDEN." The
+  // training agent is sandbox-only by deployment (the tool only lists on
+  // sandbox connections), so a caller hitting this endpoint is by
+  // definition in sandbox. Reject ONLY when the request explicitly
+  // declares `account.sandbox: false` (an attempt to target a named
+  // production account) — default-to-allow matches the storyboards
+  // (`deterministic_testing`, etc.) which don't include `account` at all
+  // on error-surface probes.
+  const account = rawArgs.account as { sandbox?: boolean } | undefined;
+  if (account && account.sandbox === false) {
     return {
       success: false,
       error: 'FORBIDDEN',
-      error_detail: 'comply_test_controller is only available in sandbox mode',
+      error_detail: 'comply_test_controller cannot target non-sandbox accounts',
     };
   }
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const store = createStore(session);
-  return dispatch(store, args as Record<string, unknown>);
+  return handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 }
 
+// Module-level seed-fixture cache enforces the spec's same-ID-different-
+// fixture rejection rule across all seed calls in the process. Scoping per-
+// process keeps it aligned with the CONTROLLER_SCENARIOS list being static.
+const SEED_CACHE = createSeedFixtureCache();

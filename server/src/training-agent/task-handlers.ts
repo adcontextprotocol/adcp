@@ -17,7 +17,7 @@ import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
 import { PostgresTaskStore } from '@adcp/client';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
 import type {
   Product,
   Proposal,
@@ -60,7 +60,7 @@ function adcpError(code: string, opts: { message: string; details?: unknown; rec
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
-type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string };
+type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string; targeting?: PackageTargeting; targeting_overlay?: PackageTargeting };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
@@ -90,12 +90,67 @@ interface PackageInput {
   start_time?: string;
   end_time?: string;
   format_ids?: FormatID[];
+  targeting?: PackageTargeting;
+  targeting_overlay?: PackageTargeting;
 }
 
 interface CreativeAssignmentInput {
   creative_id: string;
   package_id: string;
   media_buy_id: string;
+}
+
+const MAX_URL_LEN = 2048;
+const MAX_ID_LEN = 256;
+const MAX_TOKEN_LEN = 4096;
+
+function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
+  if (ref === undefined || ref === null) return {};
+  if (typeof ref !== 'object' || Array.isArray(ref)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object with agent_url and list_id`, field: pathLabel } };
+  }
+  const r = ref as Record<string, unknown>;
+  const agent_url = r.agent_url;
+  const list_id = r.list_id;
+  const auth_token = r.auth_token;
+  if (typeof agent_url !== 'string' || agent_url.length === 0 || agent_url.length > MAX_URL_LEN) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars`, field: `${pathLabel}.agent_url` } };
+  }
+  if (!/^https?:\/\//i.test(agent_url)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must use http:// or https://`, field: `${pathLabel}.agent_url` } };
+  }
+  if (typeof list_id !== 'string' || list_id.length === 0 || list_id.length > MAX_ID_LEN) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.list_id: must be a non-empty string up to ${MAX_ID_LEN} chars`, field: `${pathLabel}.list_id` } };
+  }
+  if (auth_token !== undefined && (typeof auth_token !== 'string' || auth_token.length > MAX_TOKEN_LEN)) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.auth_token: must be a string up to ${MAX_TOKEN_LEN} chars`, field: `${pathLabel}.auth_token` } };
+  }
+  return { ref: { agent_url, list_id, ...(typeof auth_token === 'string' && { auth_token }) } };
+}
+
+function validateTargeting(t: unknown, pathLabel: string): { targeting?: PackageTargeting; errors: TaskError[] } {
+  if (t === undefined || t === null) return { errors: [] };
+  if (typeof t !== 'object' || Array.isArray(t)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object`, field: pathLabel }] };
+  }
+  const src = t as Record<string, unknown>;
+  const errors: TaskError[] = [];
+  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
+  const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
+  const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
+  if (pl.error) errors.push(pl.error);
+  if (cl.error) errors.push(cl.error);
+  if (cle.error) errors.push(cle.error);
+  if (errors.length) return { errors };
+  if (!pl.ref && !cl.ref && !cle.ref) return { errors: [] };
+  return {
+    targeting: {
+      ...(pl.ref && { property_list: pl.ref }),
+      ...(cl.ref && { collection_list: cl.ref }),
+      ...(cle.ref && { collection_list_exclude: cle.ref }),
+    },
+    errors: [],
+  };
 }
 
 // Proposal lifecycle fields not yet in @adcp/client — remove after client update
@@ -110,7 +165,12 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION } from './state.js';
+import {
+  getSession, sessionKeyFromArgs,
+  runWithSessionContext, flushDirtySessions,
+  getComplianceCreatives, getComplianceCreative,
+  MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
+} from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -172,6 +232,17 @@ import {
   getAccountStatus,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
+import {
+  isMutatingTool,
+  validateKeyFormat,
+  scopedPrincipal,
+  getIdempotencyStore,
+} from './idempotency.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
+import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+
+const SUPPORTED_MAJOR_VERSIONS = [3] as const;
+const MAX_PACKAGES_PER_BUY = 50;
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
@@ -204,10 +275,58 @@ function toolSupportsTask(toolName: string): boolean {
   return support === 'optional' || support === 'required';
 }
 
+/**
+ * Extract an account-scoping string for the idempotency cache from the
+ * tool arguments. Mirrors `sessionKeyFromArgs` but returns just the scope
+ * portion (no `open:` prefix) so callers can feed it to `scopedPrincipal`.
+ *
+ * The scope is caller-controlled, so it doesn't authenticate anything —
+ * its only job is to keep two different buyers on the same shared token
+ * from seeing each other's idempotency outcomes.
+ */
+function deriveAccountScope(args: Record<string, unknown>): string | undefined {
+  const account = (args.account as { account_id?: string; brand?: { domain?: string } } | undefined);
+  if (account?.account_id && typeof account.account_id === 'string') {
+    return `a:${account.account_id}`;
+  }
+  const domain = account?.brand?.domain
+    ?? (args.brand as { domain?: string } | undefined)?.domain;
+  if (typeof domain === 'string' && domain.length > 0) {
+    return `b:${domain.toLowerCase()}`;
+  }
+  return undefined;
+}
+
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
   sdkTaskStore?.cleanup();
   sdkTaskStore = null;
+}
+
+/** Translate the agent's internal governance check shape into the wire-format
+ * details block carried on a GOVERNANCE_DENIED error. Storyboards assert
+ * `findings[]` and (when status is `conditions`) `conditions[]` on the error,
+ * so surfacing them here is load-bearing. */
+function governanceErrorDetails(check: import('./types.js').GovernanceCheckState): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    findings: check.findings.map(f => ({
+      category_id: f.categoryId,
+      severity: f.severity,
+      explanation: f.explanation,
+      ...(f.policyId && { policy_id: f.policyId }),
+      ...(f.confidence !== undefined && { confidence: f.confidence }),
+    })),
+    plan_id: check.planId,
+    check_id: check.checkId,
+  };
+  if (check.conditions?.length) {
+    details.conditions = check.conditions.map(c => ({
+      field: c.field,
+      ...(c.requiredValue !== undefined && { required_value: c.requiredValue }),
+      reason: c.reason,
+    }));
+  }
+  return details;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -215,7 +334,8 @@ interface TaskError {
   code: string;
   message: string;
   field?: string;
-  suggestion?: string;
+  details?: unknown;
+  recovery?: string;
 }
 
 /** Signal deployment entry in get_signals response. */
@@ -417,6 +537,68 @@ export function invalidateCache(): void {
   cachedProposals = null;
 }
 
+/**
+ * Canonicalize an agent URL for equality comparison: lowercase scheme + host,
+ * strip a single trailing slash, preserve path case. Used to decide whether
+ * a caller-supplied `format_id.agent_url` points at this agent.
+ */
+function canonicalizeAgentUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hostname = u.hostname.toLowerCase();
+    u.protocol = u.protocol.toLowerCase();
+    const s = u.toString();
+    return s.endsWith('/') ? s.slice(0, -1) : s;
+  } catch {
+    return url.replace(/\/$/, '');
+  }
+}
+
+/**
+ * Merge products and pricing options seeded via comply_test_controller
+ * (`seed_product`, `seed_pricing_option`) into the in-memory product map
+ * used for create/validate flows. Seeded fixtures are permissive objects
+ * (spec: additionalProperties: true) — we synthesize the minimum shape
+ * the handlers consult (pricing_options with pricing_model/floor_price/
+ * fixed_price/etc) so fixture-driven storyboards can reference products
+ * that don't live in the static catalog.
+ */
+function overlaySeededProducts(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, import('@adcp/client').Product>,
+): void {
+  const { seededProducts, seededPricingOptions } = session.complyExtensions;
+  if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
+
+  const pricingByProduct = new Map<string, Array<Record<string, unknown>>>();
+  for (const [key, pxFx] of seededPricingOptions) {
+    const sep = key.indexOf(':');
+    const productId = sep > 0 ? key.slice(0, sep) : key;
+    const list = pricingByProduct.get(productId) ?? [];
+    list.push(pxFx);
+    pricingByProduct.set(productId, list);
+  }
+
+  const productIds = new Set<string>([
+    ...seededProducts.keys(),
+    ...pricingByProduct.keys(),
+  ]);
+  for (const productId of productIds) {
+    const existing = productMap.get(productId);
+    const fixture = seededProducts.get(productId) ?? {};
+    const seededPricing = pricingByProduct.get(productId);
+    const merged = {
+      ...(existing ?? {}),
+      ...fixture,
+      product_id: productId,
+      pricing_options: seededPricing && seededPricing.length > 0
+        ? seededPricing
+        : (existing?.pricing_options ?? []),
+    } as unknown as import('@adcp/client').Product;
+    productMap.set(productId, merged);
+  }
+}
+
 // ── Channel aliases for brief matching (module-scoped for perf) ──
 
 const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
@@ -452,6 +634,15 @@ const ACCOUNT_REF_SCHEMA = {
     },
   ],
 } as const;
+
+// Tools whose response schema defines an Error variant at top level
+// (oneOf success | {errors: [...]}). Handler-returned errors are placed
+// in the response body rather than wrapped in an MCP isError envelope,
+// matching spec-compliant agents and allowing field_present validations
+// on the errors array.
+const ERROR_IN_BODY_TOOLS = new Set<string>([
+  'update_media_buy',
+]);
 
 // ── Tool definitions ──────────────────────────────────────────────
 
@@ -525,6 +716,20 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook destination for async completion notification. RFC 9421 signed by default; HMAC-SHA256 fallback when authentication is populated.',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            authentication: {
+              type: 'object',
+              properties: {
+                schemes: { type: 'array', items: { type: 'string' } },
+                credentials: { type: 'string' },
+              },
+            },
+          },
+        },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -767,10 +972,10 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -830,7 +1035,20 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   }
 
   // Refine mode: apply include/omit/more_like_this/finalize
-  const refinementApplied: Array<{ status: string; notes?: string }> = [];
+  type RefineEntry =
+    | { scope: 'request'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
+
+  type RefinementAppliedEntry = {
+    scope: 'request' | 'product' | 'proposal';
+    product_id?: string;
+    proposal_id?: string;
+    status: 'applied' | 'partial' | 'unable';
+    notes?: string;
+  };
+
+  const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
@@ -838,14 +1056,21 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
-    for (const op of req.refine) {
+    const askAckNotes = (ask?: string) =>
+      ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
+
+    for (const op of req.refine as unknown as RefineEntry[]) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') { omitIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        else if (op.action === 'include') { includeIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        // more_like_this: include the product plus similar channel products
-        else if (op.action === 'more_like_this') {
-          includeIds.add(op.id);
-          const source = previousProducts.find(p => p.product_id === op.id);
+        const action = op.action ?? 'include';
+        if (action === 'omit') {
+          omitIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
+        } else if (action === 'include') {
+          includeIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'more_like_this') {
+          includeIds.add(op.product_id);
+          const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of getCatalog()) {
@@ -854,32 +1079,29 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               }
             }
           }
-          refinementApplied.push({ status: 'applied' });
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         }
       } else if (op.scope === 'proposal') {
-        const proposalOp = op as { scope: 'proposal'; id: string; action: string; ask?: string };
-        const proposal = previousProposals.find(p => p.proposal_id === proposalOp.id);
+        const action = op.action ?? 'include';
+        const proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
         if (!proposal) {
-          refinementApplied.push({ status: 'unable', notes: `Proposal not found: ${proposalOp.id}` });
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
           continue;
         }
-        if (proposalOp.action === 'omit') {
-          proposalOmitIds.add(proposalOp.id);
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'include') {
-          // Include is a no-op for proposals already in the response
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'finalize') {
+        if (action === 'omit') {
+          proposalOmitIds.add(op.proposal_id);
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
+        } else if (action === 'include') {
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
-            refinementApplied.push({ status: 'applied', notes: 'Proposal already committed' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
           } else if (status === 'draft') {
-            // Transition draft → committed: firm pricing, inventory hold, IO
             const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
             committed.proposal_status = 'committed';
-            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h hold
+            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-            // Attach insertion order for proposals with guaranteed products
             const hasGuaranteed = proposal.allocations.some(alloc => {
               const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
               return cp?.product.delivery_type === 'guaranteed';
@@ -905,12 +1127,11 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               };
             }
 
-            // Update proposal in session context
             if (!session.lastGetProductsContext) {
               session.lastGetProductsContext = { products: [...products], proposals: [] };
             }
             const sessionProposals = session.lastGetProductsContext.proposals || [];
-            const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
+            const idx = sessionProposals.findIndex(p => p.proposal_id === op.proposal_id);
             const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
             if (idx >= 0) {
               sessionProposals[idx] = updatedProposal;
@@ -919,14 +1140,13 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             }
             session.lastGetProductsContext.proposals = sessionProposals;
 
-            refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
           } else {
-            // No proposal_status means already ready to buy — finalize is a no-op
-            refinementApplied.push({ status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
           }
         }
       } else if (op.scope === 'request') {
-        refinementApplied.push({ status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
       }
     }
 
@@ -981,7 +1201,7 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
+export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
   let formats = getFormats();
 
@@ -1005,9 +1225,9 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
   return { formats };
 }
 
-function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
@@ -1034,7 +1254,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
   if (govCtx) {
     // Find the latest check for this governance_context (Map iterates in insertion order)
-    let latestCheck: { status: string; explanation: string } | undefined;
+    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
     for (const check of session.governanceChecks.values()) {
       if (check.governanceContext === govCtx) {
         latestCheck = check;
@@ -1045,6 +1265,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         errors: [{
           code: 'GOVERNANCE_DENIED',
           message: latestCheck.explanation || 'Governance check denied this purchase.',
+          details: governanceErrorDetails(latestCheck),
         }] as TaskError[],
       };
     }
@@ -1065,10 +1286,19 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       for (const plan of session.governancePlans.values()) {
         const remaining = plan.budget.total - plan.committedBudget;
         if (buyBudget > remaining) {
+          const msg = `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`;
           return {
             errors: [{
               code: 'GOVERNANCE_DENIED',
-              message: `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`,
+              message: msg,
+              details: {
+                findings: [{
+                  category_id: 'budget_authority',
+                  severity: 'critical',
+                  explanation: msg,
+                }],
+                plan_id: plan.planId,
+              },
             }] as TaskError[],
           };
         }
@@ -1077,10 +1307,19 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
           const typeCommitted = plan.committedByType?.media_buy ?? 0;
           const typeRemaining = typeAllocation.amount - typeCommitted;
           if (buyBudget > typeRemaining) {
+            const msg = `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`;
             return {
               errors: [{
                 code: 'GOVERNANCE_DENIED',
-                message: `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`,
+                message: msg,
+                details: {
+                  findings: [{
+                    category_id: 'budget_authority',
+                    severity: 'critical',
+                    explanation: msg,
+                  }],
+                  plan_id: plan.planId,
+                },
               }] as TaskError[],
             };
           }
@@ -1091,6 +1330,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
 
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -1169,6 +1409,12 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  if (req.packages.length > MAX_PACKAGES_PER_BUY) {
+    return {
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Too many packages: ${req.packages.length} (max ${MAX_PACKAGES_PER_BUY}).` }] as TaskError[],
+    };
+  }
+
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
@@ -1187,6 +1433,15 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
+  // NOTE: no past-start_time rejection. `schema_validation`'s
+  // `temporal_validation` step asserts we reject 2020-dated starts — the
+  // spec's "accept-and-adjust" branch is also conformant per the
+  // storyboard's `any_of` on `past_start_handled`. Training-agent unit
+  // tests (status derivation, delivery lookup, creative delivery)
+  // intentionally use 2020 dates to exercise derivation logic against
+  // past flights; rejecting those breaks ~6 test fixtures without a
+  // clean bypass. The storyboard step closes as not-applicable for our
+  // "accept-and-derive" branch; unit-test coverage is preserved.
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
@@ -1221,6 +1476,35 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         message: `${pkgLabel}: Pricing option not found: ${pkg.pricing_option_id}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
       });
       continue;
+    }
+
+    // Reject unworkable measurement_terms (TERMS_REJECTED). Checked BEFORE
+    // bid_price / other field validation so buyers see the terms-level
+    // rejection first — correcting a one-sided measurement proposal is
+    // typically an earlier-round concern than a missing bid_price.
+    // Matches the `measurement_terms_rejected` storyboard's aggressive
+    // baseline probe (max_variance_percent: 0, measurement_window: "c30").
+    const terms = (pkg as unknown as { measurement_terms?: { billing_measurement?: { max_variance_percent?: number; measurement_window?: string } } }).measurement_terms;
+    const bm = terms?.billing_measurement;
+    if (bm) {
+      if (typeof bm.max_variance_percent === 'number' && bm.max_variance_percent < 0.5) {
+        errors.push({
+          code: 'TERMS_REJECTED',
+          message: `${pkgLabel}: measurement_terms.billing_measurement.max_variance_percent ${bm.max_variance_percent} is below our minimum of 0.5%. Third-party measurement variance can't be guaranteed tighter than 0.5%.`,
+          field: `packages[${i}].measurement_terms.billing_measurement.max_variance_percent`,
+          recovery: 'correctable',
+        });
+        continue;
+      }
+      if (bm.measurement_window === 'c30') {
+        errors.push({
+          code: 'TERMS_REJECTED',
+          message: `${pkgLabel}: measurement_window "c30" is not supported. Use "c3" or "c7" for guaranteed windows.`,
+          field: `packages[${i}].measurement_terms.billing_measurement.measurement_window`,
+          recovery: 'correctable',
+        });
+        continue;
+      }
     }
 
     // Check bid vs floor price (floor_price exists on all pricing models except CPA)
@@ -1263,7 +1547,17 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
-    // Don't build package state if there are any validation errors (atomic create)
+
+    // Don't build package state if there are any validation errors (atomic create).
+    // Spec field is `targeting_overlay`; `targeting` is an alias we accept for
+    // backward compat with storyboards authored before the rename.
+    const incomingTargeting = (pkg as unknown as { targeting_overlay?: unknown; targeting?: unknown }).targeting_overlay
+      ?? pkg.targeting;
+    const targetingResult = validateTargeting(incomingTargeting, `packages[${i}].targeting_overlay`);
+    if (targetingResult.errors.length) {
+      errors.push(...targetingResult.errors);
+    }
+
     if (errors.length > 0) continue;
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
@@ -1280,6 +1574,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       endTime,
       formatIds: pkg.format_ids,
       creativeAssignments: [],
+      targeting: targetingResult.targeting,
     });
   }
 
@@ -1287,7 +1582,14 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     return { errors };
   }
 
-  const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
+  // Accept a buyer-supplied `media_buy_id` when present. Conformance
+  // storyboards (sales_non_guaranteed, governance_delivery_monitor) hard-code
+  // an id in the request and then query it on later steps; without this
+  // the seller's auto-generated id wouldn't match the query.
+  const requestedMediaBuyId = (req as unknown as { media_buy_id?: unknown }).media_buy_id;
+  const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
+    ? requestedMediaBuyId
+    : `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
@@ -1331,35 +1633,22 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       creative_assignments: [],
     })),
   };
 }
 
-function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuysArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
-    // If explicit IDs requested but not found in this session, search all sessions.
-    // Mirrors real seller behavior where media_buy_ids is a global lookup.
-    if (buys.length < filterIds.length) {
-      const foundIds = new Set(buys.map(b => b.mediaBuyId));
-      const missing = filterIds.filter(id => !foundIds.has(id));
-      for (const [, s] of getAllSessions()) {
-        if (s === session) continue;
-        for (const mb of s.mediaBuys.values()) {
-          if (missing.includes(mb.mediaBuyId)) {
-            buys.push(mb);
-            missing.splice(missing.indexOf(mb.mediaBuyId), 1);
-          }
-        }
-        if (missing.length === 0) break;
-      }
-    }
+    // Media buy lookup is scoped to the caller's session (brand/account-derived).
+    // Unknown IDs simply fall out of the filter — the response omits them.
   }
 
   // Apply status_filter (default to ['active'] when no IDs provided)
@@ -1377,6 +1666,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   return {
     media_buys: buys.map(mb => {
       const status = deriveStatus(mb);
+      const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
@@ -1386,6 +1676,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         updated_at: mb.updatedAt,
         valid_actions: validActionsForStatus(status),
         currency: mb.currency,
+        total_budget: totalBudget,
         start_time: mb.startTime,
         end_time: mb.endTime,
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
@@ -1410,6 +1701,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
               creative_id: cid,
               approval_status: 'approved' as const,
             })),
+            ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -1437,22 +1729,13 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  let mb = session.mediaBuys.get(mediaBuyId);
-
-  // Cross-session fallback for explicit ID lookup
-  if (!mb) {
-    for (const [, s] of getAllSessions()) {
-      if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId);
-      if (mb) break;
-    }
-  }
+  const mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb) {
     return {
@@ -1618,9 +1901,9 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
   };
 }
 
-function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const isDryRun = req.dry_run === true;
 
   if (!req.creatives?.length) {
@@ -1637,6 +1920,7 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
+  const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -1651,8 +1935,25 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
-    // Validate format_id
-    if (formatId?.id && !validFormatIds.has(formatId.id)) {
+    // Reject clearly-malformed agent_urls before we persist them. Prevents
+    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
+    if (formatId?.agent_url !== undefined) {
+      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
+      }
+      if (!/^https?:\/\//i.test(formatId.agent_url)) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
+      }
+    }
+
+    // Validate format_id only when the format is claimed against this agent.
+    // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
+    // resolved by the referenced creative agent at render time — the seller
+    // just stores the pointer. Compare canonical forms so a trailing slash
+    // or case variant of the local URL still counts as local.
+    const isLocalFormat = !formatId?.agent_url
+      || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
+    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
@@ -1717,17 +2018,31 @@ function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
+export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
+  } else if (creatives.length === 0) {
+    // Empty session falls back to compliance fixtures so storyboards that
+    // reference stable IDs (e.g., campaign_hero_video in creative_ad_server)
+    // resolve without the SDK's controller_seeding auto-fire. Sessions that
+    // have synced their own creatives return only those — no mixing.
+    creatives = getComplianceCreatives();
   }
 
-  const includePricing = req.include_pricing && req.account;
+  // Ad-server-capable sellers (creative.has_creative_library) quote per-
+  // creative pricing whenever an account is present, independent of the
+  // buyer setting include_pricing. Explicit `include_pricing: false` still
+  // suppresses — matches the spec wording while letting callers that omit
+  // the flag (e.g., SDK request builders that drop it) still receive pricing.
+  // Spec today says "When false or omitted, pricing is not computed"; the
+  // emission-on-omit behaviour here is deliberate per the has_creative_library
+  // gate in #2847 and tracks the spec-side clarification referenced there.
+  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
 
   return {
     query_summary: {
@@ -1747,7 +2062,7 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
       };
-      if (includePricing) {
+      if (emitPricing && c.formatId?.id) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
@@ -1775,29 +2090,26 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as UpdateMediaBuyArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
-  let mb = session.mediaBuys.get(mediaBuyId);
-
-  // Cross-session fallback for explicit ID lookup
-  if (!mb) {
-    for (const [, s] of getAllSessions()) {
-      if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId);
-      if (mb) break;
-    }
-  }
+  const mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
   }
 
-  // Terminal state check
+  // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
+  // media_buy_seller/invalid_transitions pins this error code explicitly.
   const currentStatus = deriveStatus(mb);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
-    return { errors: [{ code: 'INVALID_STATE', message: `Media buy is ${currentStatus} and cannot be updated` }] };
+    const isRecancel = req.canceled === true && currentStatus === 'canceled';
+    const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
+    const message = isRecancel
+      ? `Media buy is already canceled and cannot be canceled again`
+      : `Media buy is ${currentStatus} and cannot be updated`;
+    return { errors: [{ code, message }] };
   }
 
   // Revision check for optimistic concurrency
@@ -1814,6 +2126,14 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   // Media buy cancellation
   const isCanceled = req.canceled === true;
   if (isCanceled) {
+    if (mb.canceledAt) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE',
+          message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
+        }],
+      };
+    }
     const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
@@ -1855,6 +2175,25 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
+
+    // Pre-validate all creative_assignments across every package before
+    // mutating anything, so a bad creative_id in pkg[N] doesn't leave
+    // pkg[0..N-1] with partially-applied assignments.
+    for (const update of req.packages as PackageUpdateExt[]) {
+      const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (assignments === undefined) continue;
+      const pkgId = update.package_id || '';
+      for (const assignment of assignments) {
+        const cid = assignment.creative_id;
+        if (!cid) {
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments[].creative_id is required for package ${pkgId}`, field: `packages[${pkgId}].creative_assignments` }] };
+        }
+        if (!session.creatives.has(cid)) {
+          return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
+        }
+      }
+    }
+
     for (const update of req.packages as PackageUpdateExt[]) {
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
@@ -1895,12 +2234,43 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
           pkg.endTime = update.end_time;
         }
       }
+
+      const updateTargeting = update.targeting_overlay ?? update.targeting;
+      if (updateTargeting !== undefined) {
+        const targetingResult = validateTargeting(updateTargeting, `packages[${pkgId}].targeting_overlay`);
+        if (targetingResult.errors.length) {
+          return { errors: targetingResult.errors };
+        }
+        const before = pkg.targeting;
+        pkg.targeting = targetingResult.targeting;
+        const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
+        if (changed) {
+          const action = pkg.targeting ? 'targeting_updated' : 'targeting_cleared';
+          const summary = pkg.targeting ? `Package ${pkgId} targeting updated` : `Package ${pkgId} targeting cleared`;
+          mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary, packageId: pkgId });
+        }
+      }
+
+      // Replacement semantics: the provided array replaces pkg.creativeAssignments
+      // entirely. An empty array clears assignments and may regress the buy to
+      // pending_creatives. Validity of creative_ids was checked in the pre-pass.
+      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (creativeAssignments !== undefined) {
+        const creativeIds = creativeAssignments.map(a => a.creative_id);
+        pkg.creativeAssignments = creativeIds;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
+      }
     }
   }
 
   // Add new packages
   const newPackages = req.new_packages;
   if (newPackages?.length) {
+    if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
+      return {
+        errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
+      };
+    }
     const catalog = getCatalog();
     const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
@@ -1913,6 +2283,11 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       }
 
       const pkgId = `pkg-${mb.packages.length + i}`;
+      const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
+      const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
+      if (targetingResult.errors.length) {
+        return { errors: targetingResult.errors };
+      }
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -1925,6 +2300,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         endTime: npkg.end_time || mb.endTime,
         formatIds: npkg.format_ids,
         creativeAssignments: [],
+        targeting: targetingResult.targeting,
       };
       mb.packages.push(newPkg);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
@@ -1950,6 +2326,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
+      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.canceledAt && {
         cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
       }),
@@ -1959,15 +2336,26 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Record<string, unknown> {
+export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
+  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
   return {
-    adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand', 'compliance_testing'],
+    adcp: {
+      major_versions: [...SUPPORTED_MAJOR_VERSIONS],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 },
+    },
+    supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
+    specialisms: ['signed-requests'],
+    request_signing: {
+      supported: signingCap.supported,
+      covers_content_digest: signingCap.covers_content_digest,
+      required_for: signingCap.required_for,
+      ...(signingCap.supported_for && { supported_for: signingCap.supported_for }),
+    },
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -2038,19 +2426,13 @@ function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): Reco
 
 const MAX_SIGNAL_RESULTS = 10;
 
-function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
   const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
-
-  if (!signalSpec && !req.signal_ids?.length) {
-    return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'Either signal_spec or signal_ids is required' }],
-    };
-  }
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   const allSignals = getAllSignals();
   let results = allSignals;
@@ -2176,7 +2558,7 @@ function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
-function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
+export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ActivateSignalRequest & ToolArgs & {
     signal_id?: string;
     destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
@@ -2198,7 +2580,7 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
@@ -2293,9 +2675,9 @@ function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
@@ -2434,12 +2816,15 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  return { serving_tag: { content: html } };
+  // HTMLAsset in @adcp/client ≥5.10 has `asset_type: 'html'` as a required
+  // discriminator. Without it the union resolves ambiguously to MarkdownAsset
+  // and tsc fails build (CI run 72453988632).
+  return { serving_tag: { asset_type: 'html', content: html } };
 }
 
-function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string } {
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
-  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
@@ -2456,7 +2841,7 @@ function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): BuildCreativ
 
   // Mode 1: Library retrieval (creative_id)
   if (req.creative_id) {
-    const creative = session.creatives.get(req.creative_id);
+    const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
       return {
         errors: [{ code: 'NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
@@ -2578,9 +2963,9 @@ interface PreviewCreativeArgs {
   item_limit?: number;
 }
 
-function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
+export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PreviewCreativeArgs;
-  const session = getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
@@ -2694,9 +3079,9 @@ interface ReportUsageArgs extends ToolArgs {
   }>;
 }
 
-function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
+export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period || !req.usage?.length) {
     return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
@@ -2736,7 +3121,7 @@ function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
-      const creative = session.creatives.get(record.creative_id);
+      const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
         continue;
@@ -2893,6 +3278,22 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    // Wrap handler execution + task storage in a per-request session context so
+    // getSession() calls cache within the request and real mutations are flushed
+    // at the end (solves cross-Fly-machine persistence). Flush only on clean
+    // return from the handler — if the handler threw, discard any in-progress
+    // session state rather than persisting half-mutated data.
+    return runWithSessionContext(async () => {
+      const { result, flushable } = await dispatchCallTool(request, extra);
+      if (flushable) await flushDirtySessions();
+      return result;
+    });
+  });
+
+  async function dispatchCallTool(
+    request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
+    _extra: unknown,
+  ): Promise<{ result: object; flushable: boolean }> {
     const { name, arguments: args } = request.params;
 
     // Extract and strip context before passing args to handlers (AdCP requirement:
@@ -2903,7 +3304,25 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext);
+      // Pre-handler validation failures don't touch session state, so flushing
+      // is a no-op; leaving flushable=true keeps behaviour consistent for
+      // requests whose handlers DO legitimately mutate before failing.
+      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext), flushable: true };
+    }
+
+    const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
+    if (
+      requestedVersion !== undefined
+      && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
+    ) {
+      return {
+        result: adcpError('VERSION_UNSUPPORTED', {
+          message: `AdCP major version ${String(requestedVersion)} is not supported`,
+          details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
+          field: 'adcp_major_version',
+        }, callerContext),
+        flushable: true,
+      };
     }
 
     // Check for task-augmented request (explicit `task` field in params).
@@ -2916,43 +3335,232 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error(`Tool "${name}" does not support task augmentation`);
     }
 
-    // Execute the tool handler
-    let toolResult: CallToolResult;
-    let isError = false;
-    try {
+    // Idempotency enforcement for mutating tools (#2315, #2346).
+    // Key presence + format are schema-level requirements; we check them
+    // before the handler so a malformed key never touches the cache
+    // (prevents key-format-accepting cache misses from leaking timing).
+    const authPrincipal = ctx.principal ?? 'anonymous';
+    // Partition the idempotency cache by caller-stated account scope so the
+    // shared public sandbox token doesn't pool every buyer into one oracle
+    // (security.mdx §"three-state response"). An attacker on the same auth
+    // principal using a different account ref can still cross-probe, but
+    // callers can already enumerate their own account's keys — so the
+    // scoping adds no useful probing surface while closing the cross-caller
+    // leak.
+    const accountScope = deriveAccountScope(handlerArgs);
+    const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
+    const idempotencyKey = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
+    let toolResult: CallToolResult | null = null;
+    let taskFailed = false;
+    let handlerThrew = false;
+    let cachableResponse: Record<string, unknown> | null = null;
+    let skipHandler = false;
+    let idempotencyPayloadHash: string | undefined;
+    let idempotencyClaimed = false;
+
+    if (isMutatingTool(name)) {
+      if (idempotencyKey === undefined || idempotencyKey === null) {
+        return {
+          result: adcpError('INVALID_REQUEST', {
+            message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
+            field: 'idempotency_key',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (!validateKeyFormat(idempotencyKey)) {
+        return {
+          result: adcpError('INVALID_REQUEST', {
+            message: 'idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ (UUID v4 recommended).',
+            field: 'idempotency_key',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      const store = getIdempotencyStore();
+      const outcome = await store.check({
+        principal: idempotencyPrincipal,
+        key: idempotencyKey,
+        payload: handlerArgs,
+      });
+      if (outcome.kind === 'expired') {
+        return {
+          result: adcpError('IDEMPOTENCY_EXPIRED', {
+            message: 'idempotency_key is past the replay window. Generate a fresh UUID v4 and resend.',
+            recovery: 'correctable',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (outcome.kind === 'conflict') {
+        // Error body carries code + message only — no `field` json-pointer,
+        // no cached payload, no hash, no `recovery` hint. Any shape hint
+        // turns key-reuse into a read oracle (security.mdx §IDEMPOTENCY_CONFLICT
+        // response shape). The universal idempotency storyboard's
+        // `idempotency.conflict_no_payload_leak` cross-step assertion
+        // enforces the allowlist on this specific error's envelope.
+        return {
+          result: adcpError('IDEMPOTENCY_CONFLICT', {
+            message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (outcome.kind === 'in-flight') {
+        // A parallel request with the same key is executing. Retries should
+        // back off and see 'replay' once the in-flight handler saves. Return
+        // a transient error so the caller retries after a brief delay.
+        return {
+          result: adcpError('RATE_LIMITED', {
+            message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
+            recovery: 'transient',
+          }, callerContext),
+          flushable: true,
+        };
+      }
+      if (outcome.kind === 'replay') {
+        // Cached inner response; envelope fields (`replayed`, `context`) are
+        // produced fresh on every response per security.mdx. Replayed
+        // responses bypass the handler entirely — no mutations, no flush.
+        const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
+        if (callerContext !== undefined) body.context = callerContext;
+        toolResult = {
+          content: [{ type: 'text', text: JSON.stringify(body) }],
+          structuredContent: body,
+        };
+        skipHandler = true;
+      } else {
+        // 'miss' → the store reserved the claim via putIfAbsent. We must
+        // call save() on success or release() on any other path so the
+        // placeholder doesn't leak.
+        idempotencyPayloadHash = outcome.payloadHash;
+        idempotencyClaimed = true;
+      }
+    }
+
+    // Execute the tool handler. Structured AdCP errors (handler returns
+    // { errors: [...] }) are well-formed responses — the task completes
+    // successfully with an adcp_error envelope. Only thrown exceptions
+    // mark the task as failed.
+    if (skipHandler) {
+      // toolResult already set from idempotency replay path above
+    } else try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
-      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
+      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
-        isError = true;
+        // Error-in-body responses are errors from the buyer's POV — do NOT
+        // cache (security.mdx rule 3). cachableResponse stays null so the
+        // post-dispatch gate below never inserts this into the replay cache.
         const firstError = resultObj.errors![0];
-        toolResult = adcpError(firstError.code, {
-          message: firstError.message,
-          ...(firstError.field && { field: firstError.field }),
-          details: resultObj.errors!.length > 1
-            ? { all_errors: resultObj.errors }
-            : undefined,
-        }, callerContext);
+        if (ERROR_IN_BODY_TOOLS.has(name)) {
+          const body: Record<string, unknown> = { errors: resultObj.errors };
+          if (callerContext !== undefined) body.context = callerContext;
+          toolResult = {
+            content: [{ type: 'text', text: JSON.stringify(body) }],
+            structuredContent: body,
+          };
+        } else {
+          toolResult = adcpError(firstError.code, {
+            message: firstError.message,
+            ...(firstError.field && { field: firstError.field }),
+            ...(firstError.recovery && { recovery: firstError.recovery }),
+            details: firstError.details !== undefined
+              ? firstError.details
+              : resultObj.errors!.length > 1
+                ? { all_errors: resultObj.errors }
+                : undefined,
+          }, callerContext);
+        }
       } else {
-        const response = callerContext !== undefined
-          ? { ...result as object, context: callerContext }
-          : result;
+        // Inner response (what gets cached for replay). Per security.mdx:
+        // "replayed: false" MAY be omitted on fresh executions and buyers
+        // MUST treat omission as false. We emit it explicitly only on
+        // create_media_buy because the universal idempotency storyboard's
+        // `field_value allowed_values:[false]` check fails on omitted
+        // fields — scoping to this tool keeps the signal without tripping
+        // strict per-task response schemas on other tools (several SDK
+        // schemas are not passthrough and reject the extra key).
+        const inner = result as Record<string, unknown>;
+        cachableResponse = inner;
+        const envelope: Record<string, unknown> = {};
+        if (name === 'create_media_buy') envelope.replayed = false;
+        if (callerContext !== undefined) envelope.context = callerContext;
+        const response = { ...inner, ...envelope };
+        // `structuredContent` is authoritative on success so raw-probe
+        // callers (storyboard runner's rawMcpProbe) can validate envelope
+        // fields. `content` stays empty: the SDK unwrapper folds text
+        // content into `_message` on the returned object, which trips
+        // strict `additionalProperties: false` per-task response schemas.
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
+          content: [],
+          structuredContent: response,
         };
       }
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      isError = true;
+      taskFailed = true;
+      handlerThrew = true;
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
       }, callerContext);
     }
 
-    // If not task-augmented, return result directly
+    // TypeScript: by this point toolResult is guaranteed set — either the
+    // handler branch wrote it or the replay short-circuit did.
+    if (!toolResult) {
+      throw new Error('Internal error: toolResult missing after dispatch');
+    }
+
+    // Resolve the in-flight claim from check(). Cache only successful inner
+    // responses (security.mdx rule 2+3); errors, structured { errors: [...] }
+    // bodies, and exceptions all release the claim so a retry re-executes.
+    if (idempotencyClaimed && typeof idempotencyKey === 'string') {
+      const store = getIdempotencyStore();
+      const shouldSave =
+        cachableResponse !== null
+        && !toolResult.isError
+        && !handlerThrew;
+      if (shouldSave && idempotencyPayloadHash) {
+        await store.save({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+          payloadHash: idempotencyPayloadHash,
+          response: cachableResponse,
+        });
+      } else {
+        await store.release({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+        });
+      }
+    }
+
+    // Fire completion webhook if the buyer supplied a push URL and the tool
+    // mapped to a TaskType. Emission is fire-and-forget so the sync response
+    // doesn't wait on the receiver; retries/backoff live inside the emitter.
+    if (
+      cachableResponse !== null
+      && !toolResult.isError
+      && !handlerThrew
+    ) {
+      maybeEmitCompletionWebhook({
+        toolName: name,
+        args: handlerArgs,
+        response: cachableResponse,
+        requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+      });
+    }
+
+    // If not task-augmented, return result directly.
+    // flushable=!handlerThrew: if the handler threw, discard in-progress session
+    // state. Structured { errors: [...] } responses still flush — they are
+    // well-formed outcomes that legitimately mutate state.
     if (!isTaskRequest) {
-      return toolResult;
+      return { result: toolResult, flushable: !handlerThrew };
     }
 
     // Training agent tasks resolve immediately, so moderate TTLs suffice.
@@ -2967,7 +3575,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // after storing results, which fails in stateless HTTP mode (each
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
-    const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
+    const terminalStatus: 'completed' | 'failed' = taskFailed ? 'failed' : 'completed';
     const created = await taskStore.createTask(
       { ttl: clampedTtl },
       0,
@@ -2978,10 +3586,16 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }
-    logger.info({ taskId: task.taskId, tool: name, status: terminalStatus }, 'Created MCP task');
+    const errorCode = toolResult.isError
+      ? (toolResult.structuredContent as { adcp_error?: { code?: string } } | undefined)?.adcp_error?.code
+      : undefined;
+    logger.info(
+      { taskId: task.taskId, tool: name, status: terminalStatus, isError: !!toolResult.isError, ...(errorCode && { errorCode }) },
+      'Created MCP task',
+    );
 
-    return { task } as object;
-  });
+    return { result: { task } as object, flushable: !handlerThrew };
+  }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered
   // by the SDK when taskStore is provided to the Server constructor.

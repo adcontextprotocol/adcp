@@ -1,0 +1,346 @@
+id: brand_rights
+version: "1.0.0"
+title: "Brand identity and rights licensing"
+protocol: brand
+category: brand_rights
+summary: "Brand agent that serves identity assets and licenses rights for AI-generated content."
+track: core
+required_tools:
+  - get_brand_identity
+requires_scenarios:
+  - brand_rights/governance_denied
+
+narrative: |
+  You run a brand agent — a system that holds brand identity data (logos, colors, fonts,
+  tone of voice) and licenses rights for AI-generated content. A buyer agent connects to
+  discover your brand identity, browse available rights, acquire licenses, manage them over
+  time, and submit generated creatives for brand approval.
+
+  Brand agents are the bridge between brand owners and generative AI. When a DSP or
+  creative platform wants to generate an ad for your brand, they call your brand agent
+  to get the identity guidelines, license the right to generate content, and then submit
+  the result for approval before it goes live.
+
+  This storyboard covers the full brand rights lifecycle: discovering the brand, browsing
+  rights, acquiring a license, managing it, and approving generated content.
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities:
+    - brand_identity
+    - rights_licensing
+  examples:
+    - "Rights management platforms"
+    - "Talent agencies"
+    - "Brand licensing services"
+    - "Enterprise brand portals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (creative buyer)"
+
+prerequisites:
+  description: |
+    The caller needs brand context for identity discovery and campaign parameters for
+    rights acquisition. The test kit provides a sample brand with visual identity assets.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports brand identity and rights before requesting brand data.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring brand in supported_protocols, confirming the agent serves brand identity and rights.
+        sample_request:
+          context:
+            correlation_id: "brand_rights--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: identity_discovery
+    title: "Brand identity discovery"
+    narrative: |
+      The buyer retrieves the brand's public identity — logos, colors, fonts, tone of
+      voice, and visual guidelines. This is the foundation for any generative content:
+      the buyer needs to know what the brand looks like and sounds like before generating
+      anything.
+
+    steps:
+      - id: get_brand_identity
+        title: "Retrieve brand identity"
+        narrative: |
+          The buyer calls get_brand_identity to retrieve the brand's visual and verbal
+          identity. Public-tier access returns basic assets. Authorized access (after
+          account linking) provides high-resolution assets, voice configs, and detailed
+          tone guidelines.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expected: |
+          Return brand identity data:
+          - Logos at multiple resolutions
+          - Brand colors (primary, secondary, accent)
+          - Typography (fonts, weights, sizes)
+          - Tone of voice guidelines
+          - Visual style guidelines
+
+        sample_request:
+          brand_id: "acme_outdoor"
+
+          context:
+            correlation_id: "brand_rights--get_brand_identity"
+
+        validations:
+          - check: response_schema
+            description: "Response matches brand identity schema"
+          - check: field_present
+            path: "brand_id"
+            description: "Response includes brand_id"
+          - check: field_value
+            path: "brand_id"
+            value: "acme_outdoor"
+            description: "Returned brand_id matches the requested brand"
+          - check: field_present
+            path: "names"
+            description: "Response includes brand names"
+
+      - id: get_brand_identity_invalid
+        title: "Reject invalid brand ID"
+        narrative: |
+          The buyer requests identity for a brand that does not exist. The agent must
+          return an error rather than generating default identity data — an agent that
+          silently returns placeholder identity would pass schema checks but fail this
+          behavioral test.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expect_error: true
+        expected: |
+          Reject the request with an error:
+          - Error indicates the brand was not found
+          - No default or placeholder identity data returned
+
+        sample_request:
+          brand_id: "nonexistent_brand_xyz"
+
+        validations:
+          - check: error_code
+            description: "Error code present for unknown brand"
+
+  - id: rights_search
+    title: "Browse available rights"
+    narrative: |
+      The buyer discovers what rights are available for licensing. Rights define what
+      generative content can be created — image generation, video synthesis, voice
+      cloning, copy writing — and at what terms.
+
+    steps:
+      - id: get_rights
+        title: "Discover available rights"
+        narrative: |
+          The buyer calls get_rights to search across the agent's full rights
+          roster (talent, music, stock media, etc.). `buyer_brand` identifies
+          the advertiser so the agent can apply compatibility filtering
+          (competitor exclusions, dietary conflicts from the buyer's
+          brand.json). The optional `brand_id` filter — which scopes results
+          to a specific rights-holder brand (e.g., a named athlete) — is
+          omitted here so the agent returns its full catalog.
+        task: get_rights
+        schema_ref: "brand/get-rights-request.json"
+        response_schema_ref: "brand/get-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/get_rights"
+        stateful: false
+        expected: |
+          Return available rights with pricing:
+          - Right types (image_generation, video_synthesis, copy_writing, etc.)
+          - Pricing options per right
+          - Duration and renewal terms
+          - Usage constraints (impression caps, geo restrictions)
+
+        sample_request:
+          query: "image generation rights for advertising"
+          uses:
+            - "ai_generated_image"
+          buyer_brand:
+            domain: "acmeoutdoor.example"
+
+          context:
+            correlation_id: "brand_rights--get_rights"
+        context_outputs:
+          - path: "rights.0.rights_id"
+            key: "rights_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get_rights schema"
+          - check: field_present
+            path: "rights"
+            description: "Response includes rights array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--get_rights"
+            description: "Context correlation_id returned unchanged"
+  - id: rights_acquisition
+    title: "Acquire a rights license"
+    narrative: |
+      The buyer selects a right and acquires a license. This is the contractual commitment —
+      the buyer pays for the right to generate content of a specific type for a defined
+      period. The brand agent issues generation credentials.
+
+    steps:
+      - id: acquire_rights
+        title: "Purchase a rights license"
+        narrative: |
+          The buyer acquires a specific right by selecting a pricing option and providing
+          campaign context. The brand agent validates the request, processes payment,
+          and returns a rights grant with generation credentials.
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        stateful: true
+        expected: |
+          Return the acquired rights grant:
+          - rights_grant_id: unique identifier
+          - status: active
+          - Generation credentials
+          - Expiration date and usage limits
+          - Terms and constraints
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          pricing_option_id: "standard_monthly"
+          buyer:
+            domain: "pinnacle-agency.example"
+          campaign:
+            description: "AI-generated display ads for Acme Outdoor summer trail gear campaign"
+            uses:
+              - "likeness"
+              - "commercial"
+            start_date: "2026-04-01"
+            end_date: "2026-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes:
+                - "Bearer"
+              credentials: "pinnacle-revocation-webhook-secret-token"
+
+          idempotency_key: "$generate:uuid_v4#brand_rights_rights_acquisition_acquire_rights"
+          context:
+            correlation_id: "brand_rights--acquire_rights"
+        context_outputs:
+          - path: "rights_grant_id"
+            key: "rights_grant_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches acquire_rights schema"
+          - check: field_present
+            path: "rights_id"
+            description: "Response includes rights_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--acquire_rights"
+            description: "Context correlation_id returned unchanged"
+  # NOTE: update_rights and creative_approval are intentionally absent.
+  # - update_rights has no published JSON request/response schemas yet (spec
+  #   describes it conceptually in rights-terms.json).
+  # - creative_approval is modeled in the spec as a webhook (POST to the
+  #   approval_webhook returned from acquire_rights), not an AdCP tool. Agents
+  #   expose it as a regular HTTP endpoint outside the MCP surface.
+  # Both will be added back as storyboard phases once upstream schemas land
+  # (see https://github.com/adcontextprotocol/adcp for tracking).
+
+  - id: rights_enforcement
+    title: "Rights enforcement"
+    narrative: |
+      These steps test that the brand agent enforces rights constraints — expired
+      licenses, impression cap violations, and geographic restrictions. An agent that
+      only implements the happy path would pass the phases above but fail here.
+
+    steps:
+      - id: acquire_expired_rights
+        title: "Reject acquisition with expired campaign dates"
+        narrative: |
+          The buyer attempts to acquire rights for a campaign with dates entirely in
+          the past. The brand agent must reject this — a compliant agent does not issue
+          licenses for expired campaigns.
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        stateful: true
+        expect_error: true
+        expected: |
+          Reject the request:
+          - Campaign dates are in the past
+          - Error indicates the rights period is invalid or expired
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          pricing_option_id: "standard_monthly"
+          buyer:
+            domain: "pinnacle-agency.example"
+          campaign:
+            description: "Expired campaign test"
+            uses:
+              - "commercial"
+            start_date: "2024-01-01"
+            end_date: "2024-03-31"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes:
+                - "Bearer"
+              credentials: "pinnacle-expired-rights-revocation-webhook-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_rights_enforcement_acquire_expired_rights"
+
+        validations:
+          - check: error_code
+            description: "Error code present for expired campaign dates"

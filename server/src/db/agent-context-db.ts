@@ -1,6 +1,9 @@
 import { query } from './client.js';
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
+import { createLogger } from '../logger.js';
 import crypto from 'crypto';
+
+const logger = createLogger('agent-context-db');
 
 // =====================================================
 // TYPES
@@ -23,8 +26,12 @@ export interface AgentContext {
   auth_type: AuthType;
   // OAuth info (never expose actual tokens!)
   has_oauth_token: boolean;
+  has_oauth_refresh_token: boolean;
   oauth_token_expires_at: Date | null;
   has_oauth_client: boolean;
+  // OAuth 2.0 client-credentials (RFC 6749 §4.4). True when token_endpoint
+  // + client_id + client_secret are all saved; the SDK exchanges at call time.
+  has_oauth_client_credentials: boolean;
   // Discovery cache
   tools_discovered: string[] | null;
   last_discovered_at: Date | null;
@@ -50,6 +57,28 @@ export interface OAuthClient {
   client_id: string;
   client_secret?: string;
   registered_redirect_uri?: string;
+}
+
+/**
+ * OAuth 2.0 client-credentials configuration stored for machine-to-machine
+ * agent auth (RFC 6749 §4.4). Mirrors the SDK's `AgentOAuthClientCredentials`
+ * shape in `@adcp/client`. `client_secret` is either a literal value or a
+ * `$ENV:VAR_NAME` reference — the SDK resolves the reference at exchange time.
+ */
+export interface OAuthClientCredentials {
+  token_endpoint: string;
+  client_id: string;
+  client_secret: string;
+  scope?: string;
+  /** RFC 8707 resource indicator. Single-resource only; multi-resource tracked as #2805. */
+  resource?: string;
+  audience?: string;
+  /**
+   * Client-credentials auth placement. `basic` = HTTP Basic header
+   * (RFC 6749 §2.3.1 preferred); `body` = client_id/client_secret as form
+   * fields. Passed through to `@adcp/client`'s exchange helper.
+   */
+  auth_method?: 'basic' | 'body';
 }
 
 export interface AgentTestHistory {
@@ -145,8 +174,12 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
+        (oauth_cc_token_endpoint IS NOT NULL
+          AND oauth_cc_client_id IS NOT NULL
+          AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -181,8 +214,12 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
+        (oauth_cc_token_endpoint IS NOT NULL
+          AND oauth_cc_client_id IS NOT NULL
+          AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -216,8 +253,12 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
+        (oauth_cc_token_endpoint IS NOT NULL
+          AND oauth_cc_client_id IS NOT NULL
+          AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -259,6 +300,7 @@ export class AgentContextDatabase {
         auth_token_hint,
         auth_type,
         FALSE as has_oauth_token,
+        FALSE as has_oauth_refresh_token,
         oauth_token_expires_at,
         FALSE as has_oauth_client,
         tools_discovered,
@@ -343,8 +385,12 @@ export class AgentContextDatabase {
          auth_token_hint,
          auth_type,
          oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+         oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
          oauth_token_expires_at,
          oauth_client_id IS NOT NULL as has_oauth_client,
+         (oauth_cc_token_endpoint IS NOT NULL
+           AND oauth_cc_client_id IS NOT NULL
+           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
          tools_discovered,
          last_discovered_at,
          last_test_scenario,
@@ -580,10 +626,13 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Check if OAuth tokens are valid (exist and not expired)
+   * Check if OAuth tokens are valid (exist and not expired, or refreshable)
    */
   hasValidOAuthTokens(context: AgentContext): boolean {
     if (!context.has_oauth_token) return false;
+    // A refresh token lets us mint a new access token on demand, so auth is
+    // still valid even if the access token is near/past expiry.
+    if (context.has_oauth_refresh_token) return true;
     if (!context.oauth_token_expires_at) return true;
 
     // Expired if within 5 minutes of expiration
@@ -697,6 +746,132 @@ export class AgentContextDatabase {
          oauth_refresh_token_encrypted = NULL,
          oauth_refresh_token_iv = NULL,
          oauth_token_expires_at = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  // =====================================================
+  // OAUTH CLIENT-CREDENTIALS METHODS (RFC 6749 §4.4)
+  // =====================================================
+
+  /**
+   * Save OAuth 2.0 client-credentials configuration for an agent context.
+   * `client_secret` is encrypted at rest regardless of whether it's a literal
+   * value or a `$ENV:VAR_NAME` reference — the SDK resolves the reference at
+   * exchange time, the server just stores and returns.
+   */
+  async saveOAuthClientCredentials(id: string, creds: OAuthClientCredentials): Promise<void> {
+    const context = await this.getById(id);
+    if (!context) {
+      throw new Error(`Agent context ${id} not found`);
+    }
+
+    const secretEncrypted = encryptToken(creds.client_secret, context.organization_id);
+
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_cc_token_endpoint = $1,
+         oauth_cc_client_id = $2,
+         oauth_cc_client_secret_encrypted = $3,
+         oauth_cc_client_secret_iv = $4,
+         oauth_cc_scope = $5,
+         oauth_cc_resource = $6,
+         oauth_cc_audience = $7,
+         oauth_cc_auth_method = $8,
+         updated_at = NOW()
+       WHERE id = $9`,
+      [
+        creds.token_endpoint,
+        creds.client_id,
+        secretEncrypted.encrypted,
+        secretEncrypted.iv,
+        creds.scope || null,
+        creds.resource || null,
+        creds.audience || null,
+        creds.auth_method || null,
+        id,
+      ]
+    );
+  }
+
+  /**
+   * Get OAuth client-credentials configuration by org + URL. Returns null if
+   * no credentials are saved (or if any required field is missing, which
+   * shouldn't happen for a well-formed save but is defensive).
+   */
+  async getOAuthClientCredentialsByOrgAndUrl(
+    organizationId: string,
+    agentUrl: string,
+  ): Promise<OAuthClientCredentials | null> {
+    const result = await query(
+      `SELECT
+        oauth_cc_token_endpoint,
+        oauth_cc_client_id,
+        oauth_cc_client_secret_encrypted,
+        oauth_cc_client_secret_iv,
+        oauth_cc_scope,
+        oauth_cc_resource,
+        oauth_cc_audience,
+        oauth_cc_auth_method
+       FROM agent_contexts
+       WHERE organization_id = $1 AND agent_url = $2`,
+      [organizationId, agentUrl]
+    );
+
+    const row = result.rows[0];
+    if (
+      !row ||
+      !row.oauth_cc_token_endpoint ||
+      !row.oauth_cc_client_id ||
+      !row.oauth_cc_client_secret_encrypted ||
+      !row.oauth_cc_client_secret_iv
+    ) {
+      return null;
+    }
+
+    const creds: OAuthClientCredentials = {
+      token_endpoint: row.oauth_cc_token_endpoint,
+      client_id: row.oauth_cc_client_id,
+      client_secret: decryptToken(
+        row.oauth_cc_client_secret_encrypted,
+        row.oauth_cc_client_secret_iv,
+        organizationId
+      ),
+    };
+    if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
+    if (row.oauth_cc_resource) creds.resource = row.oauth_cc_resource;
+    if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
+    if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
+      creds.auth_method = row.oauth_cc_auth_method;
+    } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
+      // Surface unexpected values rather than silently dropping — a write
+      // path bypassed validation if this fires.
+      logger.warn(
+        { agentUrl, organizationId, value: row.oauth_cc_auth_method },
+        'agent-context-db: dropped unrecognized oauth_cc_auth_method',
+      );
+    }
+    return creds;
+  }
+
+  /**
+   * Remove OAuth client-credentials configuration.
+   */
+  async removeOAuthClientCredentials(id: string): Promise<void> {
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_cc_token_endpoint = NULL,
+         oauth_cc_client_id = NULL,
+         oauth_cc_client_secret_encrypted = NULL,
+         oauth_cc_client_secret_iv = NULL,
+         oauth_cc_scope = NULL,
+         oauth_cc_resource = NULL,
+         oauth_cc_audience = NULL,
+         oauth_cc_auth_method = NULL,
          updated_at = NOW()
        WHERE id = $1`,
       [id]

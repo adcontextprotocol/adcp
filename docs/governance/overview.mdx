@@ -18,6 +18,12 @@ AdCP's governance system is built on a principle: [human judgment must be embedd
 
 This walkthrough follows Jordan as she sets up governance for Sam's \$50K campaign and watches it work.
 
+<Note>
+**Regulated verticals.** Campaigns for credit, insurance, employment, or housing fall under GDPR Article 22 and EU AI Act Annex III — automated decisions affecting data subjects require human oversight. See [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations) for what AdCP provides and what the deployer is responsible for.
+
+The AdCP policy registry ships seeded with regulatory policies across US (FHA, ECOA, EEOC, COPPA, FDA, FTC, TTB), EU (DSA, prescription DTC), and platform-specific categories — alongside GDPR Article 9 restricted-attribute definitions that governance agents evaluate programmatically. The seeded registry is a starting point, not an exhaustive list; deployers extend it for their own jurisdictions and brand rules.
+</Note>
+
 ## The three-party model
 
 <img src="/images/concepts/three-party-governance.png" alt="A triangle diagram with humans at the top setting policies, and three agents below — orchestrator proposes, governance validates, seller fulfills — connected by lines showing separation of duties" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
@@ -48,7 +54,7 @@ const plan = await governance.syncPlans({
     plan_id: "acme-q2-trail-pro",
     brand: { domain: "acmeoutdoor.com" },
     objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
-    budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
+    budget: { total: 50000, currency: "USD", reallocation_threshold: 5000 },
     flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
     countries: ["US", "CA"]
   }]
@@ -59,13 +65,13 @@ The governance agent now knows about this plan. It resolves applicable policies 
 
 No money has moved. The plan is registered, not executed.
 
-Notice `authority_level: "agent_limited"` — Jordan chose this setting. It means the orchestrator can execute buys up to a threshold, but anything larger requires human approval. This boundary is a human decision, not a technical default. The agent cannot change it.
+Notice `reallocation_threshold: 5000` — Jordan chose this setting. It means the orchestrator can reallocate budget up to $5,000 on its own, but any larger move requires human approval. This boundary is a human decision, not a technical default. The agent cannot change it.
 
 <Accordion title="What policies get resolved">
 
 The governance agent pulls policies from multiple sources:
 
-- **Budget limits**: Agent authority level (`agent_limited` means capped per-transaction)
+- **Budget limits**: Reallocation threshold caps how much budget the agent may move without human approval
 - **Brand safety**: Acme Outdoor's `brand.json` specifies approved and excluded publisher categories
 - **Regulatory**: US and CA jurisdictions trigger COPPA, PIPEDA, and state privacy rules
 - **Industry**: AgenticAdvertising.org's policy registry provides standardized regulations
@@ -163,7 +169,7 @@ The campaign is live. Governance doesn't stop at purchase — it monitors delive
 
 - **Budget tracking**: As `report_plan_outcome` data flows in, the governance agent tracks actual spend against committed budget
 - **Drift detection**: If delivery diverges from the plan — wrong publisher, unexpected creative, budget overrun — governance flags it
-- **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans
+- **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans. Content-standards versions follow a separate rule — pinned-at-buy by default, with a per-policy `evaluation_mode: continuous` opt-in for regulatory policies. See [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
 
 First, the orchestrator reports that the seller accepted the purchase and committed budget:
 

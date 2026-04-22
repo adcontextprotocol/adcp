@@ -7,7 +7,8 @@
   "properties": {
     "offering_id": {
       "type": "string",
-      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls."
+      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls.",
+      "x-entity": "offering"
     },
     "name": {
       "type": "string",
@@ -151,7 +152,7 @@
         "tagline": "Start measuring your digital carbon footprint today",
         "valid_from": "2025-01-01T00:00:00Z",
         "valid_to": "2025-03-31T23:59:59Z",
-        "checkout_url": "https://scope3.com/signup",
+        "checkout_url": "https://vendor.example.com/signup",
         "keywords": ["carbon", "sustainability", "measurement", "emissions"],
         "categories": ["measurement", "sustainability"]
       }
@@ -192,23 +193,23 @@
             "asset_group_id": "headlines",
             "asset_type": "text",
             "items": [
-              {"content": "Shop the Summer Sale"},
-              {"content": "50% Off Everything"},
-              {"content": "Summer Savings Event"}
+              {"asset_type": "text", "content": "Shop the Summer Sale"},
+              {"asset_type": "text", "content": "50% Off Everything"},
+              {"asset_type": "text", "content": "Summer Savings Event"}
             ]
           },
           {
             "asset_group_id": "images_landscape",
             "asset_type": "image",
             "items": [
-              {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+              {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
             ]
           },
           {
             "asset_group_id": "images_square",
             "asset_type": "image",
             "items": [
-              {"url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+              {"asset_type": "image", "url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
             ]
           }
         ]

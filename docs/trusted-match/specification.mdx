@@ -7,10 +7,12 @@ description: Authoritative message type definitions, field tables, privacy requi
 # Trusted Match Protocol Specification
 
 <Note>
-TMP is **pre-release**. The protocol surface — particularly TMPX exposure tokens, country-partitioned identity, and Offer macros — will evolve after the AdCP 3.0 release. See the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201) for planned changes.
+**Experimental.** The Trusted Match Protocol is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing TMP MUST declare `trusted_match.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 This is the authoritative reference for the Trusted Match Protocol (TMP). For conceptual introductions, see the [overview](/docs/trusted-match/) and [core concepts](/docs/trusted-match/context-and-identity).
+
+Specific areas expected to evolve include TMPX exposure tokens, country-partitioned identity, and Offer macros — see the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201) for planned changes.
 
 ## Definitions
 
@@ -170,18 +172,24 @@ Response-level targeting signals for ad server pass-through.
 
 ### IdentityMatchRequest
 
-Sent by the publisher (via router) to buyer agents. Contains an opaque user token and package IDs. MUST NOT contain page context.
+Sent by the publisher (via router) to buyer agents. Contains one or more opaque identity tokens and package IDs. MUST NOT contain page context.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
-| `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. Required for signature verification. See `uid-type` enum. |
-| `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
+| `identities` | List\<Identity\> | Yes | One or more identity tokens for the user. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches, maximizing match rate. Each entry is an independent identifier for the same user; buyers MUST NOT treat the combination as a new correlated identity. |
+| `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process identity tokens without consent information. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 | `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
+
+Each entry in `identities` is an `{user_token, uid_type}` pair:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
+| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
 
 ### IdentityMatchResponse
 
@@ -236,7 +244,7 @@ The standard registration path is **static configuration** — the publisher dec
 | `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `countries` | List\<string\> | Conditional | ISO 3166-1 alpha-2 country codes this provider serves. MUST be present and non-empty when `identity_match` is true. |
-| `uid_types` | List\<string\> | Conditional | Identity types this provider can resolve (from `uid-type` enum). MUST be present and non-empty when `identity_match` is true. |
+| `uid_types` | List\<string\> | Conditional | Identity types this provider can resolve (from `uid-type` enum). The router selects providers whose `uid_types` overlaps with any `uid_type` in the request's `identities` array, and filters the forwarded `identities` to the intersection — providers MUST NOT receive tokens for types they did not declare. MUST be present and non-empty when `identity_match` is true. |
 | `properties` | List\<UUID\> | No | Property RIDs this provider serves. When absent, the provider serves all properties. |
 | `timeout_ms` | integer | No | Per-provider timeout in milliseconds. Must be ≤ the router's overall `latency_budget_ms`. Default: 50. |
 | `priority` | integer | No | Provider ordering for merge conflict resolution. Lower values = higher priority. Default: 0. |
@@ -255,6 +263,16 @@ Providers have three lifecycle states:
 - **Inactive**: Provider is skipped entirely. Use this to disable a provider without removing its configuration.
 
 State transitions are immediate in static configuration (reload the config) and take effect within one refresh cycle in dynamic registration.
+
+### Provider registration security
+
+**Endpoint URL validation (SSRF).** Both static configuration and dynamic registration MUST validate provider `endpoint` URLs against the canonical [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS only in production, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no redirects. Because a router calls the provider on every request, DNS rebinding is the primary risk: routers MUST either pin the TCP connection to the IP that passed validation or re-validate the socket's post-handshake peer address before sending the request body. Re-resolving DNS without pinning is not sufficient.
+
+**Dynamic registration authentication.** The dynamic registration API is a privileged surface; unauthenticated registration lets an attacker point publisher traffic at arbitrary HTTPS endpoints. Routers exposing dynamic registration MUST authenticate callers (mTLS or short-lived OAuth 2.0 tokens; static API keys only with IP allow-listing) and SHOULD apply per-agent rate limits on mutations and a cap on total registered providers per publisher to bound registration-storm abuse.
+
+**Router-to-provider auth.** The existing "deployment-specific (mTLS, API key, etc.)" language in [Request Authentication](#request-authentication) sets the mechanism; the minimum bar is that production providers MUST NOT accept anonymous calls. Static bearer tokens MAY be used only with IP allow-listing.
+
+**`/health` endpoint.** The `/health` endpoint providers are encouraged to expose for router liveness MAY be unauthenticated, but the response MUST NOT leak internal state. Providers SHOULD return `200` with body `{"status": "ok"}` when ready and `503` when not ready; other status codes are bugs. Providers MUST NOT differentiate status codes or response bodies by internal subsystem (for example, a distinct code when the database is down versus when the identity cache is down is a side-channel that maps external probing onto internal topology). Version strings, build hashes, internal hostnames, and dependency statuses MUST NOT appear in the body. Rate-limit the endpoint (recommended: 1 req/sec per source IP) so it doesn't become a DoS amplifier.
 
 ## Product Integration
 
@@ -276,7 +294,7 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 | `context_match` | bool | No | Whether this provider handles context match for this product. Default: false. |
 | `identity_match` | bool | No | Whether this provider handles identity match for this product. Default: false. |
 | `countries` | List\<string\> | No | ISO 3166-1 alpha-2 country codes this provider serves. The router filters providers by the request's `country` field. Required when `identity_match` is true. |
-| `uid_types` | List\<string\> | No | Identity types this provider can resolve (from `uid-type` enum). The router filters providers whose `uid_types` includes the request's `uid_type`. Required when `identity_match` is true. |
+| `uid_types` | List\<string\> | No | Identity types this provider can resolve (from `uid-type` enum). The router selects providers whose `uid_types` overlaps with any `uid_type` in the request's `identities` array, and filters the forwarded `identities` to the intersection — providers MUST NOT receive tokens for types they did not declare. Required when `identity_match` is true. |
 
 ## Privacy Requirements
 
@@ -326,6 +344,8 @@ TMP requests carry a signature to prove the request originated from an authorize
 
 The router signs all requests using Ed25519. Both Context Match and Identity Match requests are signed, but with different signed fields reflecting their different contents and caching characteristics.
 
+Signatures bind the request to a specific provider. The router signs a separate signature per fan-out target using the provider's endpoint URL from the router's provider registration. Providers MUST verify that the signed `provider_endpoint_url` matches their own advertised endpoint and reject the request otherwise. This prevents a captured signature from being replayed against a different provider in the registry within the epoch.
+
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
 ### Signature envelope
@@ -347,28 +367,32 @@ Concatenated in this order, UTF-8, newline-separated:
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
+| `provider_endpoint_url` | Provider's registered endpoint URL (exact string match with provider registration, no trailing slash) |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` |
 
 When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
 
-Because the signed fields are static per placement, the same signature can be cached and reused for all requests to the same placement within a 24-hour epoch.
+Because the signed fields are static per placement per provider, the same signature can be cached and reused for all requests to the same `(placement_id, provider_endpoint_url)` pair within a 24-hour epoch. Cache keys MUST include `provider_endpoint_url` — reusing a signature across providers violates the binding and will fail verification.
 
 #### Identity Match signed fields
 
-Concatenated in this order, UTF-8, newline-separated:
+The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785) serialization of the following canonical object. Using JCS eliminates delimiter-injection risk — raw `tcf_consent` / `gpp` / `us_privacy` / `package_id` values may contain any byte, but JSON string escaping in JCS renders any framing byte harmless.
 
 | Field | Source |
 |---|---|
-| `type` | `identity_match_request` |
+| `type` | `"identity_match_request"` |
 | `request_id` | From the request body |
-| `user_token` | From the request body |
-| `uid_type` | From the request body |
-| `consent.gdpr` | From the request body (`false` if absent) |
-| `consent.tcf_consent` | From the request body (empty string if absent) |
-| `package_ids` | Sorted, comma-separated list of active package IDs |
-| `daily_epoch` | `floor(unix_timestamp / 86400)` |
+| `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
+| `consent` | The request's `consent` object verbatim, or `null` when absent |
+| `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |
+| `provider_endpoint_url` | Provider's registered endpoint URL (exact string match with provider registration, no trailing slash). Binds the signature to a specific provider — reusing a signature across providers fails verification. |
+| `daily_epoch` | `floor(unix_timestamp / 86400)` as a JSON integer |
 
-Identity Match signatures include `request_id` and `user_token`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. Buyers MUST deduplicate Identity Match requests by `request_id` within the daily epoch window. A repeated `request_id` MUST return the same response without updating frequency state.
+**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)` using byte-exact match (no case folding, no trimming), sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785). SHA-256 the UTF-8 bytes; hex-encode for the signed input, use raw bytes for cache keys (both conventions hash the same preimage).
+
+The router filters `identities` per provider before forwarding (see [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out)). The signature is computed over each provider's filtered `identities` set — the router re-signs per outbound forward. The same filtered `identities_hash` value is used in the cache key (see [Caching](#caching)), so each provider has its own cache partition keyed on the subset it actually received.
+
+Identity Match signatures include `request_id` and `identities_hash`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. Buyers MUST deduplicate Identity Match requests by `request_id` within the daily epoch window. A repeated `request_id` MUST return the same response without updating frequency state. Buyers SHOULD dedupe by `hash(request_id)` rather than retaining the raw identifier.
 
 ### Signature verification
 
@@ -381,6 +405,24 @@ On verification failure, the provider SHOULD suppress the property for a configu
 ### Key rotation
 
 Agents publish new signing keys via `agent-signing-key.json` at their well-known agent URL. Routers SHOULD cache keys with a 5-minute TTL. When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated.
+
+### Key revocation
+
+Rotation replaces a key; revocation kills one. Revocation is for the compromise case where a private key is known or suspected to have leaked.
+
+Publishers mark a compromised key by setting `revoked_at` (ISO 8601 timestamp) on the key entry in `agent-signing-key.json` and leaving the key in the trust anchor during a grace period so stale caches still find it. Verifiers MUST:
+
+- Reject any signature produced with a key where `revoked_at` is present and the signing epoch falls at or after the revocation timestamp.
+- Re-fetch `agent-signing-key.json` on verification failure before rejecting the request, to pick up a revocation that propagated after the last cache refresh.
+- Treat revocation as non-retryable for the offending request — there is no "maybe it'll work on retry" state.
+
+Keys may be removed from the trust anchor entirely once the cache TTL (recommended: 5 minutes) has elapsed across all verifiers. Removing the key earlier can produce a window where verifiers with a cached copy accept signatures that a fresh fetch would reject — keep the `revoked_at` marker in place until cache propagation completes.
+
+**Revocation limits.** Revocation propagates within 5 minutes (cache TTL) but does not retroactively invalidate signatures already accepted by providers before the revocation was observed. Captured signatures with a signing epoch before `revoked_at` remain verifiable for the remainder of the 48-hour replay window. Operators who suspect compromise SHOULD:
+
+- Rotate proactively on any suspicion, not only on confirmed leak.
+- Keep signing keys in HSM or KMS rather than on disk to minimize compromise likelihood in the first place.
+- Accept that a leaked key grants up to ~48 hours of forgery capability until daily-epoch rollover retires the signed payloads that contained it. Shorter custom epoch windows are a deployment option when this window is unacceptable.
 
 ### Key distribution
 
@@ -462,7 +504,7 @@ If a parser encounters an unknown Type ID, it MUST stop parsing and treat the re
 
 The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The ciphertext MUST use unpadded base64url encoding (RFC 4648 section 5, no `=` padding characters). Padding characters break URL query parameters where `=` is the key-value delimiter. The `kid` (key identifier, max 8 characters) is opaque — it MUST NOT encode geographic or deployment information. It maps to a cluster master private key internally.
 
-**Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably.
+**Size budget (255-char GAM macro limit):** After HPKE overhead (48 bytes) and header (16 bytes), ~120 bytes remain for identity entries. Three 32-byte tokens = 99 bytes — fits comfortably. When the buyer resolves more identities than fit the budget, the TMPX plaintext is truncated to the highest-priority entries according to buyer deployment configuration. The priority order is a buyer-side configuration concern (not protocol-level), typically ranking deterministic graphs (UID2, RampID) above probabilistic or publisher-scoped identifiers. Buyers MUST configure an explicit priority list — the default implementation MUST NOT truncate arbitrarily — and the list SHOULD be documented in the buyer's operational runbook.
 
 ### Key management
 
@@ -529,7 +571,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{user_token, provider_id, hash(package_ids)}`. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
+- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{identities_hash, provider_id, package_ids_hash, consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset); `package_ids_hash` is SHA-256 over the JCS serialization of the sorted `package_ids` array; `consent_hash` is SHA-256 over the JCS serialization of the request's `consent` object (or JCS `null` when the field is absent — this distinguishes "consent unknown" from an explicit-empty consent object). JCS framing prevents delimiter-injection: raw consent strings or package IDs containing `|`, `,`, or `\n` cannot collide two distinct inputs. Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 - Both `ttl_sec` and `cache_ttl` have a schema-enforced maximum of 86400 seconds (24 hours). Routers SHOULD clamp buyer-provided values to a configured maximum (recommended: 3600 seconds) to limit the blast radius of stale caches.
 

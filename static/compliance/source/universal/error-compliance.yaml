@@ -1,0 +1,468 @@
+id: error_compliance
+version: "1.0.0"
+title: "Error handling and compliance"
+category: error_compliance
+summary: "Validates that agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
+track: error_handling
+required_tools:
+  - get_products
+
+narrative: |
+  Every AdCP agent must handle invalid input gracefully. When a buyer sends a negative budget,
+  a nonexistent product ID, or a malformed request, the agent should return a structured error
+  response — not a stack trace or a generic 500.
+
+  AdCP defines three compliance levels for error responses:
+  - L1: isError flag set on the MCP response
+  - L2: JSON text fallback with adcp_error object in content
+  - L3: structuredContent.adcp_error binding (full compliance)
+
+  This storyboard sends intentionally bad input and validates that the agent rejects it with
+  the correct error code, recovery classification, and transport binding. Agents that use the
+  adcpError() helper from @adcp/client get L3 compliance automatically.
+
+  Context echo is required on error responses — the correlation ID is even more important for
+  error diagnosis than for success cases. Every error response must include the caller's context
+  object unchanged. This contract applies to application-level errors (your tool handler returns
+  an error). MCP transport errors (unknown tool, malformed request) are outside the agent's
+  control and do not carry AdCP context.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No special prerequisites. The storyboard sends intentionally invalid requests
+    to test error handling.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before testing error handling.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "error_compliance--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: error_responses
+    title: "Error responses for invalid input"
+    narrative: |
+      The buyer sends requests with intentionally invalid data — negative budgets, missing
+      required fields, nonexistent product IDs. Each request should be rejected with a
+      structured error containing an appropriate AdCP error code.
+
+    steps:
+      - id: negative_budget
+        title: "Reject negative budget"
+        narrative: |
+          A negative budget is never valid. The agent must reject this with a structured
+          AdCP error — VALIDATION_ERROR is the canonical code for business-rule violations
+          that pass schema validation (a number is present, it just can't be negative).
+          INVALID_REQUEST is accepted as a reasonable alternative.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_handling
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject the request with an error containing:
+          - code: VALIDATION_ERROR or INVALID_REQUEST
+          - recovery: correctable
+          - field: packages[0].budget (optional but recommended)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "error-test-negative-budget"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: -500
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "error_compliance--negative_budget"
+        validations:
+          - check: error_code
+            allowed_values: ["VALIDATION_ERROR", "INVALID_REQUEST", "BUDGET_TOO_LOW"]
+            description: "Error code is VALIDATION_ERROR, INVALID_REQUEST, or BUDGET_TOO_LOW"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--negative_budget"
+            description: "Context correlation_id returned unchanged"
+      - id: nonexistent_product
+        title: "Reject nonexistent product ID"
+        narrative: |
+          The buyer references a product ID that does not exist on this platform.
+          The agent should return PRODUCT_NOT_FOUND, PRODUCT_UNAVAILABLE, or INVALID_REQUEST
+          — any of these signals "this product is not sellable."
+        task: create_media_buy
+        expect_error: true
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_handling
+        stateful: false
+        expected: |
+          Reject the request with:
+          - code: PRODUCT_NOT_FOUND, PRODUCT_UNAVAILABLE, or INVALID_REQUEST
+          - recovery: correctable
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "error-test-nonexistent-product"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "nonexistent-product-id-xyz"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "error_compliance--nonexistent_product"
+        validations:
+          - check: error_code
+            allowed_values: ["PRODUCT_NOT_FOUND", "PRODUCT_UNAVAILABLE", "INVALID_REQUEST"]
+            description: "Error code identifies the missing/unavailable product"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--nonexistent_product"
+            description: "Context correlation_id returned unchanged"
+      - id: missing_fields
+        title: "Reject empty get_products request"
+        narrative: |
+          Send a get_products request with no brief and no buying_mode. The agent should
+          either return products (treating it as a catalog browse) or return an error
+          requesting the missing brief.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: error_handling
+        stateful: false
+        # The test value of this step is that buying_mode is missing — do not
+        # schema-validate the sample_request, or the lint would reject the
+        # very shape the step exists to exercise.
+        sample_request_skip_schema: true
+        expected: |
+          Either return products (treating empty request as browse) or return a
+          structured error requesting the missing brief. Both are valid.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "error_compliance--missing_fields"
+        validations:
+          - check: response_schema
+            description: "Response is either valid products or a structured error"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--missing_fields"
+            description: "Context correlation_id returned unchanged"
+      - id: reversed_dates_error
+        title: "Reject reversed dates with error code"
+        narrative: |
+          Send a create_media_buy with end_time before start_time. This is a business-rule
+          violation — both fields are valid ISO timestamps, but their relationship is not
+          coherent. The canonical code is VALIDATION_ERROR; INVALID_REQUEST is accepted.
+        task: create_media_buy
+        expect_error: true
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_handling
+        stateful: false
+        expected: |
+          Reject with:
+          - code: VALIDATION_ERROR or INVALID_REQUEST
+          - recovery: correctable
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "error-test-reversed-dates"
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "error_compliance--reversed_dates_error"
+        validations:
+          - check: error_code
+            allowed_values: ["VALIDATION_ERROR", "INVALID_REQUEST"]
+            description: "Error code is VALIDATION_ERROR or INVALID_REQUEST"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--reversed_dates_error"
+            description: "Context correlation_id returned unchanged"
+  - id: error_structure
+    title: "Error structure compliance"
+    narrative: |
+      Validates that error responses follow the AdCP error structure with required
+      and optional fields.
+
+    steps:
+      - id: validate_error_shape
+        title: "Validate error response structure"
+        narrative: |
+          Trigger an error and inspect the response structure. The adcp_error object
+          must have code and message. Optional fields include recovery, retry_after,
+          field, and suggestion.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_codes
+        expect_error: true
+        stateful: false
+        expected: |
+          Error response with:
+          - code: a recognized AdCP error code
+          - message: human-readable description
+          - recovery: correctable, transient, or fatal (optional)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "error-structure-test"
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "test-product"
+              budget: -1
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "error_compliance--validate_error_shape"
+        validations:
+          - check: error_code
+            description: "Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--validate_error_shape"
+            description: "Context correlation_id returned unchanged"
+
+  - id: version_negotiation
+    title: "Protocol version validation"
+    narrative: |
+      Every AdCP request may carry adcp_major_version. Sellers validate against their
+      declared supported_major_versions (from get_adcp_capabilities) and return
+      VERSION_UNSUPPORTED when the buyer asks for a version the seller does not speak.
+      When omitted, the seller assumes its highest supported version — so version
+      validation only fires when the buyer explicitly declares an unsupported number.
+
+    steps:
+      - id: unsupported_major_version
+        title: "Reject unsupported adcp_major_version"
+        narrative: |
+          Send a get_products request asserting a future major version the seller cannot
+          support. The seller must reject with VERSION_UNSUPPORTED and indicate which
+          versions are supported so the buyer can retry.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: error_handling
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject with:
+          - code: VERSION_UNSUPPORTED
+          - recovery: fatal
+          - message referencing the buyer's requested version and the seller's supported set
+
+        sample_request:
+          adcp_major_version: 99
+          buying_mode: "brief"
+          brief: "Version negotiation probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "error_compliance--unsupported_major_version"
+        validations:
+          - check: error_code
+            value: "VERSION_UNSUPPORTED"
+            description: "Error code is VERSION_UNSUPPORTED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--unsupported_major_version"
+            description: "Context correlation_id returned unchanged"
+
+      - id: supported_major_version
+        title: "Accept supported adcp_major_version"
+        narrative: |
+          Send a get_products request with the current major version (3). The seller
+          must accept the request normally — version negotiation only rejects mismatched
+          versions, not explicit declarations of a supported one.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products normally — adcp_major_version: 3 is a supported version.
+
+        sample_request:
+          adcp_major_version: 3
+          buying_mode: "brief"
+          brief: "Display advertising for outdoor lifestyle campaign"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "error_compliance--supported_major_version"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--supported_major_version"
+            description: "Context correlation_id returned unchanged"
+
+  - id: error_transport
+    title: "Error transport bindings"
+    narrative: |
+      Validates that errors are transported correctly via MCP. The isError flag must
+      be set, and the error should be available in both JSON text content (L2) and
+      structuredContent (L3) bindings.
+
+    steps:
+      - id: validate_transport_binding
+        title: "Validate error transport binding"
+        narrative: |
+          Trigger an error and verify the MCP transport binding: isError flag must be
+          set to true, and the error content should include the adcp_error object.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_transport
+        expect_error: true
+        stateful: false
+        expected: |
+          MCP response with:
+          - isError: true
+          - content containing adcp_error (L2: JSON text, L3: structuredContent)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "error-transport-test"
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "nonexistent"
+              budget: -1
+              pricing_option_id: "bad-pricing"
+
+          context:
+            correlation_id: "error_compliance--validate_transport_binding"
+        validations:
+          - check: error_code
+            description: "Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--validate_transport_binding"
+            description: "Context correlation_id returned unchanged"

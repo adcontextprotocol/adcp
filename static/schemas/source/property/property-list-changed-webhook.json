@@ -5,6 +5,13 @@
   "description": "Webhook notification sent when a property list's resolved properties change. Contains a summary only - recipients must call get_property_list to retrieve the updated properties. This keeps payloads small and avoids redundant data transfer.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook event. Governance agents MUST generate a cryptographically random value (UUID v4 recommended) per distinct list-change event and reuse the same key on every retry. Recipients MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential) — keys from different governance agents are independent.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "event": {
       "type": "string",
       "const": "property_list_changed",
@@ -12,7 +19,8 @@
     },
     "list_id": {
       "type": "string",
-      "description": "ID of the property list that changed"
+      "description": "ID of the property list that changed",
+      "x-entity": "property_list"
     },
     "list_name": {
       "type": "string",
@@ -55,6 +63,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["event", "list_id", "resolved_at", "signature"],
+  "required": ["idempotency_key", "event", "list_id", "resolved_at", "signature"],
   "additionalProperties": false
 }

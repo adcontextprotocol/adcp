@@ -3,6 +3,7 @@
   "$id": "/schemas/brand/get-rights-request.json",
   "title": "Get Rights Request",
   "description": "Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first — no taxonomy for categories. The agent interprets intent from the query and filters based on the buyer's brand compatibility.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -38,7 +39,8 @@
     },
     "brand_id": {
       "type": "string",
-      "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster."
+      "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster.",
+      "x-entity": "rights_holder_brand"
     },
     "right_type": {
       "$ref": "/schemas/enums/right-type.json",

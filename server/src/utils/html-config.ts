@@ -13,6 +13,7 @@ import { getPool } from "../db/client.js";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from "../db/users-db.js";
 import { createLogger } from "../logger.js";
+import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 
 const logger = createLogger('html-config');
 
@@ -36,6 +37,7 @@ interface AppUser {
   firstName?: string | null;
   lastName?: string | null;
   isMember?: boolean;
+  isAdmin?: boolean;
 }
 
 /**
@@ -47,10 +49,17 @@ export function buildAppConfig(user?: AppUser | null): {
   user: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean; isMember: boolean } | null;
   posthog: { apiKey: string; host: string } | null;
 } {
+  // Trust a pre-resolved isAdmin (set by enrichUserWithAdmin / dev-user flag).
+  // Fall back to ADMIN_EMAILS for callers that haven't enriched yet so we don't
+  // regress from prior behavior.
   let isAdmin = false;
   if (user) {
-    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-    isAdmin = adminEmails.includes(user.email.toLowerCase());
+    if (typeof user.isAdmin === 'boolean') {
+      isAdmin = user.isAdmin;
+    } else {
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+      isAdmin = adminEmails.includes(user.email.toLowerCase());
+    }
   }
 
   return {
@@ -134,6 +143,34 @@ export function getPublicFilePath(filename: string): string {
 }
 
 /**
+ * Resolve the admin flag for a user using the same rules as the requireAdmin
+ * middleware: ADMIN_EMAILS env var OR membership in the aao-admin working
+ * group. If the user already has isAdmin set (e.g. a dev user), trust it.
+ */
+export async function enrichUserWithAdmin(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
+  if (!user) return user;
+  if (typeof user.isAdmin === 'boolean') return user;
+
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+  if (adminEmails.includes(user.email.toLowerCase())) {
+    user.isAdmin = true;
+    return user;
+  }
+
+  if (user.id) {
+    try {
+      user.isAdmin = await isWebUserAAOAdmin(user.id);
+    } catch (error) {
+      logger.warn({ error, userId: user.id }, 'Failed to resolve isAdmin via working group; defaulting to false');
+      user.isAdmin = false;
+    }
+  } else {
+    user.isAdmin = false;
+  }
+  return user;
+}
+
+/**
  * Enrich a user object with membership status from the database.
  * Checks both direct and inherited membership via the brand registry hierarchy.
  */
@@ -193,6 +230,7 @@ export async function serveHtmlWithConfig(
   const filePath = getPublicFilePath(filename);
 
   await enrichUserWithMembership(req.user);
+  await enrichUserWithAdmin(req.user);
   const html = await fs.readFile(filePath, "utf-8");
   const injectedHtml = injectConfigIntoHtml(html, req.user);
 
@@ -351,6 +389,7 @@ export async function serveHtmlWithMetaTags(
   const filePath = getPublicFilePath(filename);
 
   await enrichUserWithMembership(req.user);
+  await enrichUserWithAdmin(req.user);
   let html = await fs.readFile(filePath, "utf-8");
 
   // Inject meta tags first (if provided)

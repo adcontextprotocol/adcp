@@ -224,12 +224,23 @@ export function createApiKeysRouter(): Router {
       if (!(await verifyOrgMembership(req, res, organizationId))) return;
 
       const apiKeyId = req.params.id;
-      await workosRequest("DELETE", `/organizations/${organizationId}/api_keys/${apiKeyId}`);
-
-      logger.info(
-        { userId: req.user!.id, organizationId, apiKeyId },
-        "API key revoked",
-      );
+      try {
+        await workosRequest("DELETE", `/organizations/${organizationId}/api_keys/${apiKeyId}`);
+        logger.info(
+          { userId: req.user!.id, organizationId, apiKeyId },
+          "API key revoked",
+        );
+      } catch (error) {
+        const status =
+          error instanceof Error && "status" in error && typeof (error as { status: unknown }).status === "number"
+            ? (error as { status: number }).status
+            : null;
+        if (status !== 404) throw error;
+        logger.info(
+          { userId: req.user!.id, organizationId, apiKeyId },
+          "API key revoke: already absent in WorkOS",
+        );
+      }
 
       res.status(204).end();
     } catch (error) {

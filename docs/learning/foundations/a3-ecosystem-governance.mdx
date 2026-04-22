@@ -21,6 +21,7 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
 - Explain `adagents.json` and how agents discover each other
 - Name all eight AdCP protocol domains and what each covers
 - Identify which areas you want to explore deeper in a role track
+- Recognize the three trust primitives that make the ecosystem safe: authenticated identity, signed governance tokens, and agent/account isolation
 
 ## Reading list
 
@@ -58,6 +59,9 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
   <Card title="Accounts protocol" icon="building" href="/docs/accounts/overview">
     The commercial layer: advertisers, operators, authentication, billing, and account lifecycle.
   </Card>
+  <Card title="Security Model" icon="shield-halved" href="/docs/building/understanding/security-model">
+    How AdCP defends against unauthorized spend, cross-tenant leakage, replay attacks, and SSRF across the ecosystem.
+  </Card>
 </CardGroup>
 
 ## What you'll cover with Addie
@@ -70,13 +74,18 @@ Addie walks through each domain with a quick live example — just enough to und
 - Community registry: how agents and brands find each other
 - AgenticAdvertising.org: working groups, industry councils, how the spec evolves
 
+**Trust primitives (how the ecosystem stays safe):**
+- **Authenticated identity** — cryptographic proof of which agent is calling, not a header claim the seller has to take on faith
+- **Signed governance context** — approval tokens from the buyer's governance agent that bind a plan to a specific seller and phase, verifiable by auditors years later
+- **Agent and account isolation** — every piece of state is scoped to the calling agent and the account it is acting on; cross-tenant reads are rejected with a generic "not found"
+
 **Protocol domains:**
 - **Accounts** — commercial identity, operator-billed vs agent-billed, account lifecycle, `get_adcp_capabilities`
 - **Media buy** — proposals, forecasting, refinement, packages, keyword targeting, geo-proximity
 - **Creative** — formats vs manifests, 20 channels, AI-powered generation with `build_creative`
 - **Signals** — audience data, privacy-compliant signals, conversion tracking, attribution
 - **Governance** — content standards, property lists, the Oracle model for AI-driven brand safety, campaign governance (multi-party validation, budget authority, policy registry)
-- **Sponsored Intelligence** — conversational brand experiences, cost-per-conversation instead of CPM
+- **Sponsored Intelligence** — conversational brand experiences, cost-per-conversation instead of CPM ([experimental](/docs/reference/experimental-status) in 3.0)
 - **Trusted Match Protocol** — impression-time execution: context match (content fit) and identity match (user eligibility), cross-publisher frequency capping, works across web, mobile, CTV, AI assistants, and retail media
 - **Brand Protocol** — `brand.json` resolution, brand identity claims, brand hierarchy
 - **Registry** — entity resolution, agent discovery, community directory

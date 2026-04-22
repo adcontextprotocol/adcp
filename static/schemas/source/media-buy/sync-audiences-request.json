@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/sync-audiences-request.json",
   "title": "Sync Audiences Request",
   "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -10,6 +11,13 @@
       "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
       "minimum": 1,
       "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `audience_id` gives resource-level dedup per audience, but the sync envelope emits audit events and may trigger downstream refreshes — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `audiences` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
@@ -24,7 +32,8 @@
         "properties": {
           "audience_id": {
             "type": "string",
-            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays."
+            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays.",
+            "x-entity": "audience"
           },
           "name": {
             "type": "string",
@@ -96,6 +105,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "account"
   ],
   "if": {

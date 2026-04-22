@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/media-buy/update-media-buy-request.json",
+  "title": "Update Media Buy Request",
+  "description": "Request parameters for updating campaign and package settings",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "$ref": "/schemas/3.0.0/core/account-ref.json",
+      "description": "Account that owns this media buy. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. Required for governance checks and account resolution."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Seller's ID of the media buy to update",
+      "x-entity": "media_buy"
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Expected current revision for optimistic concurrency. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match. Obtain from get_media_buys or the most recent update response.",
+      "minimum": 1
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume the entire media buy (true = paused, false = active)"
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Cancel the entire media buy. Cancellation is irreversible — canceled media buys cannot be reactivated. Sellers MAY reject with NOT_CANCELLABLE if the media buy cannot be canceled in its current state.",
+      "const": true
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses.",
+      "maxLength": 500
+    },
+    "start_time": {
+      "$ref": "/schemas/3.0.0/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New end date/time in ISO 8601 format"
+    },
+    "packages": {
+      "type": "array",
+      "description": "Package-specific updates for existing packages",
+      "items": {
+        "$ref": "/schemas/3.0.0/media-buy/package-update.json"
+      },
+      "minItems": 1
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/3.0.0/core/business-entity.json",
+      "description": "Update who receives the invoice for this buy. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "new_packages": {
+      "type": "array",
+      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise add_packages in valid_actions. Sellers that do not support this MUST reject with UNSUPPORTED_FEATURE.",
+      "items": {
+        "$ref": "/schemas/3.0.0/media-buy/package-request.json"
+      },
+      "minItems": 1
+    },
+    "reporting_webhook": {
+      "$ref": "/schemas/3.0.0/core/reporting-webhook.json",
+      "description": "Optional webhook configuration for automated reporting delivery. Updates the reporting configuration for this media buy."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.0/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "media_buy_id"
+  ],
+  "additionalProperties": true
+}

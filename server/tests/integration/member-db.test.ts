@@ -71,8 +71,8 @@ describe('MemberDatabase Integration Tests', () => {
         twitter_url: 'https://twitter.com/test',
         offerings: ['buyer_agent', 'creative_agent'],
         agents: [
-          { url: 'https://agent1.example.com', is_public: true },
-          { url: 'https://agent2.example.com', is_public: false },
+          { url: 'https://agent1.example.com', visibility: 'public' },
+          { url: 'https://agent2.example.com', visibility: 'private' },
         ],
         headquarters: 'New York, USA',
         markets: ['North America', 'Europe'],
@@ -101,8 +101,8 @@ describe('MemberDatabase Integration Tests', () => {
       expect(profile.twitter_url).toBe('https://twitter.com/test');
       expect(profile.offerings).toEqual(['buyer_agent', 'creative_agent']);
       expect(profile.agents).toHaveLength(2);
-      expect(profile.agents[0]).toEqual({ url: 'https://agent1.example.com', is_public: true });
-      expect(profile.agents[1]).toEqual({ url: 'https://agent2.example.com', is_public: false });
+      expect(profile.agents[0]).toEqual({ url: 'https://agent1.example.com', visibility: 'public' });
+      expect(profile.agents[1]).toEqual({ url: 'https://agent2.example.com', visibility: 'private' });
       expect(profile.headquarters).toBe('New York, USA');
       expect(profile.markets).toEqual(['North America', 'Europe']);
       expect(profile.metadata).toEqual({ custom_field: 'custom_value' });
@@ -160,7 +160,7 @@ describe('MemberDatabase Integration Tests', () => {
         workos_organization_id: orgId,
         display_name: 'Get By ID Company',
         slug: 'get-by-id-company',
-        agents: [{ url: 'https://agent.example.com', is_public: true }],
+        agents: [{ url: 'https://agent.example.com', visibility: 'public' }],
       };
 
       const created = await memberDb.createProfile(input);
@@ -169,7 +169,7 @@ describe('MemberDatabase Integration Tests', () => {
       expect(retrieved).not.toBeNull();
       expect(retrieved!.id).toBe(created.id);
       expect(retrieved!.display_name).toBe('Get By ID Company');
-      expect(retrieved!.agents).toEqual([{ url: 'https://agent.example.com', is_public: true }]);
+      expect(retrieved!.agents).toEqual([{ url: 'https://agent.example.com', visibility: 'public' }]);
     });
 
     it('should return null for non-existent ID', async () => {
@@ -230,7 +230,7 @@ describe('MemberDatabase Integration Tests', () => {
         workos_organization_id: orgId,
         display_name: 'Original Name',
         slug: 'update-company',
-        agents: [{ url: 'https://old-agent.example.com', is_public: true }],
+        agents: [{ url: 'https://old-agent.example.com', visibility: 'public' }],
       };
 
       const created = await memberDb.createProfile(input);
@@ -239,8 +239,8 @@ describe('MemberDatabase Integration Tests', () => {
         display_name: 'Updated Name',
         tagline: 'New tagline',
         agents: [
-          { url: 'https://new-agent.example.com', is_public: false },
-          { url: 'https://another-agent.example.com', is_public: true },
+          { url: 'https://new-agent.example.com', visibility: 'private' },
+          { url: 'https://another-agent.example.com', visibility: 'public' },
         ],
       };
 
@@ -250,7 +250,7 @@ describe('MemberDatabase Integration Tests', () => {
       expect(updated!.display_name).toBe('Updated Name');
       expect(updated!.tagline).toBe('New tagline');
       expect(updated!.agents).toHaveLength(2);
-      expect(updated!.agents[0]).toEqual({ url: 'https://new-agent.example.com', is_public: false });
+      expect(updated!.agents[0]).toEqual({ url: 'https://new-agent.example.com', visibility: 'private' });
     });
 
     it('should update metadata correctly', async () => {

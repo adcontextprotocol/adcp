@@ -7,6 +7,10 @@ description: "report_plan_outcome sends action results to the AdCP governance ag
 
 # report_plan_outcome
 
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
 Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the "after" half of the governance loop -- it tells the governance agent what actually happened so it can update its state and flag any issues.
 
 Sellers do not call this task. They report delivery data via [`check_governance`](./check_governance) with `phase: "delivery"`.
@@ -227,9 +231,8 @@ If the seller rejected the request, report it so the governance agent can update
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
-| `CHECK_NOT_FOUND` | correctable | No governance check with this `check_id`. |
-| `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `governance_context` in the plan. |
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID, or the plan is not accessible to the calling account. |
+| `REFERENCE_NOT_FOUND` | correctable | `check_id` does not resolve to a governance check, or `governance_context` does not resolve to a campaign in the plan. `error.field` MUST identify which typed parameter failed to resolve. |
 | `CAMPAIGN_SUSPENDED` | correctable | Plan is suspended pending human review. Outcome reporting is blocked until the escalation is resolved. |
 
 ## Related tasks

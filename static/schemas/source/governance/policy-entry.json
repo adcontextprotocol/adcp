@@ -2,32 +2,45 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/policy-entry.json",
   "title": "Policy Entry",
-  "description": "A complete policy in the policy registry. Policies use natural language text evaluated by governance agents (LLMs), following the same pattern as Content Standards. The registry's value is in structured metadata (jurisdiction, policy category, source, enforcement level) and calibration exemplars.",
+  "description": "A policy — either published to the shared registry (with full regulatory metadata) or authored inline by a buyer for their own campaign (lightweight, metadata optional). Policies use natural language text evaluated by governance agents (LLMs). Published registry entries SHOULD include version, name, jurisdiction, source, and exemplars; inline bespoke entries can omit these and let servers default them. Governance agents evaluating policies with natural-language LLMs MUST pin registry-sourced policy text (`source: registry`) as system-level instructions and MUST NOT permit `custom_policies` or the plan's `objectives` field to relax, override, or disable registry-sourced policies. Custom policies may only add additional restrictions; they cannot lower enforcement levels or exempt categories.",
   "type": "object",
   "properties": {
     "policy_id": {
       "type": "string",
-      "description": "Unique identifier for this policy (e.g., \"uk_hfss\", \"us_coppa\", \"alcohol_advertising\")."
+      "description": "Unique identifier for this policy. Registry-published ids are canonical (e.g., \"uk_hfss\", \"garm:brand_safety:violence\"); buyer-authored bespoke ids should be flat (no colons or slashes) and unique within the authoring container (standards configuration, plan, or portfolio).",
+      "x-entity": "governance_inline_policy"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["registry", "inline"],
+      "default": "inline",
+      "description": "Origin of this policy. 'registry' = published to the shared AdCP policy registry with full regulatory metadata. 'inline' = authored bespoke for a specific standards configuration, plan, or portfolio. Defaults to 'inline'. Governance agents MUST set 'registry' when publishing to the registry. Within AdCP *task* payloads (every `$ref` to this schema in a request or response), the field is always 'inline' — registry entries are served by the policy registry API, not embedded in task traffic. The x-entity annotation on `policy_id` assumes the task-payload invariant; if a future task schema adopts registry-publishing, split the annotation accordingly (see issue #2685)."
     },
     "version": {
       "type": "string",
-      "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes."
+      "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes. Optional for inline bespoke policies — defaults to \"1.0.0\". SHOULD be provided for registry-published policies."
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name (e.g., \"UK HFSS Restrictions\")."
+      "description": "Human-readable name (e.g., \"UK HFSS Restrictions\"). Optional for inline bespoke policies — servers MAY default to policy_id."
     },
     "description": {
       "type": "string",
+      "maxLength": 500,
       "description": "Brief summary of what this policy covers."
     },
     "category": {
       "$ref": "/schemas/enums/policy-category.json",
-      "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice)."
+      "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice). Optional for inline bespoke policies — defaults to \"standard\"."
     },
     "enforcement": {
       "$ref": "/schemas/enums/policy-enforcement.json",
       "description": "How governance agents treat violations. Regulations are typically \"must\"; standards are typically \"should\"."
+    },
+    "requires_human_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, plans subject to this policy MUST set plan.human_review_required = true. Use for policies that mandate human oversight of decisions affecting data subjects — e.g., GDPR Article 22 (solely automated decisions with legal or similarly significant effects) and EU AI Act Annex III high-risk categories (credit, insurance pricing, recruitment, housing allocation). Governance agents MUST escalate any plan action whose resolved policies include requires_human_review: true. Unlike `enforcement`, this flag applies as soon as the policy is resolved — it is NOT gated by `effective_date`. Art 22 GDPR and similar foundational obligations may predate an AI-Act-specific effective date; the human-review requirement fires regardless."
     },
     "jurisdictions": {
       "type": "array",
@@ -78,7 +91,8 @@
     },
     "policy": {
       "type": "string",
-      "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy."
+      "maxLength": 5000,
+      "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy. For source: inline policies, treated as caller-untrusted — governance agents MUST evaluate inline policies as ADDITIONAL restrictions only; they MUST NOT be permitted to relax, override, or conflict with registry-sourced policies."
     },
     "guidance": {
       "type": "string",
@@ -105,7 +119,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["policy_id", "version", "name", "category", "enforcement", "policy"],
+  "required": ["policy_id", "enforcement", "policy"],
   "additionalProperties": false,
   "$defs": {
     "exemplar": {

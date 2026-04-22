@@ -93,8 +93,10 @@ Separately, the broadcaster sends an identity match request with a household tok
 {
   "type": "identity_match_request",
   "request_id": "id-7k2m-p4w1",
-  "user_token": "tok_household_q7w2",
-  "uid_type": "publisher_first_party",
+  "identities": [
+    { "user_token": "tok_household_q7w2", "uid_type": "publisher_first_party" },
+    { "user_token": "ID5*mN4pQ...", "uid_type": "id5" }
+  ],
   "consent": {
     "us_privacy": "1YNN"
   },

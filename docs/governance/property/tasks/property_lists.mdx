@@ -4,10 +4,6 @@ description: "Property list tasks in AdCP create, update, get, list, and delete 
 "og:title": "AdCP — Property List Management"
 ---
 
-<Info>
-**AdCP 3.0 Proposal** - These tasks are under development for AdCP 3.0.
-</Info>
-
 **Tasks**: Create, update, get, list, and delete property lists.
 
 Property lists are managed resources that combine static property sets with dynamic filters. When resolved, filters are applied to produce the final property set.
@@ -75,7 +71,7 @@ A property list contains:
   "list_id": "uk_premium_news_q1",
   "name": "UK Premium News Sites Q1 2026",
   "description": "High-quality UK news sites for Q1 campaign",
-  "principal": "did:principal:brand-x",
+  "account": { "account_id": "acc_brand_x_direct_01" },
   "base_properties": [
     {
       "selection_type": "publisher_tags",
@@ -116,7 +112,7 @@ The agent resolves the brand identity and applies rules based on its domain expe
 - A brand safety agent infers content categories from the brand's industry
 - A sustainability agent applies requirements from the brand's profile
 
-The brand reference uses the standard [core/brand-ref](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) schema. The governance agent resolves the domain to discover the brand's identity via its `brand.json` file.
+The brand reference uses the standard [core/brand-ref](https://adcontextprotocol.org/schemas/latest/core/brand-ref.json) schema. The governance agent resolves the domain to discover the brand's identity via its `brand.json` file.
 
 ## Webhooks
 
@@ -138,6 +134,7 @@ Configure webhooks via `update_property_list` to receive notifications when the 
 
 ```json
 {
+  "idempotency_key": "plch_01HW9DFQK6NP9R3T5V7X9Z1B3D",
   "event": "property_list_changed",
   "list_id": "uk_premium_news_q1",
   "list_name": "UK Premium News Sites Q1 2026",
@@ -147,11 +144,14 @@ Configure webhooks via `update_property_list` to receive notifications when the 
     "total_properties": 856
   },
   "resolved_at": "2026-01-03T18:00:00Z",
-  "cache_valid_until": "2026-01-04T18:00:00Z"
+  "cache_valid_until": "2026-01-04T18:00:00Z",
+  "signature": "..."
 }
 ```
 
 The webhook payload includes counts but NOT the actual properties. This keeps payloads small and avoids redundant data transfer when recipients may not need the full list immediately.
+
+Recipients MUST verify the `signature` before processing and MUST dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
 
 ### Webhook Use Cases
 
@@ -277,7 +277,7 @@ Each entry must include `selection_type`:
 
 If `base_properties` is omitted, the agent queries its entire property database for properties matching the filters.
 
-See the [base-property-source schema](https://adcontextprotocol.org/schemas/v3/property/base-property-source.json) for the full specification.
+See the [base-property-source schema](https://adcontextprotocol.org/schemas/latest/property/base-property-source.json) for the full specification.
 
 ---
 
@@ -321,7 +321,7 @@ Create a new property list.
     "list_id": "pl_abc123",
     "name": "UK Premium News Q1",
     "description": "High-quality UK news sites for Q1 campaign",
-    "principal": "did:principal:brand-x",
+    "account": { "account_id": "acc_brand_x_direct_01" },
     "base_properties": [
       {
         "selection_type": "publisher_tags",
@@ -535,7 +535,7 @@ The `auth_token` is only returned when the list is created via `create_property_
 
 ## list_property_lists
 
-List all property lists accessible to the authenticated principal.
+List property lists owned by a given account, or all property lists accessible to the authenticated agent when `account` is omitted.
 
 ### Request
 
@@ -657,8 +657,7 @@ Pass property lists to media buy creation:
 
 | Code | Description |
 |------|-------------|
-| `LIST_NOT_FOUND` | Property list ID doesn't exist |
-| `LIST_ACCESS_DENIED` | Principal doesn't have access to this list |
+| `REFERENCE_NOT_FOUND` | Property list ID doesn't exist, or the caller lacks access. Returned uniformly for both cases — see [Uniform response for inaccessible references](/docs/building/implementation/error-handling#standard-error-codes). Sellers MUST NOT distinguish "exists but unauthorized" from "does not exist." |
 | `INVALID_FILTER` | Filter configuration is invalid |
 | `LIST_NAME_EXISTS` | A list with this name already exists |
 

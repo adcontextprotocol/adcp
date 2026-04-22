@@ -7,7 +7,8 @@
   "properties": {
     "product_id": {
       "type": "string",
-      "description": "Unique identifier for the product"
+      "description": "Unique identifier for the product",
+      "x-entity": "product"
     },
     "name": {
       "type": "string",

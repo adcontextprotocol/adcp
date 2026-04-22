@@ -17,6 +17,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 - Identify the agent roles involved: buyer agent, sales agent, creative agent, signals agent
 - Read and understand real protocol messages at each stage
 - Observe a live agent-to-agent transaction
+- Recognize the two things that make agent-to-agent requests safe: the request is signed (so the seller can verify who sent it) and it carries an `idempotency_key` (so a retry doesn't double-book)
 
 ## Reading list
 
@@ -52,13 +53,22 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Signals agent** | Provides measurement and audience data via `get_signals` |
 | **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
+| **Request signing** | A cryptographic signature on the request that lets the seller verify who sent it and that it wasn't tampered with in transit |
+| **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
+| **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
+| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/docs/building/compliance-catalog). |
+| **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
+
+## Protocol versioning
+
+Every request carries `adcp_major_version`; sellers advertise supported versions on `get_adcp_capabilities`. A3 and B1 go deeper on version negotiation and the object-presence pattern sellers use to declare capabilities.
 
 ## What you'll do with Addie
 
 Tell Addie what you want: audience, goals, budget. Then walk through each step as it happens:
 
 1. **Discovery** — `get_products` against `@cptestagent`, examine real response structure
-2. **Purchase** — `create_media_buy` with targeting and budget. Note the `confirmed_at` timestamp in the response — this is the seller's order confirmation.
+2. **Purchase** — `create_media_buy` with targeting and budget. Addie points out two things on this request: it carries a signature (so the seller can verify the buyer) and an `idempotency_key` (so a retry after a network error never creates two buys). Note the `confirmed_at` timestamp in the response — this is the seller's order confirmation.
 3. **Creative** — `sync_creatives` to deliver assets to the publisher
 4. **Status check** — `get_media_buys` to see lifecycle state, creative approvals, and `valid_actions`
 5. **Delivery** — `get_media_buy_delivery` to see results

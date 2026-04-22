@@ -130,8 +130,8 @@ const buildDB: NewsletterEditionDB = {
   async getUserWorkingGroupMap() {
     return getUserWorkingGroupMap();
   },
-  async setCoverImage(id, imageData, promptUsed) {
-    return setBuildCoverImage(id, imageData, promptUsed);
+  async setCoverImage(id, imageData, promptUsed, c2paSignedAt, c2paManifestDigest) {
+    return setBuildCoverImage(id, imageData, promptUsed, c2paSignedAt, c2paManifestDigest);
   },
   async getCoverImage(editionDate) {
     return getBuildCoverImage(editionDate);

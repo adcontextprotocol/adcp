@@ -114,6 +114,106 @@ function ensureDir(dir) {
   }
 }
 
+// ── Mutating-request idempotency lint ───────────────────────────────
+//
+// Every mutating AdCP request MUST declare `idempotency_key` in its
+// top-level `required` array, per v3-readiness.mdx §"idempotency_key
+// required on all mutating requests," release-notes.mdx 3.0 entry, and
+// adcontextprotocol/adcp#2315. This is enforced at the storyboard layer
+// by scripts/build-compliance.cjs (see #2372). This complementary lint
+// enforces it at the *schema* layer — so a new mutating request schema
+// can't ship without the required field, which would silently bypass the
+// storyboard lint (the storyboard lint only fails when a storyboard
+// declares sample_request but omits the key; if the schema never
+// required it, the storyboard lint sees the task as non-mutating and
+// passes).
+//
+// A request schema is considered non-mutating if:
+//   1. Its basename matches a read-only verb pattern
+//      (`get-`, `list-`, `check-`, `validate-`, `preview-`, optionally
+//      prefixed by a domain like `si-get-*`), OR
+//   2. It's one of a short allowlist of core/utility request types that
+//      don't represent operations (pagination, package, tasks-*,
+//      comply-test-controller, context-match, identity-match), OR
+//   3. Its `$comment` or `description` contains the phrase
+//      "naturally idempotent" (case-insensitive) — the explicit exemption
+//      pattern documented in sponsored-intelligence/si-terminate-session-request.json.
+//
+// Otherwise the schema's top-level `required` array MUST include
+// `idempotency_key`.
+
+const READ_ONLY_VERB_PATTERN = /(^|-)(get|list|check|validate|preview)-/;
+const NON_OPERATION_ALLOWLIST = new Set([
+  // Embedded input types / utility request shapes that aren't operations
+  // themselves — they're referenced via $ref from operation schemas.
+  'pagination-request.json',
+  'package-request.json',
+  // Read-only evaluation operations (TMP matching — no state mutation).
+  'context-match-request.json',
+  'identity-match-request.json',
+]);
+// Note: tasks-get-request.json and tasks-list-request.json are matched by
+// READ_ONLY_VERB_PATTERN via the "-get-" / "-list-" fragments — no
+// explicit allowlist entry needed.
+//
+// Note: comply-test-controller-request.json IS mutating (force_*_status,
+// simulate_*) but carries an explicit "naturally idempotent" marker in
+// its description — replays converge to the same observable state because
+// the target state is part of the payload. It passes the lint via the
+// hasNaturallyIdempotentMarker path, not the allowlist.
+
+function isNonMutatingRequestBasename(basename) {
+  if (READ_ONLY_VERB_PATTERN.test(basename)) return true;
+  if (NON_OPERATION_ALLOWLIST.has(basename)) return true;
+  return false;
+}
+
+function hasNaturallyIdempotentMarker(schema) {
+  const haystack = String(schema.$comment || '') + ' ' + String(schema.description || '');
+  return /naturally idempotent/i.test(haystack);
+}
+
+function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
+  const violations = [];
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        // Skip extensions/ and bundled/ — extension schemas manage their
+        // own idempotency semantics per the extension registry, and
+        // bundled/ is generated output.
+        if (entry.name === 'extensions' || entry.name === 'bundled') continue;
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('-request.json')) continue;
+      if (isNonMutatingRequestBasename(entry.name)) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (required.includes('idempotency_key')) continue;
+      if (hasNaturallyIdempotentMarker(schema)) continue;
+      violations.push(path.relative(sourceDir, p));
+    }
+  }
+  walk(sourceDir);
+
+  if (violations.length > 0) {
+    const lines = violations.map(v =>
+      `  ${v}: mutating request schema does not declare idempotency_key in required[], and does not carry a "naturally idempotent" exemption marker.`
+    );
+    throw new Error(
+      `Schema idempotency lint: ${violations.length} request schema(s) appear to represent mutating operations without requiring idempotency_key.\n\n` +
+      lines.join('\n') +
+      `\n\nFix options:\n` +
+      `  A) Add "idempotency_key" to the top-level "required" array (the common case — any create/update/delete/sync/activate/submit operation).\n` +
+      `  B) If the operation is genuinely read-only, rename the schema file to start with get-/list-/check-/validate-/preview- (or add it to NON_OPERATION_ALLOWLIST in scripts/build-schemas.cjs if it's a core utility).\n` +
+      `  C) If the operation is naturally idempotent by some other key (e.g., session_id), add the phrase "naturally idempotent" to the schema's description or $comment, matching the pattern in sponsored-intelligence/si-terminate-session-request.json.`
+    );
+  }
+}
+
 /**
  * Compare two minor versions (e.g., "2.5" vs "2.6")
  * Returns: negative if a < b, 0 if equal, positive if a > b
@@ -467,6 +567,109 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
 }
 
 /**
+ * Hoist nested `$defs` and `definitions` blocks to the document root.
+ *
+ * After `resolveRefs` inlines a referenced schema, any local pointers it
+ * carried (e.g. `#/$defs/baseIndividualAsset` authored inside `format.json`)
+ * land wherever the inlining landed — typically deep inside an array item.
+ * The pointer is still `#/$defs/...` but the `$defs` block is no longer at
+ * the document root, so draft-07 validators (Ajv) can't resolve it.
+ *
+ * This function moves every nested `$defs` / `definitions` block up to the
+ * root, deleting it from its nested location. Identical entries across
+ * copies are deduped; conflicting entries throw.
+ *
+ * Note: `$defs` is the draft 2019-09+ name and `definitions` is the
+ * draft-07 name. Both conventions appear in our source schemas, and a
+ * local `#/...` pointer targets whichever spelling the author used, so we
+ * hoist each into its own root-level block (rather than merging them).
+ */
+function hoistNestedDefsToRoot(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  const rootDefs = { ...(schema.$defs || {}) };
+  const rootDefinitions = { ...(schema.definitions || {}) };
+
+  // Key-order-insensitive deep equality. Used to distinguish "same shape
+  // authored twice" (safe to dedupe) from "two different shapes under the
+  // same name" (a real conflict). A plain `JSON.stringify` comparison
+  // would false-positive on identical objects authored with different
+  // key order.
+  function canonicalize(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(canonicalize);
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => { acc[k] = canonicalize(value[k]); return acc; }, {});
+  }
+  function sameDef(a, b) {
+    return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+  }
+
+  // Reject reserved property names. Source schemas are trusted today, but
+  // `JSON.parse` surfaces a literal `"__proto__"` key as an own enumerable
+  // property, so a plain `target[key] = value` assignment would mutate the
+  // resulting object's prototype. Defensive, not reactive.
+  const RESERVED_DEF_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+  function mergeInto(target, key, value, originPath, blockName) {
+    if (RESERVED_DEF_KEYS.has(key)) {
+      throw new Error(
+        `Refusing to hoist reserved key \`${blockName}.${key}\` (at ${originPath}). ` +
+        `Source schemas may not use "__proto__", "constructor", or "prototype" as \`${blockName}\` entry names.`
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(target, key) && !sameDef(target[key], value)) {
+      throw new Error(
+        `Conflicting \`${blockName}.${key}\` definitions encountered while hoisting nested defs (at ${originPath}). ` +
+        `Two inlined schemas define different shapes under the same key.`
+      );
+    }
+    target[key] = value;
+  }
+
+  // Assumes every `$defs` / `definitions` block encountered during the walk
+  // is a JSON Schema keyword, not a property name in some schema-about-
+  // schemas. True for every source schema in this repo — AdCP does not
+  // author meta-schemas. Revisit if that changes: a correct disambiguation
+  // would exempt the immediate child of `properties`, `patternProperties`,
+  // and `dependentSchemas` from keyword treatment.
+  function walk(node, path) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach((item, i) => walk(item, `${path}[${i}]`));
+      return;
+    }
+
+    if (path !== '' && node.$defs && typeof node.$defs === 'object' && !Array.isArray(node.$defs)) {
+      for (const [k, v] of Object.entries(node.$defs)) {
+        mergeInto(rootDefs, k, v, `${path}.$defs.${k}`, '$defs');
+      }
+      delete node.$defs;
+    }
+    if (path !== '' && node.definitions && typeof node.definitions === 'object' && !Array.isArray(node.definitions)) {
+      for (const [k, v] of Object.entries(node.definitions)) {
+        mergeInto(rootDefinitions, k, v, `${path}.definitions.${k}`, 'definitions');
+      }
+      delete node.definitions;
+    }
+
+    for (const [k, v] of Object.entries(node)) {
+      walk(v, `${path}.${k}`);
+    }
+  }
+
+  walk(schema, '');
+
+  if (Object.keys(rootDefs).length > 0) schema.$defs = rootDefs;
+  if (Object.keys(rootDefinitions).length > 0) schema.definitions = rootDefinitions;
+
+  return schema;
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -512,6 +715,13 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 
       // Resolve all $refs
       const dereferenced = resolveRefs(schema, sourceDir, new Set([schemaPath]));
+
+      // After inlining, referenced schemas that carried local `#/$defs/...`
+      // pointers leave their `$defs` nested wherever they were inlined —
+      // which breaks draft-07 validators that expect root-level `$defs`.
+      // Hoist every nested `$defs` / `definitions` block to the root so
+      // those pointers resolve. See #2648.
+      hoistNestedDefsToRoot(dereferenced);
 
       // Update $id to indicate this is a bundled schema
       if (dereferenced.$id) {
@@ -628,6 +838,11 @@ async function main() {
     console.log(`   Latest released version: ${latestReleasedVersion}`);
   }
   console.log('');
+
+  // Lint mutating request schemas before we build anything — a schema
+  // that's supposed to be mutating but forgets idempotency_key is a
+  // latent spec bug that silently bypasses the storyboard-level lint.
+  lintMutatingRequestsRequireIdempotencyKey(SOURCE_DIR);
 
   // Update source registry version
   updateSourceRegistry(version);

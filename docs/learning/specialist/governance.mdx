@@ -15,6 +15,19 @@ This specialist module tests your mastery of the full governance protocol. You'l
 
 Passing earns the **AdCP specialist — Governance** credential.
 
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the `governance` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
+| `property-lists` | stable | Curated inclusion and exclusion lists for targeting and delivery compliance |
+| `collection-lists` | stable | Curated inclusion and exclusion lists of content programs (shows, series, podcasts) |
+| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation |
+| `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
+| `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
+
 ## What you'll demonstrate
 
 - Create, update, list, and delete content standards
@@ -26,8 +39,16 @@ Passing earns the **AdCP specialist — Governance** credential.
 - Execute the full governance loop: `sync_plans`, `check_governance` (intent + execution), `report_plan_outcome`
 - Use the policy registry to resolve and apply compliance policies
 - Interpret audit logs and reason about drift metrics
-- Explain how the three layers of brand safety compose — property lists (where), collection lists (what content), content standards (per-impression adjacency)
+- Distinguish the three layers of brand safety:
+  - **Property lists** — *where* ads run. Stateful lists of properties (domains, apps, CTV services) with include/exclude semantics. Filter supply at the inventory level.
+  - **Collection lists** — *what content* ads run in. Shows, series, movies, and sports programs identified by distribution IDs (Gracenote SH/MV/SP). Program-level exclusions independent of which property carries them.
+  - **Content standards** — *per-impression adjacency*. Buyer-defined rules that evaluate actual content (not metadata) at serve time via calibrate → execute → validate. Use for episode-level or ephemeral content.
+- Explain when to use each layer alone and how they compose (most buyers use one or two)
 - Explain how governance domains compose — campaign, property, collection, content standards, creative
+- Handle `GOVERNANCE_DENIED` end-to-end: read the `governance_context`, identify the failed rule, correct the payload, and retry
+- Walk through the 15-step seller verification of a signed `governance_context` (JWS): `alg` allowlist, `typ` match, JWKS resolution via SSRF-validated fetch, `aud`/`sub`/`phase` binding, `jti` replay dedup, revocation-list check. Explain why each step closes a specific attack (spoofed issuer, plan swap, token replay, key compromise).
+- Apply governance across `purchase_type` values: `media_buy`, `rights_license`, `signal_activation`, `creative_services`. All share the same loop; media-buy-specific validations (channel compliance, seller concentration, pacing) apply only when the payload contains the relevant fields
+- Explain the `governance_context` correlation model: governance agent issues an opaque token on first check; buyer attaches it to the media buy envelope; seller echoes it on execution checks so the agent reconnects each lifecycle event without re-deriving state
 - Configure audience constraints on a campaign plan using policy categories and restricted attributes
 - Validate that `check_governance` correctly denies targeting that violates audience constraints
 
@@ -137,9 +158,11 @@ See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 4. **Content calibration** — Calibrate sample content against your standards and interpret results
 5. **Compliance verification** — Verify that sandbox campaign deliveries meet governance requirements
 6. **Campaign governance lifecycle** — Sync governance agents via `sync_governance`, create a campaign plan, validate actions (intent + execution), handle denials and conditions, report outcomes, and review audit logs
-7. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
-8. **Audience governance** — Configure a plan with `policy_categories` (e.g., `fair_housing`) that carry `restricted_attributes`. Submit `check_governance` requests with audience selectors that use restricted signals and verify the governance agent denies them. Then submit compliant targeting and confirm approval.
-9. **Audience drift detection** — Run a series of delivery-phase governance checks with `audience_distribution` indices that gradually shift from baseline parity. Observe how cumulative indices reveal sustained bias patterns that single-period noise obscures, and how governance findings escalate when drift exceeds thresholds.
+7. **GOVERNANCE_DENIED recovery** — Submit a `check_governance` request that fails (audience uses a restricted attribute, or media buy exceeds committed budget). Read the denial reason, correct the payload, and verify the retry passes. Trace `governance_context` through the orchestrator → seller execution check to prove the correlation model.
+8. **Purchase type variation** — Run `check_governance` with `purchase_type: "rights_license"` and `purchase_type: "signal_activation"` on the same plan. Observe which validations apply uniformly (budget, geo, flight) and which are media-buy-specific.
+9. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
+10. **Audience governance** — Configure a plan with `policy_categories` (e.g., `fair_housing`) that carry `restricted_attributes`. Submit `check_governance` requests with audience selectors that use restricted signals and verify the governance agent denies them. Then submit compliant targeting and confirm approval.
+11. **Audience drift detection** — Run a series of delivery-phase governance checks with `audience_distribution` indices that gradually shift from baseline parity. Observe how cumulative indices reveal sustained bias patterns that single-period noise obscures, and how governance findings escalate when drift exceeds thresholds.
 
 ## Assessment
 

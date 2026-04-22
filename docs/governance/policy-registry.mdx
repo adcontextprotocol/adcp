@@ -236,6 +236,19 @@ The registry is served via the AgenticAdvertising.org API:
 
 Registry-sourced policies (authoritative) cannot be edited via the community save endpoint. Community-contributed policies go through a review process.
 
+## Mandatory human review
+
+Policies and policy categories can declare `requires_human_review: true` to flag regulatory regimes that prohibit solely automated decisions — most notably GDPR Article 22 and EU AI Act Annex III. When a plan resolves any policy or category with this flag, the governance agent MUST set `plan.human_review_required = true` and MUST escalate every action for human review before execution.
+
+Seeded categories carrying `requires_human_review: true`:
+
+- `fair_housing` — US FHA, Annex III-equivalent housing decisions
+- `fair_lending` — US ECOA, Annex III §5(b) creditworthiness
+- `fair_employment` — US Title VII, ADEA, Annex III §1(b) recruitment
+- `pharmaceutical_advertising` — FDA DTC, EU prescription ad bans
+
+See [Annex III & Art 22 obligations](/docs/governance/annex-iii-obligations) for deployer guidance and the distinction between `reallocation_threshold` (budget reallocation) and `human_review_required` (decisions affecting individuals).
+
 ## Seeded policies
 
 The registry ships with 14 seeded policies covering common advertising regulations and standards:
@@ -248,6 +261,7 @@ The registry ships with 14 seeded policies covering common advertising regulatio
 | `us_coppa` | US | Children's Online Privacy Protection Act |
 | `eu_gdpr_advertising` | EU | GDPR requirements for advertising data processing |
 | `eu_ai_act_article_50` | EU | AI-generated content disclosure and C2PA provenance |
+| `eu_ai_act_annex_iii` | EU | Annex III high-risk categories — credit, insurance pricing, recruitment, housing (mandates human review) |
 | `ca_sb_942` | US | California AI Transparency Act for large platforms |
 | `us_cannabis` | US | Cannabis advertising restrictions (state-by-state) |
 | `tobacco_nicotine` | Global | Tobacco and nicotine advertising restrictions -- most jurisdictions ban tobacco advertising outright |
@@ -261,11 +275,11 @@ The registry ships with 14 seeded policies covering common advertising regulatio
 | `pharma_us_fda` | `pharmaceutical_advertising` | FDA-aligned pharmaceutical advertising |
 | `gambling_advertising` | `gambling_advertising` | Responsible gambling advertising |
 | `financial_services` | `fair_lending` | Financial product advertising disclosure |
-| `scope3_brand_safety` | All | Scope3 Common Sense brand safety framework -- content adjacency baseline (enforcement: `must`) donated to AgenticAdvertising.org |
+| `csbs` | All | Common Sense Brand Standards -- content adjacency standard (enforcement: `must`) contributed to AgenticAdvertising.org |
 | `childrens_advertising` | `children_directed` | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
 
 <Note>
-The Scope3 Common Sense brand safety framework was donated to AgenticAdvertising.org as the industry baseline for brand safety, replacing the defunct GARM framework. It defines common-sense content adjacency standards applicable to all industries and channels.
+Common Sense Brand Standards (CSBS) is a content adjacency standard governed by AgenticAdvertising.org. It defines content categories where advertising placement poses brand-reputation risk, applicable across industries and channels. CSBS originated at Scope3 and was contributed to AAO in 2026; formalization of the IP donation instrument is tracked in [#2314](https://github.com/adcontextprotocol/adcp/issues/2314). Until the formal donation record is complete, CSBS ships as a seeded policy under AAO custodianship rather than under a signed assignment.
 </Note>
 
 ## Policy category definitions

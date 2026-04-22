@@ -153,7 +153,7 @@ Before any money moves, Sam's governance agent validates the buy:
 - **Compliance**: Targeting parameters meet regulatory requirements for US and Canada
 - **Creative**: All creatives carry required provenance metadata
 
-If the buy exceeds Sam's authority — say, if the total across all sellers hit $75K — the governance agent escalates to his manager. The campaign pauses at `pending_approval` until a human signs off.
+If the buy exceeds Sam's authority — say, if the total across all sellers hit $75K — the governance agent escalates to his manager. The `create_media_buy` task sits in `submitted` (or `input-required`) at the task layer until a human signs off; only once approved does the task complete and the media buy get its `media_buy_id`.
 
 Campaign governance requires the orchestrator to register the campaign plan via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) before any governance checks. The plan defines authorized parameters — budget limits, channels, flight dates, and compliance policies — against which all subsequent actions are validated. The full governance sequence is `sync_plans` → `check_governance` (proposed) → `create_media_buy` → `check_governance` (committed by seller). See [Campaign Governance](/docs/governance/campaign/index) for the complete specification.
 
@@ -166,7 +166,7 @@ const plan = await governance.syncPlans({
     plan_id: "acme-q2-trail-pro",
     brand: { domain: "acmeoutdoor.com" },
     objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
-    budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
+    budget: { total: 50000, currency: "USD", reallocation_threshold: 5000 },
     flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
     countries: ["US", "CA"]
   }]

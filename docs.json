@@ -1,6 +1,10 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
+  "banner": {
+    "content": "🎉 AdCP 3.0 is now GA — [see what's new](/docs/reference/whats-new-in-v3)",
+    "dismissible": true
+  },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
     "og:site_name": "AdCP \u2014 Ad Context Protocol",
@@ -105,12 +109,17 @@
                       "docs/building/understanding/protocol-comparison",
                       "docs/building/understanding/adcp-vs-openrtb",
                       "docs/building/understanding/how-agents-communicate",
+                      "docs/building/understanding/security-model",
                       "docs/building/understanding/industry-landscape"
                     ]
                   },
                   "docs/building/schemas-and-sdks",
                   "docs/building/build-an-agent",
+                  "docs/building/get-test-ready",
                   "docs/building/validate-your-agent",
+                  "docs/building/operating-an-agent",
+                  "docs/building/compliance-catalog",
+                  "docs/building/conformance",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -139,7 +148,10 @@
                       "docs/building/implementation/mcp-response-extraction",
                       "docs/building/implementation/a2a-response-extraction",
                       "docs/building/implementation/security",
-                      "docs/building/implementation/seller-integration"
+                      "docs/building/implementation/webhook-verifier-tuning",
+                      "docs/building/implementation/seller-integration",
+                      "docs/building/implementation/storyboard-troubleshooting",
+                      "docs/building/implementation/known-ambiguities"
                     ]
                   },
                   {
@@ -293,6 +305,7 @@
                       "docs/governance/overview",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
+                      "docs/governance/annex-iii-obligations",
                       {
                         "group": "Property Governance",
                         "pages": [
@@ -472,6 +485,7 @@
                 ]
               },
               "docs/faq",
+              "docs/ai-disclosure",
               {
                 "group": "Reference",
                 "expanded": false,
@@ -490,6 +504,11 @@
                   "docs/reference/media-channel-taxonomy",
                   "docs/reference/roadmap",
                   "docs/reference/versioning",
+                  "docs/reference/test-vectors/index",
+                  "docs/reference/experimental-status",
+                  "docs/reference/v2-sunset",
+                  "docs/reference/known-limitations",
+                  "docs/reference/privacy-considerations",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
@@ -592,12 +611,17 @@
                   "docs/building/understanding/protocol-comparison",
                   "docs/building/understanding/adcp-vs-openrtb",
                   "docs/building/understanding/how-agents-communicate",
+                  "docs/building/understanding/security-model",
                   "docs/building/understanding/industry-landscape"
                 ]
               },
               "docs/building/schemas-and-sdks",
               "docs/building/build-an-agent",
+              "docs/building/get-test-ready",
               "docs/building/validate-your-agent",
+              "docs/building/operating-an-agent",
+              "docs/building/compliance-catalog",
+              "docs/building/conformance",
               {
                 "group": "Foundations",
                 "pages": [
@@ -626,7 +650,10 @@
                   "docs/building/implementation/mcp-response-extraction",
                   "docs/building/implementation/a2a-response-extraction",
                   "docs/building/implementation/security",
-                  "docs/building/implementation/seller-integration"
+                  "docs/building/implementation/webhook-verifier-tuning",
+                  "docs/building/implementation/seller-integration",
+                  "docs/building/implementation/storyboard-troubleshooting",
+                  "docs/building/implementation/known-ambiguities"
                 ]
               },
               {
@@ -928,7 +955,8 @@
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq"
+              "docs/faq",
+              "docs/ai-disclosure"
             ]
           },
           {
@@ -949,6 +977,9 @@
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
               "docs/reference/versioning",
+              "docs/reference/known-limitations",
+              "docs/reference/privacy-considerations",
+              "docs/reference/experimental-status",
               "docs/reference/release-notes",
               "docs/reference/changelog",
               "docs/reference/implementor-faq",
@@ -1207,8 +1238,26 @@
             "href": "https://agenticadvertising.org/api/agreement?type=terms_of_service"
           }
         ]
+      },
+      {
+        "header": "Transparency",
+        "items": [
+          {
+            "label": "AI Disclosure",
+            "href": "/docs/ai-disclosure"
+          },
+          {
+            "label": "Governance Charter",
+            "href": "https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md"
+          },
+          {
+            "label": "Working Group",
+            "href": "/docs/community/working-group"
+          }
+        ]
       }
-    ]
+    ],
+    "message": "AI-authored and AI-assisted. AgenticAdvertising.org's public content and code involve Addie, Sage, and other AI agents — see the AI Disclosure for what's written by AI, what's assisted, and how to request human review."
   },
   "socials": {
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",

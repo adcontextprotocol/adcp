@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import crypto from 'node:crypto';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -7,11 +8,18 @@ import {
 import {
   clearSessions,
 } from '../../src/training-agent/state.js';
+import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
+
+function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!MUTATING_TOOLS.has(toolName)) return args;
+  if (args.idempotency_key !== undefined) return args;
+  return { ...args, idempotency_key: `test-${crypto.randomUUID()}` };
+}
 
 async function simulateCallTool(
   server: ReturnType<typeof createTrainingAgentServer>,
@@ -22,13 +30,15 @@ async function simulateCallTool(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: args } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
   // Unwrap adcp_error envelope for error responses (L3 compliance format)
-  const result = parsed.adcp_error ?? parsed;
+  const result = (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
   return { result, isError: response.isError };
 }
 
@@ -61,6 +71,7 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
   const endTime = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     start_time: now.toISOString(),
@@ -83,6 +94,7 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
 async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>): Promise<string> {
   const creativeId = `cr-test-${Date.now()}`;
   const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     creatives: [{
@@ -112,6 +124,7 @@ async function createMediaBuyWithCreatives(server: ReturnType<typeof createTrain
 
   // Assign the creative to the buy's package
   await simulateCallTool(server, 'sync_creatives', {
+    idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
     creatives: [{ creative_id: creativeId, name: 'Test Creative' }],
@@ -128,6 +141,7 @@ describe('comply_test_controller', () => {
     clearSessions();
     invalidateCache();
     clearTaskStore();
+    clearIdempotencyCache();
     server = createTrainingAgentServer(DEFAULT_CTX);
   });
 
@@ -159,15 +173,133 @@ describe('comply_test_controller', () => {
     });
   });
 
+  describe('seed scenarios', () => {
+    it('seed_creative pre-populates a creative the rest of the session can reference', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          creative_id: 'seeded_creative_1',
+          fixture: { name: 'Seeded Hero Video', status: 'approved', format_id: { id: 'video_30s' } },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+
+      // Creative should now be visible to list_creatives within the same session.
+      const { result: listed } = await simulateCallTool(server, 'list_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const creatives = (listed as any).creatives as Array<{ creative_id: string }>;
+      expect(creatives.some(c => c.creative_id === 'seeded_creative_1')).toBe(true);
+    });
+
+    it('seed_plan pre-populates a governance plan', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_plan',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          plan_id: 'seeded_plan_1',
+          fixture: {
+            brand: { domain: 'comply-test.example.com' },
+            objectives: 'seeded test plan',
+            budget: { total: 10000, currency: 'USD' },
+          },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+    });
+
+    it('seed_media_buy pre-populates a media buy in active state', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'seeded_mb_1',
+          fixture: { status: 'active', currency: 'USD' },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+
+      const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['seeded_mb_1'],
+      });
+      const found = (buys as any).media_buys as Array<{ media_buy_id: string }>;
+      expect(found.some(b => b.media_buy_id === 'seeded_mb_1')).toBe(true);
+    });
+
+    it('seed_* requires params (per spec allOf clause)', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((result as any).success).toBe(false);
+      expect((result as any).error).toBe('INVALID_PARAMS');
+    });
+
+    it('seeded product + pricing option resolves via create_media_buy (overlay consumer side)', async () => {
+      // seed_product writes to session.complyExtensions.seededProducts;
+      // handleCreateMediaBuy overlays those entries onto its catalog lookup.
+      // Without the overlay, create_media_buy returns PRODUCT_NOT_FOUND.
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          bid_price: 8.50,
+          budget: 10000,
+        }],
+      });
+      expect(result.media_buy_id).toBeDefined();
+      const pkgs = result.packages as Array<Record<string, unknown>>;
+      expect(pkgs).toHaveLength(1);
+      expect(pkgs[0].package_id).toBe('pkg-0');
+    });
+  });
+
   describe('sandbox gating', () => {
-    it('rejects calls without sandbox: true', async () => {
+    it('allows calls when sandbox is not specified', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         account: { brand: { domain: 'test.example.com' }, operator: 'tester' },
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
 
     it('rejects calls with sandbox: false', async () => {
@@ -180,13 +312,12 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('rejects calls with no account', async () => {
+    it('allows calls with no account', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         brand: BRAND,
       });
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('FORBIDDEN');
+      expect(result.success).toBe(true);
     });
   });
 

@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/update-media-buy-request.json",
   "title": "Update Media Buy Request",
   "description": "Request parameters for updating campaign and package settings",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -17,7 +18,8 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Seller's ID of the media buy to update"
+      "description": "Seller's ID of the media buy to update",
+      "x-entity": "media_buy"
     },
     "revision": {
       "type": "integer",
@@ -78,7 +80,8 @@
       "type": "string",
       "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -88,6 +91,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "account",
     "media_buy_id"
   ],

@@ -75,6 +75,22 @@ Triage owners rotate quarterly. To volunteer, reach out in the relevant working 
 
 ---
 
+## Version Milestones
+
+Named milestones group roadmap items that will ship together in a future major version. Each milestone lists accepted RFCs — exploratory items (community input open) remain on the main board until maintainers decide to land them.
+
+### v4.0 — target early 2027
+
+v4.0 is the next **breaking-changes accumulation window**, targeted for early 2027 under the [release cadence policy](/docs/reference/versioning#release-cadence). Breaking changes are gathered here so the ecosystem can plan a single migration window rather than chase per-minor deprecations. Items listed below are committed floor requirements for v4.0; additional items will be added here as RFCs are accepted.
+
+| Area | Item |
+|---|---|
+| Security (floor) | [Mandatory request signing for spend-committing operations (RFC 9421)](https://github.com/adcontextprotocol/adcp/issues/2307) — the 3.0 optional profile in `security.mdx` becomes required. Agents MUST sign spend-committing operations; sellers MUST verify. |
+
+This milestone is intentionally not a "security release." It is the version where accumulated breaking changes across protocol surfaces land together. Request signing is the current floor requirement; other accepted RFCs carrying breaking changes will be added here as they progress through the `rfc` label lifecycle on the main board.
+
+---
+
 ## Release History
 
 For detailed release notes and version history, see:

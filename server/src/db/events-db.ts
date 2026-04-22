@@ -1,4 +1,4 @@
-import { query } from './client.js';
+import { query, getClient } from './client.js';
 import type {
   Event,
   CreateEventInput,
@@ -13,6 +13,8 @@ import type {
   SponsorshipTier,
   RegistrationStatus,
   EventInvite,
+  EventSpeaker,
+  EventSpeakerInput,
 } from '../types.js';
 
 /**
@@ -1069,9 +1071,10 @@ export class EventsDatabase {
    * Get events linked to a committee
    */
   async getEventsByCommittee(
-    committeeId: string,
+    committeeId: string | string[],
     options: { includeUnpublished?: boolean } = {}
   ): Promise<{ upcoming: Event[]; past: Event[] }> {
+    const committeeIds = Array.isArray(committeeId) ? committeeId : [committeeId];
     const statusCondition = options.includeUnpublished
       ? ''
       : "AND e.status = 'published' AND e.visibility != 'invite_unlisted'";
@@ -1079,23 +1082,23 @@ export class EventsDatabase {
     const upcomingResult = await query<Event>(
       `SELECT e.* FROM events e
        INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
-       WHERE ecl.committee_id = $1
+       WHERE ecl.committee_id = ANY($1::uuid[])
          ${statusCondition}
          AND e.start_time > NOW()
        ORDER BY e.start_time ASC
        LIMIT 20`,
-      [committeeId]
+      [committeeIds]
     );
 
     const pastResult = await query<Event>(
       `SELECT e.* FROM events e
        INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
-       WHERE ecl.committee_id = $1
+       WHERE ecl.committee_id = ANY($1::uuid[])
          ${statusCondition}
          AND e.start_time <= NOW()
        ORDER BY e.start_time DESC
        LIMIT 10`,
-      [committeeId]
+      [committeeIds]
     );
 
     return {
@@ -1148,6 +1151,71 @@ export class EventsDatabase {
    * Move published events to completed after their end time has passed.
    * Returns the list of events that were auto-completed.
    */
+  // =====================================================
+  // EVENT SPEAKERS
+  // =====================================================
+
+  async getEventSpeakers(eventId: string): Promise<EventSpeaker[]> {
+    const result = await query<EventSpeaker>(
+      `SELECT id, event_id, name, title, company, bio, headshot_url, link_url,
+              display_order, created_at, updated_at
+         FROM event_speakers
+        WHERE event_id = $1
+        ORDER BY display_order ASC, created_at ASC`,
+      [eventId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Replace the speaker roster for an event. Inside a transaction so a
+   * partial write can't leave a half-updated roster visible.
+   */
+  async replaceEventSpeakers(eventId: string, speakers: EventSpeakerInput[]): Promise<EventSpeaker[]> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      // Lock the parent event row so concurrent PUTs serialize and can't
+      // double-insert the same roster on top of each other.
+      await client.query('SELECT id FROM events WHERE id = $1 FOR UPDATE', [eventId]);
+      await client.query('DELETE FROM event_speakers WHERE event_id = $1', [eventId]);
+
+      const inserted: EventSpeaker[] = [];
+      for (let i = 0; i < speakers.length; i++) {
+        const s = speakers[i];
+        // Always use array index as the display_order — the client's
+        // array ordering IS the ordering contract. Don't trust a
+        // user-supplied display_order that could desync from position.
+        const row = await client.query<EventSpeaker>(
+          `INSERT INTO event_speakers
+             (event_id, name, title, company, bio, headshot_url, link_url, display_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, event_id, name, title, company, bio, headshot_url, link_url,
+                     display_order, created_at, updated_at`,
+          [
+            eventId,
+            (s.name || '').trim(),
+            s.title?.trim() || null,
+            s.company?.trim() || null,
+            s.bio ?? null,
+            s.headshot_url ?? null,
+            s.link_url ?? null,
+            i,
+          ]
+        );
+        inserted.push(row.rows[0]);
+      }
+
+      await client.query('COMMIT');
+      return inserted;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async autoCompleteExpiredEvents(): Promise<Array<{ id: string; title: string }>> {
     const result = await query<{ id: string; title: string }>(
       `UPDATE events

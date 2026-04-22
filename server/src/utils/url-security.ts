@@ -123,6 +123,49 @@ export async function validateCrawlDomain(domain: string): Promise<string> {
 }
 
 /**
+ * Validate an externally-reachable URL the server will contact on the caller's
+ * behalf (agent endpoints, OAuth token endpoints, etc.). Returns the raw URL on
+ * success, null when it fails any check. Behaves as a synchronous pre-flight
+ * (no DNS) so it can be used in request handlers without adding latency.
+ *
+ * Rules:
+ * - Must parse as a URL.
+ * - Protocol must be http or https.
+ * - Cloud metadata hosts are always blocked, every environment (AWS/GCP).
+ * - In production only: localhost/loopback and RFC1918 private IPv4 ranges
+ *   are blocked. Development keeps them allowed so local agents and local
+ *   auth servers are reachable.
+ *
+ * For stronger SSRF guarantees (DNS rebind defence, redirect-hop validation,
+ * IPv6, CGNAT, link-local), prefer `safeFetch` at fetch time.
+ */
+export function validateExternalUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+
+    const hostname = url.hostname.toLowerCase();
+
+    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') return null;
+
+    if (process.env.NODE_ENV === 'production') {
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+        return null;
+      }
+      const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+      if (ipMatch) {
+        const [, a, b] = ipMatch.map(Number);
+        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
+      }
+    }
+
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SSRF-safe fetch: validates the URL and all redirect hops against private IP ranges,
  * then returns the response. Encapsulates the full validation + fetch cycle so that
  * callers receive a Response with no tainted URL flowing to fetch().

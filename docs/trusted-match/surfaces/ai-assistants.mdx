@@ -42,7 +42,7 @@ When a user sends a message in a conversation, the AI platform sends a Context M
     "sentiment": "positive",
     "keywords": ["sneakers", "running", "recommendations"],
     "language": "en",
-    "content_policies": ["common_sense_brand_safety"],
+    "content_policies": ["csbs"],
     "summary": "User asking for sneaker recommendations for running and casual wear"
   },
   "geo": { "country": "US" }
@@ -93,8 +93,9 @@ The platform sends an Identity Match request with a session token. The `package_
 {
   "type": "identity_match_request",
   "request_id": "id-e5f6g7h8",
-  "user_token": "tok_session_k2f8",
-  "uid_type": "publisher_first_party",
+  "identities": [
+    { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
+  ],
   "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native", "pkg-athletic-wear", "pkg-outdoor-gear", "pkg-accessories-promo", "pkg-seasonal-sale"]
 }
 ```

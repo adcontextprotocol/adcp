@@ -450,6 +450,16 @@
             </div>
           </div>
 
+          <div class="form-row">
+            <div class="form-group">
+              <label>Parent Committee</label>
+              <select id="parentId">
+                <option value="">— None (top-level) —</option>
+              </select>
+              <small>Nest this committee as a subgroup under a parent.</small>
+            </div>
+          </div>
+
           <!-- Industry Gathering-specific fields -->
           <div id="gatheringFieldsGroup" style="display: none;">
             <div class="form-row">
@@ -798,8 +808,20 @@
         return;
       }
 
-      let html = '';
-      filtered.forEach(group => {
+      // Build a parent → children map so we can render subgroups nested under
+      // their parent when the parent is also in the filtered list. Filtered
+      // groups whose parent was filtered out render at the top level.
+      const filteredIds = new Set(filtered.map(g => g.id));
+      const roots = filtered.filter(g => !g.parent_id || !filteredIds.has(g.parent_id));
+      const childrenByParent = new Map();
+      for (const g of filtered) {
+        if (g.parent_id && filteredIds.has(g.parent_id)) {
+          if (!childrenByParent.has(g.parent_id)) childrenByParent.set(g.parent_id, []);
+          childrenByParent.get(g.parent_id).push(g);
+        }
+      }
+
+      const renderGroup = (group, depth) => {
         const committeeType = group.committee_type || 'working_group';
         const typeBadge = `<span class="badge badge-${committeeType}">${COMMITTEE_TYPE_LABELS[committeeType] || committeeType}</span>`;
         const statusBadge = `<span class="badge badge-${group.status}">${group.status}</span>`;
@@ -812,11 +834,13 @@
         const gatheringDateDisplay = committeeType === 'industry_gathering' && group.event_start_date
           ? `<span>📅 ${new Date(group.event_start_date).toLocaleDateString()}</span>`
           : '';
+        const indentStyle = depth > 0 ? ` style="margin-left: ${depth * 24}px;"` : '';
+        const subgroupLabel = depth > 0 ? '<span style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-right: var(--space-1);">↳</span>' : '';
 
-        html += `
-          <div class="group-item">
+        let html = `
+          <div class="group-item"${indentStyle}>
             <div class="group-info">
-              <h3>${escapeHtml(group.name)}</h3>
+              <h3>${subgroupLabel}${escapeHtml(group.name)}</h3>
               <div class="group-meta">
                 ${typeBadge}
                 ${statusBadge}
@@ -839,7 +863,16 @@
             </div>
           </div>
         `;
-      });
+
+        const children = childrenByParent.get(group.id) || [];
+        for (const child of children) {
+          html += renderGroup(child, depth + 1);
+        }
+        return html;
+      };
+
+      let html = '';
+      roots.forEach(group => { html += renderGroup(group, 0); });
 
       listDiv.innerHTML = html;
       listDiv.querySelectorAll('.group-actions').forEach(actions => {
@@ -1003,6 +1036,11 @@
         return;
       }
 
+      // Only offer "Graduate" if this is a saved WG that can act as a parent.
+      const canGraduate = !!editingGroup
+        && (editingGroup.committee_type === 'working_group' || editingGroup.committee_type === 'governance')
+        && !editingGroup.parent_id;
+
       listDiv.innerHTML = currentTopics.map((t, i) => `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
           <div>
@@ -1013,10 +1051,42 @@
           </div>
           <div style="display: flex; gap: var(--space-1);">
             <button type="button" class="btn btn-secondary btn-small" onclick="editTopic(${i})">Edit</button>
+            ${canGraduate ? `<button type="button" class="btn btn-primary btn-small" onclick="graduateTopic('${escapeHtml(t.slug)}','${escapeHtml(t.name)}')">Graduate to subgroup</button>` : ''}
             <button type="button" class="btn btn-danger btn-small" onclick="removeTopic(${i})">Remove</button>
           </div>
         </div>
       `).join('');
+    }
+
+    async function graduateTopic(topicSlug, topicName) {
+      if (!editingGroup) return;
+      const confirmMsg = `Graduate the topic "${topicName}" into a subgroup of "${editingGroup.name}"?\n\n` +
+        `This will create a new working group, migrate topic subscribers to members, and move any tagged meetings/perspectives. ` +
+        `The topic will be removed from the parent.\n\nThis is transactional but cannot be undone.`;
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch(
+          `/api/admin/working-groups/${encodeURIComponent(editingGroup.slug)}/topics/${encodeURIComponent(topicSlug)}/graduate`,
+          { method: 'POST' }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          alert(`Failed: ${data.message || data.error || 'Unknown error'}`);
+          return;
+        }
+        const m = data.moved;
+        alert(`Subgroup created: ${data.subgroup.slug}\n\n` +
+          `Members added: ${m.subscriptions}\n` +
+          `Meeting series moved: ${m.meeting_series}\n` +
+          `Meetings moved: ${m.meetings}\n` +
+          `Perspectives moved: ${m.perspectives}`);
+        closeModal();
+        await loadGroups();
+      } catch (err) {
+        console.error('Graduate topic failed', err);
+        alert('Failed to graduate topic');
+      }
     }
 
     function clearTopics() {
@@ -1405,7 +1475,45 @@
       updateRegionVisibility(); // Hide region for non-chapters, hide gathering fields for non-gatherings
       updateMembersSectionVisibility(); // Hide members section for new groups
       document.getElementById('interestSection').style.display = 'none'; // Hide interest section for new groups
+      populateParentSelect(null);
       document.getElementById('groupModal').style.display = 'flex';
+    }
+
+    // Populate parent-committee selector from current groups list.
+    // Excludes the group being edited (and its descendants) to prevent cycles.
+    function populateParentSelect(excludeGroupId) {
+      const select = document.getElementById('parentId');
+      const currentValue = select.value;
+
+      const descendants = new Set();
+      if (excludeGroupId) {
+        descendants.add(excludeGroupId);
+        // Iteratively add any group whose parent is already in the set
+        let added = true;
+        while (added) {
+          added = false;
+          for (const g of groups) {
+            if (g.parent_id && descendants.has(g.parent_id) && !descendants.has(g.id)) {
+              descendants.add(g.id);
+              added = true;
+            }
+          }
+        }
+      }
+
+      // A group can only be a parent if it's a working_group or governance
+      // committee type AND is itself top-level (no parent_id) — matching
+      // the server-side rules in assertValidParent. Filtering client-side
+      // prevents users from picking an ineligible option and hitting 400.
+      const eligible = groups
+        .filter(g => !descendants.has(g.id))
+        .filter(g => ['working_group', 'governance'].includes(g.committee_type))
+        .filter(g => !g.parent_id)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      select.innerHTML = '<option value="">— None (top-level) —</option>' +
+        eligible.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
+      select.value = currentValue;
     }
 
     // Edit group
@@ -1426,6 +1534,8 @@
         document.getElementById('status').value = editingGroup.status || 'active';
         document.getElementById('committeeType').value = editingGroup.committee_type || 'working_group';
         document.getElementById('region').value = editingGroup.region || '';
+        populateParentSelect(editingGroup.id);
+        document.getElementById('parentId').value = editingGroup.parent_id || '';
         // Industry gathering fields
         document.getElementById('gatheringStartDate').value = editingGroup.event_start_date ? editingGroup.event_start_date.split('T')[0] : '';
         document.getElementById('gatheringEndDate').value = editingGroup.event_end_date ? editingGroup.event_end_date.split('T')[0] : '';
@@ -1510,6 +1620,7 @@
         status: document.getElementById('status').value,
         committee_type: committeeType,
         region: committeeType === 'chapter' ? (document.getElementById('region').value.trim() || null) : null,
+        parent_id: document.getElementById('parentId').value || null,
         is_private: document.getElementById('isPrivate').checked,
         display_order: parseInt(document.getElementById('displayOrder').value) || 0,
         leader_user_ids: currentLeaders.map(l => l.user_id),

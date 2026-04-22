@@ -3,6 +3,8 @@
   "$id": "/schemas/governance/report-plan-outcome-request.json",
   "title": "Report Plan Outcome Request",
   "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,17 +15,20 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "The plan this outcome is for."
+      "description": "The plan this outcome is for. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
+      "x-entity": "governance_plan"
     },
     "check_id": {
       "type": "string",
-      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
+      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes.",
+      "x-entity": "governance_check"
     },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate outcome reports on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",
@@ -151,6 +156,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "plan_id",
     "outcome",
     "governance_context"

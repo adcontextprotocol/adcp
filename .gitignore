@@ -5,19 +5,28 @@ server/node_modules
 # Production
 /build
 
-# Ignore dist except for released schemas and docs
+# Ignore dist except for released schemas, compliance, protocol tarballs, and docs
 /dist/*
 !/dist/schemas
+!/dist/compliance
+!/dist/protocol
 !/dist/docs
 /dist/schemas/latest
 /dist/schemas/v*
 /dist/schemas/registry.*
+/dist/compliance/latest
+/dist/compliance/v*
+/dist/protocol/latest.tgz
+/dist/protocol/latest.tgz.sha256
+/dist/protocol/latest.tgz.sig
+/dist/protocol/latest.tgz.crt
 
 # Generated files
 .docusaurus
 .cache-loader
 *.tsbuildinfo
 .codex/
+.claude/scheduled_tasks.lock
 
 # Misc
 .DS_Store
@@ -53,3 +62,6 @@ skills/*/schemas/
 .stripe-webhook-secret
 test-results/
 tests/screenshots/
+
+# C2PA test fixtures — generated at test time, not committed.
+server/tests/fixtures/c2pa/*.pem

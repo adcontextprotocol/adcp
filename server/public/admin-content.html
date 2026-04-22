@@ -155,8 +155,17 @@
     .coauthor-tag { display: inline-flex; align-items: center; gap: var(--space-1); background: var(--color-gray-100); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-size: var(--text-xs); }
     .coauthor-tag .remove { cursor: pointer; color: var(--color-text-muted); font-weight: bold; }
     .coauthor-tag .remove:hover { color: var(--color-error-600); }
-    .coauthor-add { display: flex; gap: var(--space-2); }
+    .coauthor-add { display: flex; gap: var(--space-2); position: relative; }
     .coauthor-add input { flex: 1; }
+    .coauthor-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--color-bg-card); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); max-height: 240px; overflow-y: auto; z-index: 100; display: none; margin-top: var(--space-1); }
+    .coauthor-results.show { display: block; }
+    .coauthor-result { padding: var(--space-2_5); cursor: pointer; border-bottom: var(--border-1) solid var(--color-gray-100); }
+    .coauthor-result:hover { background: var(--color-gray-50); }
+    .coauthor-result:last-child { border-bottom: none; }
+    .coauthor-result .name { font-weight: var(--font-medium); color: var(--color-text-heading); }
+    .coauthor-result .org { font-size: var(--text-sm); color: var(--color-text-secondary); }
+    .coauthor-result.empty { color: var(--color-text-muted); cursor: default; }
+    .coauthor-result.empty:hover { background: transparent; }
 
     /* Tags input */
     .tags-display { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
@@ -287,7 +296,7 @@
         <div class="card">
           <div class="section-header">
             <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
-            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write Content</button>
           </div>
           <div id="participationSummary" class="hidden"></div>
           <div class="filter-bar">
@@ -311,22 +320,28 @@
         <div class="card">
           <div class="section-header">
             <button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button>
-            <button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">Write Content</button>
           </div>
           <div class="filter-bar">
             <input type="search" id="adminSearch" placeholder="Search titles..." oninput="renderAdminTable()">
             <select id="adminStatusFilter" onchange="renderAdminTable()">
-              <option value="all">All Statuses</option>
-              <option value="published" selected>Published</option>
+              <option value="all" selected>All Statuses</option>
+              <option value="published">Published</option>
               <option value="pending_review">Pending Review</option>
               <option value="draft">Draft</option>
               <option value="archived">Archived</option>
             </select>
-            <select id="adminOriginFilter" onchange="renderAdminTable()">
-              <option value="all">All Sources</option>
-              <option value="official">Official</option>
-              <option value="member">Member</option>
-              <option value="external">External</option>
+            <select id="adminSectionFilter" onchange="renderAdminTable()">
+              <option value="all">All Sections</option>
+              <option value="official">Reports &amp; Research</option>
+              <option value="member">Member Perspectives</option>
+              <option value="external">External Link</option>
+            </select>
+            <select id="adminSourceTypeFilter" onchange="renderAdminTable()">
+              <option value="editorial" selected>Editorial only</option>
+              <option value="all">Include RSS &amp; email</option>
+              <option value="rss">RSS only</option>
+              <option value="email">Email only</option>
             </select>
             <select id="adminCategoryFilter" onchange="renderAdminTable()">
               <option value="all">All Categories</option>
@@ -338,7 +353,7 @@
           <table class="content-table">
             <thead><tr>
               <th data-sort="title" onclick="sortAdminTable('title')">Title <span class="sort-arrow">&#9650;</span></th>
-              <th data-sort="content_origin" onclick="sortAdminTable('content_origin')">Source <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="content_origin" onclick="sortAdminTable('content_origin')">Section <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="category" onclick="sortAdminTable('category')">Category <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="author_name" onclick="sortAdminTable('author_name')">Author <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="committee_name" onclick="sortAdminTable('committee_name')">Committee <span class="sort-arrow">&#9650;</span></th>
@@ -370,7 +385,7 @@
       <button class="modal-close" onclick="closeModal()" aria-label="Close">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
-      <h2 id="modalTitle">New Perspective</h2>
+      <h2 id="modalTitle">New Content</h2>
       <div class="type-toggle">
         <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">Article</button>
         <button type="button" id="typeLink" onclick="setContentType('link')">External Link</button>
@@ -381,7 +396,16 @@
         <div class="form-group">
           <label>Publish To</label>
           <select id="collection" required></select>
-          <small id="collectionHint">Where this perspective will appear on the site</small>
+          <small id="collectionHint">Where this content will appear on the site</small>
+        </div>
+        <div class="form-group hidden" id="sectionGroup">
+          <label>Section</label>
+          <select id="sectionSelect">
+            <option value="member">Member Perspectives</option>
+            <option value="official">Reports &amp; Research</option>
+            <option value="external">External Link</option>
+          </select>
+          <small>Admins only. Controls which section the piece appears in on /stories.</small>
         </div>
         <div id="linkFields" class="hidden">
           <div class="form-group">
@@ -412,11 +436,15 @@
           </div>
         </div>
 
-        <!-- Hero image upload -->
+        <!-- Hero image -->
         <div class="form-group" id="heroUploadGroup">
           <label>Cover Image</label>
+          <label style="display: flex; align-items: center; gap: var(--space-2); font-weight: normal; font-size: var(--text-sm); margin-bottom: var(--space-2);">
+            <input type="checkbox" id="autoCoverToggle" checked onchange="toggleAutoCover()" style="width: auto;">
+            Auto-generate a cover image when I save (no upload needed).
+          </label>
           <div class="image-upload-zone" id="heroDropzone" onclick="document.getElementById('heroFileInput').click()">
-            <div id="heroPreview"><p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p></div>
+            <div id="heroPreview"><p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save. Uncheck the toggle above to upload your own.</p></div>
           </div>
           <input type="file" id="heroFileInput" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="previewHeroImage(this)">
         </div>
@@ -459,9 +487,10 @@
           <label style="font-weight: var(--font-semibold); font-size: var(--text-sm); margin-bottom: var(--space-2); display: block;">Co-Authors</label>
           <div class="coauthor-list" id="coauthorList"></div>
           <div class="coauthor-add">
-            <input type="text" id="coauthorName" placeholder="Display name">
-            <button type="button" class="btn btn-small btn-secondary" onclick="addCoauthor()">Add</button>
+            <input type="text" id="coauthorName" placeholder="Search by name..." autocomplete="off" oninput="searchCoauthors()" onblur="setTimeout(hideCoauthorResults, 200)">
+            <div id="coauthorResults" class="coauthor-results"></div>
           </div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Only people with a public AAO profile appear in search. If you can't find a co-author, ask them to make their profile public in <a href="/community/profile-edit" target="_blank">profile settings</a>.</div>
         </div>
 
         <div class="modal-buttons">
@@ -537,11 +566,11 @@
             <option value="published">Published</option>
             <option value="archived">Archived</option>
           </select>
-          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Source:</label>
+          <label style="font-size: var(--text-xs); color: var(--color-text-muted);">Section:</label>
           <select id="detailOriginSelect" onchange="updateAdminOrigin(this.value)">
-            <option value="official">Official</option>
-            <option value="member">Member</option>
-            <option value="external">External</option>
+            <option value="official">Reports &amp; Research</option>
+            <option value="member">Member Perspectives</option>
+            <option value="external">External Link</option>
           </select>
           <button class="btn btn-small btn-danger" onclick="deleteArticle()">Delete</button>
         </div>
@@ -553,15 +582,17 @@
 
   <!-- Review Modal -->
   <div id="reviewModal" class="modal-overlay">
-    <div class="modal" style="max-width: 800px;">
+    <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
       <button class="modal-close" onclick="closeReviewModal()" aria-label="Close">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <h2>Review Content</h2>
       <div id="reviewContent">
         <h3 id="reviewTitle"></h3>
+        <p id="reviewSubtitle" style="color: var(--color-text-secondary); margin: var(--space-2) 0 var(--space-3);"></p>
         <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0; font-style: italic;"></p>
         <div id="reviewDetails" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></div>
+        <div id="reviewExternalLink" style="margin-top: var(--space-4); display: none;"></div>
         <div id="reviewArticleContent" class="article-content" style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);"></div>
       </div>
       <div class="modal-buttons" id="reviewButtons">
@@ -662,6 +693,44 @@
 
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('mainContent').classList.remove('hidden');
+
+        // Admins land on All Content — editors need a full view of the library,
+        // not just what they personally authored.
+        if (isAdmin) {
+          switchTab('all');
+        }
+
+        // Deep link support: /dashboard/content?status=pending_review&id=<uuid>
+        // lands the reviewer on the pending-review tab and focuses the named
+        // item. The Slack notification "Review draft" button uses this URL;
+        // without the focus, the reviewer lands on the queue and has to
+        // re-find the item by title. The id= param is a best-effort hint —
+        // if the item isn't in the current queue (e.g. already reviewed),
+        // we fall through to the unfocused tab view.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const statusParam = params.get('status');
+          const idParam = params.get('id');
+          if (statusParam === 'pending_review' && canReview) {
+            switchTab('review');
+            if (idParam) {
+              // Retry a couple of times — renderPendingContent is async via
+              // loadPendingContent and the DOM may not be populated yet.
+              const tryFocus = (attempt = 0) => {
+                const card = document.querySelector(`[data-id="${CSS.escape(idParam)}"]`);
+                if (card) {
+                  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  card.style.transition = 'box-shadow 0.3s ease';
+                  card.style.boxShadow = '0 0 0 3px var(--color-warning-500, #fbbf24)';
+                  setTimeout(() => { card.style.boxShadow = ''; }, 2500);
+                } else if (attempt < 5) {
+                  setTimeout(() => tryFocus(attempt + 1), 300);
+                }
+              };
+              tryFocus();
+            }
+          }
+        } catch (e) { /* best-effort; never block the dashboard on a deep link */ }
       } catch (err) {
         console.error('Init error:', err);
         document.getElementById('loading').innerHTML =
@@ -742,7 +811,14 @@
 
     function renderParticipationSummary() {
       const el = document.getElementById('participationSummary');
-      if (myContent.length === 0) { el.classList.add('hidden'); return; }
+      // Admins receive every perspective from /api/me/content so they can edit
+      // anything. Scope participation stats to the user's own relationships so
+      // the numbers reflect their own contributions, not the whole community.
+      const ownContent = myContent.filter(c => {
+        const rels = c.relationships || [];
+        return rels.includes('author') || rels.includes('proposer') || rels.includes('owner');
+      });
+      if (ownContent.length === 0) { el.classList.add('hidden'); return; }
 
       // Current quarter boundaries
       const now = new Date();
@@ -751,14 +827,14 @@
       const qLabel = `Q${Math.floor(qMonth / 3) + 1} ${now.getFullYear()}`;
 
       // Count items this quarter
-      const thisQ = myContent.filter(c => {
+      const thisQ = ownContent.filter(c => {
         const d = new Date(c.published_at || c.created_at);
         return d >= qStart;
       });
       const published = thisQ.filter(c => c.status === 'published').length;
       const articles = thisQ.filter(c => c.content_type === 'article').length;
       const links = thisQ.filter(c => c.content_type === 'link').length;
-      const totalViews = myContent.reduce((sum, c) => sum + (c.performance?.pageviews_last_30d || 0), 0);
+      const totalViews = ownContent.reduce((sum, c) => sum + (c.performance?.pageviews_last_30d || 0), 0);
 
       // Don't show if nothing this quarter
       if (thisQ.length === 0 && totalViews === 0) { el.classList.add('hidden'); return; }
@@ -782,7 +858,7 @@
             <div class="stat-label">published</div>
           </div>
           <div class="participation-stat">
-            <div class="stat-number">${myContent.length}</div>
+            <div class="stat-number">${ownContent.length}</div>
             <div class="stat-label">total</div>
           </div>
           <div class="participation-context">${context}</div>
@@ -851,7 +927,7 @@
         const hasAny = myContent.length > 0;
         list.innerHTML = hasAny
           ? '<div class="empty-state"><h3>No matches</h3><p>Try adjusting your filters.</p></div>'
-          : '<div class="empty-state"><h3>Your first perspective</h3><p>What\'s the one thing your corner of ad tech gets wrong? Start there.</p><div style="display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);"><button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button><button class="btn btn-primary" onclick="showCreateModal()">Write a Perspective</button></div></div>';
+          : '<div class="empty-state"><h3>Your first perspective</h3><p>What\'s the one thing your corner of ad tech gets wrong? Start there.</p><div style="display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);"><button class="btn btn-outline" onclick="showShareLinkModal()">Share a Link</button><button class="btn btn-primary" onclick="showCreateModal()">Write Content</button></div></div>';
         return;
       }
       list.innerHTML = filtered.map(item => renderContentItem(item, false)).join('');
@@ -864,7 +940,7 @@
       if (colFilter) filtered = filtered.filter(c => c.collection?.committee_slug === colFilter);
 
       if (filtered.length === 0) {
-        list.innerHTML = '<div class="empty-state"><h3>All caught up</h3><p>No perspectives pending review.</p></div>';
+        list.innerHTML = '<div class="empty-state"><h3>All caught up</h3><p>No content pending review.</p></div>';
         return;
       }
       list.innerHTML = filtered.map(item => renderContentItem(item, true)).join('');
@@ -895,8 +971,10 @@
       if (isPendingView) {
         actions = `<button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>`;
       } else {
-        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
+        const canEdit = isAdmin || item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
         const isRejected = item.status === 'rejected';
+        // Owners can delete drafts/pending items; admins can delete anything.
+        const canDelete = isAdmin || (canEdit && item.status !== 'published');
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
           ${isRejected && canEdit ? `<button class="btn btn-small btn-primary" onclick="resubmitContent('${safeId(item.id)}')">Resubmit</button>` : ''}
@@ -905,6 +983,7 @@
             ? `<button class="btn btn-small btn-outline" onclick="draftSocialPost('${safeId(item.id)}')">Draft a LinkedIn post</button>`
             : `<a class="btn btn-small btn-outline" href="${addieSocialPrompt}">Get feedback on this draft</a>`
           }
+          ${canDelete ? `<button class="btn btn-small btn-danger" onclick="deleteMyContent('${safeId(item.id)}')">Delete</button>` : ''}
         `;
       }
 
@@ -975,9 +1054,16 @@
       renderAdminTable();
     }
 
+    const SECTION_LABELS = {
+      official: 'Reports & Research',
+      member: 'Member Perspectives',
+      external: 'External Link',
+    };
+
     function renderAdminTable() {
       const status = document.getElementById('adminStatusFilter').value;
-      const origin = document.getElementById('adminOriginFilter').value;
+      const origin = document.getElementById('adminSectionFilter').value;
+      const sourceType = document.getElementById('adminSourceTypeFilter').value;
       const category = document.getElementById('adminCategoryFilter').value;
       const committee = document.getElementById('adminCommitteeFilter').value;
       const search = document.getElementById('adminSearch').value.toLowerCase().trim();
@@ -985,6 +1071,9 @@
       let items = adminContent.filter(item => {
         if (status !== 'all' && item.status !== status) return false;
         if (origin !== 'all' && item.content_origin !== origin) return false;
+        if (sourceType === 'editorial') {
+          if (item.source_type === 'rss' || item.source_type === 'email') return false;
+        } else if (sourceType !== 'all' && item.source_type !== sourceType) return false;
         if (category !== 'all' && item.category !== category) return false;
         if (committee !== 'all' && item.committee_name !== committee) return false;
         if (search && !item.title.toLowerCase().includes(search)) return false;
@@ -1010,7 +1099,7 @@
 
       const tbody = document.getElementById('adminTableBody');
       if (pageItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No perspectives match filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No content matches filters.</td></tr>';
         document.getElementById('adminPagination').innerHTML = '';
         return;
       }
@@ -1018,9 +1107,10 @@
       tbody.innerHTML = pageItems.map(item => {
         const statusClass = 'badge-' + esc(item.status || 'draft');
         const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
+        const sectionLabel = SECTION_LABELS[item.content_origin] || item.content_origin || '-';
         return `<tr onclick="openDetailModal('${safeId(item.id)}')">
           <td class="content-title-cell">${esc(item.title)}</td>
-          <td>${esc(item.content_origin || '-')}</td>
+          <td>${esc(sectionLabel)}</td>
           <td>${esc(item.category || '-')}</td>
           <td>${esc(item.author_name || '-')}</td>
           <td>${esc(item.committee_name || '-')}</td>
@@ -1031,7 +1121,7 @@
 
       // Pagination controls
       const pagEl = document.getElementById('adminPagination');
-      if (totalPages <= 1) { pagEl.innerHTML = `<span>${total} perspectives</span><span></span>`; return; }
+      if (totalPages <= 1) { pagEl.innerHTML = `<span>${total} ${total === 1 ? 'piece' : 'pieces'}</span><span></span>`; return; }
       pagEl.innerHTML = `
         <span>Showing ${adminPage * PAGE_SIZE + 1}-${Math.min((adminPage + 1) * PAGE_SIZE, total)} of ${total}</span>
         <span>
@@ -1091,7 +1181,7 @@
       if (!currentDetailItem) return;
       closeArticleModal();
       editingContent = currentDetailItem;
-      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('modalTitle').textContent = 'Edit Content';
       document.getElementById('contentId').value = currentDetailItem.id;
       document.getElementById('title').value = currentDetailItem.title || '';
       document.getElementById('excerpt').value = currentDetailItem.excerpt || '';
@@ -1099,6 +1189,10 @@
       document.getElementById('externalUrl').value = currentDetailItem.external_url || '';
       document.getElementById('category').value = currentDetailItem.category || '';
       document.getElementById('tagsInput').value = (currentDetailItem.tags || []).join(', ');
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = currentDetailItem.content_origin || 'member';
+      document.getElementById('autoCoverToggle').checked = !currentDetailItem.featured_image_url;
+      toggleAutoCover();
 
       // Map actual status to edit options
       const st = currentDetailItem.status;
@@ -1183,7 +1277,7 @@
     // Create/Edit modal
     function showCreateModal() {
       editingContent = null;
-      document.getElementById('modalTitle').textContent = 'New Perspective';
+      document.getElementById('modalTitle').textContent = 'New Content';
       document.getElementById('contentForm').reset();
       document.getElementById('contentId').value = '';
       document.getElementById('tagsInput').value = '';
@@ -1191,7 +1285,10 @@
       updateExcerptCount();
       updateStatusHint();
       document.getElementById('coauthorSection').classList.add('hidden');
-      document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP)</p>';
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = 'member';
+      document.getElementById('autoCoverToggle').checked = true;
+      document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save. Uncheck the toggle above to upload your own.</p>';
       document.getElementById('contentModal').style.display = 'flex';
     }
 
@@ -1199,7 +1296,7 @@
       const item = myContent.find(c => c.id === id);
       if (!item) return;
       editingContent = item;
-      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('modalTitle').textContent = 'Edit Content';
       document.getElementById('contentId').value = item.id;
       document.getElementById('title').value = item.title || '';
       document.getElementById('excerpt').value = item.excerpt || '';
@@ -1207,6 +1304,10 @@
       document.getElementById('articleContent').value = item.content || '';
       document.getElementById('category').value = item.category || '';
       document.getElementById('tagsInput').value = (item.tags || []).join(', ');
+      document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
+      document.getElementById('sectionSelect').value = item.content_origin || 'member';
+      document.getElementById('autoCoverToggle').checked = !item.featured_image_url;
+      toggleAutoCover();
 
       // Map status correctly
       const st = item.status;
@@ -1244,6 +1345,23 @@
         if (res.ok) { await loadMyContent(); }
         else { const d = await res.json(); alert(d.message || 'Failed to resubmit'); }
       } catch (e) { alert('Failed to resubmit'); }
+    }
+
+    async function deleteMyContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+      if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/me/content/${id}`, { method: 'DELETE', credentials: 'include' });
+        if (res.ok) {
+          await loadMyContent();
+          if (canReview) await loadPendingContent();
+          if (currentTab === 'all') await loadAdminContent();
+        } else {
+          const d = await res.json().catch(() => ({}));
+          alert(d.message || d.error || 'Failed to delete');
+        }
+      } catch (e) { alert('Failed to delete'); }
     }
 
     function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
@@ -1301,6 +1419,7 @@
           external_url: document.getElementById('shareLinkUrl').value.trim(),
           excerpt: document.getElementById('shareLinkTake').value.trim() || null,
           collection: { slug: document.getElementById('shareLinkCollection').value },
+          status: 'published',
         };
         const res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed'); }
@@ -1317,6 +1436,7 @@
       document.getElementById('typeLink').classList.toggle('active', type === 'link');
       document.getElementById('articleFields').classList.toggle('hidden', type !== 'article');
       document.getElementById('linkFields').classList.toggle('hidden', type !== 'link');
+      document.getElementById('heroUploadGroup').classList.toggle('hidden', type === 'link');
     }
 
     function updateExcerptCount() {
@@ -1390,11 +1510,38 @@
     function previewHeroImage(input) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      document.getElementById('autoCoverToggle').checked = false;
       const reader = new FileReader();
       reader.onload = (e) => {
         document.getElementById('heroPreview').innerHTML = `<img src="${e.target.result}" alt="Cover preview">`;
       };
       reader.readAsDataURL(file);
+    }
+
+    function toggleAutoCover() {
+      const auto = document.getElementById('autoCoverToggle').checked;
+      const preview = document.getElementById('heroPreview');
+      const input = document.getElementById('heroFileInput');
+      if (auto) {
+        input.value = '';
+        preview.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save.</p>';
+      } else if (!input.files || !input.files[0]) {
+        preview.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Click to upload a cover image (JPEG, PNG, WebP).</p>';
+      }
+    }
+
+    async function autoGenerateCover(slug) {
+      try {
+        const res = await fetch(`/api/admin/illustrations/regenerate/${encodeURIComponent(slug)}`, {
+          method: 'POST', credentials: 'include',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          console.warn('Auto cover generation failed:', err);
+        }
+      } catch (e) {
+        console.warn('Auto cover generation error:', e);
+      }
     }
 
     async function uploadHeroImage(contentId, slug) {
@@ -1424,24 +1571,30 @@
         tags,
         collection: { slug: document.getElementById('collection').value },
       };
+      if (isAdmin) {
+        data.content_origin = document.getElementById('sectionSelect').value;
+      }
       const btn = document.getElementById('saveBtn');
       btn.disabled = true; const origText = btn.textContent; btn.textContent = 'Saving...';
       try {
         let res;
+        const statusValue = document.getElementById('statusSelect').value;
         if (id) {
-          const statusValue = document.getElementById('statusSelect').value;
           res = await fetch(`/api/me/content/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...data, status: statusValue }) });
         } else {
-          res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+          res = await fetch('/api/content/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...data, status: statusValue }) });
         }
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed to save'); }
 
-        // Upload hero image if selected
+        // Upload hero image if selected, or auto-generate if toggle is on
         const heroInput = document.getElementById('heroFileInput');
+        const autoCover = document.getElementById('autoCoverToggle')?.checked;
+        const result = id ? { id, slug: editingContent?.slug } : await res.clone().json().catch(() => ({}));
+        const resolvedSlug = result.slug || editingContent?.slug;
         if (heroInput.files && heroInput.files[0]) {
-          const result = id ? { id } : await res.json();
-          const slug = editingContent?.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-          await uploadHeroImage(result.id, slug);
+          await uploadHeroImage(result.id, resolvedSlug);
+        } else if (autoCover && resolvedSlug && data.content_type === 'article') {
+          await autoGenerateCover(resolvedSlug);
         }
 
         closeModal();
@@ -1474,29 +1627,92 @@
       `).join('');
     }
 
-    async function addCoauthor() {
+    let coauthorSearchTimeout = null;
+    let coauthorSearchResults = [];
+
+    function hideCoauthorResults() {
+      document.getElementById('coauthorResults').classList.remove('show');
+    }
+
+    function renderCoauthorResults(message) {
+      const box = document.getElementById('coauthorResults');
+      if (message) {
+        box.innerHTML = `<div class="coauthor-result empty">${esc(message)}</div>`;
+        box.classList.add('show');
+        return;
+      }
+      const existingIds = new Set(currentCoauthors.map(a => a.user_id).filter(Boolean));
+      const candidates = coauthorSearchResults.filter(u => !existingIds.has(u.workos_user_id));
+      if (candidates.length === 0) {
+        box.innerHTML = '<div class="coauthor-result empty">No matching people found. They may need to make their AAO profile public.</div>';
+        box.classList.add('show');
+        return;
+      }
+      box.innerHTML = candidates.map((u, i) => {
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.slug || 'Unnamed';
+        const org = u.organization_name || u.headline || '';
+        return `<div class="coauthor-result" data-index="${i}"><div class="name">${esc(name)}</div>${org ? `<div class="org">${esc(org)}</div>` : ''}</div>`;
+      }).join('');
+      box.classList.add('show');
+      box.querySelectorAll('.coauthor-result[data-index]').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const idx = parseInt(el.getAttribute('data-index'), 10);
+          selectCoauthor(candidates[idx]);
+        });
+      });
+    }
+
+    function searchCoauthors() {
+      const query = document.getElementById('coauthorName').value.trim();
+      clearTimeout(coauthorSearchTimeout);
+      if (query.length < 2) {
+        hideCoauthorResults();
+        return;
+      }
+      renderCoauthorResults('Searching...');
+      coauthorSearchTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/community/people?search=${encodeURIComponent(query)}&limit=10`, { credentials: 'include' });
+          if (!res.ok) throw new Error('Search failed');
+          const data = await res.json();
+          coauthorSearchResults = data.people || [];
+          renderCoauthorResults();
+        } catch (e) {
+          renderCoauthorResults('Search failed. Try again.');
+        }
+      }, 300);
+    }
+
+    async function selectCoauthor(person) {
       const nameInput = document.getElementById('coauthorName');
-      const name = nameInput.value.trim();
-      if (!name) return;
+      const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || person.slug;
       const contentId = document.getElementById('contentId').value;
       if (!contentId) {
-        currentCoauthors.push({ display_name: name });
+        currentCoauthors.push({ user_id: person.workos_user_id, display_name: displayName });
         renderCoauthors();
         nameInput.value = '';
+        hideCoauthorResults();
         return;
       }
       try {
         const res = await fetch(`/api/me/content/${contentId}/authors`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ display_name: name }),
+          body: JSON.stringify({ user_id: person.workos_user_id, display_name: displayName }),
         });
         if (res.ok) {
           const author = await res.json();
           currentCoauthors.push(author);
           renderCoauthors();
           nameInput.value = '';
-        } else { const d = await res.json(); alert(d.message || 'Failed to add co-author'); }
-      } catch (e) { alert('Failed to add co-author'); }
+          hideCoauthorResults();
+        } else {
+          const d = await res.json();
+          alert(d.message || 'Failed to add co-author');
+        }
+      } catch (e) {
+        alert('Failed to add co-author');
+      }
     }
 
     async function removeCoauthor(index) {
@@ -1517,15 +1733,37 @@
       const item = pendingContent.find(c => c.id === id);
       if (!item) return;
       reviewingContent = item;
-      document.getElementById('reviewTitle').textContent = item.title;
+      document.getElementById('reviewTitle').textContent = item.title || '(untitled)';
+      const subtitleEl = document.getElementById('reviewSubtitle');
+      if (item.subtitle) { subtitleEl.textContent = item.subtitle; subtitleEl.style.display = ''; }
+      else { subtitleEl.textContent = ''; subtitleEl.style.display = 'none'; }
       document.getElementById('reviewExcerpt').textContent = item.excerpt || '';
       document.getElementById('reviewDetails').innerHTML = DOMPurify.sanitize(`
-        <p><strong>Type:</strong> ${item.content_type} <strong>Collection:</strong> ${item.collection?.committee_name || 'Personal'}</p>
-        <p><strong>Proposed by:</strong> ${item.proposer?.name || 'Unknown'} on ${formatDate(item.proposed_at)}</p>
+        <p><strong>Type:</strong> ${esc(item.content_type)} <strong>Collection:</strong> ${esc(item.collection?.committee_name || 'Personal')}</p>
+        <p><strong>Proposed by:</strong> ${esc(item.proposer?.name || 'Unknown')} on ${esc(formatDate(item.proposed_at))}</p>
       `);
+      const linkEl = document.getElementById('reviewExternalLink');
+      if (item.external_url) {
+        const site = item.external_site_name ? ` (${esc(item.external_site_name)})` : '';
+        linkEl.innerHTML = DOMPurify.sanitize(
+          `<strong>External link:</strong> <a href="${esc(item.external_url)}" target="_blank" rel="noopener noreferrer">${esc(item.external_url)}</a>${site}`
+        );
+        linkEl.style.display = '';
+      } else {
+        linkEl.innerHTML = '';
+        linkEl.style.display = 'none';
+      }
       const el = document.getElementById('reviewArticleContent');
-      if (item.content) { el.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false })); el.style.display = ''; }
-      else { el.innerHTML = ''; el.style.display = 'none'; }
+      if (item.content) {
+        el.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false }));
+        el.style.display = '';
+      } else if (item.content_type === 'link') {
+        el.innerHTML = '<p style="color: var(--color-text-muted); font-style: italic;">No article body — this submission links to an external URL above.</p>';
+        el.style.display = '';
+      } else {
+        el.innerHTML = '<p style="color: var(--color-text-muted); font-style: italic;">No article body was submitted.</p>';
+        el.style.display = '';
+      }
       document.getElementById('rejectionReason').value = '';
       document.getElementById('reviewButtons').classList.remove('hidden');
       document.getElementById('rejectForm').classList.add('hidden');
@@ -1594,37 +1832,19 @@
       draftsEl.innerHTML = '<div class="social-draft-generating">Generating posts...</div>';
       targetItem.querySelector('.content-info').appendChild(draftsEl);
 
-      // Generate posts via Addie API
       try {
-        const prompt = `Write two social media posts for this article. No hashtags. No emojis.
-
-Title: ${item.title}
-URL: ${publishedUrl}
-${item.excerpt ? `Summary: ${item.excerpt}` : ''}
-
-Format your response exactly like this:
-LINKEDIN:
-[LinkedIn post - 2-3 sentences, professional tone, include the URL]
-
-X:
-[X post - under 280 characters, include the URL]`;
-
-        const res = await fetch('/api/chat/completions', {
+        const res = await fetch(`/api/admin/content/${encodeURIComponent(item.id)}/social-drafts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 500 }),
         });
 
-        if (!res.ok) throw new Error('Failed to generate');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Request failed (${res.status})`);
+        }
         const data = await res.json();
-        const text = data.choices?.[0]?.message?.content || data.content || '';
-
-        // Parse LinkedIn and X posts from response
-        const linkedinMatch = text.match(/LINKEDIN:\s*\n([\s\S]*?)(?=\nX:|$)/i);
-        const xMatch = text.match(/X:\s*\n([\s\S]*?)$/i);
-        const linkedinPost = linkedinMatch ? linkedinMatch[1].trim() : text.trim();
-        const xPost = xMatch ? xMatch[1].trim() : '';
+        const linkedinPost = data.linkedin || '';
+        const xPost = data.x || '';
 
         const linkedInShareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(publishedUrl)}`;
         const xShareUrl = xPost ? `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPost)}` : '';
@@ -1637,6 +1857,7 @@ X:
             <span>Ready to share</span>
             <button class="btn btn-small btn-secondary" onclick="document.getElementById('${containerId}').remove()" style="padding: 2px 8px; font-size: 11px;">Close</button>
           </div>
+          ${linkedinPost ? `
           <div class="social-draft-item">
             <div class="social-draft-label">LinkedIn</div>
             <div class="social-draft-text">${esc(linkedinPost)}</div>
@@ -1644,7 +1865,7 @@ X:
               <button class="btn btn-small btn-outline" onclick="copySocialDraft(this, '${containerId}', 'linkedin')">Copy</button>
               <a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Open LinkedIn</a>
             </div>
-          </div>
+          </div>` : ''}
           ${xPost ? `
           <div class="social-draft-item">
             <div class="social-draft-label">X</div>
@@ -1657,11 +1878,11 @@ X:
         `;
       } catch (e) {
         console.error('Social draft error:', e);
-        // Fall back to chat link
         const chatPrompt = `/chat?prompt=${encodeURIComponent(`Help me turn my published article "${item.title}" into a strong LinkedIn post first, then suggest a shorter optional X version. Here is the article URL: ${publishedUrl}`)}`;
         draftsEl.innerHTML = `
-          <div style="padding: var(--space-4); text-align: center; font-size: var(--text-sm); color: var(--color-text-secondary);">
-            Couldn't generate posts automatically. <a href="${chatPrompt}">Draft with Addie instead.</a>
+          <div style="padding: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            <div style="margin-bottom: var(--space-2);">${esc(e.message || "Couldn't generate posts.")}</div>
+            <a href="${chatPrompt}">Draft with Addie instead →</a>
           </div>
         `;
       }

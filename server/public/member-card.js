@@ -432,9 +432,10 @@ const agentTypeColors = {
  * @param {Object} agentInfo - Discovered agent info from /api/discover-agent or /api/public/discover-agent
  * @param {string} agentUrl - The agent URL
  * @param {Object} options - Rendering options
- * @param {boolean} options.showVisibilityToggle - Show public/private toggle (for edit profile)
- * @param {boolean} options.isPublic - Current visibility state
- * @param {number} options.index - Index for toggle callback
+ * @param {boolean} options.showVisibilityToggle - Show visibility selector (for edit profile)
+ * @param {'private'|'members_only'|'public'} options.visibility - Current visibility tier
+ * @param {boolean} options.canSetPublic - Whether the viewer has the tier to list publicly
+ * @param {number} options.index - Index for handler callbacks
  * @param {boolean} options.showRemoveButton - Show remove button
  * @param {boolean} options.showStatus - Show Online/Error status badge
  * @param {boolean} options.compact - Use compact layout (for member cards)
@@ -443,7 +444,8 @@ const agentTypeColors = {
 function renderAgentCard(agentInfo, agentUrl, options = {}) {
   const {
     showVisibilityToggle = false,
-    isPublic = true,
+    visibility = 'public',
+    canSetPublic = true,
     index = 0,
     showRemoveButton = false,
     showStatus = true,
@@ -511,33 +513,61 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     `;
   }
 
-  // Visibility badge
+  // Visibility badge — reflects the current tier
+  const visibilityBadgeClass = visibility === 'public'
+    ? 'public'
+    : visibility === 'members_only' ? 'members-only' : 'private';
+  const visibilityBadgeLabel = visibility === 'public'
+    ? 'Published'
+    : visibility === 'members_only' ? 'Members only' : 'Private';
   const visibilityBadge = showVisibilityToggle
-    ? (isPublic
-        ? '<span class="agent-visibility-badge public">Published</span>'
-        : '<span class="agent-visibility-badge private">Private</span>')
+    ? `<span class="agent-visibility-badge ${visibilityBadgeClass}">${visibilityBadgeLabel}</span>`
     : '';
 
-  // Publish/unpublish controls (replaces old toggle)
+  // Three-tier visibility selector. 'public' is gated on API-access tier.
   let visibilityToggle = '';
-  if (showVisibilityToggle && brandHostingType) {
-    if (brandHostingType === 'community') {
-      visibilityToggle = isPublic
-        ? `<div class="agent-card-visibility">
-            <button type="button" class="btn btn-sm btn-ghost" onclick="unpublishAgent(${index})" style="color:var(--color-error-500);">Remove from brand.json</button>
-          </div>`
-        : `<div class="agent-card-visibility">
-            <button type="button" class="btn btn-sm btn-primary" onclick="publishAgent(${index})">Publish to brand.json</button>
-          </div>`;
-    } else if (brandHostingType === 'self-hosted') {
-      visibilityToggle = `<div class="agent-card-visibility">
-        <button type="button" class="btn btn-sm ${isPublic ? 'btn-ghost' : 'btn-primary'}" onclick="${isPublic ? `checkAgent(${index})` : `publishAgent(${index})`}">${isPublic ? 'Re-check brand.json' : 'Show snippet'}</button>
+  if (showVisibilityToggle) {
+    const publicRequiresDomain = !brandHostingType;
+    const publicDisabled = !canSetPublic || publicRequiresDomain;
+    const publicDisabledReason = !canSetPublic
+      ? 'Publicly listing an agent requires Professional tier or higher.'
+      : publicRequiresDomain
+        ? 'Set a primary brand domain to publish publicly.'
+        : '';
+    const optionRow = (value, label, hint, disabled, disabledReason) => {
+      const id = `agent-${index}-vis-${value}`;
+      const checked = visibility === value ? 'checked' : '';
+      const disabledAttr = disabled ? 'disabled' : '';
+      const titleAttr = disabled && disabledReason
+        ? ` title="${escapeHtmlSafe(disabledReason)}"`
+        : '';
+      return `<label for="${id}" class="agent-visibility-option${disabled ? ' disabled' : ''}"${titleAttr}>
+          <input type="radio" id="${id}" name="agent-${index}-visibility" value="${value}" ${checked} ${disabledAttr}
+            onchange="setAgentVisibility(${index}, '${value}')" />
+          <div class="agent-visibility-option-body">
+            <div class="agent-visibility-option-label">${label}</div>
+            <div class="agent-visibility-option-hint">${hint}</div>
+          </div>
+        </label>`;
+    };
+    const rows = [
+      optionRow('private', 'Private', 'Only you can see it.', false, ''),
+      optionRow('members_only', 'Members only', 'Discoverable by Professional+ members.', false, ''),
+      optionRow('public', 'Public', 'Listed publicly and added to brand.json.', publicDisabled, publicDisabledReason),
+    ].join('');
+    const upsell = !canSetPublic
+      ? `<div class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</div>`
+      : '';
+    const brandNudge = canSetPublic && publicRequiresDomain
+      ? `<div class="agent-visibility-upsell">Set a <a href="#brand-domain-input">primary brand domain</a> to publish publicly.</div>`
+      : '';
+    const recheckRow = visibility === 'public' && brandHostingType === 'self-hosted'
+      ? `<div class="agent-visibility-actions"><button type="button" class="btn btn-sm btn-ghost" onclick="checkAgent(${index})">Re-check brand.json</button></div>`
+      : '';
+    visibilityToggle = `<div class="agent-card-visibility">
+        <div class="agent-visibility-options">${rows}</div>
+        ${upsell}${brandNudge}${recheckRow}
       </div>`;
-    }
-  } else if (showVisibilityToggle && !brandHostingType) {
-    visibilityToggle = `<div class="agent-card-visibility" style="font-size:var(--text-xs);color:var(--color-text-muted);">
-      Set a primary brand domain to publish
-    </div>`;
   }
 
   // Status badge
@@ -677,6 +707,10 @@ function getAgentCardStyles() {
       background: #d1fae5;
       color: #065f46;
     }
+    .agent-visibility-badge.members-only {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
     .agent-visibility-badge.private {
       background: #f3f4f6;
       color: #6b7280;
@@ -726,6 +760,51 @@ function getAgentCardStyles() {
       align-items: center;
       gap: 8px;
       cursor: pointer;
+    }
+    .agent-visibility-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .agent-visibility-option {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+    }
+    .agent-visibility-option.disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .agent-visibility-option input[type="radio"] {
+      margin-top: 3px;
+    }
+    .agent-visibility-option-body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .agent-visibility-option-label {
+      font-weight: 600;
+      color: #111827;
+    }
+    .agent-visibility-option-hint {
+      color: #6b7280;
+      font-size: 12px;
+    }
+    .agent-visibility-upsell {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .agent-visibility-upsell a {
+      color: #2563eb;
+    }
+    .agent-visibility-actions {
+      margin-top: 6px;
     }
     .agent-card-remove {
       padding: 6px 12px;

@@ -3,6 +3,8 @@
   "$id": "/schemas/brand/update-rights-request.json",
   "title": "Update Rights Request",
   "description": "Modify an existing rights grant — extend dates, adjust impression caps, change pricing, or pause/resume. Parallels update_media_buy. Only the fields provided are updated; omitted fields remain unchanged.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -13,7 +15,8 @@
     },
     "rights_id": {
       "type": "string",
-      "description": "Rights grant identifier from acquire_rights response"
+      "description": "Rights grant identifier from acquire_rights response",
+      "x-entity": "rights_grant"
     },
     "end_date": {
       "type": "string",
@@ -27,7 +30,8 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries."
+      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries.",
+      "x-entity": "vendor_pricing_option"
     },
     "paused": {
       "type": "boolean",
@@ -41,7 +45,8 @@
       "type": "string",
       "description": "Client-generated idempotency key for safe retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -51,6 +56,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "rights_id"
   ],
   "additionalProperties": true

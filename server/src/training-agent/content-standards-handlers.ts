@@ -125,6 +125,20 @@ export const CONTENT_STANDARDS_TOOLS = [
 
 // ── Helpers ───────────────────────────────────────────────────────
 
+function summarizePolicies(policies: unknown[]): string {
+  const parts = policies
+    .map(p => {
+      if (!p || typeof p !== 'object') return null;
+      const entry = p as { policy_id?: unknown; policy?: unknown };
+      const id = typeof entry.policy_id === 'string' ? entry.policy_id : undefined;
+      const text = typeof entry.policy === 'string' ? entry.policy : undefined;
+      if (id && text) return `${id}: ${text}`;
+      return text || id || null;
+    })
+    .filter((s): s is string => typeof s === 'string' && s.length > 0);
+  return parts.length > 0 ? parts.join('\n') : '(policies provided without descriptions)';
+}
+
 function toStandardsResponse(state: ContentStandardsState) {
   return {
     standards_id: state.standardsId,
@@ -139,22 +153,37 @@ function toStandardsResponse(state: ContentStandardsState) {
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-export function handleCreateContentStandards(
+export async function handleCreateContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as {
-    scope: {
+    scope?: {
       countries_all?: string[];
       channels_any?: string[];
       languages_any?: string[];
       description?: string;
     };
-    policy: string;
+    policy?: string;
+    policies?: unknown[];
+    registry_policy_ids?: unknown[];
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  if (!req.scope || typeof req.scope !== 'object' || Array.isArray(req.scope)) {
+    return { errors: [{ code: 'INVALID_INPUT', message: "'scope' is required and must be an object with at least 'languages_any'." }] };
+  }
+  if (!Array.isArray(req.scope.languages_any) || req.scope.languages_any.length === 0) {
+    return { errors: [{ code: 'INVALID_INPUT', message: "'scope.languages_any' is required and must be a non-empty array of language codes." }] };
+  }
+  const hasPolicy = typeof req.policy === 'string' && req.policy.length > 0;
+  const hasPolicies = Array.isArray(req.policies) && req.policies.length > 0;
+  const hasRegistryIds = Array.isArray(req.registry_policy_ids) && req.registry_policy_ids.length > 0;
+  if (!hasPolicy && !hasPolicies && !hasRegistryIds) {
+    return { errors: [{ code: 'INVALID_INPUT', message: "at least one of 'policy', 'policies', or 'registry_policy_ids' is required." }] };
+  }
+
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (session.contentStandards.size >= MAX_CONTENT_STANDARDS_PER_SESSION) {
     return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CONTENT_STANDARDS_PER_SESSION} content standards).` }] };
@@ -171,7 +200,11 @@ export function handleCreateContentStandards(
       languagesAny: req.scope.languages_any,
       description: req.scope.description,
     },
-    policy: req.policy,
+    policy: hasPolicy
+      ? (req.policy as string)
+      : hasPolicies
+        ? summarizePolicies(req.policies as unknown[])
+        : `registry_policy_ids: ${(req.registry_policy_ids as unknown[]).join(', ')}`,
     calibrationExemplars: req.calibration_exemplars,
     createdAt: now,
     updatedAt: now,
@@ -184,12 +217,12 @@ export function handleCreateContentStandards(
   };
 }
 
-export function handleListContentStandards(
+export async function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let standards = [...session.contentStandards.values()];
 
@@ -216,12 +249,12 @@ export function handleListContentStandards(
   };
 }
 
-export function handleGetContentStandards(
+export async function handleGetContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -233,7 +266,7 @@ export function handleGetContentStandards(
   };
 }
 
-export function handleUpdateContentStandards(
+export async function handleUpdateContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -249,7 +282,7 @@ export function handleUpdateContentStandards(
     calibration_exemplars?: { pass?: unknown[]; fail?: unknown[] };
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -279,12 +312,12 @@ export function handleUpdateContentStandards(
   };
 }
 
-export function handleCalibrateContent(
+export async function handleCalibrateContent(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
   const req = args as { standards_id: string; artifact: unknown };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
@@ -315,7 +348,7 @@ export function handleCalibrateContent(
   };
 }
 
-export function handleValidateContentDelivery(
+export async function handleValidateContentDelivery(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
@@ -324,7 +357,7 @@ export function handleValidateContentDelivery(
     records: Array<{ record_id: string; artifact?: unknown }>;
   };
 
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {

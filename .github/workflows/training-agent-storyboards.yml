@@ -1,0 +1,125 @@
+name: Training Agent Storyboards
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/src/training-agent/**'
+      - 'server/tests/manual/run-storyboards.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'static/compliance/source/**'
+  push:
+    branches: [main]
+    paths:
+      - 'server/src/training-agent/**'
+      - 'server/tests/manual/run-storyboards.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'static/compliance/source/**'
+
+concurrency:
+  group: training-agent-storyboards-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  storyboards:
+    name: Storyboards (${{ matrix.mode }} dispatch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [legacy, framework]
+        include:
+          - mode: legacy
+            flag_value: '0'
+            # Baseline on main — keep in sync with the last clean run reported
+            # in the PR description. Rising is fine; regressing fails CI.
+            # 38→42 after wiring `controller_seeding: true` + `fixtures:`
+            # blocks on the six multi-package storyboards exposed by
+            # adcp-client#794 (media_buy_seller, delivery_reporting,
+            # governance_approved, creative_generative, sales_broadcast_tv,
+            # sales_guaranteed). The in-repo compliance source overlay step
+            # ensures CI sees these fixture adds before an SDK republish.
+            min_clean_storyboards: 42
+            min_passing_steps: 319
+          - mode: framework
+            flag_value: '1'
+            # 32→37 after the same fixture-seeding work. The framework-only
+            # delta vs. legacy is 5 storyboards / 7 step failures
+            # (acquire_rights_denied error code, calibrate_content verdict,
+            # log_event/provide_feedback session lookups, report_usage
+            # `accepted` field type) — tracked as the residual zod-parity
+            # follow-up. See PR description for the diff.
+            min_clean_storyboards: 37
+            min_passing_steps: 319
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Overlay in-repo compliance source onto SDK cache
+        # The storyboard runner loads from @adcp/client's bundled
+        # compliance cache, which is a snapshot synced from this repo's
+        # static/compliance/source/ on each SDK publish. To validate
+        # spec changes in this PR before waiting for an SDK republish,
+        # overlay the current source tree onto the cache. Overlays only
+        # files that exist in both trees; new top-level additions to
+        # source/ still require a sync-schemas cycle on the SDK side.
+        run: |
+          SRC="static/compliance/source"
+          DST="node_modules/@adcp/client/compliance/cache/latest"
+          if [ ! -d "$DST" ]; then
+            echo "::warning::SDK compliance cache not found at $DST — skipping overlay"
+            exit 0
+          fi
+          # Copy every file that already exists in the cache. `cp -u` is
+          # not used because we want the overlay to always win for the
+          # files we maintain here.
+          (cd "$SRC" && find . -type f) | while read -r rel; do
+            if [ -f "$DST/${rel#./}" ]; then
+              cp "$SRC/${rel#./}" "$DST/${rel#./}"
+            fi
+          done
+          echo "Overlay complete."
+
+      - name: Run storyboards (${{ matrix.mode }})
+        id: run
+        env:
+          TRAINING_AGENT_USE_FRAMEWORK: ${{ matrix.flag_value }}
+          PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
+        run: |
+          npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log
+          clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
+          passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
+          echo "clean=${clean}" >> "$GITHUB_OUTPUT"
+          echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce non-regression (${{ matrix.mode }})
+        env:
+          CLEAN: ${{ steps.run.outputs.clean }}
+          PASSED: ${{ steps.run.outputs.passed }}
+          MIN_CLEAN: ${{ matrix.min_clean_storyboards }}
+          MIN_PASSED: ${{ matrix.min_passing_steps }}
+        run: |
+          echo "Mode: ${{ matrix.mode }} (flag=${{ matrix.flag_value }})"
+          echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
+          echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
+            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor."
+            exit 1
+          fi
+          if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
+            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor."
+            exit 1
+          fi

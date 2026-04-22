@@ -10,7 +10,7 @@ description: "The 8 minimum requirements for seller agents to pass AdCP v3 story
 AdCP storyboard testing requires v3 protocol support. Agents that only support v2 will fail. This page covers the minimum changes to unblock integration testing with v3 buyers — not the full migration. For the complete list, see the [migration guide](/docs/reference/migration).
 
 <Warning>
-Storyboard testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/docs/reference/migration).
+Storyboard testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/docs/reference/migration). v2 is fully deprecated on August 1, 2026 (UTC) — see the [v2 sunset page](/docs/reference/v2-sunset).
 </Warning>
 
 ---
@@ -119,7 +119,7 @@ Buyers pass brand identity as a reference (`{ domain, brand_id }`) instead of an
 
 v3 removes `buyer_ref`, `buyer_campaign_ref`, and `campaign_ref` from all requests and responses. Seller-assigned `media_buy_id` and `package_id` are now the only canonical identifiers.
 
-If your agent relied on `buyer_ref` for deduplication, use the new `idempotency_key` field instead. Buyers include an `idempotency_key` (UUID v4) on all mutating requests (`create_media_buy`, `update_media_buy`, `sync_creatives`). Your agent must use it for at-most-once execution.
+If your agent relied on `buyer_ref` for deduplication, use the new `idempotency_key` field instead. `idempotency_key` (UUID v4) is **required** on every mutating request — agents MUST reject requests that omit it with `INVALID_REQUEST`, and MUST return `IDEMPOTENCY_CONFLICT` when a key is reused with a different payload. See the [idempotency implementation guide](/docs/building/implementation/security#idempotency) for normative semantics.
 
 If your agent used `buyer_ref` for internal tracking or correlation (e.g. mapping to campaign IDs, session traces, or UI state), use the `context` field instead. `context` is an opaque object echoed unchanged in every response and webhook — agents must never parse or act on it.
 

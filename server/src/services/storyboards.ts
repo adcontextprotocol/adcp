@@ -1,19 +1,19 @@
 /**
  * Storyboard service
  *
- * Thin wrapper around @adcp/client's bundled storyboards.
- * Storyboard YAML definitions live in the @adcp/client package;
- * this module re-exports the functions the server needs and adds
- * test-kit loading (test kits are also bundled with @adcp/client).
+ * Thin wrapper around @adcp/client's compliance cache.
+ * Storyboard YAML definitions live under `compliance/cache/{version}/`
+ * after `npm run sync-schemas`; this module reads from there and adds
+ * test-kit loading (test kits sit alongside the storyboards in the cache).
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import YAML from 'yaml';
 import {
-  loadBundledStoryboards,
-  getStoryboardById,
-  extractScenariosFromStoryboard,
+  listAllComplianceStoryboards,
+  getComplianceStoryboardById,
+  getComplianceCacheDir,
 } from '@adcp/client/testing';
 import type { Storyboard } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
@@ -31,12 +31,21 @@ export type {
 
 // ── Test Kit types & loading ────────────────────────────────────
 
+// Test kits are of two kinds:
+//   - Brand-identity kits (acme_outdoor, bistro_oranje, ...) — brand + assets
+//     + description used by creative/sales storyboards.
+//   - Harness-contract kits (signed_requests_runner, ...) — coordination
+//     contract between a runner and an agent under test; shape is
+//     specialism-specific.
+// Only `id` is required on load. Everything else is kit-kind-specific and read
+// by callers that know which kind they asked for.
 export interface TestKit {
   id: string;
-  name: string;
-  description: string;
+  name?: string;
+  description?: string;
   brand?: Record<string, unknown>;
   assets?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface StoryboardSummary {
@@ -53,19 +62,13 @@ export interface StoryboardSummary {
 const testKits = new Map<string, TestKit>();
 
 function findTestKitsDir(): string | null {
-  // Test kits are bundled with @adcp/client at storyboards/test-kits/
-  const candidates = [
-    resolve(import.meta.dirname, '..', '..', '..', 'node_modules', '@adcp', 'client', 'storyboards', 'test-kits'),
-    resolve(process.cwd(), 'node_modules', '@adcp', 'client', 'storyboards', 'test-kits'),
-  ];
-
-  for (const dir of candidates) {
-    if (existsSync(dir)) {
-      return dir;
-    }
+  try {
+    const dir = join(getComplianceCacheDir(), 'test-kits');
+    return existsSync(dir) ? dir : null;
+  } catch (err) {
+    logger.info({ err }, 'Compliance cache not resolvable; test-kit features disabled');
+    return null;
   }
-
-  return null;
 }
 
 function loadTestKits(): void {
@@ -102,7 +105,7 @@ loadTestKits();
 // ── Public API ──────────────────────────────────────────────────
 
 export function listStoryboards(category?: string): StoryboardSummary[] {
-  const all = loadBundledStoryboards();
+  const all = listAllComplianceStoryboards();
   const filtered = category ? all.filter((sb) => sb.category === category) : all;
 
   return filtered.map((sb) => ({
@@ -118,11 +121,11 @@ export function listStoryboards(category?: string): StoryboardSummary[] {
 }
 
 export function getStoryboard(id: string): Storyboard | undefined {
-  return getStoryboardById(id);
+  return getComplianceStoryboardById(id);
 }
 
 export function getAllStoryboards(): Storyboard[] {
-  return loadBundledStoryboards();
+  return listAllComplianceStoryboards();
 }
 
 export function getTestKit(id: string): TestKit | undefined {
@@ -130,7 +133,7 @@ export function getTestKit(id: string): TestKit | undefined {
 }
 
 export function getTestKitForStoryboard(storyboardId: string): TestKit | undefined {
-  const sb = getStoryboardById(storyboardId);
+  const sb = getComplianceStoryboardById(storyboardId);
   if (!sb?.prerequisites?.test_kit) return undefined;
 
   // test_kit is like "test-kits/acme-outdoor.yaml" — extract the id
@@ -139,5 +142,3 @@ export function getTestKitForStoryboard(storyboardId: string): TestKit | undefin
   const kitId = filename.replace(/-/g, '_');
   return testKits.get(kitId);
 }
-
-export { extractScenariosFromStoryboard };

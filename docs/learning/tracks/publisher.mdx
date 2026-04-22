@@ -44,8 +44,14 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
   <Card title="Capability discovery" icon="magnifying-glass" href="/docs/protocol/get_adcp_capabilities">
     How agents advertise their capabilities so other agents can discover what they offer.
   </Card>
+  <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
+    Advertise your supported `adcp.major_versions`; reject mismatched requests with `VERSION_UNSUPPORTED`.
+  </Card>
   <Card title="Authorized properties" icon="shield-check" href="/docs/governance/property/authorized-properties">
     How publishers declare and authorize their properties for agentic transactions.
+  </Card>
+  <Card title="Media buy lifecycle" icon="timeline" href="/docs/media-buy/specification#media-buy-state-transitions">
+    The state machine sellers must honor: `pending_creatives` → `pending_start` → `active` → `paused`/`completed`.
   </Card>
 </CardGroup>
 
@@ -55,6 +61,10 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
 - **Product catalog design** — products, formats, pricing models, targeting options, availability, and shows/episodes for content-centric inventory
 - **Catalog integration** — `sync_catalogs` for product data, 13 catalog types, feed field mappings
 - **Capability advertising** — `get_adcp_capabilities` so buyers know what you support
+- **Object-presence capability principle** — capabilities are declared by the presence of an object, not by booleans. If you support a feature, include the object; if you don't, omit it. Buyers check for the object, not for `"feature": true`.
+- **Version advertising** — declare `adcp.major_versions` so multi-version buyers can migrate on their own schedule; validate incoming `adcp_major_version` and return `VERSION_UNSUPPORTED` when out of range
+- **Lifecycle commitments** — `create_media_buy` MAY return `pending_creatives` or `pending_start`; MUST transition `pending_start` → `active` when the flight date arrives, and notify orchestrators via webhook. Rejection is only valid from the pending states
+- **Reporting declaration** — every product MUST include `reporting_capabilities` (metrics, dimensions, cadence, measurement windows). Presence of this object declares `get_media_buy_delivery` support
 
 <Card title="Start B1 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module B1."
@@ -152,7 +162,7 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
 - **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
-- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `media_buy_id` + `planned_delivery` before confirming media buys
+- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
 ### Exercise
@@ -169,15 +179,18 @@ Given sample Context Match and Identity Match responses, determine which package
 
 **~45 min** | Prerequisite: B3
 
-Create a working sales agent that responds to real buyer queries. Point your AI coding assistant (Claude Code, Cursor, Copilot) at the [`build-seller-agent`](/docs/building/build-an-agent) skill file — it generates a storyboard-validated agent from your specification. The skill tested is specifying correct AdCP behavior.
+Create a working sales agent that responds to real buyer queries. Point your AI coding assistant (Claude Code, Cursor, Copilot) at the [`build-seller-agent`](/docs/building/build-an-agent) skill file — it generates an agent validated against AdCP storyboards, with optional [`comply_test_controller`](/docs/building/implementation/comply-test-controller) scaffolding for deterministic lifecycle testing in sandbox mode. The skill tested is specifying correct AdCP behavior.
 
 ### What you'll build
 
-- Product catalog with at least 3 products and `sync_catalogs` support
+- Product catalog with at least 3 products and `sync_catalogs` support, each product declaring `reporting_capabilities`
+- `get_adcp_capabilities` that declares `adcp.major_versions` and validates `adcp_major_version` on incoming requests — including a truthful `capabilities.idempotency.replay_ttl_seconds` declaration
 - Creative format support for at least 2 formats
-- Handles `get_products`, `create_media_buy`, `list_creative_formats`
+- Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
 - Account setup via `sync_accounts`
-- Proper error responses for invalid requests
+- Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable
+- Idempotency enforcement on every mutating request: reject missing or malformed `idempotency_key` with `INVALID_REQUEST` before touching business logic; cache only on success; scope per authenticated agent
+- Lifecycle transitions: seller moves media buys through `pending_creatives` → `pending_start` → `active` and notifies via webhook on each transition
 
 ### How you'll validate
 
@@ -188,6 +201,19 @@ npx @adcp/client storyboard run my-agent media_buy_seller
 ```
 
 The storyboard exercises the complete buyer workflow — discovery, account sync, media buy, creatives, delivery — and validates every response. See [Validate Your Agent](/docs/building/validate-your-agent) for setup and debugging.
+
+### Specialisms you can claim
+
+Declare `media_buy` in `supported_protocols` and choose the specialism that matches your inventory model. Each specialism has a compliance storyboard at `/compliance/{version}/specialisms/{id}/` that verifies your claim:
+
+- `sales-guaranteed` — guaranteed with human IO approval
+- `sales-non-guaranteed` — auction-based
+- `sales-proposal-mode` — proposal-negotiated
+- `sales-catalog-driven` — catalog-driven commerce with conversion tracking
+- `sales-broadcast-tv` — broadcast linear TV
+- `sales-social` — social platform with self-service flows
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for the full list.
 
 ### Assessment rubric
 

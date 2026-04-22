@@ -39,8 +39,11 @@ Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
-  "adcp": { "major_versions": [2] },
+  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [2],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  },
   "supported_protocols": ["signals"]
 }
 ```
@@ -51,18 +54,23 @@ Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
 
 Every signal request involves two roles:
 
-- **Orchestrator**: The platform making the API request (e.g., Scope3, Claude)
-- **Principal**: The entity on whose behalf the request is made (e.g., Nike, Omnicom)
+- **Orchestrator**: The platform making the API request (e.g., a buyer agent or AI assistant)
+- **Account**: The commercial relationship on whose behalf the request is made. See [Accounts Protocol](/docs/accounts/overview).
 
 ### Signal Agent Types
 
-**Private Signal Agents** — owned by the principal with exclusive access:
-- Signal agents MUST return `AGENT_NOT_FOUND` for unauthorized principals
-- Signal agents MUST NOT expose private signals to other principals
+**Private Signal Agents** — owned by a single account with exclusive access:
+- Signal agents MUST return `REFERENCE_NOT_FOUND` for unauthorized accounts — the
+  same response as "agent does not exist." Distinguishing "exists but unauthorized"
+  from "does not exist" would enable cross-tenant enumeration of private agents.
+  See the uniform-response MUST in
+  [error-handling.mdx](/docs/building/implementation/error-handling) for the full
+  set of observable channels that MUST match on both paths.
+- Signal agents MUST NOT expose private signals across accounts
 
-**Marketplace Signal Agents** — license signal data to multiple principals:
-- Signal agents MUST support public catalog access without principal registration
-- Signal agents SHOULD support personalized catalogs for registered principals
+**Marketplace Signal Agents** — license signal data to multiple accounts:
+- Signal agents MUST support public catalog access without account registration
+- Signal agents SHOULD support personalized catalogs for registered accounts
 
 ### Identifiers
 
@@ -85,7 +93,7 @@ The Signals Protocol defines two tasks. See task reference pages for complete re
 
 ### get_signals
 
-**Schema**: [`get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json) / [`get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json)
+**Schema**: [`get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json) / [`get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json)
 
 **Reference**: [`get_signals` task](/docs/signals/tasks/get_signals)
 
@@ -98,7 +106,7 @@ Discover signals matching campaign criteria.
 
 ### activate_signal
 
-**Schema**: [`activate-signal-request.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json) / [`activate-signal-response.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json)
+**Schema**: [`activate-signal-request.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json) / [`activate-signal-response.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json)
 
 **Reference**: [`activate_signal` task](/docs/signals/tasks/activate_signal)
 
@@ -126,7 +134,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 - Orchestrators MUST authenticate with signal agents using valid credentials
 - Signal agents MUST validate credentials before processing requests
-- Signal agents SHOULD use principal context to determine catalog access level
+- Signal agents SHOULD use account context to determine catalog access level
 
 ### Activation Key Security
 
@@ -135,7 +143,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 ### Data Minimization
 
-- Signal agents MUST NOT return signals the principal is not authorized to access
+- Signal agents MUST NOT return signals the authenticated agent or account is not authorized to access
 
 ## Conformance
 
@@ -186,9 +194,9 @@ The `activate_signal` request supports two destination types. The choice depends
 
 | Schema | Description |
 |--------|-------------|
-| [`signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json) | get_signals request |
-| [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json) | get_signals response |
-| [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json) | activate_signal request |
-| [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json) | activate_signal response |
-| [`core/deployment.json`](https://adcontextprotocol.org/schemas/v3/core/deployment.json) | Deployment target |
-| [`core/activation-key.json`](https://adcontextprotocol.org/schemas/v3/core/activation-key.json) | Activation key |
+| [`signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json) | get_signals request |
+| [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json) | get_signals response |
+| [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json) | activate_signal request |
+| [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json) | activate_signal response |
+| [`core/deployment.json`](https://adcontextprotocol.org/schemas/latest/core/deployment.json) | Deployment target |
+| [`core/activation-key.json`](https://adcontextprotocol.org/schemas/latest/core/activation-key.json) | Activation key |

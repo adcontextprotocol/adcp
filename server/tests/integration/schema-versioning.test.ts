@@ -149,12 +149,17 @@ describe("Schema Versioning Middleware", () => {
   });
 
   describe("directory redirect regex", () => {
-    const regex = /^\/(\d+\.\d+\.\d+|latest)\/$/;
+    const regex = /^\/(\d+\.\d+\.\d+(?:-[a-zA-Z]+\.\d+)?|latest)\/$/;
 
     it("should match semver directory paths", () => {
       expect("/2.6.0/".match(regex)).not.toBeNull();
       expect("/2.5.1/".match(regex)).not.toBeNull();
       expect("/12.0.0/".match(regex)).not.toBeNull();
+    });
+
+    it("should match prerelease directory paths", () => {
+      expect("/3.0.0-rc.3/".match(regex)).not.toBeNull();
+      expect("/3.0.0-beta.1/".match(regex)).not.toBeNull();
     });
 
     it("should match latest directory path", () => {
@@ -170,11 +175,13 @@ describe("Schema Versioning Middleware", () => {
     it("should NOT match file paths", () => {
       expect("/2.6.0/index.json".match(regex)).toBeNull();
       expect("/2.6.0/core/product.json".match(regex)).toBeNull();
+      expect("/3.0.0-rc.3/adagents.json".match(regex)).toBeNull();
       expect("/latest/index.json".match(regex)).toBeNull();
     });
 
     it("should NOT match paths without trailing slash", () => {
       expect("/2.6.0".match(regex)).toBeNull();
+      expect("/3.0.0-rc.3".match(regex)).toBeNull();
       expect("/latest".match(regex)).toBeNull();
     });
   });

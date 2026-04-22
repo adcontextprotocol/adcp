@@ -15,6 +15,15 @@ This specialist module tests your mastery of the signals protocol. You'll work w
 
 Passing earns the **AdCP specialist — Signals** credential.
 
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the `signals` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `signal-owned` | stable | Owned signal agent exposing first-party segments |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+
 <Note>
 **Scope of AdCP signals**
 
@@ -33,6 +42,7 @@ If your company works in the "not yet" areas, you can still publish the **audien
 - Understand signal value types (binary, categorical, numeric) and how they affect targeting
 - Manage audience activation including privacy considerations and deactivation
 - Configure event tracking with `sync_event_sources` and `log_event`
+- Read `pricing_options[]` from `get_signals` responses, pass the selected `pricing_option_id` through `activate_signal` and `report_usage`
 - Design optimization loops using signals and delivery data
 - Reason about the signals ecosystem — who provides data, who consumes it, and how authorization works
 

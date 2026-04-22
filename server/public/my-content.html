@@ -1033,7 +1033,7 @@
           <button class="btn btn-small btn-success" onclick="showReviewModal('${safeId(item.id)}')">Review</button>
         `;
       } else {
-        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
+        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
           ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${safeId(item.id)}')">View</button>` : ''}
@@ -1266,7 +1266,7 @@
           response = await fetch('/api/content/propose', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify({ ...data, status: statusValue })
           });
         }
 

@@ -1,10 +1,19 @@
 ---
 title: Quickstart
-description: "Make your first AdCP call in 5 minutes. One MCP tool call, one error case, one media buy — with copy-pasteable curl commands and expected output."
+description: "Pick your path — buyers call an AdCP agent in 5 minutes, publishers and sellers stand up their own agent."
 "og:title": "AdCP — Quickstart"
 ---
 
-Make your first AdCP call in 5 minutes against the public test agent.
+Pick your path. Buyers call the public test agent in 5 minutes. Publishers and sellers stand up an agent buyers can call.
+
+<CardGroup cols={2}>
+  <Card title="I'm calling an agent" icon="plug">
+    Buyer side. The rest of this page walks through calling the public test agent — no signup, copy-pasteable curl.
+  </Card>
+  <Card title="I'm building an agent" icon="server" href="/docs/building/build-an-agent">
+    Publisher or seller side. Stand up an agent buyers can call.
+  </Card>
+</CardGroup>
 
 ## Setup
 
@@ -121,35 +130,46 @@ if (response.result.isError) {
 
 Common error codes: `INVALID_REQUEST` (bad input), `RATE_LIMITED` (retry with backoff), `UNAUTHORIZED` (check credentials).
 
-## 3. Create a media buy
+## 3. Create a media buy (idempotently)
 
-Use the product IDs from step 1 to create a campaign:
+Use the product IDs from step 1 to create a campaign. Every mutating request MUST carry an `idempotency_key` — a client-generated UUID v4 that makes retries safe. Send the same key with the same payload and the seller returns the original result instead of creating a duplicate buy:
 
 ```bash
+export IDEMPOTENCY_KEY="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
 curl -X POST $AGENT_URL \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "create_media_buy",
-      "arguments": {
-        "account": { "account_id": "test_account" },
-        "brand": { "domain": "premiumpetfoods.com" },
-        "start_time": "asap",
-        "end_time": "2026-04-30T00:00:00Z",
-        "packages": [{
-          "product_id": "pinnacle_news_video_premium",
-          "budget": 5000,
-          "pricing_option_id": "pinnacle_news_video_premium_pricing_0"
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"create_media_buy\",
+      \"arguments\": {
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\",
+        \"account\": { \"account_id\": \"test_account\" },
+        \"brand\": { \"domain\": \"premiumpetfoods.com\" },
+        \"start_time\": \"asap\",
+        \"end_time\": \"2026-04-30T00:00:00Z\",
+        \"packages\": [{
+          \"product_id\": \"pinnacle_news_video_premium\",
+          \"budget\": 5000,
+          \"pricing_option_id\": \"pinnacle_news_video_premium_pricing_0\"
         }]
       }
     }
-  }'
+  }"
 ```
+
+Replay the same request (same key, same payload) and the seller returns the original response with `replayed: true`. Send the same key with a different payload and you get `IDEMPOTENCY_CONFLICT`. Check a seller's window via `get_adcp_capabilities`:
+
+```json
+{ "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
+```
+
+See the [Security guide](/docs/building/implementation/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
 
 **Response** (IDs will differ on each call):
 
@@ -180,40 +200,38 @@ console.log(buy.packages[0].budget); // 5000
 console.log(buy.valid_actions);    // ["pause", "cancel", "update_budget", ...]
 ```
 
-## 4. Push notifications (webhooks)
+## 4. Push notifications (signed webhooks)
 
-Production agents support push notifications for long-running operations. The sandbox test agent does not send webhooks, but you can include the configuration to see how it works.
+Production agents send webhooks for long-running operations. AdCP 3.0 signs webhooks with the **same RFC 9421 HTTP Message Signatures profile used for agent-to-agent requests** — one verifier, one JWKS, one trust surface. No shared HMAC secrets.
 
-Add `push_notification_config` to your tool arguments:
+Point the agent at your webhook endpoint and advertise your JWKS. The agent signs each POST with a key it trusts; you fetch the agent's JWKS and verify the signature before acting on the payload:
 
 ```json
 {
   "name": "create_media_buy",
   "arguments": {
+    "idempotency_key": "5c4c6f29-...",
     "account": { "account_id": "your_account" },
     "brand": { "domain": "premiumpetfoods.com" },
-    "start_time": "asap",
-    "end_time": "2026-04-30T00:00:00Z",
-    "packages": [{ "..." : "..." }],
     "push_notification_config": {
       "url": "https://you.example.com/webhooks/adcp",
       "authentication": {
-        "schemes": ["HMAC-SHA256"],
-        "credentials": "your_shared_secret_min_32_chars_long"
+        "schemes": ["HTTP_MESSAGE_SIGNATURES"]
       }
     }
   }
 }
 ```
 
-When the operation completes, the agent POSTs to your URL:
+When the operation completes, the agent POSTs a signed request to your URL. The payload carries its own `idempotency_key` so your receiver can dedupe retries:
 
 ```json
 {
   "task_id": "task_456",
+  "idempotency_key": "webhook_evt_8f2a...",
   "task_type": "create_media_buy",
   "status": "completed",
-  "timestamp": "2025-01-22T10:30:00Z",
+  "timestamp": "2026-04-22T10:30:00Z",
   "result": {
     "media_buy_id": "mb_12345",
     "packages": [{ "package_id": "pkg_001" }]
@@ -221,25 +239,30 @@ When the operation completes, the agent POSTs to your URL:
 }
 ```
 
-Verify the HMAC signature before processing:
+Verify the signature before trusting the payload — resolve the `keyid` via the seller's `adagents.json` JWKS, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
 
-```javascript
-import { createHmac, timingSafeEqual } from 'crypto';
-
-function handleWebhook(req) {
-  const signature = req.headers['x-adcp-signature'];
-  const expected = createHmac('sha256', 'your_shared_secret_min_32_chars_long')
-    .update(JSON.stringify(req.body))
-    .digest('hex');
-
-  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    throw new Error('Invalid signature');
+```typescript
+app.post('/webhooks/adcp/*', async (req, res) => {
+  try {
+    await verifyAdcpWebhookSignature(req, {
+      sellerAgentUrl: req.sellerContext.agentUrl,
+      requiredTag: 'adcp/webhook-signing/v1',
+      allowedAlgs: ['ed25519', 'ecdsa-p256-sha256'],
+    });
+  } catch (err) {
+    return res.status(401)
+      .setHeader('WWW-Authenticate', `Signature error="${err.code}"`)
+      .end();
   }
 
-  const { task_type, status, result } = req.body;
-  console.log(result.media_buy_id); // "mb_12345"
-}
+  const { idempotency_key } = req.body;
+  if (await seen(idempotency_key)) return res.status(200).end();
+  await process(req.body);
+  res.status(200).end();
+});
 ```
+
+See the [Security guide](/docs/building/implementation/security) and [Webhooks guide](/docs/building/implementation/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
 
 ## Using the client library
 
@@ -273,6 +296,7 @@ console.log(result.data.products);
 
 - **[Build an Agent](/docs/building/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
 - **[Validate Your Agent](/docs/building/validate-your-agent)** — test your agent with storyboards and compliance checks
+- **[Compliance Catalog](/docs/building/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
 - **[MCP integration guide](/docs/building/integration/mcp-guide)** — transport, sessions, auth details
 - **[A2A integration guide](/docs/building/integration/a2a-guide)** — streaming, artifacts, push notifications
 - **[Task reference](/docs/media-buy/task-reference)** — all available tasks with testable examples

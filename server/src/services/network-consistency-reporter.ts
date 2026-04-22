@@ -274,7 +274,7 @@ export async function generateNetworkConsistencyReports(
 
       const profile = await memberDb.getProfileByOrgId(orgId);
       const agentUrls = (profile?.agents ?? [])
-        .filter(a => a.is_public && a.url)
+        .filter(a => a.visibility === 'public' && a.url)
         .map(a => a.url);
 
       // Generate report for the primary brand (first one)

@@ -1,0 +1,195 @@
+id: media_buy_seller/governance_conditions
+version: "1.0.0"
+title: "Seller attaches conditions when governance approves with conditions"
+category: media_buy_seller
+summary: "Verifies that the seller attaches governance conditions to the buy when governance approves with conditions."
+track: media_buy
+required_tools:
+  - sync_governance
+  - get_products
+  - create_media_buy
+
+narrative: |
+  This is a multi-agent test. The test harness sets up a governance plan on a governance
+  agent with custom policies that trigger conditions (e.g., "CTV buys require weekly
+  delivery reporting"). The buyer creates a CTV buy within budget but matching a policy.
+
+  When the seller calls check_governance, the governance agent approves with conditions.
+  The seller must create the buy and include the governance conditions and context token
+  in its response.
+
+  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
+  Override with --governance-agent-url to use a custom governance agent.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Any media buy seller with governance support"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent that supports sync_plans and check_governance.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: governance_plan_setup
+    title: "Set up conditional governance plan"
+    narrative: |
+      Create a governance plan on the governance agent with custom policies that
+      trigger conditions. The plan has sufficient budget but policies that require
+      conditions on CTV buys.
+
+    steps:
+      - id: sync_plans
+        title: "Create conditional governance plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expected: |
+          The governance agent acknowledges the plan with a plan_id.
+        sample_request:
+          idempotency_key: "comply-gov-conditions-sync-plans-v1"
+          plans:
+            - plan_id: "comply-gov-conditions-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Q2 CTV campaign with reporting requirements"
+              budget:
+                total: 100000
+                currency: "USD"
+                reallocation_threshold: 100000
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
+              countries: ["US", "CA"]
+              custom_policies:
+                - policy_id: "ctv_weekly_reporting"
+                  enforcement: "must"
+                  policy: "CTV buys require weekly delivery reporting."
+                - policy_id: "ugc_brand_safety"
+                  enforcement: "must"
+                  policy: "UGC placements require brand safety review before activation."
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: seller_setup
+    title: "Account and governance registration on seller"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with seller"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_seller_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with seller"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge the governance agent registration.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  categories: ["budget_authority", "brand_policy"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_seller_setup_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: buy_with_conditions
+    title: "Create CTV buy triggering governance conditions"
+    steps:
+      - id: get_products_brief
+        title: "Discover CTV products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return CTV/video products matching the brief.
+        sample_request:
+          buying_mode: "brief"
+          brief: "CTV and connected TV inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+      - id: create_media_buy_conditions
+        title: "Create CTV buy (governance approves with conditions)"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds with governance conditions attached:
+          - media_buy_id: present
+          - status: active or pending_creatives
+          - governance_context: token from the governance agent
+          - conditions visible to the buyer
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "outdoor_ctv_q2"
+              budget: 25000
+              pricing_option_id: "cpm_standard"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_buy_with_conditions_create_media_buy_conditions"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"

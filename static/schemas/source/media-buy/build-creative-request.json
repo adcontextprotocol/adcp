@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
   "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -21,7 +22,8 @@
     },
     "creative_id": {
       "type": "string",
-      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation."
+      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation.",
+      "x-entity": "creative"
     },
     "concept_id": {
       "type": "string",
@@ -29,11 +31,13 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Media buy identifier for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms)."
+      "description": "Media buy identifier for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms).",
+      "x-entity": "media_buy"
     },
     "package_id": {
       "type": "string",
-      "description": "Package identifier within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
+      "description": "Package identifier within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package.",
+      "x-entity": "package"
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -117,7 +121,8 @@
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
-      "maxLength": 255
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -126,5 +131,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "required": [
+    "idempotency_key"
+  ],
   "additionalProperties": true
 }

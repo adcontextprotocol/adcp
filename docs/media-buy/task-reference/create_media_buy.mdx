@@ -14,8 +14,8 @@ Supports two modes:
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
-**Request Schema**: [`/schemas/v3/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json)
+**Request Schema**: [`/schemas/latest/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-response.json)
 
 ## Quick Start
 
@@ -218,7 +218,18 @@ npx @adcp/client \
 |-------|-------------|
 | `errors` | Array of error objects explaining failure |
 
-**Note**: Responses use discriminated unions - you get either success fields OR errors, never both. Always check for `errors` before accessing success fields.
+### Submitted Response
+
+Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered via `tasks/get` or push-notification webhook) carries `media_buy_id` and `packages`.
+
+| Field | Description |
+|-------|-------------|
+| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, whose `status` carries a `MediaBuyStatus` value (`pending_creatives` / `pending_start` / `active`). |
+| `task_id` | Handle the buyer polls with `tasks/get` or receives on webhook callbacks. |
+| `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
+| `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
+
+**Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
 
 ## Common Scenarios
 
@@ -1339,6 +1350,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
+- **Inline creative lifecycle**: Inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. If the `create_media_buy` task resolves as `pending_manual` and the buy never activates, or if the buy is rejected or canceled, only the package assignments are released — the creatives remain in the library and can be reused by `creative_id` on a later `create_media_buy` call. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
 
 ## Content Standards
 

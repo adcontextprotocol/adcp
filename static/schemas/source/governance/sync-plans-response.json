@@ -3,6 +3,7 @@
   "$id": "/schemas/governance/sync-plans-response.json",
   "title": "Sync Plans Response",
   "description": "Response from syncing campaign plans. Returns status and active validation categories for each plan.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "plans": {
@@ -13,7 +14,8 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "Plan identifier."
+            "description": "Plan identifier.",
+            "x-entity": "governance_plan"
           },
           "status": {
             "type": "string",
@@ -61,7 +63,8 @@
               "properties": {
                 "policy_id": {
                   "type": "string",
-                  "description": "Registry policy ID."
+                  "description": "Registry policy ID.",
+                  "x-entity": "governance_registry_policy"
                 },
                 "source": {
                   "type": "string",
@@ -97,6 +100,11 @@
         "additionalProperties": false
       }
     },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -107,5 +115,5 @@
   "required": [
     "plans"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

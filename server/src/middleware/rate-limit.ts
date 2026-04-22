@@ -201,6 +201,42 @@ export const storyboardStepRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for per-agent dashboard reads (compliance state + history).
+ * The Agents dashboard fans out these two reads per saved agent on load,
+ * so a member with 10+ agents hits the bulk-resolve cap immediately —
+ * those requests aren't bulk, they're idempotent per-item reads.
+ * Separate limiter with a ceiling high enough for normal dashboard use
+ * (60-agent load × 2 endpoints = 120 req) while still bounding a script
+ * that tries to enumerate compliance state for every registered agent.
+ * (The sibling auth-status endpoint runs under complianceWriteMiddleware
+ * and isn't gated by this limiter.)
+ */
+export const agentReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 240, // 4/sec sustained; a 60-agent × 2-endpoint burst (120 req) fits with headroom
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('agent-read:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for agent dashboard reads');
+
+    // standardHeaders emits a RateLimit-Reset / Retry-After header with
+    // the real remaining window — clients should read those rather than
+    // a body field that can't reflect actual state.
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */
@@ -245,6 +281,92 @@ export const emailPrefsRateLimiter = rateLimit({
       error: 'Too many requests',
       message: 'Please try again later.',
       retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for the public newsletter subscribe endpoint.
+ * Unauthenticated, so keyed strictly by IP (with IPv6 /64 masking).
+ * Tighter than emailPrefsRateLimiter because each accepted request sends an
+ * email via Resend and may provision a WorkOS user.
+ */
+export const newsletterSubscribeRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('newsub:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for newsletter subscribe');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again in a minute.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for the public newsletter confirm GET endpoint.
+ * Guards the DB lookup against high-volume token guessing/scraping. Tokens
+ * are 256 bits so guessing is infeasible, but we still cap DB traffic.
+ */
+export const newsletterConfirmRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('newsconfirm:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for newsletter confirm');
+
+    res.redirect('/welcome-subscribed.html?error=expired');
+  },
+});
+
+/**
+ * Rate limiter for content submission endpoint (POST /api/content/propose).
+ * Limits: 20 submissions per 10 minutes per user.
+ *
+ * Protects the editorial queue from accidental floods (member accidentally
+ * double-clicks submit) and abuse (scripted member spamming the review
+ * channel). 20 submissions in 10 minutes is well above any legitimate
+ * editorial cadence — Mary-like one-off drafts aren't affected.
+ *
+ * Also bounds the downstream Slack notifications and auto-cover-image
+ * Gemini calls fired per submission.
+ */
+export const contentProposeRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('content-propose:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for content submission');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Content submission rate limit exceeded (20 per 10 minutes). Please try again later.',
+      retryAfter: Math.ceil(10 * 60),
     });
   },
 });

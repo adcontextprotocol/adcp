@@ -10,8 +10,8 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 **Response Time**: ~60 seconds (reporting query)
 
-**Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
+**Request Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json)
 
 ## Request Parameters
 
@@ -59,7 +59,15 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
 
-See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json) for complete field list.
+
+### Billing-grade vs best-effort numbers
+
+Unless the seller explicitly declares otherwise, `get_media_buy_delivery` returns **best-effort** numbers: real-time or near-real-time telemetry, subject to revision as counts settle, **not** an invoicing source of truth. Callers that use these numbers for client reporting or pacing decisions are safe; callers that use them for reconciliation, accruals, or finance close are not.
+
+Sellers **MAY** declare a finalization window in their capabilities (e.g., `delivery_reporting.finalization_window_hours`) and, once that window has elapsed for a reporting period, treat the numbers returned for that period as authoritative for billing — stable across subsequent calls, suitable for invoice reconciliation, and liable as the source of truth in a dispute. Callers **MUST NOT** assume finalization in the absence of such a declaration.
+
+When a buyer's independent measurement disagrees with these numbers, reconciliation happens out-of-band through the commercial relationship between counterparties, backed by the audit trail on both sides. AdCP 3.0 does not specify a structured dispute task.
 
 ## Common Scenarios
 

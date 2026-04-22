@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/core/assets/url-asset.json",
+  "title": "URL Asset",
+  "description": "URL reference asset",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "url",
+      "description": "Discriminator identifying this as a URL asset. See /schemas/creative/asset-types for the registry."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "URL reference. May be a plain URI or an RFC 6570 URI template carrying AdCP universal macros (e.g., `{SKU}`, `{MEDIA_BUY_ID}`). Buyers MUST NOT pre-encode macro braces at sync time; the ad server URL-encodes substituted values at impression time. See docs/creative/universal-macros.mdx."
+    },
+    "url_type": {
+      "$ref": "/schemas/3.0.0/enums/url-asset-type.json",
+      "description": "Type of URL asset: 'clickthrough' for user click destination (landing page), 'tracker_pixel' for impression/event tracking via HTTP request (fires GET, expects pixel/204 response), 'tracker_script' for measurement SDKs that must load as <script> tag (OMID verification, native event trackers using method:2)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this URL points to"
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.0/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "url"
+  ],
+  "additionalProperties": true
+}

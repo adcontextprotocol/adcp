@@ -5,6 +5,11 @@
   "description": "Markdown-formatted text content following CommonMark specification",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "markdown",
+      "description": "Discriminator identifying this as a markdown asset. See /schemas/creative/asset-types for the registry."
+    },
     "content": {
       "type": "string",
       "description": "Markdown content following CommonMark spec with optional GitHub Flavored Markdown extensions"
@@ -25,6 +30,7 @@
     }
   },
   "required": [
+    "asset_type",
     "content"
   ],
   "additionalProperties": true

@@ -162,12 +162,14 @@ export const CATALOG_EVENT_TOOLS = [
             type: 'object',
             properties: {
               catalog_id: { type: 'string' },
+              type: { type: 'string', enum: ['product', 'offering', 'inventory', 'store', 'promotion', 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination'] },
               catalog_type: { type: 'string', enum: ['product', 'offering', 'inventory', 'store', 'promotion', 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination'] },
               name: { type: 'string' },
               feed_url: { type: 'string', format: 'uri' },
+              url: { type: 'string', format: 'uri' },
               items: { type: 'array' },
             },
-            required: ['catalog_id', 'catalog_type'],
+            required: ['catalog_id'],
           },
           maxItems: 50,
         },
@@ -246,6 +248,8 @@ export const CATALOG_EVENT_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         media_buy_id: { type: 'string' },
         measurement_period: {
           type: 'object',
@@ -260,7 +264,6 @@ export const CATALOG_EVENT_TOOLS = [
         creative_id: { type: 'string' },
         metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'roas', 'cpa', 'engagement_rate'] },
         feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'blended'] },
-        feedback: { type: 'object', description: 'Structured feedback object (alternative to flat fields)' },
         idempotency_key: { type: 'string' },
       },
       required: ['media_buy_id', 'measurement_period', 'performance_index'],
@@ -272,7 +275,7 @@ export const CATALOG_EVENT_TOOLS = [
 
 const VALID_CATALOG_TYPES = ['product', 'offering', 'inventory', 'store', 'promotion', 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination'];
 
-export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCatalogsInput;
 
   if (!req.account) {
@@ -289,7 +292,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   if (!req.catalogs && !req.catalog_ids) {
     const existing = Array.from(catalogs.values()).map(c => ({
       catalog_id: c.catalogId,
-      catalog_type: c.catalogType,
+      type: c.catalogType,
       name: c.name,
       item_count: c.itemCount,
       items_approved: c.itemsApproved,
@@ -318,17 +321,23 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    if (!input.catalog_type || !VALID_CATALOG_TYPES.includes(input.catalog_type)) {
+    // Default to 'product' when omitted — the most common catalog type in
+    // practice, and the spec allows inferring from feed content. Explicit
+    // invalid values still fail fast.
+    const rawType = input.catalog_type ?? (input as unknown as { type?: string }).type;
+    const catalogType = rawType ?? 'product';
+    if (!VALID_CATALOG_TYPES.includes(catalogType)) {
       results.push({
         catalog_id: input.catalog_id,
         action: 'failed',
-        errors: [{ code: 'INVALID_REQUEST', message: `catalog_type must be one of: ${VALID_CATALOG_TYPES.join(', ')}` }],
+        errors: [{ code: 'INVALID_REQUEST', message: `catalog type must be one of: ${VALID_CATALOG_TYPES.join(', ')}` }],
       });
       continue;
     }
 
     const existing = catalogs.get(input.catalog_id);
-    const itemCount = input.items?.length || (input.feed_url ? 50 : 0); // Simulate feed fetch
+    const feedUrl = input.feed_url ?? (input as unknown as { url?: string }).url;
+    const itemCount = input.items?.length || (feedUrl ? 50 : 0); // Simulate feed fetch
     // Small inline catalogs: approve all. Larger feeds: simulate realistic review rates.
     const itemsApproved = itemCount <= 10 ? itemCount : Math.floor(itemCount * 0.9);
     const itemsRejected = itemCount <= 10 ? 0 : Math.floor(itemCount * 0.02);
@@ -348,7 +357,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
 
     const state: CatalogState = {
       catalogId: input.catalog_id,
-      catalogType: input.catalog_type,
+      catalogType,
       name: input.name || input.catalog_id,
       itemCount,
       itemsApproved,
@@ -379,7 +388,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
       }];
     }
 
-    if (input.feed_url) {
+    if (feedUrl) {
       result.next_fetch_at = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
     }
 
@@ -392,7 +401,7 @@ export function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncEventSourcesInput;
 
   if (!req.account) {
@@ -464,7 +473,7 @@ export function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
   return { event_sources: results };
 }
 
-export function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
+export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as LogEventInput;
 
   if (!req.event_source_id) {
@@ -525,7 +534,7 @@ export function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   return result;
 }
 
-export function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingContext) {
+export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PerformanceFeedbackInput;
 
   if (!req.media_buy_id) {
@@ -548,7 +557,7 @@ export function handleProvidePerformanceFeedback(args: ToolArgs, ctx: TrainingCo
 
   // Validate media buy exists in session
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = getSession(sessionKey);
+  const session = await getSession(sessionKey);
   if (!session.mediaBuys.has(req.media_buy_id)) {
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy '${req.media_buy_id}' not found. Create a media buy first via create_media_buy.` }],

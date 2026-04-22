@@ -111,6 +111,12 @@ Append-only within a 90-day retention window.
 
 The authorization payload carries the full scoping model from `adagents.json` so `RegistrySync` clients can update their local `AuthorizationIndex` without fetching the full file. TMP routers consume these events to keep their hot-path authorization checks current.
 
+**Advisory identity material.** Any `signing_keys` carried inside a feed event (for example, inside an `authorization.granted` payload) are advisory and cached from the publisher — explicitly non-authoritative. (Illustrative tags such as `"advisory": true` or `"source": "cached_from_publisher"` used elsewhere in prose describe this posture; they are not defined payload fields on feed events in 3.x and consumers MUST NOT rely on their presence on the wire.) Consumers MUST NOT treat feed-delivered `signing_keys` as a trust anchor. Before acting on any identity change (key rotation, agent authorization granted, authorization revoked, pointer target change), verifiers MUST re-fetch the relevant artifact (`adagents.json`, `brand.json`, or the publisher's pinned `signing_keys` entry — see `docs/governance/property/adagents.mdx` §`signing_keys` for the pin rule) from the authoritative operator origin and verify it against the publisher's own published pin. The feed is an optimization for fast change detection, not a source of identity truth.
+
+**Re-fetch coalescing.** The MUST-re-fetch rule is a per-verifier safety property, not a per-event one. To avoid turning a hot rotation event into a thundering herd against the publisher origin, verifiers MAY coalesce re-fetches per `(publisher_domain, artifact)` tuple within a short window (order of the publisher's `Cache-Control` `max-age`, or ~60 seconds in its absence): multiple feed events observed during that window produce at most one authoritative fetch. Coalescing MUST NOT extend past the cache TTL the publisher has declared.
+
+**Feed-event content signing (4.0 track).** The registry operator SHOULD content-sign every feed event with a long-lived registry signing key so consumers can detect a registry-host compromise that attempts to inject bogus `authorization.granted` or `authorization.revoked` events. This work is tracked alongside the **R-1 root-of-trust / key-transparency** deliverables for 4.0 (issue [#2466](https://github.com/adcontextprotocol/adcp/pull/2466), carried forward); until it lands, consumers MUST rely on the authoritative-origin re-fetch rule above as the safety property.
+
 **agent.compliance_changed:**
 ```json
 {

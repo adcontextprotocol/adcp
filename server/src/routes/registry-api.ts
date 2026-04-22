@@ -8,20 +8,25 @@
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import { createTestClient, loadBundledStoryboards, runStoryboardStep, getStoryboardById, getFirstStepPreview } from "@adcp/client/testing";
+import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/client";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
-import { comply, complianceResultToDbInput } from "../addie/services/compliance-testing.js";
+import {
+  comply,
+  complianceResultToDbInput,
+  classifyCapabilityResolutionError,
+  presentCapabilityResolutionError,
+} from "../addie/services/compliance-testing.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
-import { validateCrawlDomain } from "../utils/url-security.js";
+import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -50,6 +55,7 @@ import {
   ComplianceRunSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
+  CredentialSaveValidationErrorSchema,
   StoryboardSummarySchema,
   StoryboardDetailSchema,
 } from "../schemas/registry.js";
@@ -68,10 +74,14 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
+import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
+import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
+import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
-import { getAllPlatformTypes } from "../addie/services/compliance-testing.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
+import { classifyProbeError } from "../utils/probe-error.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -1613,7 +1623,7 @@ registry.registerPath({
   operationId: "connectAgent",
   summary: "Connect agent credentials",
   description:
-    "Store authentication credentials for an agent and optionally set its platform type. Requires authentication and ownership.",
+    "Store authentication credentials for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -1626,7 +1636,6 @@ registry.registerPath({
           schema: z.object({
             auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
             auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
-            platform_type: z.string().optional().openapi({ description: "Agent platform type" }),
           }),
         },
       },
@@ -1641,7 +1650,6 @@ registry.registerPath({
             connected: z.literal(true),
             has_auth: z.boolean(),
             agent_context_id: z.string(),
-            platform_type: z.string().optional(),
           }),
         },
       },
@@ -1654,12 +1662,65 @@ registry.registerPath({
 });
 
 registry.registerPath({
-  method: "get",
-  path: "/api/registry/agents/{encodedUrl}/applicable-storyboards",
-  operationId: "getApplicableStoryboards",
-  summary: "Get applicable storyboards for agent",
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/oauth-client-credentials",
+  operationId: "saveAgentOAuthClientCredentials",
+  summary: "Save OAuth 2.0 client-credentials for an agent",
   description:
-    "Discovers an agent's tools and returns storyboards that are applicable based on its capabilities. Requires authentication and ownership.",
+    "Store a machine-to-machine OAuth 2.0 client-credentials configuration (RFC 6749 §4.4) for this agent. The SDK exchanges at the token endpoint before every call and refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time, the server stores it as written (encrypted uniformly). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            token_endpoint: z.string().max(2048).openapi({ description: "Token endpoint URL (HTTPS required; localhost allowed in dev)." }),
+            client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
+            client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
+            scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
+            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
+            auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Credentials saved",
+      content: {
+        "application/json": {
+          schema: z.object({
+            connected: z.literal(true),
+            has_auth: z.literal(true),
+            agent_context_id: z.string(),
+            auth_type: z.literal("oauth_client_credentials"),
+          }),
+        },
+      },
+    },
+    400: {
+      description: "Invalid parameters — response carries `code` and `field` pointing to the rejection cause.",
+      content: { "application/json": { schema: CredentialSaveValidationErrorSchema } },
+    },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/oauth-client-credentials/test",
+  operationId: "testAgentOAuthClientCredentials",
+  summary: "Dry-run the saved OAuth 2.0 client-credentials config",
+  description:
+    "Exchange the saved client_credentials at the token endpoint and discard the resulting access token. Returns success + latency on a 2xx exchange, or the SDK's `ClientCredentialsExchangeError` kind (`oauth`, `malformed`, `network`) on failure so operators get same-second feedback instead of waiting for the next compliance heartbeat. Requires authentication and ownership. Requires credentials to already be saved via `PUT /oauth-client-credentials`.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }],
   request: {
@@ -1669,21 +1730,74 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: "Applicable storyboards grouped by track",
+      description:
+        "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it).",
+      content: {
+        "application/json": {
+          schema: z.union([
+            z.object({
+              ok: z.literal(true),
+              latency_ms: z.number().int(),
+            }),
+            z.object({
+              ok: z.literal(false),
+              latency_ms: z.number().int(),
+              error: z.object({
+                kind: z.enum(["oauth", "malformed", "network"]).openapi({ description: "Category of failure: `oauth` = AS returned a typed error (e.g. invalid_client), `malformed` = AS returned an unexpected 2xx payload, `network` = couldn't reach the AS." }),
+                message: z.string(),
+                oauth_error: z.string().optional().openapi({ description: "RFC 6749 `error` field when kind=oauth." }),
+                oauth_error_description: z.string().optional().openapi({ description: "RFC 6749 `error_description` field when kind=oauth." }),
+                http_status: z.number().int().optional().openapi({ description: "Status code when the AS returned a non-2xx." }),
+              }),
+            }),
+          ]),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "No saved client-credentials config for this agent", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/applicable-storyboards",
+  operationId: "getApplicableStoryboards",
+  summary: "Get applicable storyboards for agent",
+  description:
+    "Probe the agent's get_adcp_capabilities and resolve its declared supported_protocols and specialisms to the compliance bundles that will run. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Bundles the agent will be tested against, driven by its declared capabilities",
       content: {
         "application/json": {
           schema: z.object({
             agent_url: z.string(),
             agent_name: z.string(),
-            tools: z.array(z.string()),
-            storyboards: z.record(z.string(), z.array(z.object({
+            supported_protocols: z.array(z.string()),
+            specialisms: z.array(z.string()),
+            capabilities_probe_error: z.string().optional().openapi({ description: "Agent-reported probe error. Untrusted — sanitized and truncated to 500 chars. Present when get_adcp_capabilities was advertised but failed; empty bundle list usually indicates this, not a v2 agent." }),
+            bundles: z.array(z.object({
+              kind: z.enum(["universal", "domain", "specialism"]),
               id: z.string(),
-              title: z.string(),
-              summary: z.string(),
-              step_count: z.number().int(),
-            }))),
-            total_applicable: z.number().int(),
-            total_available: z.number().int(),
+              storyboards: z.array(z.object({
+                id: z.string(),
+                title: z.string(),
+                summary: z.string(),
+                step_count: z.number().int(),
+              })),
+            })),
+            total_storyboards: z.number().int(),
           }),
         },
       },
@@ -1691,8 +1805,31 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
-    422: { description: "Agent requires authentication", content: { "application/json": { schema: z.object({ error: z.string(), needs_auth: z.literal(true) }) } } },
-    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description: "Agent requires authentication, or declares a specialism not in the local compliance cache",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            needs_auth: z.boolean().optional(),
+            unknown_specialism: z.boolean().optional(),
+            declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared, for unknown-specialism errors" }),
+            known_specialisms: z.array(z.string()).optional().openapi({ description: "Specialism ids present in this server's local compliance cache" }),
+          }),
+        },
+      },
+    },
+    500: {
+      description: "Server error",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            reason: z.enum(["network", "tls", "timeout", "protocol", "unknown"]).optional().openapi({ description: "Coarse error classification for UI differentiation" }),
+          }),
+        },
+      },
+    },
     504: { description: "Connection timeout", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3252,7 +3389,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Agent Compliance Endpoints ──────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/compliance", bulkResolveRateLimiter, async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -3314,7 +3451,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/agents/:encodedUrl/compliance/history", bulkResolveRateLimiter, async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance/history", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -3496,13 +3633,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
   /**
-   * Verify the authenticated user belongs to the organization that owns this agent.
-   * Returns true if ownership is confirmed, false otherwise.
+   * Resolve the workos_organization_id of the org that owns this agent,
+   * for the authenticated user. Returns null if the user is not a member
+   * of any org whose member_profile lists the agent (403 case).
+   *
+   * Mirrors the query driving the `auth-status` endpoint so the org id the
+   * UI surfaces ("Auth configured via OAuth") is the one we consult for
+   * Test-your-agent credentials.
    */
-  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+  async function resolveAgentOwnerOrg(userId: string, agentUrl: string): Promise<string | null> {
     try {
-      const result = await query(
-        `SELECT 1 FROM member_profiles mp
+      const result = await query<{ workos_organization_id: string }>(
+        `SELECT mp.workos_organization_id
+         FROM member_profiles mp
          JOIN organization_memberships om
            ON om.workos_organization_id = mp.workos_organization_id
          WHERE mp.agents @> $1::jsonb
@@ -3510,34 +3653,40 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
          LIMIT 1`,
         [JSON.stringify([{ url: agentUrl }]), userId],
       );
-      return result.rows.length > 0;
+      return result.rows[0]?.workos_organization_id ?? null;
     } catch {
-      return false;
+      return null;
     }
   }
 
-  function validateAgentUrlParam(raw: string): string | null {
+  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+    return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
+  }
+
+  // Shared SSRF-resistant URL validator lives in utils/url-security.ts so the
+  // Addie tool handler (save_agent) can apply identical rules to OAuth
+  // token_endpoint values — any divergence reopens the cloud-metadata
+  // / private-IP exfiltration surface we closed here.
+  const validateAgentUrlParam = validateExternalUrl;
+
+  /**
+   * Ensure an agent_context exists so the UI can hand the user a working
+   * `/api/oauth/agent/start?agent_context_id=...` link even if they never
+   * opened the connect form. Idempotent.
+   */
+  async function ensureAgentContextId(orgId: string, agentUrl: string, userId: string): Promise<string | null> {
     try {
-      const url = new URL(raw);
-      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-
-      const hostname = url.hostname.toLowerCase();
-
-      // Block cloud metadata endpoints
-      if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") return null;
-
-      // Block private/loopback addresses in production
-      if (process.env.NODE_ENV === "production") {
-        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0") return null;
-        const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-        if (ipMatch) {
-          const [, a, b] = ipMatch.map(Number);
-          if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
-        }
+      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      if (!context) {
+        context = await agentContextDb.create({
+          organization_id: orgId,
+          agent_url: agentUrl,
+          created_by: userId,
+        });
       }
-
-      return raw;
-    } catch {
+      return context.id;
+    } catch (err) {
+      logger.warn({ err, orgId, agentUrl }, "Failed to ensure agent context for OAuth challenge");
       return null;
     }
   }
@@ -3741,7 +3890,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         [JSON.stringify([{ url: agentUrl }]), req.user.id],
       );
 
-      const noAuthResponse = { has_auth: false, agent_context_id: null, auth_type: null, has_oauth_token: false, has_valid_oauth: false, oauth_token_expires_at: null };
+      const noAuthResponse = {
+        has_auth: false,
+        agent_context_id: null,
+        auth_type: null,
+        has_oauth_token: false,
+        has_valid_oauth: false,
+        oauth_token_expires_at: null,
+        has_oauth_client_credentials: false,
+      };
 
       if (orgResult.rows.length === 0) {
         return res.json(noAuthResponse);
@@ -3755,14 +3912,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const hasValidOAuth = agentContextDb.hasValidOAuthTokens(context);
+      const hasCC = context.has_oauth_client_credentials;
 
       res.json({
-        has_auth: context.has_auth_token || hasValidOAuth,
+        has_auth: context.has_auth_token || hasValidOAuth || hasCC,
         agent_context_id: context.id,
-        auth_type: context.has_auth_token ? context.auth_type : hasValidOAuth ? "oauth" : null,
+        auth_type: context.has_auth_token
+          ? context.auth_type
+          : hasValidOAuth
+            ? "oauth"
+            : hasCC
+              ? "oauth_client_credentials"
+              : null,
         has_oauth_token: context.has_oauth_token,
         has_valid_oauth: hasValidOAuth,
         oauth_token_expires_at: context.oauth_token_expires_at?.toISOString() || null,
+        has_oauth_client_credentials: hasCC,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get agent auth status");
@@ -3781,7 +3946,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const { auth_token, auth_type, platform_type } = req.body;
+      const { auth_token, auth_type } = req.body;
 
       if (auth_token && typeof auth_token !== "string") {
         return res.status(400).json({ error: "auth_token must be a string" });
@@ -3795,16 +3960,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
       }
       const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
-
-      if (platform_type && typeof platform_type !== "string") {
-        return res.status(400).json({ error: "platform_type must be a string" });
-      }
-      const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
-      if (platform_type && !validPlatformTypes.has(platform_type)) {
-        return res.status(400).json({
-          error: `Invalid platform_type. Valid types: ${[...validPlatformTypes].join(", ")}`,
-        });
-      }
 
       // Verify ownership and get org ID in a single query
       const orgResult = await query(
@@ -3839,22 +3994,145 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
       }
 
-      // Set platform type if provided
-      if (platform_type) {
-        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type });
-      }
-
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
         agent_context_id: context.id,
-        platform_type: platform_type || undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to connect agent");
       res.status(500).json({ error: "Failed to connect agent" });
     }
   });
+
+  /**
+   * Save OAuth 2.0 client-credentials (RFC 6749 §4.4) for an agent. Parallel
+   * to /connect but for the machine-to-machine flow. Stored encrypted at
+   * rest; the SDK exchanges at `token_endpoint` before every call and
+   * refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference —
+   * the SDK resolves at exchange time, the server just stores the value as
+   * written (encrypted uniformly either way).
+   */
+  router.put(
+    "/registry/agents/:encodedUrl/oauth-client-credentials",
+    brandCreationRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const parsed = parseOAuthClientCredentialsInput(req.body, {
+          validateTokenEndpoint: validateExternalUrl,
+        });
+        if (!parsed.ok) {
+          return res.status(400).json({ error: parsed.error, code: parsed.code, field: parsed.field });
+        }
+
+        const orgResult = await query<{ workos_organization_id: string }>(
+          `SELECT mp.workos_organization_id
+           FROM member_profiles mp
+           JOIN organization_memberships om
+             ON om.workos_organization_id = mp.workos_organization_id
+           WHERE mp.agents @> $1::jsonb
+             AND om.workos_user_id = $2
+           LIMIT 1`,
+          [JSON.stringify([{ url: agentUrl }]), req.user.id],
+        );
+        if (orgResult.rows.length === 0) {
+          return res.status(403).json({ error: "You do not have permission to modify this agent" });
+        }
+        const orgId = orgResult.rows[0].workos_organization_id;
+
+        let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+        if (!context) {
+          context = await agentContextDb.create({
+            organization_id: orgId,
+            agent_url: agentUrl,
+            created_by: req.user.id,
+          });
+        }
+
+        await agentContextDb.saveOAuthClientCredentials(context.id, parsed.creds);
+
+        res.json({
+          connected: true,
+          has_auth: true,
+          agent_context_id: context.id,
+          auth_type: "oauth_client_credentials",
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to save oauth client credentials");
+        res.status(500).json({ error: "Failed to save OAuth client credentials" });
+      }
+    },
+  );
+
+  /**
+   * Dry-run the saved client-credentials config by exchanging at the token
+   * endpoint and discarding the result. Converts the dashboard's "save and
+   * pray and wait for the next heartbeat" flow into "save and verify in
+   * under 2s" — see #2809. Returns `{ok: true, latency_ms}` on a successful
+   * exchange, or `{ok: false, error: {kind, message, ...}}` mapping the
+   * SDK's ClientCredentialsExchangeError kinds (oauth / malformed / network).
+   */
+  router.post(
+    "/registry/agents/:encodedUrl/oauth-client-credentials/test",
+    brandCreationRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
+          return res.status(403).json({ error: "You do not have permission to test this agent" });
+        }
+
+        const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, agentUrl);
+        if (!creds) {
+          return res.status(404).json({ error: "No client-credentials config saved for this agent. Save credentials first, then test." });
+        }
+
+        const start = Date.now();
+        try {
+          await exchangeClientCredentials(creds);
+          return res.json({ ok: true, latency_ms: Date.now() - start });
+        } catch (err) {
+          if (err instanceof ClientCredentialsExchangeError) {
+            const body: Record<string, unknown> = {
+              ok: false,
+              error: {
+                kind: err.kind,
+                message: err.message,
+              },
+              latency_ms: Date.now() - start,
+            };
+            const errorRec = body.error as Record<string, unknown>;
+            if (err.oauthError) errorRec.oauth_error = err.oauthError;
+            if (err.oauthErrorDescription) errorRec.oauth_error_description = err.oauthErrorDescription;
+            if (err.httpStatus) errorRec.http_status = err.httpStatus;
+            return res.json(body);
+          }
+          throw err;
+        }
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to test oauth client credentials");
+        res.status(500).json({ error: "Failed to test OAuth client credentials" });
+      }
+    },
+  );
 
   // ── Storyboards ────────────────────────────────────────────────
 
@@ -3894,25 +4172,33 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-    if (!isOwner) {
+    const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+    if (!orgId) {
       return res.status(403).json({ error: "You do not have permission to test this agent" });
     }
 
     try {
-      let auth;
-      try {
-        auth = await complianceDb.resolveOwnerAuth(agentUrl);
-      } catch (authErr) {
-        logger.debug({ err: authErr, agentUrl }, "Auth resolution failed — trying without auth");
-      }
+      const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+      const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
 
-      let agentInfo;
+      let profile;
       try {
-        const client = createTestClient(agentUrl, "mcp", { ...(auth && { auth }) });
-        agentInfo = await client.getAgentInfo();
+        const caps = await testCapabilityDiscovery(agentUrl, { ...(sdkAuth && { auth: sdkAuth }) });
+        profile = caps.profile;
+
+        // The SDK swallows the agent's 401 into steps[0].error; surface it as
+        // a structured challenge so the UI can route the user to the OAuth
+        // flow instead of rendering a storyboard list they can't run.
+        const probeStep = caps.steps?.[0];
+        if (probeStep && !probeStep.passed && isOAuthRequiredErrorMessage(probeStep.error)) {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "This agent requires OAuth authorization. Connect via OAuth to run storyboards.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
       } catch (connectErr) {
-        // If auth failed and connection failed, give a specific error
         if (!auth) {
           return res.status(422).json({
             error: "Agent requires authentication. Save an auth token first using the connect form.",
@@ -3921,35 +4207,90 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
         throw connectErr;
       }
-      const agentTools = agentInfo.tools?.map((t: { name: string }) => t.name) || [];
 
-      const allStoryboards = loadBundledStoryboards();
-      const applicable = allStoryboards.filter(sb => {
-        if (!sb.required_tools?.length) return true;
-        return sb.required_tools.some(tool => agentTools.includes(tool));
-      });
+      const supportedProtocols = profile?.supported_protocols ?? [];
+      const specialisms = profile?.specialisms ?? [];
 
-      // Group by track
-      const byTrack: Record<string, Array<{ id: string; title: string; summary: string; step_count: number }>> = {};
-      for (const sb of applicable) {
-        const track = sb.track || "general";
-        if (!byTrack[track]) byTrack[track] = [];
-        byTrack[track].push({
-          id: sb.id,
-          title: sb.title,
-          summary: sb.summary,
-          step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+      let resolved;
+      try {
+        resolved = resolveStoryboardsForCapabilities({
+          supported_protocols: supportedProtocols,
+          specialisms,
+        });
+      } catch (resolveErr) {
+        // Fail-closed: agent capabilities are malformed. Distinguish the two
+        // concrete cases the resolver throws for — parent-protocol-missing vs
+        // unknown-specialism — via the shared presenter so the response
+        // envelope stays consistent. Consumers switch on `error_kind`.
+        const capsError = classifyCapabilityResolutionError(resolveErr);
+        let knownSpecialisms: string[] = [];
+        try {
+          knownSpecialisms = loadComplianceIndex().specialisms.map(s => s.id).sort();
+        } catch (indexErr) {
+          logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
+        }
+
+        if (capsError) {
+          const presentation = presentCapabilityResolutionError(capsError);
+          logger.warn(
+            { agentUrl, ...presentation.logFields, supportedProtocols, specialisms },
+            presentation.logMsg,
+          );
+          const legacyFlag =
+            capsError.kind === 'specialism_parent_protocol_missing'
+              ? { specialism_parent_protocol_missing: true }
+              : { unknown_specialism: true };
+          return res.status(422).json({
+            error: presentation.headline,
+            ...presentation.restBody,
+            ...legacyFlag,
+            declared_specialisms: specialisms,
+            declared_protocols: supportedProtocols,
+            known_specialisms: knownSpecialisms,
+          });
+        }
+
+        logger.warn({ err: resolveErr, agentUrl, supportedProtocols, specialisms }, "Capability resolution failed with unclassified error");
+        return res.status(422).json({
+          error: "Agent capability resolution failed. The cache may be stale, or the agent's response is malformed.",
+          declared_specialisms: specialisms,
+          declared_protocols: supportedProtocols,
+          known_specialisms: knownSpecialisms,
         });
       }
 
-      res.json({
+      // Drop empty bundles — upstream catalog occasionally ships stubs.
+      const bundles = resolved.bundles
+        .filter(b => b.storyboards.length > 0)
+        .map(b => ({
+          kind: b.ref.kind,
+          id: b.ref.id,
+          storyboards: b.storyboards.map(sb => ({
+            id: sb.id,
+            title: sb.title,
+            summary: sb.summary,
+            step_count: sb.phases.reduce((sum, p) => sum + p.steps.length, 0),
+          })),
+        }));
+
+      const responseBody: Record<string, unknown> = {
         agent_url: agentUrl,
-        agent_name: agentInfo.name || "Unknown",
-        tools: agentTools,
-        storyboards: byTrack,
-        total_applicable: applicable.length,
-        total_available: allStoryboards.length,
-      });
+        agent_name: profile?.name || "Unknown",
+        supported_protocols: supportedProtocols,
+        specialisms,
+        bundles,
+        total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
+      };
+      if (profile?.capabilities_probe_error) {
+        // Cap length + strip control chars. The string is agent-reported and
+        // therefore untrusted — consumers should treat it as informational
+        // only (documented on the OpenAPI description).
+        responseBody.capabilities_probe_error = String(profile.capabilities_probe_error)
+          .replace(/[\r\n\u0000-\u001f\u007f]/g, ' ')
+          .slice(0, 500);
+      }
+
+      res.json(responseBody);
     } catch (error) {
       logger.warn({ err: error, agentUrl }, "Failed to resolve applicable storyboards");
 
@@ -3957,7 +4298,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout" });
       }
 
-      return res.status(500).json({ error: "Failed to discover agent tools" });
+      return res.status(500).json({
+        error: "Failed to probe agent capabilities",
+        reason: classifyProbeError(error),
+      });
     }
   });
 
@@ -3977,22 +4321,17 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        let auth;
-        try {
-          auth = await complianceDb.resolveOwnerAuth(agentUrl);
-        } catch (authErr) {
-          logger.debug({ err: authErr, agentUrl }, "Auth resolution failed for step run");
-        }
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
 
         const { context, dry_run } = req.body;
         if (context && (typeof context !== "object" || Array.isArray(context))) {
@@ -4007,6 +4346,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           ...(context && { context }),
         });
 
+        if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.json({
+            ...result,
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
+
         res.json(result);
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
@@ -4020,7 +4368,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
-        const storyboard = getStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -4053,8 +4401,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
@@ -4063,14 +4411,23 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        // Resolve agent auth
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard:${agentUrl}` });
 
         const complyResult = await comply(agentUrl, {
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
-          ...(auth && { auth }),
+          ...(sdkAuth && { auth: sdkAuth }),
         });
+
+        if (complyResult.overall_status === 'auth_required') {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "Agent requires OAuth authorization. Connect via OAuth to run this storyboard.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
 
         // Record the run (pass storyboard ID for per-storyboard status materialization)
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
@@ -4144,8 +4501,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
@@ -4154,14 +4511,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-compare:${agentUrl}` });
         const storyboardIds = [req.params.storyboardId];
 
         const [userResult, referenceResult] = await Promise.all([
           comply(agentUrl, {
             timeout_ms: 90_000,
             storyboards: storyboardIds,
-            ...(auth && { auth }),
+            ...(sdkAuth && { auth: sdkAuth }),
           }),
           comply(PUBLIC_TEST_AGENT.url, {
             timeout_ms: 90_000,
@@ -4169,6 +4527,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
           }),
         ]);
+
+        if (userResult.overall_status === 'auth_required') {
+          const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
+          return res.status(422).json({
+            error: "Agent requires OAuth authorization. Connect via OAuth to compare against the reference agent.",
+            needs_oauth: true,
+            ...(agentContextId && { agent_context_id: agentContextId }),
+          });
+        }
 
         // Annotate storyboard steps with both results
         const comparisonPhases = storyboard.phases.map((phase) => ({
@@ -4275,7 +4642,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         : null;
 
       const displayName = profile?.display_name || domain;
-      const agentConfigs = (profile?.agents || []).filter(a => a.is_public).slice(0, 20);
+      const agentConfigs = (profile?.agents || []).filter(a => a.visibility === 'public').slice(0, 20);
 
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {

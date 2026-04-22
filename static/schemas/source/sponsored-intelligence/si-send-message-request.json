@@ -3,6 +3,8 @@
   "$id": "/schemas/sponsored-intelligence/si-send-message-request.json",
   "title": "SI Send Message Request",
   "description": "Send a message to the brand agent within an active session",
+  "x-status": "experimental",
+  "x-mutates-state": true,
   "type": "object",
   "properties": {
     "adcp_major_version": {
@@ -11,9 +13,17 @@
       "minimum": 1,
       "maximum": 99
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. Each conversational turn is a distinct mutation of session transcript — without this key, a timeout-and-retry produces a duplicate turn and a duplicate model response. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each user turn.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "session_id": {
       "type": "string",
-      "description": "Active session identifier"
+      "description": "Active session identifier",
+      "x-entity": "si_session"
     },
     "message": {
       "type": "string",
@@ -42,6 +52,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "session_id"
   ],
   "anyOf": [

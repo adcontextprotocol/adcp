@@ -12,13 +12,13 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Request
 
-**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/v3/content-standards/update-content-standards-request.json)
+**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/latest/content-standards/update-content-standards-request.json)
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | ID of the standards configuration to update |
 | `scope` | object | No | Updated scope |
-| `policy` | string | No | Updated policy prompt |
+| `policies` | PolicyEntry[] | No | Updated array of policies. Replaces existing policies; use stable `policy_id` values to track policies across versions. |
 | `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
 
 ### Example Request
@@ -26,8 +26,34 @@ Update an existing content standards configuration. Creates a new version.
 ```json
 {
   "$schema": "/schemas/content-standards/update-content-standards-request.json",
+  "idempotency_key": "b0c1d2e3-f4a5-4678-b901-678901234567",
   "standards_id": "nike_emea_safety",
-  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
+  "policies": [
+    {
+      "policy_id": "no_violence",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid content depicting violence, weapons, or physical aggression."
+    },
+    {
+      "policy_id": "no_controversial_politics",
+      "policy_categories": ["brand_suitability"],
+      "enforcement": "must",
+      "policy": "Avoid controversial political content."
+    },
+    {
+      "policy_id": "no_adult_themes",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid adult, sexual, or mature themes."
+    },
+    {
+      "policy_id": "no_hate_speech",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Block hate speech and illegal activities."
+    }
+  ],
   "calibration_exemplars": {
     "pass": [
       { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
@@ -44,7 +70,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Response
 
-**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/v3/content-standards/update-content-standards-response.json)
+**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/latest/content-standards/update-content-standards-response.json)
 
 ### Success Response
 
@@ -64,8 +90,9 @@ Update an existing content standards configuration. Creates a new version.
   "success": false,
   "errors": [
     {
-      "code": "STANDARDS_NOT_FOUND",
-      "message": "No standards found with ID 'invalid_id'"
+      "code": "REFERENCE_NOT_FOUND",
+      "field": "standards_id",
+      "message": "Referenced resource does not exist or is not accessible"
     }
   ]
 }

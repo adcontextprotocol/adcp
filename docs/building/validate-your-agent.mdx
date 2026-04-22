@@ -7,7 +7,19 @@ description: "Test your AdCP agent with storyboards — from the CLI or through 
 
 Once your agent is running, validate it before going live. Storyboards exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
 
-Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org).
+Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/docs/building/schemas-and-sdks#one-shot-protocol-bundle) for how to fetch them offline.
+
+## Storyboard taxonomy
+
+Storyboards are organized into three layers so agents declare only what they actually support:
+
+| Layer | Path | Who must pass it |
+|-------|------|------------------|
+| **Universal** | `/compliance/{version}/universal/` | Every AdCP agent (capability discovery, error handling, schema validation) |
+| **Protocol** | `/compliance/{version}/protocols/{protocol}/` | Any agent claiming a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
+| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/docs/building/compliance-catalog) |
+
+Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
 
 ## Setup
 
@@ -144,6 +156,71 @@ When a request references a sandbox account, your agent MUST NOT persist product
 
 See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
 
+## Verifying cross-instance state
+
+The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/docs/protocol/architecture#state-persistence-and-horizontal-scaling) — a media buy created on one replica must be readable from any other. Single-instance storyboard success does not by itself prove that invariant. Choose a verification approach that fits your deployment.
+
+**Verify by architecture.** If you run on a managed serverless platform with a shared datastore — Lambda + DynamoDB, Cloudflare Workers + D1, Cloud Run + Firestore, Vercel + Neon — the invariant holds by construction. Storyboards that pass against your deployed endpoint are sufficient. Document your storage pattern so it's discoverable.
+
+**Verify by multi-instance testing.** If you deploy long-running processes (containers, VMs, a classic app server behind a load balancer), put ≥2 replicas behind round-robin routing and run storyboards against the shared endpoint:
+
+```bash
+npx @adcp/client --save-auth my-agent https://my-agent.example/mcp
+npx @adcp/client storyboard run my-agent
+```
+
+The compliance runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences most likely to catch in-process state. Stateless probes (capability discovery, auth rejection, schema validation) are unaffected.
+
+A typical failure looks like:
+
+```
+✗ get_media_buy  MEDIA_BUY_NOT_FOUND
+  create_media_buy on replica A returned media_buy_id=mb_abc123 (status: active)
+  get_media_buy on replica B returned MEDIA_BUY_NOT_FOUND for the same id
+  → Brand-scoped state is not shared across replicas.
+```
+
+**Verify by your own testing.** Property-based tests against a real datastore, chaos fault injection between replicas, or production observability that correlates writes and reads across instances are all valid. The protocol cares about the invariant, not the methodology.
+
+Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. Any state you write that a later call can read back must live in a shared store — not a per-process `Map` or module-level variable.
+
+## Preparing to test uniform error responses
+
+The [uniform-response MUST](/docs/building/implementation/error-handling#standard-error-codes) requires byte-equivalent responses for "the id exists but the caller lacks access" and "the id does not exist" across every observable channel — error body, transport status, headers, side effects, and telemetry. Verifying this needs a paired-probe runner (`adcp fuzz`) that compares two responses per tool. The runner has two modes, and you need to plan tenant setup before you can exercise the strong one.
+
+**Baseline mode — single tenant.** One auth token, two fresh UUIDs probed per tool. Catches id-echo in error bodies, header divergence outside the allowlist, MCP `isError` / A2A `task.status.state` divergence, and gross latency deltas. Cannot catch cross-tenant existence leaks, because neither probe resolves to a real resource.
+
+**Cross-tenant mode — two tenants.** Tenant A seeds a resource (e.g., a property list, content standard, media buy, creative); tenant B probes against the seeded id plus a fresh UUID. Catches the full MUST, because it exercises the `(exists, unauthorized)` vs `(does not exist)` pair that baseline cannot construct.
+
+Both modes exercise spec MUSTs. Only the cross-tenant path verifies the whole invariant.
+
+### Minimum tenant setup
+
+Provision two isolated test accounts against your agent:
+
+- **Tenant A** — can create resources the invariant seeds (property lists, content standards, media buys, creatives). Sandbox-mode accounts are fine.
+- **Tenant B** — read-only against shared discovery surfaces. MUST NOT share any per-tenant state with A beyond what your platform makes globally visible (e.g., published product catalogs).
+
+Anything else the two tenants share — audit shards, rate-limit buckets keyed by resource type, cache tags — is a potential side channel the invariant is designed to catch. Share only what you'd share in production.
+
+### Runner invocation
+
+```bash
+# Cross-tenant (full MUST)
+npx @adcp/client fuzz my-agent \
+  --auth-token $TENANT_A_TOKEN \
+  --auth-token-cross-tenant $TENANT_B_TOKEN
+
+# Baseline (partial coverage)
+npx @adcp/client fuzz my-agent --auth-token $TOKEN
+```
+
+Tokens may also be supplied via `ADCP_AUTH_TOKEN` and `ADCP_AUTH_TOKEN_CROSS_TENANT`. See the [`@adcp/client` uniform-error-response invariant guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/VALIDATE-YOUR-AGENT.md#uniform-error-response-invariant-paired-probe) for the full flag list, the header allowlist, and the list of tools currently probed.
+
+### Testing with only one tenant
+
+If you haven't provisioned a second tenant yet, run baseline anyway — it still catches a meaningful class of leaks, and the CLI flags the run as baseline-only so operators can see coverage is partial. Treat single-tenant fuzz as a pre-check, not a conformance signal: a clean baseline run does not prove the MUST holds. Add the cross-tenant leg before you claim uniform-response conformance.
+
 ## The build-validate-fix loop
 
 The typical development workflow:
@@ -172,6 +249,11 @@ For [Practitioner certification](https://agenticadvertising.org/certification), 
 | `npx @adcp/client --list-agents` | List saved aliases |
 
 All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
+
+## When a storyboard fails
+
+- **[Storyboard troubleshooting](/docs/building/implementation/storyboard-troubleshooting)** — Error patterns mapped to root causes and fixes (missing fixtures, signature challenges, envelope drift, context echo, capability mismatches)
+- **[Known spec ambiguities](/docs/building/implementation/known-ambiguities)** — Open spec gaps that affect conformance, with workarounds and issue links
 
 ## What's next
 
