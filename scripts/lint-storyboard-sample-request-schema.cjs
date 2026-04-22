@@ -325,13 +325,14 @@ async function validateStep({ schemaRef, payload }) {
  * send malformed payloads to verify the agent's error response, so their
  * sample_request is not expected to validate.
  *
- * Detection is structural: a step is negative if any validation asserts an
- * error code or a 4xx/5xx HTTP status. Authors can also opt out explicitly
- * with `sample_request_skip_schema: true` for cases the heuristic misses
- * (e.g., shape-agnostic transport tests).
+ * Detection is structural, in priority order:
+ *   1. Explicit opt-out: `sample_request_skip_schema: true`
+ *   2. Canonical negative-path marker: `expect_error: true`
+ *   3. Validations that assert error codes or 4xx/5xx HTTP statuses
  */
 function isNegativeStep(step) {
   if (step?.sample_request_skip_schema === true) return true;
+  if (step?.expect_error === true) return true;
   const validations = Array.isArray(step?.validations) ? step.validations : [];
   for (const v of validations) {
     if (v?.check === 'error_code') return true;

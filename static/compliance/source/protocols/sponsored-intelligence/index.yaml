@@ -154,9 +154,7 @@ phases:
           - Available interaction modes
 
         sample_request:
-          brand:
-            domain: "novamotors.example"
-          campaign_context: "Nova EV launch — targeting environmentally conscious drivers interested in electric vehicles"
+          intent: "User is researching electric vehicles for long road trips and wants to talk to Nova Motors"
 
           idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_initiate_session"
           context:
@@ -235,6 +233,7 @@ phases:
 
         sample_request:
           session_id: "$context.session_id"
+          reason: "handoff_complete"
 
           context:
             correlation_id: "si_session--si_terminate_session"

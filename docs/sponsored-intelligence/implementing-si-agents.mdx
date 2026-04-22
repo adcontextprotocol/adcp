@@ -71,12 +71,12 @@ server.tool(
   "si_initiate_session",
   "Start a conversational session with this brand agent",
   {
-    context: { type: "string", description: "Natural language user intent" },
+    intent: { type: "string", description: "Natural language user intent" },
     identity: { type: "object", description: "User identity with consent" },
     media_buy_id: { type: "string", description: "AdCP media buy ID (optional)" },
     offering_id: { type: "string", description: "Brand-specific offering reference (optional)" },
   },
-  async ({ context, identity, media_buy_id, offering_id }) => {
+  async ({ intent, identity, media_buy_id, offering_id }) => {
     // Your implementation here
     return {
       content: [{
@@ -96,17 +96,17 @@ server.tool(
 
 ### 1. The Conversation Handoff
 
-The `context` field in `si_initiate_session` is the host's handoff message - what the host AI tells your brand agent about the user's intent. This is visible to the user as part of the conversation flow.
+The `intent` field in `si_initiate_session` is the host's handoff message — what the host AI tells your brand agent about what the user is trying to do. This is visible to the user as part of the conversation flow.
 
 For example, when a user says "I need to fly to Boston next week" in ChatGPT, and the host decides to connect them to Delta's SI agent, the handoff might look like:
 
 > "I'm connecting you with Delta to help with your Boston flight. They can check availability and offerings for you."
 
-Your brand agent receives the context and should respond naturally - as if continuing the conversation:
+Your brand agent receives the intent and should respond naturally — as if continuing the conversation:
 
 ```typescript
 // Your agent is an AI that responds conversationally
-// The context tells you what the user needs - just help them
+// The intent tells you what the user needs — just help them
 
 // Good response:
 "Hi! I'd be happy to help you find a flight to Boston.
