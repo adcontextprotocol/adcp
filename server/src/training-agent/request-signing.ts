@@ -25,9 +25,16 @@ import {
   StaticJwksResolver,
   InMemoryReplayStore,
   InMemoryRevocationStore,
+  RequestSignatureError,
 } from '@adcp/client/signing';
 import type { AdcpJsonWebKey, VerifierCapability } from '@adcp/client/signing';
-import { verifySignatureAsAuthenticator } from '@adcp/client/server';
+import {
+  verifySignatureAsAuthenticator,
+  AuthError,
+  tagAuthenticatorNeedsRawBody,
+  tagAuthenticatorPresenceGated,
+  isAuthenticatorPresenceGated,
+} from '@adcp/client/server';
 import type { Authenticator } from '@adcp/client/server';
 import { getComplianceCacheDir } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
@@ -169,6 +176,103 @@ function headerFirst(value: string | string[] | undefined): string | undefined {
   if (typeof value === 'string') return value;
   if (Array.isArray(value) && value.length > 0) return value[0];
   return undefined;
+}
+
+function headerNonEmpty(value: string | string[] | undefined): boolean {
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.some(v => typeof v === 'string' && v.length > 0);
+  return false;
+}
+
+function requestCarriesSignatureHeader(headers: IncomingMessage['headers']): boolean {
+  return headerNonEmpty(headers['signature-input']) || headerNonEmpty(headers['signature']);
+}
+
+/**
+ * Detect `push_notification_config.authentication` (non-empty object) anywhere
+ * under the JSON-RPC `params.arguments` tree. The downgrade-resistance rule in
+ * docs/building/implementation/security.mdx (`#webhook-callbacks`) scopes the
+ * trigger to the webhook-registration field, so we only walk the argument
+ * subtree — not the whole body — and treat arrays as transparent containers
+ * so per-package webhook configs (e.g. an update carrying multiple packages)
+ * are matched.
+ */
+function bodyCarriesWebhookAuthentication(rawBody: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return false;
+  }
+  const args = (parsed as { params?: { arguments?: unknown } } | null)?.params?.arguments;
+  return subtreeHasWebhookAuthentication(args);
+}
+
+// Depth budget counts object hops only; array containers are transparent so a
+// per-package webhook config doesn't consume the budget for its position in
+// the packages[] array. Realistic AdCP payloads nest 4–6 object levels deep
+// (plan → packages[] → package → push_notification_config → authentication).
+const MAX_OBJECT_DEPTH = 10;
+
+function subtreeHasWebhookAuthentication(node: unknown, depth = 0): boolean {
+  if (Array.isArray(node)) {
+    return node.some(item => subtreeHasWebhookAuthentication(item, depth));
+  }
+  if (!node || typeof node !== 'object') return false;
+  if (depth > MAX_OBJECT_DEPTH) return false;
+  const obj = node as Record<string, unknown>;
+  const pnc = obj.push_notification_config;
+  if (pnc && typeof pnc === 'object' && !Array.isArray(pnc)) {
+    const auth = (pnc as Record<string, unknown>).authentication;
+    if (auth && typeof auth === 'object' && Object.keys(auth as object).length > 0) return true;
+  }
+  for (const child of Object.values(obj)) {
+    if (child && typeof child === 'object' && subtreeHasWebhookAuthentication(child, depth + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Enforce the webhook-registration downgrade-resistance rule from
+ * `docs/building/implementation/security.mdx#webhook-callbacks`:
+ *
+ *   Sellers that support request signing MUST require the inbound request to
+ *   be 9421-signed when `push_notification_config.authentication` is present,
+ *   rejecting with `request_signature_required`.
+ *
+ * The wrapper runs BEFORE the inner authenticator so it fires even when a
+ * valid bearer would otherwise authenticate — bearer bypass is the exact
+ * downgrade this rule prevents (an on-path mutator cannot inject or strip
+ * the `authentication` block once the request body is cryptographically
+ * committed to by the signature).
+ *
+ * When a signature header IS present, the wrapper delegates to the inner
+ * authenticator unchanged so the signing-path verifier does its normal work.
+ */
+export function enforceSigningWhenWebhookAuthPresent(inner: Authenticator): Authenticator {
+  const wrapped: Authenticator = async (req) => {
+    if (!requestCarriesSignatureHeader(req.headers)) {
+      const raw = (req as { rawBody?: string }).rawBody;
+      if (raw && bodyCarriesWebhookAuthentication(raw)) {
+        throw new AuthError(
+          'Signature required when push_notification_config.authentication is present.',
+          {
+            cause: new RequestSignatureError(
+              'request_signature_required',
+              0,
+              'Requests carrying push_notification_config.authentication MUST be signed per RFC 9421 (security.mdx webhook-callbacks downgrade resistance).',
+            ),
+          },
+        );
+      }
+    }
+    return inner(req);
+  };
+  tagAuthenticatorNeedsRawBody(wrapped);
+  if (isAuthenticatorPresenceGated(inner)) tagAuthenticatorPresenceGated(wrapped);
+  return wrapped;
 }
 
 /** Reset state — tests only. */

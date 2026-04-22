@@ -237,17 +237,8 @@ import {
   scopedPrincipal,
   getIdempotencyStore,
 } from './idempotency.js';
-import { getWebhookEmitter } from './webhooks.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
-
-// MCP webhook envelope's `task_type` enum (core.generated TaskType — not re-exported).
-type WebhookTaskType =
-  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
-  | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
-  | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
-  | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
-  | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -335,62 +326,6 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
     }));
   }
   return details;
-}
-
-/** Map tool name → TaskType for webhook envelopes. Only tools that emit
- * webhooks need an entry — tools absent from this map never fire an emission
- * even if the caller supplies a push_notification_config.url. */
-const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
-  create_media_buy: 'create_media_buy',
-  update_media_buy: 'update_media_buy',
-  sync_creatives: 'sync_creatives',
-  activate_signal: 'activate_signal',
-  get_signals: 'get_signals',
-  create_property_list: 'create_property_list',
-  update_property_list: 'update_property_list',
-  get_property_list: 'get_property_list',
-  list_property_lists: 'list_property_lists',
-  delete_property_list: 'delete_property_list',
-  sync_accounts: 'sync_accounts',
-  get_account_financials: 'get_account_financials',
-  get_creative_delivery: 'get_creative_delivery',
-  sync_event_sources: 'sync_event_sources',
-  sync_audiences: 'sync_audiences',
-  sync_catalogs: 'sync_catalogs',
-  log_event: 'log_event',
-  get_brand_identity: 'get_brand_identity',
-  get_rights: 'get_rights',
-  acquire_rights: 'acquire_rights',
-};
-
-function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
-  const pnc = args.push_notification_config as { url?: unknown } | undefined;
-  if (!pnc || typeof pnc !== 'object') return undefined;
-  return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
-}
-
-/**
- * Derive a stable logical event id for webhook idempotency.
- *
- * The `operation_id` feeds `WebhookIdempotencyKeyStore` — two emissions with
- * the same operation_id reuse the same `idempotency_key`, which is the
- * cross-attempt invariant receiver-side dedup depends on. We prefer a
- * buyer-facing entity id from the response (media_buy_id, creative_id,
- * activation_id, etc.) so retries from the same buyer collapse; if the
- * response has none, we fall back to the request's idempotency_key which
- * is already unique per logical submission.
- */
-function deriveWebhookOperationId(
-  toolName: string,
-  response: Record<string, unknown>,
-  requestIdempotencyKey: string | undefined,
-): string {
-  for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
-    const v = response[field];
-    if (typeof v === 'string' && v.length > 0) return `${toolName}.${v}`;
-  }
-  if (requestIdempotencyKey) return `${toolName}.${requestIdempotencyKey}`;
-  return `${toolName}.${randomUUID()}`;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -599,6 +534,68 @@ export function invalidateCache(): void {
   cachedCatalog = null;
   cachedFormats = null;
   cachedProposals = null;
+}
+
+/**
+ * Canonicalize an agent URL for equality comparison: lowercase scheme + host,
+ * strip a single trailing slash, preserve path case. Used to decide whether
+ * a caller-supplied `format_id.agent_url` points at this agent.
+ */
+function canonicalizeAgentUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hostname = u.hostname.toLowerCase();
+    u.protocol = u.protocol.toLowerCase();
+    const s = u.toString();
+    return s.endsWith('/') ? s.slice(0, -1) : s;
+  } catch {
+    return url.replace(/\/$/, '');
+  }
+}
+
+/**
+ * Merge products and pricing options seeded via comply_test_controller
+ * (`seed_product`, `seed_pricing_option`) into the in-memory product map
+ * used for create/validate flows. Seeded fixtures are permissive objects
+ * (spec: additionalProperties: true) — we synthesize the minimum shape
+ * the handlers consult (pricing_options with pricing_model/floor_price/
+ * fixed_price/etc) so fixture-driven storyboards can reference products
+ * that don't live in the static catalog.
+ */
+function overlaySeededProducts(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, import('@adcp/client').Product>,
+): void {
+  const { seededProducts, seededPricingOptions } = session.complyExtensions;
+  if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
+
+  const pricingByProduct = new Map<string, Array<Record<string, unknown>>>();
+  for (const [key, pxFx] of seededPricingOptions) {
+    const sep = key.indexOf(':');
+    const productId = sep > 0 ? key.slice(0, sep) : key;
+    const list = pricingByProduct.get(productId) ?? [];
+    list.push(pxFx);
+    pricingByProduct.set(productId, list);
+  }
+
+  const productIds = new Set<string>([
+    ...seededProducts.keys(),
+    ...pricingByProduct.keys(),
+  ]);
+  for (const productId of productIds) {
+    const existing = productMap.get(productId);
+    const fixture = seededProducts.get(productId) ?? {};
+    const seededPricing = pricingByProduct.get(productId);
+    const merged = {
+      ...(existing ?? {}),
+      ...fixture,
+      product_id: productId,
+      pricing_options: seededPricing && seededPricing.length > 0
+        ? seededPricing
+        : (existing?.pricing_options ?? []),
+    } as unknown as import('@adcp/client').Product;
+    productMap.set(productId, merged);
+  }
 }
 
 // ── Channel aliases for brief matching (module-scoped for perf) ──
@@ -1332,6 +1329,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -1921,6 +1919,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
+  const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -1935,8 +1934,25 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
-    // Validate format_id
-    if (formatId?.id && !validFormatIds.has(formatId.id)) {
+    // Reject clearly-malformed agent_urls before we persist them. Prevents
+    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
+    if (formatId?.agent_url !== undefined) {
+      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
+      }
+      if (!/^https?:\/\//i.test(formatId.agent_url)) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
+      }
+    }
+
+    // Validate format_id only when the format is claimed against this agent.
+    // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
+    // resolved by the referenced creative agent at render time — the seller
+    // just stores the pointer. Compare canonical forms so a trailing slash
+    // or case variant of the local URL still counts as local.
+    const isLocalFormat = !formatId?.agent_url
+      || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
+    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
@@ -3458,8 +3474,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         if (name === 'create_media_buy') envelope.replayed = false;
         if (callerContext !== undefined) envelope.context = callerContext;
         const response = { ...inner, ...envelope };
+        // `structuredContent` is authoritative on success so raw-probe
+        // callers (storyboard runner's rawMcpProbe) can validate envelope
+        // fields. `content` stays empty: the SDK unwrapper folds text
+        // content into `_message` on the returned object, which trips
+        // strict `additionalProperties: false` per-task response schemas.
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
+          content: [],
+          structuredContent: response,
         };
       }
     } catch (error) {
@@ -3505,33 +3527,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Fire completion webhook if the buyer supplied a push URL and the tool
     // mapped to a TaskType. Emission is fire-and-forget so the sync response
     // doesn't wait on the receiver; retries/backoff live inside the emitter.
-    const webhookUrl = extractWebhookUrl(handlerArgs);
-    const taskType = TOOL_TO_TASK_TYPE[name];
     if (
-      webhookUrl
-      && taskType
-      && cachableResponse !== null
+      cachableResponse !== null
       && !toolResult.isError
       && !handlerThrew
     ) {
-      const emitter = getWebhookEmitter();
-      const operationId = deriveWebhookOperationId(
-        name,
-        cachableResponse,
-        typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
-      );
-      const webhookTaskId = (cachableResponse.task_id as string | undefined)
-        ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
-      const payload: Record<string, unknown> = {
-        task_id: webhookTaskId,
-        task_type: taskType,
-        protocol: 'mcp',
-        status: 'completed',
-        timestamp: new Date().toISOString(),
-        result: cachableResponse,
-      };
-      void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
-        .catch(err => logger.warn({ err, tool: name, url: webhookUrl }, 'Webhook emission failed'));
+      maybeEmitCompletionWebhook({
+        toolName: name,
+        args: handlerArgs,
+        response: cachableResponse,
+        requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+      });
     }
 
     // If not task-augmented, return result directly.

@@ -28,6 +28,12 @@ narrative: |
   activating directly on a DSP (buyer manages targeting) and activating on a sales agent
   (SA handles downstream coordination).
 
+  Pricing is hard-required for signal marketplaces. Signals are rate-carded goods by
+  definition — the value exchange is paying for access to audience data. Unlike creative
+  ad servers (where billing can be handled via out-of-band enterprise contracts), a signal
+  marketplace without pricing_options is either non-commercial or misconfigured; buyers
+  cannot activate without a pricing_option_id to anchor billing.
+
 agent:
   interaction_model: marketplace_catalog
   capabilities:

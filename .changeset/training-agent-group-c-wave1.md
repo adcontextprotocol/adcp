@@ -17,11 +17,6 @@ parallel-agent investigation, three upstream issues filed.
   account domain (e.g. `acmeoutdoor.example`) in that field, which
   otherwise strips downstream `$context.rights_id` extraction and
   prevents the governance-denial path from running at all.
-- **`security_baseline`** (`server/tests/manual/run-storyboards.ts`,
-  `server/tests/manual/run-one-storyboard.ts`) — serve a minimal RFC 8414
-  auth-server metadata document at `/auth/.well-known/
-  oauth-authorization-server`. The PRM handler already advertises this
-  issuer; serving it makes the full RFC 9728 → 8414 chain resolvable.
 - **Type-only fix** (`server/src/training-agent/task-handlers.ts`) —
   drop `asset_type: 'html'` from `buildHtmlAssets()`. `HTMLAssetSchema`
   in `@adcp/client` 5.9.x discriminates by slot name, not per-asset
