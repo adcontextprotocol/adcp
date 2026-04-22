@@ -64,6 +64,7 @@ Start a conversational session with a brand agent.
 - `offering_id` (string, optional): Brand-specific offering reference
 - `offering_token` (string, optional): Token from `si_get_offering` for session continuity
 - `supported_capabilities` (object, optional): Host platform capabilities (modalities, components, commerce)
+- `context` (object, optional): Opaque correlation data (e.g., `{"trace_id": "abc-123"}`) echoed unchanged in the response — never parsed by the brand agent
 
 **Response contains:**
 - `session_id`: Use in subsequent `si_send_message` and `si_terminate_session` calls
@@ -130,6 +131,7 @@ Get offering details and availability before initiating a session. Allows showin
 - `intent` (string, optional): Natural language description of user intent for personalized results (no PII)
 - `include_products` (boolean, optional): Include matching products
 - `product_limit` (number, optional): Max products to return (default 5, max 50)
+- `context` (object, optional): Opaque correlation data echoed unchanged in the response — never parsed by the brand agent
 
 **Response contains:**
 - `offering`: Offering details (name, description, availability)
@@ -153,7 +155,8 @@ End an SI session.
 **Key fields:**
 - `session_id` (string, required): Session ID to terminate
 - `reason` (string, required): Why the session is ending — `handoff_transaction`, `handoff_complete`, `user_exit`, `session_timeout`, `host_terminated`
-- `termination_context` (object, optional): Additional context
+- `termination_context` (object, optional): Conversation summary, transaction intent, and cause for the termination
+- `context` (object, optional): Opaque correlation data echoed unchanged in the response — never parsed by the brand agent
 
 **Reason values:**
 - `handoff_transaction`: User is being redirected to complete a transaction
