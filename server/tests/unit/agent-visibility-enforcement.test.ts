@@ -24,8 +24,39 @@ vi.mock('../../src/db/client.js', () => {
 });
 
 import { demotePublicAgentsOnTierDowngrade } from '../../src/services/agent-visibility-enforcement.js';
-// @ts-expect-error — internal test accessors exposed by the vi.mock above
-import { __client, __connect } from '../../src/db/client.js';
+import * as dbClient from '../../src/db/client.js';
+
+/**
+ * Validated module-level bindings for the mock accessors. The mock
+ * factory above always exports these, but the real `db/client.js`
+ * module type doesn't describe them — so we reach in, validate the
+ * shape once, and hand TypeScript (and CodeQL) a concretely-typed
+ * binding to use everywhere else. Throws loudly if the mock plumbing
+ * ever drifts, which is a test-setup bug and should not silently
+ * degrade into nullish property access at runtime.
+ */
+interface MockedPgClient {
+  query: ReturnType<typeof vi.fn>;
+  release: ReturnType<typeof vi.fn>;
+}
+const mockedModule = dbClient as unknown as {
+  __client?: MockedPgClient;
+  __connect?: ReturnType<typeof vi.fn>;
+};
+const mockedClient: MockedPgClient = (() => {
+  const c = mockedModule.__client;
+  if (!c || typeof c.query?.mockReset !== 'function' || typeof c.release?.mockReset !== 'function') {
+    throw new Error('Mocked pg client not wired — vi.mock factory drifted.');
+  }
+  return c;
+})();
+const mockedConnect: ReturnType<typeof vi.fn> = (() => {
+  const c = mockedModule.__connect;
+  if (!c || typeof c.mockClear !== 'function') {
+    throw new Error('Mocked getPool connect not wired — vi.mock factory drifted.');
+  }
+  return c;
+})();
 
 type SelectRow = {
   id: string;
@@ -43,9 +74,9 @@ type RecordedQuery = { sql: string; params: unknown[] };
 function mockProfileTx(rows: SelectRow[]): { recorded: RecordedQuery[]; updateArgs: unknown[][] } {
   const recorded: RecordedQuery[] = [];
   const updateArgs: unknown[][] = [];
-  __client.query.mockReset();
-  __client.release.mockReset();
-  __client.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+  mockedClient.query.mockReset();
+  mockedClient.release.mockReset();
+  mockedClient.query.mockImplementation(async (sql: string, params?: unknown[]) => {
     recorded.push({ sql, params: params ?? [] });
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rowCount: 0, rows: [] };
@@ -70,7 +101,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       getDiscoveredBrandByDomain: vi.fn(),
       updateManifestAgents: vi.fn().mockResolvedValue(undefined),
     };
-    __connect.mockClear();
+    mockedConnect.mockClear();
   });
 
   function agent(url: string, visibility: AgentConfig['visibility']): AgentConfig {
@@ -82,7 +113,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       'org1', 'individual_academic', null, brandDb,
     );
     expect(result).toBeNull();
-    expect(__connect).not.toHaveBeenCalled();
+    expect(mockedConnect).not.toHaveBeenCalled();
   });
 
   it('no-op when new tier still has API access', async () => {
@@ -90,7 +121,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       'org1', 'company_icl', 'individual_professional', brandDb,
     );
     expect(result).toBeNull();
-    expect(__connect).not.toHaveBeenCalled();
+    expect(mockedConnect).not.toHaveBeenCalled();
   });
 
   it('locks the profile row with SELECT FOR UPDATE on the supplied orgId', async () => {
