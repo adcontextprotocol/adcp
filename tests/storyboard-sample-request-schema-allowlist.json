@@ -195,14 +195,6 @@
         "required@/:uses"
       ]
     },
-    "specialisms/creative-generative/generative-seller.yaml#create_buy/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/push_notification_config/authentication:schemes",
-        "required@/push_notification_config/authentication:credentials",
-        "additionalProperties@/push_notification_config/authentication:scheme"
-      ]
-    },
     "specialisms/creative-template/index.yaml#build/build_multi_format": {
       "schema": "media-buy/build-creative-request.json",
       "errors": [
@@ -240,14 +232,6 @@
         "required@/events/0:event_time",
         "required@/events/1:event_time",
         "required@/events/2:event_time"
-      ]
-    },
-    "specialisms/sales-guaranteed/index.yaml#create_buy_submitted/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/push_notification_config/authentication:schemes",
-        "required@/push_notification_config/authentication:credentials",
-        "additionalProperties@/push_notification_config/authentication:scheme"
       ]
     },
     "specialisms/sales-non-guaranteed/index.yaml#adjust_bids/update_media_buy": {
