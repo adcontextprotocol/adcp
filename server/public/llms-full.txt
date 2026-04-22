@@ -158,11 +158,57 @@ All AdCP request and response payloads are defined as JSON Schema. Schemas are p
 
 ## Getting started
 
-1. Read the introduction: https://adcontextprotocol.org/docs/intro
-2. Understand the architecture: https://adcontextprotocol.org/docs/building/understanding
-3. Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/integration
-4. Implement your first task: https://adcontextprotocol.org/docs/building/implementation
-5. Explore schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+Adoption path:
+1. Quickstart — 5-minute curl example against the public test agent: https://adcontextprotocol.org/docs/quickstart
+2. Build an agent — point a coding agent at a SKILL.md from an AdCP SDK: https://adcontextprotocol.org/docs/building/build-an-agent
+3. Validate an agent — run storyboards against your endpoint for pass/fail conformance: https://adcontextprotocol.org/docs/building/validate-your-agent
+4. Operate an agent — what sits behind the protocol (hosting, products, monitoring): https://adcontextprotocol.org/docs/building/operating-an-agent
+
+For deeper reading:
+- Understand the architecture: https://adcontextprotocol.org/docs/building/understanding
+- Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/integration
+- Implementation patterns: https://adcontextprotocol.org/docs/building/implementation
+- Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+
+## SDKs
+
+AdCP SDKs are both-sides: the same package powers buyers calling agents and sellers implementing them.
+
+- JavaScript/TypeScript (`@adcp/client`): https://github.com/adcontextprotocol/adcp-client
+- Python (`adcp`): https://github.com/adcontextprotocol/adcp-python
+- Go (`adcp-go`): https://github.com/adcontextprotocol/adcp-go
+
+Each SDK ships both caller APIs and server primitives (tool registration, response builders, test controllers). The JavaScript SDK includes a storyboard runner that validates any endpoint for protocol compliance regardless of the implementation language.
+
+## Agent-building skills
+
+Each AdCP SDK ships `build-*-agent` skills — SKILL.md files a coding agent can load to scaffold a protocol-compliant, storyboard-validated agent.
+
+The JavaScript SDK ships eight skills (skill coverage varies by SDK):
+
+- **build-seller-agent**: publisher, SSP, or media network selling inventory to buyer agents
+- **build-signals-agent**: CDP or data provider serving audience and contextual signals
+- **build-creative-agent**: ad server or CMP rendering, previewing, and serving creatives
+- **build-generative-seller-agent**: AI ad network generating creatives from briefs
+- **build-retail-media-agent**: retail media network with catalog-driven creative
+- **build-brand-rights-agent**: brand identity, licensing, and creative approval
+- **build-governance-agent**: spending authority, property lists, and content standards enforcement
+- **build-si-agent**: conversational sponsored content within user sessions
+
+Skill locations:
+- JS/TS: https://github.com/adcontextprotocol/adcp-client/tree/main/skills
+- Python: https://github.com/adcontextprotocol/adcp-python/tree/main/skills
+- Go: https://github.com/adcontextprotocol/adcp-go/tree/main/skills
+
+## Registry APIs
+
+Served by AgenticAdvertising.org for agent, brand, and property discovery:
+
+- **Agent directory**: https://agenticadvertising.org/api/registry/agents
+- **Brand resolution**: https://agenticadvertising.org/api/brands/resolve
+- **Property resolution**: https://agenticadvertising.org/api/properties/resolve
+
+Agents discover each other through the registry rather than through per-integration configuration. Authorization is validated against `adagents.json` declared at the publisher domain.
 
 ## Key terms glossary
 
