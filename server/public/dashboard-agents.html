@@ -765,7 +765,7 @@
       `;
     }
 
-    function buildConnectForm(escapedUrl, platformTypeOptions, agentContextId) {
+    function buildConnectForm(escapedUrl, agentContextId) {
       const contextIdAttr = agentContextId ? ' data-agent-context-id="' + agentContextId + '"' : '';
       return '<div class="agent-connect-form" data-agent-url="' + escapedUrl + '"' + contextIdAttr + '>' +
         '<label>Auth type<select name="auth_type" class="auth-type-select">' +
@@ -776,12 +776,10 @@
         '</select></label>' +
         '<div class="auth-token-fields" style="display:none;">' +
           '<label>Auth token<input type="password" name="auth_token" placeholder="Bearer token or API key" autocomplete="off"></label>' +
-          '<label>Platform type<select name="platform_type"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-connect-save">Save</button>' +
         '</div>' +
         '<div class="auth-oauth-fields">' +
           '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">Securely authorize via the agent\'s OAuth flow. No tokens to copy.</p>' +
-          '<label>Platform type<select name="platform_type_oauth"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-oauth-start">Authorize</button>' +
         '</div>' +
         '<div class="auth-cc-fields" style="display:none;">' +
@@ -806,7 +804,6 @@
             '<option value="basic">Basic (HTTP Basic header)</option>' +
             '<option value="body">Body (client_id/client_secret as form fields)</option>' +
           '</select></label>' +
-          '<label>Platform type<select name="platform_type_cc"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-cc-save">Save credentials</button>' +
         '</div>' +
       '</div>';
@@ -823,27 +820,6 @@
           </div>
         `;
       }
-
-      const platformTypes = [
-        ['display_ad_server', 'Display ad server'],
-        ['video_ad_server', 'Video ad server'],
-        ['social_platform', 'Social platform'],
-        ['pmax_platform', 'Performance max'],
-        ['dsp', 'DSP'],
-        ['retail_media', 'Retail media'],
-        ['search_platform', 'Search platform'],
-        ['audio_platform', 'Audio platform'],
-        ['creative_transformer', 'Creative transformer'],
-        ['creative_library', 'Creative library'],
-        ['creative_ad_server', 'Creative ad server'],
-        ['si_platform', 'SI platform'],
-        ['ai_ad_network', 'AI ad network'],
-        ['ai_platform', 'AI platform'],
-        ['generative_dsp', 'Generative DSP'],
-      ];
-      const platformTypeOptions = platformTypes.map(([val, label]) =>
-        '<option value="' + val + '">' + label + '</option>'
-      ).join('');
 
       return agents.map(agent => {
         const data = complianceMap?.get(agent.url);
@@ -899,7 +875,7 @@
             </div>
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
-              : buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+              : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -985,7 +961,7 @@
               </div>
             </div>
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
-              ${buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+              ${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
@@ -1076,7 +1052,6 @@
       const agentUrl = form.dataset.agentUrl;
       const authToken = form.querySelector('[name="auth_token"]').value.trim();
       const authType = form.querySelector('[name="auth_type"]').value;
-      const platformType = form.querySelector('[name="platform_type"]').value;
 
       if (!authToken) {
         form.querySelector('[name="auth_token"]').focus();
@@ -1088,7 +1063,6 @@
 
       try {
         const body = { auth_token: authToken, auth_type: authType };
-        if (platformType) body.platform_type = platformType;
 
         const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
           method: 'PUT',
@@ -1382,21 +1356,19 @@
 
       const agentUrl = form.dataset.agentUrl;
       let agentContextId = form.dataset.agentContextId;
-      const platformType = form.querySelector('[name="platform_type_oauth"]')?.value;
 
       btn.disabled = true;
       btn.textContent = 'Starting OAuth...';
 
       try {
-        // Ensure agent context exists (connect without token)
+        // Ensure agent context exists (connect without token) so the OAuth
+        // flow below has a persistent `agent_context_id` to bind tokens to.
         if (!agentContextId) {
-          const body = {};
-          if (platformType) body.platform_type = platformType;
           const connectRes = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify(body),
+            body: JSON.stringify({}),
           });
           if (!connectRes.ok) {
             const data = await connectRes.json().catch(() => ({}));
@@ -1407,14 +1379,6 @@
           if (!agentContextId) {
             throw new Error('Failed to create agent context');
           }
-        } else if (platformType) {
-          // Save platform type even if context already exists
-          await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ platform_type: platformType }),
-          });
         }
 
         // Redirect to OAuth flow, asking it to return us here after completion
