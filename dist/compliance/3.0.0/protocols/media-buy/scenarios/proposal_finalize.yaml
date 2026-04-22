@@ -1,0 +1,242 @@
+id: media_buy_seller/proposal_finalize
+version: "1.0.0"
+title: "Seller handles proposal refinement and finalize"
+category: media_buy_seller
+summary: "Verifies the full proposal lifecycle: brief with proposals, refine a proposal, finalize to committed, and accept via create_media_buy."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  Proposals are curated media plans that the seller generates alongside products. The buyer
+  reviews proposals, refines them (adjust budget splits, swap products, add constraints),
+  and then finalizes a proposal to get firm pricing and an inventory hold. Once committed,
+  the buyer accepts the proposal via create_media_buy.
+
+  The proposal lifecycle is: draft (indicative pricing) -> refine -> finalize (firm pricing,
+  inventory hold) -> create_media_buy (accept and go live).
+
+  This scenario exercises the complete proposal flow including the finalize action, which
+  transitions a proposal from draft to committed status with an expires_at hold window.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+  examples:
+    - "Full-service publisher with proposal engine"
+    - "Retail media network with curated packages"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. The seller must support
+    proposal generation (return proposals alongside products in get_products responses).
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: brief_with_proposals
+    title: "Brief with proposals"
+    narrative: |
+      Send a brief and receive proposals alongside products. Proposals are curated
+      media plans with budget allocations the buyer can review and refine.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief and receive proposals"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products and proposals matching the brief:
+          - products: individual products with pricing and forecasts
+          - proposals: curated media plans with proposal_id, budget_allocations, rationale
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains proposals"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "Proposals have IDs"
+
+  - id: refine_proposal
+    title: "Refine the proposal"
+    narrative: |
+      The buyer reviews the proposals and wants to adjust one. They call get_products in
+      refine mode targeting a specific proposal_id with changes. The seller applies the
+      refinements and returns the updated proposal.
+
+    steps:
+      - id: get_products_refine
+        title: "Refine a specific proposal"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return the refined proposal:
+          - proposals: updated proposal reflecting the requested changes
+          - refinement_applied: how each refinement was handled
+          - Updated budget allocations, product selections, and forecasts
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "balanced_reach_q2"
+              ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
+            - scope: "request"
+              ask: "All products must support frequency capping at 3 per day."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains updated proposals"
+
+  - id: finalize_proposal
+    title: "Finalize the proposal"
+    narrative: |
+      The buyer is satisfied with the refined proposal and requests finalization. This
+      triggers the transition from draft (indicative pricing) to committed (firm pricing
+      with inventory hold). The seller may need time to process this — the buyer should
+      not set a time_budget to signal willingness to wait.
+
+      After finalization, the proposal has firm pricing and an expires_at timestamp.
+      The buyer must create the media buy before the hold expires.
+
+    steps:
+      - id: get_products_finalize
+        title: "Finalize the proposal"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return the finalized proposal with committed status:
+          - proposals[0].proposal_status: committed
+          - proposals[0].expires_at: timestamp for the inventory hold window
+          - Firm pricing (not indicative)
+          - The proposal is ready to accept via create_media_buy
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "balanced_reach_q2"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains the finalized proposal"
+
+  - id: accept_proposal
+    title: "Accept the committed proposal"
+    narrative: |
+      The buyer accepts the committed proposal by creating a media buy with the
+      proposal_id. The seller converts the proposal's product selections and budget
+      allocations into active packages.
+
+    steps:
+      - id: create_media_buy
+        title: "Create media buy from proposal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Convert the committed proposal into an active media buy:
+          - media_buy_id: the seller's identifier
+          - status: active
+          - confirmed_at: timestamp
+          - packages: line items derived from the proposal's budget allocations
+          - proposal_id: echoed back to confirm which proposal was accepted
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          proposal_id: "balanced_reach_q2"
+          total_budget:
+            amount: 50000
+            currency: "USD"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_accept_proposal_create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"

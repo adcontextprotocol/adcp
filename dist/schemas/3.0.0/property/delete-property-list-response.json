@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/property/delete-property-list-response.json",
+  "title": "Delete Property List Response",
+  "description": "Response payload for delete_property_list task",
+  "type": "object",
+  "properties": {
+    "deleted": {
+      "type": "boolean",
+      "description": "Whether the list was successfully deleted"
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the deleted list",
+      "x-entity": "property_list"
+    },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "required": [
+    "deleted",
+    "list_id"
+  ],
+  "additionalProperties": true
+}

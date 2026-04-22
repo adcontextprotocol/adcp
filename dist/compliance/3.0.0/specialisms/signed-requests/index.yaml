@@ -1,0 +1,192 @@
+id: signed_requests
+version: "1.0.0"
+title: "Signed requests — RFC 9421 transport-layer verification"
+protocol: media-buy
+status: preview
+category: signed_requests
+summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the transport-layer profile. Graded against conformance vectors covering every checklist step and canonicalization-edge rule."
+track: security_transport
+required_tools:
+  - get_adcp_capabilities
+  # Additional tool families are exercised transport-layer only — the runner signs
+  # requests targeting any mutating AdCP operation (create_media_buy, update_media_buy,
+  # acquire_*, activate_signal, sync_creatives) and grades the verifier's response. The
+  # specialism is preview status pending runner implementation at adcontextprotocol/adcp#2331;
+  # when the runner ships, required_tools will expand to the concrete list of operations
+  # exercised.
+
+narrative: |
+  The signed-requests specialism certifies that an agent correctly implements the AdCP
+  RFC 9421 request-signing verifier per `docs/building/implementation/security.mdx#signed-requests-transport-layer`.
+
+  This is a transport-layer claim, not a protocol-specific one. A signed request can target
+  any mutating operation — most commonly `create_media_buy`, `update_media_buy`, `acquire_*`,
+  `activate_signal`, and `sync_creatives`. The claim is scoped to `media-buy` because that
+  is where the financial stake is highest, but the verifier behavior is the same across all
+  mutating operations.
+
+  The claim is certifiable only when the agent advertises `request_signing.supported: true`
+  in `get_adcp_capabilities`. An agent that does not advertise support is not tested against
+  this specialism — absence of advertisement is not a failure, it is a declaration that the
+  agent does not offer verified signed requests.
+
+  Grading is observable-behavior only. The runner constructs signed HTTP requests exactly
+  as documented in the conformance vectors at
+  `/compliance/{version}/test-vectors/request-signing/` and sends them to the agent. The
+  agent's responses are compared against the vectors' `expected_outcome`:
+
+  - Positive vectors MUST produce a non-4xx response — the agent accepted the signed request.
+  - Negative vectors MUST produce `401` with `WWW-Authenticate: Signature error="<code>"`,
+    where the `<code>` matches the vector's `expected_outcome.error_code` byte-for-byte.
+    The checklist step number is informational; grading is on the stable error code only.
+
+  The runner supplies signed requests; the agent is the verifier. A separate signer-side
+  storyboard may follow but is out of scope for this specialism — signers are easier to get
+  right, and a signer that produces valid signatures is proven correct by a conformant
+  verifier accepting them.
+
+  Three negative vectors — 016 (replayed nonce), 017 (key revoked), and 020 (per-keyid cap) —
+  assert verifier state the runner cannot set from the outside. Those vectors declare
+  `requires_contract` and are gated on the `signed_requests_runner` test-kit contract
+  at `test-kits/signed-requests-runner.yaml`, which specifies the runner's signing keyids,
+  a dedicated pre-revoked keyid (`test-revoked-2026`), and the grading-time per-keyid cap
+  the runner will target. Agents claiming the specialism MUST pre-configure their verifier
+  per that contract before the negative phase runs. If the agent does not satisfy the
+  contract (e.g., the runner can't coordinate the pre-state), the affected vectors grade
+  as FAIL, never as SKIP — the contract is a prerequisite for the claim, not an optional
+  extension.
+
+agent:
+  interaction_model: request_verifier
+  capabilities:
+    - verifies_request_signatures
+  examples:
+    - "AdCP seller implementing request verification"
+    - "Any agent advertising `request_signing.supported: true`"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner (or equivalent signed-request grader)"
+
+prerequisites:
+  description: |
+    The agent MUST advertise `request_signing.supported: true` in `get_adcp_capabilities`.
+    The agent's verifier MUST be configured to accept requests signed by the test keypairs
+    published in `keys.json` alongside the conformance vectors — specifically, the runner's
+    signing keys (`test-ed25519-2026`, `test-es256-2026`) should be treated as coming from
+    a registered test counterparty whose JWKS contains those public keys with
+    `adcp_use: "request-signing"`.
+  test_kit: "test-kits/signed-requests-runner.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent advertises request-signing support before grading the verifier.
+
+    steps:
+      - id: get_capabilities
+        title: "Verify the agent declares request_signing.supported"
+        narrative: |
+          The runner calls `get_adcp_capabilities` and confirms that the agent declares
+          support for this specialism. Absence of `request_signing.supported: true` means
+          the agent has not opted into the claim; the runner SHOULD skip the remaining
+          phases.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring request_signing.supported: true. If false or absent,
+          the specialism does not apply and grading skips to a non-applicable outcome.
+        sample_request:
+          context:
+            correlation_id: "signed_requests--get_capabilities"
+        validations:
+          - check: field_present
+            path: "request_signing"
+            description: "Agent declares request_signing capability block"
+          - check: field_value
+            path: "request_signing.supported"
+            value: true
+            description: "Agent verifies request signatures"
+
+  - id: positive_vectors
+    title: "Positive conformance vectors"
+    narrative: |
+      The runner sends each positive vector as a signed HTTP request to the agent and
+      expects the agent to accept it. Vectors exercise the happy path plus every
+      canonicalization-edge rule in the profile:
+
+        001 basic Ed25519 POST
+        002 Ed25519 POST with content-digest covered
+        003 ES256 POST (edge-runtime profile)
+        004 multiple Signature-Input labels (verifier processes sig1 only)
+        005 default-port strip (URL has :443)
+        006 dot-segment path normalization
+        007 query-string byte preservation (no alphabetization)
+        008 percent-encoded path normalization (lowercase → uppercase hex)
+
+      Vectors and test keys live at
+      `/compliance/{version}/test-vectors/request-signing/positive/` and
+      `/compliance/{version}/test-vectors/request-signing/keys.json`.
+
+    $comment: |
+      Step-level YAML entries for each positive vector will be generated from the vector
+      fixtures at runtime by the compliance runner; we do not duplicate them in this file.
+      The runner loads the vector, constructs the HTTP request, sends it to the agent,
+      and validates the response against expected_outcome.success. Runner implementation
+      tracked at adcontextprotocol/adcp#2331.
+
+  - id: negative_vectors
+    title: "Negative conformance vectors"
+    narrative: |
+      The runner sends each negative vector and expects the agent to reject with the
+      stable error code in `expected_outcome.error_code`. Negative vectors cover every
+      failure mode in the verifier checklist (13 numbered steps plus sub-step 9a for
+      the per-keyid cap) plus the pre-check:
+
+        001 unsigned + required_for           → request_signature_required
+        002 wrong tag                         → request_signature_tag_invalid
+        003 expired signature                 → request_signature_window_invalid
+        004 window > 300s                     → request_signature_window_invalid
+        005 alg not allowed                   → request_signature_alg_not_allowed
+        006 missing covered component         → request_signature_components_incomplete
+        007 missing content-digest (required) → request_signature_components_incomplete
+        008 unknown keyid                     → request_signature_key_unknown
+        009 wrong adcp_use                    → request_signature_key_purpose_invalid
+        010 content-digest mismatch           → request_signature_digest_mismatch
+        011 malformed Signature-Input         → request_signature_header_malformed
+        012 missing expires param             → request_signature_params_incomplete
+        013 expires ≤ created                 → request_signature_window_invalid
+        014 missing nonce param               → request_signature_params_incomplete
+        015 signature cryptographically invalid → request_signature_invalid
+        016 replayed nonce                    → request_signature_replayed
+        017 key revoked                       → request_signature_key_revoked
+        018 content-digest when forbidden     → request_signature_components_unexpected
+        019 Signature without Signature-Input → request_signature_header_malformed
+        020 per-keyid replay cache cap        → request_signature_rate_abuse
+
+      Vectors live at `/compliance/{version}/test-vectors/request-signing/negative/`.
+      Grading requires byte-for-byte match on the error code; the failed_step value is
+      informational. The runner reads the error code from the agent's
+      `WWW-Authenticate: Signature error="<code>"` response header on 401.
+
+    $comment: |
+      As with positive_vectors, step-level entries are synthesized by the runner from
+      the vector fixtures. Runner implementation at adcontextprotocol/adcp#2331.
+
+grading:
+  pass_criteria: |
+    All vectors in positive/ produce 2xx, and all vectors in negative/ produce 401 with
+    the expected error code byte-for-byte. Any single vector's failure to produce its
+    expected outcome fails the specialism. Vectors that declare `requires_contract`
+    whose contract the runner cannot satisfy grade as FAIL, never as SKIP — the
+    signed-requests-runner contract is a prerequisite for the claim, not an optional
+    extension.
+  report_format: |
+    Pass/fail per vector, with the response's error code (if any) and a diff against
+    the vector's expected_outcome. Operators receive specific per-vector diagnostics
+    so they can debug without re-running the full suite.

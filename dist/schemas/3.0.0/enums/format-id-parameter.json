@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/enums/format-id-parameter.json",
+  "title": "Format ID Parameter",
+  "description": "Types of parameters that template formats accept in format_id objects to create parameterized format identifiers",
+  "type": "string",
+  "enum": [
+    "dimensions",
+    "duration"
+  ]
+}
