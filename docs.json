@@ -1,6 +1,10 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
+  "banner": {
+    "content": "🎉 AdCP 3.0 is now GA — [see what's new](/docs/reference/whats-new-in-v3)",
+    "dismissible": true
+  },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
     "og:site_name": "AdCP \u2014 Ad Context Protocol",
@@ -63,7 +67,7 @@
   "navigation": {
     "versions": [
       {
-        "version": "3.0-rc",
+        "version": "3.0",
         "default": true,
         "groups": [
           {

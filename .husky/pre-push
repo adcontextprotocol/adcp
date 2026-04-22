@@ -25,7 +25,7 @@ if [ -d .context ]; then
   mv .context /tmp/.context-push-$$
   CONTEXT_MOVED=true
 fi
-npx --yes mintlify@latest broken-links
+npx --yes mintlify@4.2.500 broken-links
 BROKEN_LINKS_EXIT=$?
 git checkout dist/docs 2>/dev/null || true
 if [ "$ADDIE_RULES_MOVED" = true ]; then
@@ -43,7 +43,7 @@ if [ $BROKEN_LINKS_EXIT -ne 0 ]; then
 fi
 
 # Check for accessibility issues (warn only, don't fail)
-npx --yes mintlify@latest a11y || {
+npx --yes mintlify@4.2.500 a11y || {
   echo "⚠️  Mintlify accessibility check found issues. Review and fix if needed."
   # Don't fail on a11y warnings, just warn
 }

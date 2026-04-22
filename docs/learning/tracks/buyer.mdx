@@ -226,6 +226,12 @@ npx @adcp/client test-mcp get_products '{"brief":"your campaign brief"}'
 
 See [Validate Your Agent](/docs/building/validate-your-agent) for CLI setup and the full testing workflow.
 
+### Validating across sellers
+
+Buyer agents don't claim specialisms — specialisms describe what sellers offer. But your buyer agent should handle every specialism it expects to transact against. The storyboards a seller passes (declared via `supported_protocols` and `specialisms` in their `get_adcp_capabilities`) tell you what behaviors to expect.
+
+Review the [Compliance Catalog](/docs/building/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
+
 ### Assessment rubric
 
 | Dimension | Weight | What Addie evaluates |
