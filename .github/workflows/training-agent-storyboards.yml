@@ -42,8 +42,11 @@ jobs:
             # storyboards that point at creative.adcontextprotocol.org for
             # format_id.agent_url (sales_social, catalog_driven). The seller
             # only validates format_ids it hosts itself.
-            min_clean_storyboards: 44
-            min_passing_steps: 318
+            # Bumped again in adcp#2846 after @adcp/client 5.11.0 restored
+            # sample_request handling in the get_rights request builder
+            # (brand_rights/governance_denied and peer scenarios).
+            min_clean_storyboards: 46
+            min_passing_steps: 338
           - mode: framework
             flag_value: '1'
             # 21→37 after wrapping framework dispatch in
@@ -51,8 +54,9 @@ jobs:
             # buys / creatives / governance state persist across MCP calls
             # under the framework path (parity with legacy). Also picks up
             # the cross-agent format-reference delta.
-            min_clean_storyboards: 37
-            min_passing_steps: 308
+            # Additional lift in adcp#2846 from the @adcp/client 5.11.0 bump.
+            min_clean_storyboards: 42
+            min_passing_steps: 339
     steps:
       - uses: actions/checkout@v6
 
