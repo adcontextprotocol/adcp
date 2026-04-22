@@ -51,7 +51,6 @@ const TENANT_SCOPED_TASKS = new Set([
   'provide_performance_feedback',
   // Governance plans
   'sync_plans',
-  'get_plan_audit_logs',  // schema required=[]; filters optional
   // Property lists
   'create_property_list',
   'list_property_lists',
@@ -84,12 +83,14 @@ const TENANT_SCOPED_TASKS = new Set([
  *     `list_creative_formats`, `get_brand_identity`, `get_rights`,
  *     `update_rights`, `comply_test_controller`.
  *
- * (c) Identity implicit via a required globally-unique ID in the request
- *     schema. The seller looks up the ID → resolves the tenant → applies
- *     policy. Envelope `account` is redundant. Covers the Option C split
- *     from #2577:
+ * (c) Identity implicit via one or more required globally-unique IDs in the
+ *     request schema (either a single scalar or an `anyOf` across several ID
+ *     array shapes). The seller looks up the ID(s) → resolves the tenant →
+ *     applies policy. Envelope `account` is redundant. Covers the Option C
+ *     split from #2577:
  *       - `check_governance`       — required `plan_id`
  *       - `report_plan_outcome`    — required `plan_id`
+ *       - `get_plan_audit_logs`    — required via anyOf over `plan_ids` / `portfolio_plan_ids` / `governance_contexts`
  *       - `acquire_rights`         — required `rights_id` + `buyer` + `campaign`
  *       - `log_event`              — required `event_source_id`
  *       - `calibrate_content`      — required `standards_id`
@@ -122,6 +123,7 @@ const EXEMPT_FROM_LINT = new Set([
   // (c) Identity implicit via required globally-unique ID
   'check_governance',
   'report_plan_outcome',
+  'get_plan_audit_logs',
   'acquire_rights',
   'log_event',
   'calibrate_content',

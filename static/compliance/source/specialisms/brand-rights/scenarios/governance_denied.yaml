@@ -118,6 +118,9 @@ phases:
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   categories: ["budget_authority"]
           idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_governance"
         validations:
@@ -139,6 +142,10 @@ phases:
         sample_request:
           buyer:
             domain: "pinnacle-agency.example"
+          query: "licensed commercial rights for a regional outdoor retail campaign"
+          uses:
+            - "commercial"
+            - "endorsement"
         context_outputs:
           - path: "rights[0].rights_id"
             key: "rights_id"

@@ -53,6 +53,7 @@ function createAjvInstance() {
     allErrors: true,
     verbose: true,
     strict: false,
+    discriminator: true,
     loadSchema: async (uri) => {
       // Convert URI to local path
       const localPath = uriToLocalPath(uri);

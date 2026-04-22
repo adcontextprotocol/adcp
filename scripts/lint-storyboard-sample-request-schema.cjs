@@ -156,8 +156,16 @@ const STRING_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
  * Build a schema-typed placeholder for a substitution string. The placeholder
  * must satisfy the schema's type constraints without reproducing the business
  * semantics of the resolved value — ajv only checks shape, not meaning.
+ *
+ * For object-typed locations (including oneOf/anyOf variants whose first
+ * branch is an object), recursively synthesize a shape-valid placeholder by
+ * populating every `required` field with a type-valid placeholder. This
+ * matches the runtime behavior of substitutions like `$context.first_signal_id`
+ * that resolve to an object captured from a prior step's response.
+ *
+ * The `depth` guard prevents infinite recursion on self-referential schemas.
  */
-function placeholderFor(schema) {
+function placeholderFor(schema, depth = 0) {
   const resolved = resolveSchemaNode(schema);
   if (!resolved) return STRING_PLACEHOLDER;
   const types = Array.isArray(resolved.type) ? resolved.type : [resolved.type];
@@ -169,15 +177,46 @@ function placeholderFor(schema) {
     if (resolved.format === 'email') return 'placeholder@example.com';
     if (Array.isArray(resolved.enum) && resolved.enum.length > 0) return resolved.enum[0];
     if (typeof resolved.const !== 'undefined') return resolved.const;
+    // Object variant nested inside a oneOf/anyOf at a location where the
+    // author's substitution will resolve to that shape at runtime. Synthesize
+    // the concrete shape instead of returning a string that fails required.
+    if (!resolved.type) {
+      const objectBranch = firstObjectBranch(resolved);
+      if (objectBranch) return synthesizeObject(objectBranch, depth);
+    }
     return STRING_PLACEHOLDER;
   }
   if (types.includes('integer')) return resolved.minimum ?? 1;
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
   if (types.includes('array')) return [];
-  if (types.includes('object')) return {};
+  if (types.includes('object')) return synthesizeObject(resolved, depth);
   if (types.includes('null')) return null;
   return STRING_PLACEHOLDER;
+}
+
+function firstObjectBranch(node) {
+  for (const key of ['oneOf', 'anyOf']) {
+    if (!Array.isArray(node[key])) continue;
+    for (const branch of node[key]) {
+      const r = resolveSchemaNode(branch);
+      if (!r) continue;
+      const t = Array.isArray(r.type) ? r.type : [r.type];
+      if (t.includes('object') || r.properties || r.required) return r;
+    }
+  }
+  return null;
+}
+
+function synthesizeObject(schema, depth) {
+  if (depth > 4) return {};
+  const required = Array.isArray(schema?.required) ? schema.required : [];
+  const properties = schema?.properties || {};
+  const out = {};
+  for (const field of required) {
+    out[field] = placeholderFor(properties[field] || {}, depth + 1);
+  }
+  return out;
 }
 
 /**
@@ -233,6 +272,7 @@ function getAjv() {
   sharedAjv = new Ajv({
     allErrors: true,
     strict: false,
+    discriminator: true,
     loadSchema: (uri) => {
       const resolved = loadSchema(uri);
       if (!resolved) throw new Error(`Cannot resolve $ref: ${uri}`);
@@ -285,13 +325,14 @@ async function validateStep({ schemaRef, payload }) {
  * send malformed payloads to verify the agent's error response, so their
  * sample_request is not expected to validate.
  *
- * Detection is structural: a step is negative if any validation asserts an
- * error code or a 4xx/5xx HTTP status. Authors can also opt out explicitly
- * with `sample_request_skip_schema: true` for cases the heuristic misses
- * (e.g., shape-agnostic transport tests).
+ * Detection is structural, in priority order:
+ *   1. Explicit opt-out: `sample_request_skip_schema: true`
+ *   2. Canonical negative-path marker: `expect_error: true`
+ *   3. Validations that assert error codes or 4xx/5xx HTTP statuses
  */
 function isNegativeStep(step) {
   if (step?.sample_request_skip_schema === true) return true;
+  if (step?.expect_error === true) return true;
   const validations = Array.isArray(step?.validations) ? step.validations : [];
   for (const v of validations) {
     if (v?.check === 'error_code') return true;

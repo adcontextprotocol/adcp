@@ -36,31 +36,80 @@
     },
     "refinement_applied": {
       "type": "array",
-      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'.",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
       "items": {
         "type": "object",
-        "properties": {
-          "scope": {
-            "type": "string",
-            "enum": ["request", "product", "proposal"],
-            "description": "Echoes the scope from the corresponding refine entry. Allows orchestrators to cross-validate alignment."
+        "discriminator": { "propertyName": "scope" },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "request",
+                "description": "Echoes scope 'request' from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["applied", "partial", "unable"],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": ["scope", "status"],
+            "additionalProperties": false
           },
-          "id": {
-            "type": "string",
-            "description": "Echoes the id from the corresponding refine entry (for product and proposal scopes)."
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "product",
+                "description": "Echoes scope 'product' from the corresponding refine entry."
+              },
+              "product_id": {
+                "type": "string",
+                "description": "Echoes product_id from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["applied", "partial", "unable"],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": ["scope", "product_id", "status"],
+            "additionalProperties": false
           },
-          "status": {
-            "type": "string",
-            "enum": ["applied", "partial", "unable"],
-            "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
-          },
-          "notes": {
-            "type": "string",
-            "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "proposal",
+                "description": "Echoes scope 'proposal' from the corresponding refine entry."
+              },
+              "proposal_id": {
+                "type": "string",
+                "description": "Echoes proposal_id from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["applied", "partial", "unable"],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": ["scope", "proposal_id", "status"],
+            "additionalProperties": false
           }
-        },
-        "required": ["status"],
-        "additionalProperties": false
+        ]
       }
     },
     "incomplete": {

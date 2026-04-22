@@ -41,32 +41,41 @@ export async function resolveUserAgentAuth(
 
   try {
     const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
-    if (!context?.has_oauth_token) return undefined;
+    if (!context) return undefined;
 
-    const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, agentUrl);
-    if (!tokens?.access_token) return undefined;
+    if (context.has_oauth_token) {
+      const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, agentUrl);
+      if (tokens?.access_token) {
+        if (!tokens.refresh_token) {
+          return { type: 'bearer', token: tokens.access_token };
+        }
 
-    if (!tokens.refresh_token) {
-      return { type: 'bearer', token: tokens.access_token };
+        const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = {
+          type: 'oauth',
+          tokens: {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+          },
+        };
+
+        const client = await agentContextDb.getOAuthClient(context.id);
+        if (client) {
+          oauth.client = {
+            client_id: client.client_id,
+            ...(client.client_secret && { client_secret: client.client_secret }),
+          };
+        }
+        return oauth;
+      }
     }
 
-    const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = {
-      type: 'oauth',
-      tokens: {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
-      },
-    };
-
-    const client = await agentContextDb.getOAuthClient(context.id);
-    if (client) {
-      oauth.client = {
-        client_id: client.client_id,
-        ...(client.client_secret && { client_secret: client.client_secret }),
-      };
+    if (context.has_oauth_client_credentials) {
+      const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, agentUrl);
+      if (creds) return { type: 'oauth_client_credentials', credentials: creds };
     }
-    return oauth;
+
+    return undefined;
   } catch (err) {
     logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: OAuth token lookup failed');
     return undefined;

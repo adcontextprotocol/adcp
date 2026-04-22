@@ -3147,7 +3147,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'omit', id: firstProductId }],
+      refine: [{ scope: 'product', action: 'omit', product_id: firstProductId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3174,7 +3174,7 @@ describe('get_products refine mode', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'product', action: 'more_like_this', id: sourceId }],
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: sourceId }],
     });
 
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
@@ -3192,6 +3192,62 @@ describe('get_products refine mode', () => {
 
     // Should have more than just the source product
     expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+
+  it('defaults missing action to include on product scope', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'default-action.example' }, operator: 'default-action.example' };
+
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const products = initial.products as Array<Record<string, unknown>>;
+    const firstProductId = products[0].product_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: firstProductId }],
+    });
+
+    const refinedProducts = refined.products as Array<Record<string, unknown>>;
+    const refinedIds = refinedProducts.map(p => p.product_id);
+    expect(refinedIds).toContain(firstProductId);
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('product');
+    expect(refinementApplied[0].product_id).toBe(firstProductId);
+  });
+
+  it('defaults missing action to include on proposal scope and echoes proposal_id', async () => {
+    const account = { brand: { domain: 'default-action-prop.example' }, operator: 'default-action-prop.example' };
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>>;
+    const targetProposalId = proposals?.[0]?.proposal_id as string;
+    expect(targetProposalId).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: targetProposalId }],
+    });
+
+    const refinementApplied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(refinementApplied).toHaveLength(1);
+    expect(refinementApplied[0].status).toBe('applied');
+    expect(refinementApplied[0].scope).toBe('proposal');
+    expect(refinementApplied[0].proposal_id).toBe(targetProposalId);
   });
 });
 
@@ -5044,7 +5100,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>>;
@@ -5078,7 +5134,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5134,7 +5190,7 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     // Manually expire the proposal in session state (persist via store)
@@ -5180,7 +5236,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5219,7 +5275,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
@@ -5262,7 +5318,7 @@ describe('proposal lifecycle', () => {
     await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id }],
     });
 
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
@@ -5325,7 +5381,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'finalize', id: 'nonexistent_proposal_id' }],
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'nonexistent_proposal_id' }],
     });
 
     const applied = refined.refinement_applied as Array<Record<string, unknown>>;
@@ -5348,7 +5404,7 @@ describe('proposal lifecycle', () => {
     const { result: refined } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
-      refine: [{ scope: 'proposal', action: 'omit', id: firstId }],
+      refine: [{ scope: 'proposal', action: 'omit', proposal_id: firstId }],
     });
 
     const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;

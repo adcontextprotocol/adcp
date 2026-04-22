@@ -17,9 +17,12 @@
       "description": "Offering identifier from the catalog to get details for",
       "x-entity": "offering"
     },
-    "context": {
+    "intent": {
       "type": "string",
-      "description": "Optional natural language context about user intent for personalized results (e.g., 'mens size 14 near Cincinnati'). Must be anonymous - no PII."
+      "description": "Optional natural language description of user intent for personalized results (e.g., 'mens size 14 near Cincinnati'). Must be anonymous - no PII."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
     },
     "include_products": {
       "type": "boolean",

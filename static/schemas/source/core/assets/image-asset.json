@@ -5,6 +5,11 @@
   "description": "Image asset with URL and dimensions",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "image",
+      "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -35,6 +40,7 @@
     }
   },
   "required": [
+    "asset_type",
     "url",
     "width",
     "height"

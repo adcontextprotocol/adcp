@@ -3,8 +3,30 @@ name: Check for Broken Links
 on:
   push:
     branches: [ main, develop, '2.6.x' ]
+    paths:
+      - 'docs/**'
+      - 'dist/docs/**'
+      - 'mintlify-docs/**'
+      - 'mint.json'
+      - 'README.md'
+      - 'server/src/addie/rules/**'
+      - 'server/src/addie/**/*.ts'
+      - 'scripts/check-owned-links.js'
+      - '.markdown-link-check.json'
+      - '.github/workflows/broken-links.yml'
   pull_request:
     branches: [ main, develop, '2.6.x' ]
+    paths:
+      - 'docs/**'
+      - 'dist/docs/**'
+      - 'mintlify-docs/**'
+      - 'mint.json'
+      - 'README.md'
+      - 'server/src/addie/rules/**'
+      - 'server/src/addie/**/*.ts'
+      - 'scripts/check-owned-links.js'
+      - '.markdown-link-check.json'
+      - '.github/workflows/broken-links.yml'
   workflow_run:
     workflows: ["Sync Versioned Docs"]
     types:

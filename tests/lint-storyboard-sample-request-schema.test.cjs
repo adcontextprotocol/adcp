@@ -175,3 +175,56 @@ test('normalizeSubstitutions replaces every live substitution dialect', () => {
   // Non-substitution literals pass through
   assert.equal(normalizeSubstitutions('plain value', stringSchema), 'plain value');
 });
+
+// Object-typed substitution synthesis — the lint change landed in this PR.
+// A substitution that lands at an object location (plain or inside a
+// discriminated oneOf) must produce a shape-valid placeholder or ajv will
+// reject every branch. Regression guard against refactors of `placeholderFor`
+// / `synthesizeObject` / `firstObjectBranch`.
+test('normalizeSubstitutions synthesizes shape-valid placeholders at object-typed locations', () => {
+  const objectSchema = {
+    type: 'object',
+    required: ['agent_url', 'id'],
+    properties: {
+      agent_url: { type: 'string', format: 'uri' },
+      id: { type: 'string' },
+    },
+  };
+  const synthesized = normalizeSubstitutions('$context.product_format_id', objectSchema);
+  assert.equal(typeof synthesized, 'object');
+  assert.ok(synthesized !== null && !Array.isArray(synthesized));
+  assert.ok('agent_url' in synthesized, 'required agent_url is populated');
+  assert.ok('id' in synthesized, 'required id is populated');
+  assert.equal(typeof synthesized.agent_url, 'string');
+  assert.equal(typeof synthesized.id, 'string');
+
+  // Discriminated oneOf: pick the first object branch and synthesize its required set.
+  const oneOfSchema = {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['source', 'data_provider_domain', 'id'],
+        properties: {
+          source: { type: 'string', const: 'catalog' },
+          data_provider_domain: { type: 'string' },
+          id: { type: 'string' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['source', 'agent_url', 'id'],
+        properties: {
+          source: { type: 'string', const: 'agent' },
+          agent_url: { type: 'string', format: 'uri' },
+          id: { type: 'string' },
+        },
+      },
+    ],
+  };
+  const oneOfSynth = normalizeSubstitutions('$context.first_signal_id', oneOfSchema);
+  assert.equal(typeof oneOfSynth, 'object');
+  // First branch picked; const on discriminator is honored.
+  assert.equal(oneOfSynth.source, 'catalog');
+  assert.ok('data_provider_domain' in oneOfSynth);
+  assert.ok('id' in oneOfSynth);
+});

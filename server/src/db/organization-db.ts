@@ -79,6 +79,28 @@ export const VALID_MEMBERSHIP_TIERS: readonly MembershipTier[] = [
   'company_leader',
 ] as const;
 
+/**
+ * Membership tiers with API access (contributor seats > 0).
+ * Explorer (individual_academic) is intentionally excluded.
+ * Used to gate features like public agent listing and the members-only
+ * discovery pool.
+ */
+export const API_ACCESS_TIERS: readonly MembershipTier[] = [
+  'individual_professional',
+  'company_standard',
+  'company_icl',
+  'company_leader',
+] as const;
+
+/**
+ * True when the tier grants API access (and therefore the ability to set
+ * agents as publicly listed and to view the members-only discovery pool).
+ */
+export function hasApiAccess(tier: MembershipTier | null | undefined): boolean {
+  if (!tier) return false;
+  return (API_ACCESS_TIERS as readonly string[]).includes(tier);
+}
+
 export interface Organization {
   workos_organization_id: string;
   name: string;

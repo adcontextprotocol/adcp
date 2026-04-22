@@ -197,6 +197,10 @@ phases:
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: error_handling
         stateful: false
+        # The test value of this step is that buying_mode is missing — do not
+        # schema-validate the sample_request, or the lint would reject the
+        # very shape the step exists to exercise.
+        sample_request_skip_schema: true
         expected: |
           Either return products (treating empty request as browse) or return a
           structured error requesting the missing brief. Both are valid.

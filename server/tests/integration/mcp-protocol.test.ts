@@ -39,7 +39,7 @@ const { mockMemberData } = vi.hoisted(() => ({
     agents: [
       {
         url: 'https://creative.test',
-        is_public: true,
+        visibility: 'public',
         name: 'Test Creative Agent',
         type: 'creative',
       }

@@ -5,6 +5,11 @@
   "description": "JavaScript code asset",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "javascript",
+      "description": "Discriminator identifying this as a JavaScript asset. See /schemas/creative/asset-types for the registry."
+    },
     "content": {
       "type": "string",
       "description": "JavaScript content"
@@ -42,6 +47,7 @@
     }
   },
   "required": [
+    "asset_type",
     "content"
   ],
   "additionalProperties": true

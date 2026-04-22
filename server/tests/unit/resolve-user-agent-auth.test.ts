@@ -5,7 +5,11 @@ import type { ResolvedOwnerAuth } from '../../src/db/compliance-db.js';
 
 type StubbedAgentContextDb = Pick<
   AgentContextDatabase,
-  'getAuthInfoByOrgAndUrl' | 'getByOrgAndUrl' | 'getOAuthTokensByOrgAndUrl' | 'getOAuthClient'
+  | 'getAuthInfoByOrgAndUrl'
+  | 'getByOrgAndUrl'
+  | 'getOAuthTokensByOrgAndUrl'
+  | 'getOAuthClient'
+  | 'getOAuthClientCredentialsByOrgAndUrl'
 >;
 
 function makeDb(): {
@@ -16,6 +20,7 @@ function makeDb(): {
     getByOrgAndUrl: vi.fn(),
     getOAuthTokensByOrgAndUrl: vi.fn(),
     getOAuthClient: vi.fn(),
+    getOAuthClientCredentialsByOrgAndUrl: vi.fn(),
   };
 }
 
@@ -161,12 +166,89 @@ describe('resolveUserAgentAuth', () => {
 
   it('returns undefined when the org has no stored credentials', async () => {
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
-    db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_1', has_oauth_token: false });
+    db.getByOrgAndUrl.mockResolvedValueOnce({
+      id: 'ctx_1',
+      has_oauth_token: false,
+      has_oauth_client_credentials: false,
+    });
 
     const auth = await call();
 
     expect(auth).toBeUndefined();
     expect(db.getOAuthTokensByOrgAndUrl).not.toHaveBeenCalled();
+    expect(db.getOAuthClientCredentialsByOrgAndUrl).not.toHaveBeenCalled();
+  });
+
+  it('returns oauth_client_credentials shape when configured', async () => {
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
+    db.getByOrgAndUrl.mockResolvedValueOnce({
+      id: 'ctx_1',
+      has_oauth_token: false,
+      has_oauth_client_credentials: true,
+    });
+    db.getOAuthClientCredentialsByOrgAndUrl.mockResolvedValueOnce({
+      token_endpoint: 'https://auth.example.com/oauth/token',
+      client_id: 'client_abc',
+      client_secret: 'cc-secret-plaintext',
+      scope: 'adcp',
+      audience: 'https://agent.example.com',
+      auth_method: 'basic',
+    });
+
+    const auth = await call();
+
+    expect(auth).toEqual({
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'cc-secret-plaintext',
+        scope: 'adcp',
+        audience: 'https://agent.example.com',
+        auth_method: 'basic',
+      },
+    });
+    expect(db.getOAuthClientCredentialsByOrgAndUrl).toHaveBeenCalledWith(ORG, URL);
+
+    const _typed: ResolvedOwnerAuth = auth!;
+    void _typed;
+  });
+
+  it('returns undefined when flagged has_oauth_client_credentials but the lookup misses', async () => {
+    // Defensive — flag-vs-row divergence shouldn't crash, just return no auth.
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
+    db.getByOrgAndUrl.mockResolvedValueOnce({
+      id: 'ctx_1',
+      has_oauth_token: false,
+      has_oauth_client_credentials: true,
+    });
+    db.getOAuthClientCredentialsByOrgAndUrl.mockResolvedValueOnce(null);
+
+    const auth = await call();
+
+    expect(auth).toBeUndefined();
+  });
+
+  it('prefers auth-code OAuth over client-credentials when both are configured', async () => {
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
+    db.getByOrgAndUrl.mockResolvedValueOnce({
+      id: 'ctx_1',
+      has_oauth_token: true,
+      has_oauth_client_credentials: true,
+    });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValueOnce({
+      access_token: 'access',
+      refresh_token: 'refresh',
+    });
+    db.getOAuthClient.mockResolvedValueOnce(null);
+
+    const auth = await call();
+
+    expect(auth).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access', refresh_token: 'refresh' },
+    });
+    expect(db.getOAuthClientCredentialsByOrgAndUrl).not.toHaveBeenCalled();
   });
 
   it('returns undefined when agent_context is missing entirely', async () => {

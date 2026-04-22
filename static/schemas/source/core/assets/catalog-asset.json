@@ -3,6 +3,17 @@
   "$id": "/schemas/core/assets/catalog-asset.json",
   "title": "Catalog Asset",
   "description": "A typed data feed as a creative asset. Carries catalog context (products, stores, jobs, etc.) within the manifest's assets map.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "catalog",
+      "description": "Discriminator identifying this as a catalog asset. See /schemas/creative/asset-types for the registry."
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
   "allOf": [
     { "$ref": "/schemas/core/catalog.json" }
   ]

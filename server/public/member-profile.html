@@ -1140,7 +1140,8 @@
     let isNewProfile = true;
     let currentProfile = null;
     let tags = [];
-    let agents = []; // Array of {url: string, is_public: boolean}
+    let agents = []; // Array of {url: string, visibility: 'private'|'members_only'|'public'}
+    let hasApiAccess = false; // Whether the caller's tier allows public listing
     let brandHostingType = null; // 'community' | 'self-hosted' | null
     let currentResolvedBrand = null; // Resolved brand from registry for member card preview
     let agentInfo = {}; // Cache of discovered agent info by URL
@@ -1267,6 +1268,7 @@
         currentOrgId = data.organization_id;
         currentOrgName = data.organization_name;
         hasActiveSubscription = data.has_active_subscription || false;
+        hasApiAccess = Boolean(data.has_api_access);
 
         // Determine is_personal from /api/me org data (already fetched, no extra call)
         const currentOrgInfo = meData?.organizations?.find(o => o.id === currentOrgId);
@@ -2350,8 +2352,11 @@
         return;
       }
 
-      // Add agent with default public visibility
-      agents.push({ url, is_public: true });
+      // Default every new agent to members_only: it's the safest opt-in to
+      // the paid-member discovery pool, works for any tier, and avoids a
+      // confusing disabled "public" state when brand domain is missing.
+      // Users with API access can promote to public from the card.
+      agents.push({ url, visibility: 'members_only' });
       input.value = '';
       renderAgents();
       discoverAgentInfo(url);
@@ -2382,7 +2387,8 @@
         const info = agentInfo[agent.url];
         return renderAgentCard(info, agent.url, {
           showVisibilityToggle: true,
-          isPublic: agent.is_public,
+          visibility: agent.visibility || 'private',
+          canSetPublic: hasApiAccess,
           index: index,
           showRemoveButton: true,
           showStatus: true,
@@ -2391,39 +2397,31 @@
       }).join('');
     }
 
-    async function publishAgent(index) {
+    async function setAgentVisibility(index, target) {
+      const previous = agents[index]?.visibility;
+      if (!agents[index] || previous === target) return;
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
-          method: 'POST', credentials: 'include'
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: target }),
         });
         const data = await resp.json();
-        if (!resp.ok) { alert(data.error || 'Failed to publish'); return; }
-
-        if (data.action === 'snippet') {
-          // Self-hosted — show the snippet to copy
+        if (!resp.ok) {
+          alert(data.message || data.error || 'Failed to update visibility');
+          renderAgents(); // revert radio selection to last good state
+          return;
+        }
+        agents[index].visibility = target;
+        if (data.action === 'snippet' && data.snippet) {
           const snippet = JSON.stringify(data.snippet, null, 2);
           prompt('Add this to the agents array in your brand.json:', snippet);
         }
-
-        agents[index].is_public = true;
         renderAgents();
       } catch (err) {
-        alert('Failed to publish agent: ' + err.message);
-      }
-    }
-
-    async function unpublishAgent(index) {
-      try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
-          method: 'DELETE', credentials: 'include'
-        });
-        const data = await resp.json();
-        if (!resp.ok) { alert(data.error || 'Failed to unpublish'); return; }
-
-        agents[index].is_public = false;
+        alert('Failed to update visibility: ' + err.message);
         renderAgents();
-      } catch (err) {
-        alert('Failed to unpublish agent: ' + err.message);
       }
     }
 
@@ -2435,7 +2433,11 @@
         const data = await resp.json();
         if (!resp.ok) { alert(data.error || 'Failed to check'); return; }
 
-        agents[index].is_public = data.found;
+        // The server only demotes visibility on a public→not-found mismatch;
+        // otherwise we keep the user's current visibility intent.
+        if (agents[index].visibility === 'public' && !data.found) {
+          agents[index].visibility = 'private';
+        }
         renderAgents();
 
         if (data.found) {

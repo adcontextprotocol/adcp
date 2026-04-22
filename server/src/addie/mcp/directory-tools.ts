@@ -175,7 +175,7 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
       headquarters: m.headquarters,
       markets: m.markets,
       website: m.contact_website,
-      agents: m.agents.filter((a) => a.is_public).map((a) => ({
+      agents: m.agents.filter((a) => a.visibility === 'public').map((a) => ({
         name: a.name,
         type: a.type,
         url: a.url,
@@ -206,7 +206,7 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
       markets: member.markets,
       website: member.contact_website,
       logo: member.resolved_brand?.logo_url,
-      agents: member.agents.filter((a) => a.is_public).map((a) => ({
+      agents: member.agents.filter((a) => a.visibility === 'public').map((a) => ({
         name: a.name,
         type: a.type,
         url: a.url,
