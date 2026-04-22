@@ -337,7 +337,8 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes: ["HMAC-SHA256"]
+              credentials: "pinnacle-creative-generative-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_seller_create_buy_create_media_buy"
           context:

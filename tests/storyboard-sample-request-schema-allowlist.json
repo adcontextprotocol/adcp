@@ -38,14 +38,6 @@
         "required@/creative_manifest:assets"
       ]
     },
-    "protocols/media-buy/index.yaml#create_buy/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/push_notification_config/authentication:schemes",
-        "required@/push_notification_config/authentication:credentials",
-        "additionalProperties@/push_notification_config/authentication:scheme"
-      ]
-    },
     "protocols/media-buy/index.yaml#creative_sync/sync_creatives": {
       "schema": "creative/sync-creatives-request.json",
       "errors": [
@@ -64,30 +56,6 @@
       "schema": "creative/sync-creatives-request.json",
       "errors": [
         "required@/:creatives"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_approved.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_conditions.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_denied.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_denied_recovery.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
       ]
     },
     "protocols/media-buy/scenarios/pending_creatives_to_start.yaml#supply_creatives/sync_creative": {
@@ -182,25 +150,11 @@
         "required@/audiences/0/add/1:external_id"
       ]
     },
-    "specialisms/brand-rights/scenarios/governance_denied.yaml#brand_agent_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
     "specialisms/brand-rights/scenarios/governance_denied.yaml#rights_denied/get_rights_catalog": {
       "schema": "brand/get-rights-request.json",
       "errors": [
         "required@/:query",
         "required@/:uses"
-      ]
-    },
-    "specialisms/creative-generative/generative-seller.yaml#create_buy/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/push_notification_config/authentication:schemes",
-        "required@/push_notification_config/authentication:credentials",
-        "additionalProperties@/push_notification_config/authentication:scheme"
       ]
     },
     "specialisms/creative-template/index.yaml#build/build_multi_format": {
@@ -240,14 +194,6 @@
         "required@/events/0:event_time",
         "required@/events/1:event_time",
         "required@/events/2:event_time"
-      ]
-    },
-    "specialisms/sales-guaranteed/index.yaml#create_buy_submitted/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/push_notification_config/authentication:schemes",
-        "required@/push_notification_config/authentication:credentials",
-        "additionalProperties@/push_notification_config/authentication:scheme"
       ]
     },
     "specialisms/sales-non-guaranteed/index.yaml#adjust_bids/update_media_buy": {
@@ -372,12 +318,6 @@
         "required@/signal_ids/0:agent_url",
         "required@/signal_ids/0:id",
         "oneOf@/signal_ids/0"
-      ]
-    },
-    "specialisms/signal-marketplace/scenarios/governance_denied.yaml#signal_agent_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
       ]
     },
     "universal/deterministic-testing.yaml#deterministic_account/sync_accounts_for_state": {
