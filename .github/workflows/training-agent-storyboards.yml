@@ -74,6 +74,31 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Overlay in-repo compliance source onto SDK cache
+        # The storyboard runner loads from @adcp/client's bundled
+        # compliance cache, which is a snapshot synced from this repo's
+        # static/compliance/source/ on each SDK publish. To validate
+        # spec changes in this PR before waiting for an SDK republish,
+        # overlay the current source tree onto the cache. Overlays only
+        # files that exist in both trees; new top-level additions to
+        # source/ still require a sync-schemas cycle on the SDK side.
+        run: |
+          SRC="static/compliance/source"
+          DST="node_modules/@adcp/client/compliance/cache/latest"
+          if [ ! -d "$DST" ]; then
+            echo "::warning::SDK compliance cache not found at $DST — skipping overlay"
+            exit 0
+          fi
+          # Copy every file that already exists in the cache. `cp -u` is
+          # not used because we want the overlay to always win for the
+          # files we maintain here.
+          (cd "$SRC" && find . -type f) | while read -r rel; do
+            if [ -f "$DST/${rel#./}" ]; then
+              cp "$SRC/${rel#./}" "$DST/${rel#./}"
+            fi
+          done
+          echo "Overlay complete."
+
       - name: Run storyboards (${{ matrix.mode }})
         id: run
         env:
