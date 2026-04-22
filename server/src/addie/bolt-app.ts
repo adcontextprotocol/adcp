@@ -862,6 +862,20 @@ async function createUserScopedTools(
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  // Re-register Google Docs tools with user context for per-user rate
+  // limiting (see tool-rate-limiter.ts). The boot-time registration
+  // remains as a fallback; this per-request copy shadows whenever
+  // we have a user id (requestTools beats this.toolHandlers in the
+  // claude-client merge at line 531).
+  const userIdForRateLimit = memberContext?.workos_user?.workos_user_id ?? null;
+  const scopedGoogleDocsHandlers = createGoogleDocsToolHandlers(userIdForRateLimit);
+  if (scopedGoogleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = scopedGoogleDocsHandlers[tool.name];
+      if (handler) allHandlers.set(tool.name, handler);
+    }
+  }
+
   // Add billing tools for all users (membership signup assistance)
   // Skip in public channels — billing tools enable enrollment pitching
   const isPublicChannel = threadContext?.viewing_channel_is_private === false;
