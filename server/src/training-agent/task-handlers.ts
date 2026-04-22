@@ -2785,7 +2785,10 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  return { serving_tag: { asset_type: 'html', content: html } };
+  // HTMLAsset schema (5.9.x) is { content, version?, accessibility?, provenance? }
+  // — asset type is discriminated by the slot name / manifest structure, not a
+  // per-asset `asset_type` field.
+  return { serving_tag: { content: html } };
 }
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {

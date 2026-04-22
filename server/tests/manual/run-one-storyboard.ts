@@ -57,6 +57,19 @@ app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
     bearer_methods_supported: ['header'],
   });
 });
+// RFC 8414 auth-server metadata (see run-storyboards.ts for rationale).
+app.get('/auth/.well-known/oauth-authorization-server', (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  const issuer = `${proto}://${host}/auth`;
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({
+    issuer,
+    token_endpoint: `${issuer}/token`,
+    grant_types_supported: ['client_credentials'],
+    response_types_supported: ['token'],
+  });
+});
 app.use('/api/training-agent', createTrainingAgentRouter());
 const server = http.createServer(app);
 server.listen(0, '127.0.0.1', async () => {
