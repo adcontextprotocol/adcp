@@ -299,7 +299,7 @@ skip_result:
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
 
-summary:
+run_summary:
   description: |
     Runners MUST expose a top-level summary for every run. UI surfaces
     (Addie, CLI, web) may present a condensed form, but the full summary

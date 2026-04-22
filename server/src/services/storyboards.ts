@@ -17,6 +17,11 @@ import {
 } from '@adcp/client/testing';
 import type { Storyboard } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
+// Install our stricter `context.no_secret_echo` over the SDK's default (which
+// is a no-op for structured `auth` objects per adcp-client#751). Remove this
+// import once the upstream fix lands and switch to
+// `registerAssertion(spec, { override: true })`.
+import '../compliance/assertions/index.js';
 
 const logger = createLogger('storyboards');
 

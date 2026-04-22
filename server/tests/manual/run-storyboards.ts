@@ -28,6 +28,8 @@ import {
   InMemoryRevocationStore,
 } from '@adcp/client/signing';
 import type { AdcpJsonWebKey } from '@adcp/client/signing';
+// Install our stricter `context.no_secret_echo` over the SDK default (adcp-client#751).
+import '../../src/compliance/assertions/index.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
