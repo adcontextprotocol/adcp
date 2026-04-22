@@ -57,6 +57,32 @@ const DEFAULT_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 60 };
 const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
 
 /**
+ * Longest window across all caps — used as the GC staleness cutoff so
+ * entries aren't prematurely dropped if a future tool gets a longer
+ * window than the global cap.
+ */
+const MAX_WINDOW_MS = Math.max(
+  GLOBAL_CAP.windowMs,
+  DEFAULT_CAP.windowMs,
+  ...Object.values(CAPS).map(c => c.windowMs),
+);
+
+/**
+ * Literal allowlist of system user identifiers that bypass the limiter.
+ * Prefix-matching on `system:` was fragile because member-context can
+ * theoretically produce any string for `workos_user_id` (especially in
+ * dev mode where identities are cookie-picked). Stick to the ids used
+ * by real automated pipelines and nothing else.
+ */
+const SYSTEM_USER_IDS = new Set<string>([
+  'system:addie',
+  'system:sage',
+  'system:scope3_seed',
+  'system:logo-service',
+  'system:google-alias-merge',
+]);
+
+/**
  * Per-user history. Key is `${userId}|${toolName}` for per-tool tracking
  * and `${userId}|*` for the global counter.
  */
@@ -72,10 +98,18 @@ export interface RateLimitResult {
  * Check + record an invocation. Returns { ok: true } when allowed, or
  * `{ ok: false, retryAfterMs, scope }` when the per-tool or global cap
  * is hit.
+ *
+ * `userId` must be a stable identifier for the caller. Pass `null` /
+ * `undefined` only for genuinely anonymous / system paths that have
+ * been explicitly vetted; otherwise the limiter is bypassed.
  */
 export function checkToolRateLimit(toolName: string, userId: string | undefined | null): RateLimitResult {
-  // No user context (anonymous tools / startup) or system automation — skip.
-  if (!userId || userId.startsWith('system:')) return { ok: true };
+  // No user context (anonymous tools, startup paths) — skip.
+  if (!userId) return { ok: true };
+  // Known system automation — exempt via literal allowlist so a
+  // member-context that happens to produce a 'system:...' string
+  // can't trivially bypass the limiter.
+  if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
 
   const now = Date.now();
   const toolCap = CAPS[toolName] ?? DEFAULT_CAP;
@@ -110,10 +144,11 @@ export function checkToolRateLimit(toolName: string, userId: string | undefined 
 
   // Opportunistic GC once the map gets large
   if (history.size > 2000) {
+    // Use the longest window across all caps to decide staleness so
+    // we don't drop entries mid-window for any tracked counter.
+    const cutoff = now - MAX_WINDOW_MS;
     for (const [key, entries] of history) {
-      // Use the larger window to decide staleness so we don't drop
-      // entries mid-window for the global counter.
-      const recent = entries.filter(t => t > now - GLOBAL_CAP.windowMs);
+      const recent = entries.filter(t => t > cutoff);
       if (recent.length === 0) history.delete(key);
       else history.set(key, recent);
     }
