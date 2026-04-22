@@ -6,7 +6,6 @@ on:
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
-      - 'server/tests/manual/run-one-storyboard.ts'
       - 'package.json'
       - 'package-lock.json'
       - 'static/compliance/source/**'
@@ -15,7 +14,6 @@ on:
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
-      - 'server/tests/manual/run-one-storyboard.ts'
       - 'package.json'
       - 'package-lock.json'
       - 'static/compliance/source/**'
