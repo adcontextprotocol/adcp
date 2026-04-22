@@ -2866,10 +2866,7 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  // Core Asset types no longer declare asset_type on the object itself — the
-  // discriminator is positional (record key + context). HTMLAsset = { content,
-  // version?, accessibility?, provenance? }.
-  return { serving_tag: { content: html } };
+  return { serving_tag: { asset_type: 'html', content: html } };
 }
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
