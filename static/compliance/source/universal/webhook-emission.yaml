@@ -157,14 +157,6 @@ phases:
           returns an immediate terminal status (no webhook needed) or an
           interim status indicating async processing (webhook will follow).
 
-          Operation-specific required fields (e.g., brand, packages, budget for
-          create_media_buy) are supplied by the resolved test_kit — this
-          universal only declares the two fields that apply to every
-          webhook-emitting operation: push_notification_config.url (directs the
-          emitted webhook at the runner's per-step receiver, no authentication
-          block so 9421 is in effect) and idempotency_key (so the trigger call
-          itself is safe to retry).
-
       - id: expect_webhook_presence
         title: "Assert inbound webhook carries a valid idempotency_key"
         narrative: |
