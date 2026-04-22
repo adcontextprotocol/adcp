@@ -3390,8 +3390,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         if (name === 'create_media_buy') envelope.replayed = false;
         if (callerContext !== undefined) envelope.context = callerContext;
         const response = { ...inner, ...envelope };
+        // `structuredContent` is authoritative on success so raw-probe
+        // callers (storyboard runner's rawMcpProbe) can validate envelope
+        // fields. `content` stays empty: the SDK unwrapper folds text
+        // content into `_message` on the returned object, which trips
+        // strict `additionalProperties: false` per-task response schemas.
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
+          content: [],
+          structuredContent: response,
         };
       }
     } catch (error) {

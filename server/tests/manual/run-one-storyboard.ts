@@ -27,16 +27,17 @@ const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const sb = listAllComplianceStoryboards().find(s => s.id === id);
 if (!sb) { console.error(`storyboard ${id} not found`); process.exit(2); }
 
-function brandForStoryboard(s: Storyboard): StoryboardRunOptions['brand'] | undefined {
+interface LoadedKit {
+  brand?: { house?: { domain?: string } };
+  auth?: { api_key?: string; probe_task?: string };
+}
+
+function loadKit(s: Storyboard): LoadedKit | undefined {
   const kitRef = s.prerequisites?.test_kit;
   if (!kitRef) return undefined;
   const path = join(getComplianceCacheDir(), kitRef);
   if (!existsSync(path)) return undefined;
-  const kit = YAML.parse(readFileSync(path, 'utf-8')) as {
-    brand?: { house?: { domain?: string } };
-  };
-  const domain = kit.brand?.house?.domain;
-  return domain ? { domain } : undefined;
+  return YAML.parse(readFileSync(path, 'utf-8')) as LoadedKit;
 }
 
 const app = express();
@@ -46,17 +47,9 @@ app.use(express.json({
     (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
   },
 }));
-app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) => {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-  const suffix = req.path.replace(/^\/\.well-known\/oauth-protected-resource/, '') || '/';
-  res.setHeader('Cache-Control', 'public, max-age=300');
-  res.json({
-    resource: `${proto}://${host}${suffix}`,
-    authorization_servers: [`${proto}://${host}/auth`],
-    bearer_methods_supported: ['header'],
-  });
-});
+// API-key-only agent: MUST NOT serve RFC 9728 PRM. See
+// server/tests/manual/run-storyboards.ts and
+// static/compliance/source/universal/security.yaml lines 37–47.
 app.use('/api/training-agent', createTrainingAgentRouter());
 const server = http.createServer(app);
 server.listen(0, '127.0.0.1', async () => {
@@ -64,21 +57,38 @@ server.listen(0, '127.0.0.1', async () => {
   const url = `http://127.0.0.1:${port}/api/training-agent/mcp`;
   // Intentionally do not log agent URL to stdout — this script's stdout is
   // piped through `jq` / `python -c` by the storyboard debugging workflow.
-  const brand = brandForStoryboard(sb);
-  const result = await runStoryboard(url, sb, {
-    auth: { type: 'bearer', token: AUTH_TOKEN },
-    allow_http: true,
-    contracts: ['webhook_receiver_runner'],
-    webhook_receiver: { mode: 'loopback_mock' },
-    webhook_signing: {
-      jwks: new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]),
-      replayStore: new InMemoryReplayStore(),
-      revocationStore: new InMemoryRevocationStore(),
-    },
-    request_signing: { transport: 'mcp' },
-    ...(brand && { brand }),
-  });
-  console.log(JSON.stringify(result, null, 2));
-  stopSessionCleanup();
-  server.close();
+  const kit = loadKit(sb);
+  const domain = kit?.brand?.house?.domain;
+  const brand: StoryboardRunOptions['brand'] | undefined = domain ? { domain } : undefined;
+  const testKit: StoryboardRunOptions['test_kit'] | undefined = (() => {
+    const a = kit?.auth;
+    if (!a?.api_key && !a?.probe_task) return undefined;
+    if (!a.probe_task) throw new Error('test kit declares auth.api_key without auth.probe_task');
+    return {
+      auth: {
+        ...(a.api_key !== undefined && { api_key: a.api_key }),
+        probe_task: a.probe_task,
+      },
+    };
+  })();
+  try {
+    const result = await runStoryboard(url, sb, {
+      auth: { type: 'bearer', token: AUTH_TOKEN },
+      allow_http: true,
+      contracts: ['webhook_receiver_runner'],
+      webhook_receiver: { mode: 'loopback_mock' },
+      webhook_signing: {
+        jwks: new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]),
+        replayStore: new InMemoryReplayStore(),
+        revocationStore: new InMemoryRevocationStore(),
+      },
+      request_signing: { transport: 'mcp' },
+      ...(brand && { brand }),
+      ...(testKit && { test_kit: testKit }),
+    });
+    console.log(JSON.stringify(result, null, 2));
+  } finally {
+    stopSessionCleanup();
+    server.close();
+  }
 });
