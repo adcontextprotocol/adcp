@@ -1,7 +1,16 @@
 import { MemberDatabase } from "./db/member-db.js";
 import { FederatedIndexDatabase, type DiscoveredAgent } from "./db/federated-index-db.js";
-import type { Agent, AgentType, AgentConfig, MemberProfile } from "./types.js";
+import type { Agent, AgentType, AgentConfig, AgentVisibility, MemberProfile } from "./types.js";
 import { isValidAgentType } from "./types.js";
+
+export interface AgentListOptions {
+  type?: AgentType;
+  /**
+   * Viewer has API-access tier (Professional+). Enables members_only
+   * agents in the results. Defaults to false (public only).
+   */
+  viewerHasApiAccess?: boolean;
+}
 
 /**
  * Service for accessing agents from member profiles and discovered agents
@@ -17,18 +26,32 @@ export class AgentService {
   }
 
   /**
-   * List all public agents, optionally filtered by type
-   * Includes both registered agents (from member profiles) and discovered agents
-   * Registered agents take precedence for deduplication
+   * List agents visible to the requesting viewer, optionally filtered by type.
+   * Includes both registered agents (from member profiles) and discovered agents.
+   * Registered agents take precedence for deduplication.
    */
-  async listAgents(type?: AgentType): Promise<Agent[]> {
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+  async listAgents(typeOrOptions?: AgentType | AgentListOptions): Promise<Agent[]> {
+    const options: AgentListOptions = typeof typeOrOptions === 'string' || typeOrOptions === undefined
+      ? { type: typeOrOptions as AgentType | undefined }
+      : typeOrOptions;
+    const { type, viewerHasApiAccess = false } = options;
+
+    // API-access viewers can see members_only agents even on profiles that
+    // have opted out of the public directory — that's the entire Scope3
+    // use case. Public-only viewers are still scoped to public profiles.
+    const profiles = viewerHasApiAccess
+      ? await this.memberDb.listProfiles()
+      : await this.memberDb.listProfiles({ is_public: true });
     const agentsByUrl = new Map<string, Agent>();
 
     // First, collect registered agents from member profiles
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
-        if (!agentConfig.is_public) continue;
+        if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
+        // Public agents on a profile that opted out of the public directory
+        // remain only available to API-access viewers — there is no public
+        // surface to leak them to.
+        if (agentConfig.visibility === 'public' && !profile.is_public && !viewerHasApiAccess) continue;
 
         const agentType = agentConfig.type || "unknown";
         if (type && agentType !== type) continue;
@@ -52,18 +75,34 @@ export class AgentService {
   }
 
   /**
+   * Whether the given agent visibility is visible to a viewer whose tier
+   * either does or does not grant API access. Owners see their own agents
+   * regardless; this helper is for non-owner listings only.
+   */
+  private isVisibleToViewer(visibility: AgentVisibility, viewerHasApiAccess: boolean): boolean {
+    if (visibility === 'public') return true;
+    if (visibility === 'members_only') return viewerHasApiAccess;
+    return false;
+  }
+
+  /**
    * Get agent by URL
    * Checks registered agents first, then discovered agents
    */
-  async getAgentByUrl(url: string): Promise<Agent | undefined> {
-    // Check registered agents first
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+  async getAgentByUrl(url: string, options: { viewerHasApiAccess?: boolean } = {}): Promise<Agent | undefined> {
+    const viewerHasApiAccess = options.viewerHasApiAccess ?? false;
+    // Mirror listAgents: API-access viewers can look up members_only agents
+    // on private profiles; unauth viewers stay scoped to public profiles.
+    const profiles = viewerHasApiAccess
+      ? await this.memberDb.listProfiles()
+      : await this.memberDb.listProfiles({ is_public: true });
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
-        if (agentConfig.url === url && agentConfig.is_public) {
-          return this.configToAgent(agentConfig, profile);
-        }
+        if (agentConfig.url !== url) continue;
+        if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
+        if (agentConfig.visibility === 'public' && !profile.is_public && !viewerHasApiAccess) continue;
+        return this.configToAgent(agentConfig, profile);
       }
     }
 

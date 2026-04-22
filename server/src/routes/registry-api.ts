@@ -4410,7 +4410,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         : null;
 
       const displayName = profile?.display_name || domain;
-      const agentConfigs = (profile?.agents || []).filter(a => a.is_public).slice(0, 20);
+      const agentConfigs = (profile?.agents || []).filter(a => a.visibility === 'public').slice(0, 20);
 
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {
