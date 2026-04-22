@@ -12,7 +12,9 @@ track: core
 # the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
 # catches credential echo on any step's response. Both ship as default
 # assertions in `@adcp/client` 5.9+ — `import '@adcp/client/testing'`
-# auto-registers them; no additional module loading required.
+# auto-registers them; no additional module loading required. Consumers
+# who need stricter per-repo checks can re-register with their own spec
+# via `registerAssertion(spec, { override: true })` (adcp-client#752).
 invariants:
   - idempotency.conflict_no_payload_leak
   - context.no_secret_echo
