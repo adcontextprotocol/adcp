@@ -697,7 +697,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     let manifestOp: ManifestOp | null = null;
     let snippet: { type: string; url: string; id: string; description?: string } | undefined;
     let finalTarget: AgentVisibility = target;
-    let committed = false;
 
     try {
       await client.query('BEGIN');
@@ -851,12 +850,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         [JSON.stringify(agents), row.id]
       );
       await client.query('COMMIT');
-      committed = true;
       finalTarget = target;
     } catch (err) {
-      if (!committed) {
-        await client.query('ROLLBACK').catch(() => {});
-      }
+      // Safe to attempt rollback whether we got here before or after
+      // a successful COMMIT — pg no-ops a ROLLBACK on a finished tx
+      // and the .catch swallows any driver noise.
+      await client.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
       // Don't let a release() failure mask whatever the try block threw
