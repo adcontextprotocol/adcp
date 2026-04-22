@@ -11,6 +11,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import * as illustrationDb from '../../db/illustration-db.js';
 import { generateIllustration } from '../../services/illustration-generator.js';
+import { checkToolRateLimit } from './tool-rate-limiter.js';
 
 const logger = createLogger('addie-illustration-tools');
 
@@ -120,8 +121,19 @@ export function createIllustrationToolHandlers(
       });
     }
 
+    // Per-session tool rate limit (10/10min) — complements the existing
+    // monthly per-user quota below. Bounds an automated loop that
+    // stays under the monthly ceiling but still burns Gemini credits.
+    const toolRate = checkToolRateLimit('generate_perspective_illustration', userId);
+    if (!toolRate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((toolRate.retryAfterMs ?? 60000) / 1000));
+      return JSON.stringify({
+        error: `Rate limit exceeded on generate_perspective_illustration. Try again in ~${retrySeconds} seconds.`,
+      });
+    }
+
     try {
-      // Check rate limit
+      // Check monthly quota (separate from the session-level tool limit)
       const monthlyCount = await illustrationDb.countMonthlyGenerations(userId);
       if (monthlyCount >= 5) {
         return JSON.stringify({
