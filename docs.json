@@ -71,6 +71,7 @@
             "pages": [
               "docs/intro",
               "docs/quickstart",
+              "docs/trust",
               {
                 "group": "Building with AdCP",
                 "expanded": false,
@@ -799,6 +800,7 @@
                 "group": "Governance",
                 "expanded": false,
                 "pages": [
+                  "docs/trust",
                   "docs/governance/overview",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",

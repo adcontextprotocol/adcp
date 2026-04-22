@@ -1,0 +1,128 @@
+---
+title: Trust by Design
+sidebarTitle: Trust
+description: "How AdCP enforces trust through architecture — governance, safety, privacy, security, provenance, and disclosure built into the wire protocol."
+"og:title": "AdCP — Trust by Design"
+---
+
+An AI agent just approved a \$2M upfront commitment on behalf of a bank. It negotiated the price, signed the terms, and moved the money. The buyer's compliance team finds out on Monday.
+
+This is the scenario AdCP was designed to prevent. Not by slowing agents down, and not by asking vendors to promise they'll behave — but by building the guardrails into the protocol itself. Every transaction passes through a governance agent the buyer controls. Every agent declares the authority it was granted, and cannot exceed it. Every creative, signal, and media buy carries provenance the next party can verify.
+
+**Trust in AdCP is architectural, not promised.**
+
+Safety, privacy, security, and human oversight are enforced in the wire protocol — across buyer, seller, and governance agents — so the same rules hold whether you're running one campaign or ten thousand.
+
+Here's how it works across the protocol.
+
+## Governance
+
+Three-party separation of duties: the agent that proposes a buy cannot approve it, the agent that validates cannot execute it, and the agent that fulfills cannot override either. Humans set policy; agents operate within it.
+
+<CardGroup cols={2}>
+  <Card title="Governance overview" href="/docs/governance/overview">
+    Three-party model, registered plans, and `check_governance` validation before money moves.
+  </Card>
+  <Card title="Embedded human judgment" href="/docs/governance/embedded-human-judgment">
+    Why oversight is architectural, not bolted-on — and how approval flows work.
+  </Card>
+  <Card title="Policy registry" href="/docs/governance/policy-registry">
+    Shared policy definitions across buyers, sellers, and governance agents.
+  </Card>
+  <Card title="Campaign safety model" href="/docs/governance/campaign/safety-model">
+    How budgets, flight windows, and scope constraints are enforced.
+  </Card>
+</CardGroup>
+
+## Regulatory compliance
+
+AdCP treats EU AI Act Annex III and GDPR Article 22 as design constraints, not compliance checkboxes. Human oversight, audit trails, and disclosure are protocol primitives.
+
+<CardGroup cols={2}>
+  <Card title="Annex III & Article 22 obligations" href="/docs/governance/annex-iii-obligations">
+    What EU AI Act Annex III and GDPR Article 22 require, and what AdCP provides.
+  </Card>
+  <Card title="Privacy considerations" href="/docs/reference/privacy-considerations">
+    Data minimization, consent signals, and jurisdiction-specific requirements.
+  </Card>
+</CardGroup>
+
+## Privacy
+
+Identity and targeting data flow through AdCP under a consent-first, minimization-first architecture. Buyers and sellers can collaborate on audiences without either party holding raw user data.
+
+<CardGroup cols={2}>
+  <Card title="Privacy architecture" href="/docs/trusted-match/privacy-architecture">
+    Router-mediated matching, federated identity, and what never crosses party boundaries.
+  </Card>
+  <Card title="Privacy considerations" href="/docs/reference/privacy-considerations">
+    What deployers are responsible for and where AdCP provides enforcement hooks.
+  </Card>
+</CardGroup>
+
+## Security
+
+Every AdCP transport — MCP or A2A — requires authenticated, signed, replay-protected exchanges. Webhooks are HMAC-signed. Financial operations are idempotent by construction.
+
+<CardGroup cols={3}>
+  <Card title="Security model" href="/docs/building/understanding/security-model">
+    The threat model AdCP addresses: impersonation, replay, tampering, and authority escalation.
+  </Card>
+  <Card title="Security implementation" href="/docs/building/implementation/security">
+    Authentication schemes, webhook verification, idempotency keys, and financial safeguards.
+  </Card>
+  <Card title="Report a vulnerability" href="https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md">
+    Responsible disclosure to security@adcontextprotocol.org. 72-hour initial response, coordinated disclosure after fix.
+  </Card>
+</CardGroup>
+
+## Provenance
+
+Creatives carry verifiable origin. Inventory is sold only by authorized agents. Buyers can prove where impressions ran and who was allowed to sell them.
+
+<CardGroup cols={2}>
+  <Card title="Creative provenance" href="/docs/governance/creative/provenance-verification">
+    How AI-generated and human-made creatives are signed, tracked, and verified.
+  </Card>
+  <Card title="Authorized properties" href="/docs/governance/property/adagents">
+    `adagents.json` — publisher-declared authorization for which agents may sell their inventory.
+  </Card>
+  <Card title="Content standards" href="/docs/governance/content-standards/index">
+    Brand safety rules enforced before, during, and after delivery.
+  </Card>
+</CardGroup>
+
+## Disclosure
+
+Agents declare what they are. AI-generated creatives are signed, agent-mediated transactions are labeled, and sponsored content inside conversational surfaces is disclosed to the end user.
+
+<CardGroup cols={1}>
+  <Card title="AI disclosure" href="/docs/ai-disclosure">
+    How AdCP surfaces AI involvement to end users and downstream agents.
+  </Card>
+</CardGroup>
+
+## For compliance reviewers
+
+Concrete enforcement artifacts — these are the wire-level tasks that implement the policies above.
+
+<CardGroup cols={2}>
+  <Card title="check_governance" href="/docs/governance/campaign/tasks/check_governance">
+    The validation call that runs before every buy. What gets blocked and why.
+  </Card>
+  <Card title="get_plan_audit_logs" href="/docs/governance/campaign/tasks/get_plan_audit_logs">
+    The decision trail. Every governance decision with timestamp, policy reference, and outcome.
+  </Card>
+  <Card title="validate_property_delivery" href="/docs/governance/property/tasks/validate_property_delivery">
+    Post-delivery proof that impressions ran only on authorized properties.
+  </Card>
+  <Card title="validate_content_delivery" href="/docs/governance/content-standards/tasks/validate_content_delivery">
+    Post-delivery proof that impressions complied with declared content standards.
+  </Card>
+</CardGroup>
+
+## For implementers
+
+- **[Validate your agent](/docs/building/validate-your-agent)** — storyboards exercise safety, authorization, and error paths, not just happy-path tool calls.
+- **[Build an agent](/docs/building/build-an-agent)** — skill files include governance, provenance, and safety handling by default.
+- **[Operating an agent](/docs/building/operating-an-agent)** — what sits behind the protocol, including the non-protocol pieces of trust (hosting, key management, monitoring).
