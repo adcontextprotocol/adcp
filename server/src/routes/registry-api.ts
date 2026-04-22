@@ -74,6 +74,7 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
@@ -88,6 +89,7 @@ const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
 const complianceDb = new ComplianceDatabase();
+const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
@@ -2232,9 +2234,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     brandDb,
     propertyDb,
     adagentsManager,
-    healthChecker,
     crawler,
-    capabilityDiscovery,
     registryRequestsDb,
     requireAuth: authMiddleware,
   } = config;
@@ -3270,49 +3270,60 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.json({ agents, count: agents.length, sources: bySource });
       }
 
-      // Bulk-fetch compliance status and metadata if requested
+      // Bulk-fetch all enrichment data from DB snapshot tables up front.
+      // The crawler materializes health + capabilities into these tables on
+      // each cycle, so the registry API never does live MCP/A2A fan-out.
       const agentUrls = agents.map(a => a.url);
-      const complianceMap = withCompliance
-        ? await complianceDb.bulkGetComplianceStatus(agentUrls)
-        : null;
-      const metadataMap = withCompliance
-        ? await complianceDb.bulkGetRegistryMetadata(agentUrls)
-        : null;
+      const [complianceMap, metadataMap, healthMap, capsMap] = await Promise.all([
+        withCompliance ? complianceDb.bulkGetComplianceStatus(agentUrls) : Promise.resolve(null),
+        withCompliance ? complianceDb.bulkGetRegistryMetadata(agentUrls) : Promise.resolve(null),
+        withHealth ? agentSnapshotDb.bulkGetHealth(agentUrls) : Promise.resolve(null),
+        withCapabilities ? agentSnapshotDb.bulkGetCapabilities(agentUrls) : Promise.resolve(null),
+      ]);
 
       const enriched = await Promise.all(
         agents.map(async (agent): Promise<AgentWithStats> => {
           const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
 
-          if (withCapabilities) {
-            const capProfile = await capabilityDiscovery.discoverCapabilities(agent as Agent);
-            if (capProfile) {
+          if (capsMap) {
+            const cap = capsMap.get(agent.url);
+            if (cap) {
               enrichedAgent.capabilities = {
-                tools_count: capProfile.discovered_tools?.length || 0,
-                tools: capProfile.discovered_tools || [],
-                standard_operations: capProfile.standard_operations,
-                creative_capabilities: capProfile.creative_capabilities,
-                signals_capabilities: capProfile.signals_capabilities,
-                discovery_error: capProfile.discovery_error,
-                oauth_required: capProfile.oauth_required,
+                tools_count: cap.discovered_tools_json?.length || 0,
+                tools: cap.discovered_tools_json || [],
+                standard_operations: cap.standard_operations_json ?? undefined,
+                creative_capabilities: cap.creative_capabilities_json ?? undefined,
+                signals_capabilities: cap.signals_capabilities_json ?? undefined,
+                discovery_error: cap.discovery_error ?? undefined,
+                oauth_required: cap.oauth_required || undefined,
               };
 
-              if (!enrichedAgent.type || enrichedAgent.type === "unknown") {
-                const inferredType = capabilityDiscovery.inferTypeFromProfile(capProfile);
-                if (inferredType !== "unknown") {
-                  enrichedAgent.type = inferredType;
+              if ((!enrichedAgent.type || enrichedAgent.type === "unknown") && cap.inferred_type) {
+                if (isValidAgentType(cap.inferred_type)) {
+                  enrichedAgent.type = cap.inferred_type;
                 }
               }
             }
           }
 
-          const promises = [];
-
-          if (withHealth) {
-            promises.push(
-              healthChecker.checkHealth(agent as Agent),
-              healthChecker.getStats(agent as Agent)
-            );
+          if (healthMap) {
+            const h = healthMap.get(agent.url);
+            if (h) {
+              enrichedAgent.health = {
+                online: h.online,
+                checked_at: h.checked_at instanceof Date ? h.checked_at.toISOString() : String(h.checked_at),
+                response_time_ms: h.response_time_ms ?? undefined,
+                tools_count: h.tools_count ?? undefined,
+                resources_count: h.resources_count ?? undefined,
+                error: h.error ?? undefined,
+              };
+              if (h.stats_json) {
+                enrichedAgent.stats = h.stats_json;
+              }
+            }
           }
+
+          const promises = [];
 
           if (withProperties && enrichedAgent.type === "buying") {
             promises.push(
@@ -3323,11 +3334,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
           const results = await Promise.all(promises);
           let resultIndex = 0;
-
-          if (withHealth) {
-            enrichedAgent.health = results[resultIndex++] as any;
-            enrichedAgent.stats = results[resultIndex++] as any;
-          }
 
           if (withProperties && enrichedAgent.type === "buying") {
             const agentProperties = results[resultIndex++] as any[];
