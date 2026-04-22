@@ -452,7 +452,6 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     compact = false,
     brandHostingType = null,
   } = options;
-  const isPublic = visibility === 'public';
 
   // Handle error state
   if (agentInfo?.error) {
