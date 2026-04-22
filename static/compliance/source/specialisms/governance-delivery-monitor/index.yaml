@@ -12,10 +12,10 @@ required_tools:
 # re-evaluation. The assertion gates any post-denial mutation on the
 # affected plan, catching sellers that ignore a mid-campaign denial and
 # keep delivering / committing new spend.
-# Cross-step assertion (adcp#2664): status.monotonic gates media_buy
-# status transitions observed across steps against the spec lifecycle
-# graph — paused → active → paused is fine, active → pending_creatives
-# fails.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — paused → active → paused is fine,
+# active → pending_creatives fails.
 invariants:
   - governance.denial_blocks_mutation
   - status.monotonic
