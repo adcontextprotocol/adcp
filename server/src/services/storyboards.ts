@@ -17,12 +17,12 @@ import {
 } from '@adcp/client/testing';
 import type { Storyboard } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
-// Registers cross-step assertions (adcp#2639) as a side effect. Any storyboard
-// declaring `invariants: [...]` (e.g. `universal/idempotency`) fails at
-// runStoryboard start with "unregistered assertion" unless these modules have
-// loaded first. Importing from the storyboard service is the choke point that
-// every comply()/runStoryboard consumer in this repo already touches.
-import '../compliance/assertions/index.js';
+// `@adcp/client` 5.9.0 ships the cross-step assertions (adcp#2639) as built-in
+// defaults via `@adcp/client/testing`'s `default-invariants` module, so no local
+// registration is needed here. Storyboards referencing
+// `context.no_secret_echo`, `idempotency.conflict_no_payload_leak`, or
+// `governance.denial_blocks_mutation` in their `invariants: [...]` list
+// resolve directly against the SDK defaults.
 
 const logger = createLogger('storyboards');
 

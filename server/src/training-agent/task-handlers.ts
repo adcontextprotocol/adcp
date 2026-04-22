@@ -718,6 +718,20 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook destination for async completion notification. RFC 9421 signed by default; HMAC-SHA256 fallback when authentication is populated.',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            authentication: {
+              type: 'object',
+              properties: {
+                schemes: { type: 'array', items: { type: 'string' } },
+                credentials: { type: 'string' },
+              },
+            },
+          },
+        },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
