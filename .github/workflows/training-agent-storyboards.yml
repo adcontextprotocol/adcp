@@ -36,30 +36,23 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 46→38 on the @adcp/client 5.12.0 bump: the storyboard runner
-            # now emits every authored package on create_media_buy
-            # (adcp-client#794), which exposes that several storyboards
-            # reference per-package products our catalog does not seed
-            # (outdoor_video_q2, late_fringe_15s_mf, outdoor_ctv_q2_guaranteed,
-            # lifestyle_display_q2). Tracked as a separate fixture-seeding
-            # task — wiring `controller_seeding: true` + `fixtures:` blocks
-            # on the affected storyboards (adcp-client#790 SDK side already
-            # shipped). Cascades downstream get_delivery on the same buys.
-            # Passing-step count is 321 (↑2 vs. main's 319) because the
-            # log_event builder now emits spec-shaped payloads so
-            # sales_social / sales_catalog_driven log_event no longer -32602s.
-            min_clean_storyboards: 38
+            # 38→42 after wiring `controller_seeding: true` + `fixtures:`
+            # blocks on the six multi-package storyboards exposed by
+            # adcp-client#794 (media_buy_seller, delivery_reporting,
+            # governance_approved, creative_generative, sales_broadcast_tv,
+            # sales_guaranteed). The in-repo compliance source overlay step
+            # ensures CI sees these fixture adds before an SDK republish.
+            min_clean_storyboards: 42
             min_passing_steps: 319
           - mode: framework
             flag_value: '1'
-            # 42→32 on the @adcp/client 5.12.0 bump: same root cause as
-            # legacy (multi-package authoring exposes missing seeds). The
-            # framework-only delta vs. legacy is 5 storyboards / 7 step
-            # failures (acquire_rights_denied error code, calibrate_content
-            # verdict, log_event/provide_feedback session lookups,
-            # report_usage `accepted` field type) — tracked as the residual
-            # zod-parity follow-up. See PR description for the diff.
-            min_clean_storyboards: 32
+            # 32→37 after the same fixture-seeding work. The framework-only
+            # delta vs. legacy is 5 storyboards / 7 step failures
+            # (acquire_rights_denied error code, calibrate_content verdict,
+            # log_event/provide_feedback session lookups, report_usage
+            # `accepted` field type) — tracked as the residual zod-parity
+            # follow-up. See PR description for the diff.
+            min_clean_storyboards: 37
             min_passing_steps: 319
     steps:
       - uses: actions/checkout@v6
@@ -74,6 +67,31 @@ jobs:
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Overlay in-repo compliance source onto SDK cache
+        # The storyboard runner loads from @adcp/client's bundled
+        # compliance cache, which is a snapshot synced from this repo's
+        # static/compliance/source/ on each SDK publish. To validate
+        # spec changes in this PR before waiting for an SDK republish,
+        # overlay the current source tree onto the cache. Overlays only
+        # files that exist in both trees; new top-level additions to
+        # source/ still require a sync-schemas cycle on the SDK side.
+        run: |
+          SRC="static/compliance/source"
+          DST="node_modules/@adcp/client/compliance/cache/latest"
+          if [ ! -d "$DST" ]; then
+            echo "::warning::SDK compliance cache not found at $DST — skipping overlay"
+            exit 0
+          fi
+          # Copy every file that already exists in the cache. `cp -u` is
+          # not used because we want the overlay to always win for the
+          # files we maintain here.
+          (cd "$SRC" && find . -type f) | while read -r rel; do
+            if [ -f "$DST/${rel#./}" ]; then
+              cp "$SRC/${rel#./}" "$DST/${rel#./}"
+            fi
+          done
+          echo "Overlay complete."
 
       - name: Run storyboards (${{ matrix.mode }})
         id: run
