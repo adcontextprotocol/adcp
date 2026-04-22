@@ -3,49 +3,46 @@
 # Verify version sync before pushing
 npm run verify-version-sync
 
-# Validate Mintlify docs before pushing
-# Production uses Mintlify, so we validate with Mintlify checks
-echo "🔍 Validating Mintlify documentation..."
+# Only run Mintlify broken-links when docs actually changed on this branch.
+# CI (.github/workflows/broken-links.yml) is the authoritative check; this is a
+# fast local pre-flight. A11y is skipped locally — add to CI if we want it gated.
+UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+RANGE="${UPSTREAM:-origin/main}...HEAD"
 
-# Check for broken internal links
-# Temporarily remove directories that contain non-MDX markdown
-rm -rf dist/docs
-ADDIE_RULES_MOVED=false
-if [ -d dist/addie/rules ]; then
-  mv dist/addie/rules /tmp/.addie-rules-push-$$
-  ADDIE_RULES_MOVED=true
-fi
-ADDIE_REPOS_MOVED=false
-if [ -d .addie-repos ]; then
-  mv .addie-repos /tmp/.addie-repos-push-$$
-  ADDIE_REPOS_MOVED=true
-fi
-CONTEXT_MOVED=false
-if [ -d .context ]; then
-  mv .context /tmp/.context-push-$$
-  CONTEXT_MOVED=true
-fi
-npx --yes mintlify@latest broken-links
-BROKEN_LINKS_EXIT=$?
-git checkout dist/docs 2>/dev/null || true
-if [ "$ADDIE_RULES_MOVED" = true ]; then
-  mv /tmp/.addie-rules-push-$$ dist/addie/rules
-fi
-if [ "$ADDIE_REPOS_MOVED" = true ]; then
-  mv /tmp/.addie-repos-push-$$ .addie-repos
-fi
-if [ "$CONTEXT_MOVED" = true ]; then
-  mv /tmp/.context-push-$$ .context
-fi
-if [ $BROKEN_LINKS_EXIT -ne 0 ]; then
-  echo "❌ Mintlify broken links check failed. Please fix broken links before pushing."
-  exit 1
-fi
+DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|mint\.json|README\.md|server/src/addie/rules/|server/src/addie/.*\.ts$|scripts/check-owned-links\.js|\.markdown-link-check\.json)'
 
-# Check for accessibility issues (warn only, don't fail)
-npx --yes mintlify@latest a11y || {
-  echo "⚠️  Mintlify accessibility check found issues. Review and fix if needed."
-  # Don't fail on a11y warnings, just warn
-}
+CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
-echo "✅ Mintlify documentation validation passed"
+if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
+  echo "🔍 Docs changed — running Mintlify broken-links check..."
+
+  # Use the local devDependency, not a re-resolved npx download.
+  # Shuffle sibling dirs that contain non-MDX markdown Mintlify chokes on.
+  rm -rf dist/docs
+  MOVED=""
+  for d in dist/addie/rules .addie-repos .context; do
+    if [ -d "$d" ]; then
+      tmp="/tmp/.prepush-$(echo "$d" | tr '/' '_')-$$"
+      mv "$d" "$tmp"
+      MOVED="$MOVED $d:$tmp"
+    fi
+  done
+
+  npx --no-install mintlify broken-links
+  EXIT=$?
+
+  git checkout dist/docs 2>/dev/null || true
+  for pair in $MOVED; do
+    src=$(echo "$pair" | cut -d: -f2)
+    dst=$(echo "$pair" | cut -d: -f1)
+    mv "$src" "$dst"
+  done
+
+  if [ $EXIT -ne 0 ]; then
+    echo "❌ Mintlify broken-links check failed."
+    exit 1
+  fi
+  echo "✅ Docs validation passed"
+else
+  echo "⏭  No docs changes — skipping Mintlify checks"
+fi

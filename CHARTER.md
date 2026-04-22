@@ -16,16 +16,16 @@ This charter is a discoverability document: it summarizes the Foundation's gover
 
 ## 2. Governing documents
 
-The Foundation operates under a stack of public documents. Each is versioned and served from the Foundation website:
+The Foundation operates under a stack of public documents. Each is versioned and served from the Foundation website. Governance documents are also mirrored into the [`governance/`](./governance) directory of this repository so they are greppable alongside the specification — the website remains authoritative if the two diverge.
 
-| Document | What it covers | Location |
-|---|---|---|
-| Bylaws | Board composition, elections, voting, officers, amendments | [`/api/agreement?type=bylaws`](https://agenticadvertising.org/api/agreement?type=bylaws) |
-| Membership Agreement | Member obligations, category, fees, termination | [`/api/agreement?type=membership`](https://agenticadvertising.org/api/agreement?type=membership) |
-| IPR Policy | Copyright, patent grants, trademark, contribution terms | [`IPR_POLICY.md`](./IPR_POLICY.md) |
-| Antitrust Policy | Conduct rules for meetings and written exchanges | [`/api/agreement?type=antitrust_policy`](https://agenticadvertising.org/api/agreement?type=antitrust_policy) |
-| Terms of Use | Website and service terms | [`/api/agreement?type=terms_of_service`](https://agenticadvertising.org/api/agreement?type=terms_of_service) |
-| Privacy Policy | Data handling for Foundation services | [`/api/agreement?type=privacy_policy`](https://agenticadvertising.org/api/agreement?type=privacy_policy) |
+| Document | What it covers | In-repo mirror | Canonical URL |
+|---|---|---|---|
+| Bylaws | Board composition, elections, voting, officers, amendments | [`governance/bylaws.md`](./governance/bylaws.md) | [`/api/agreement?type=bylaws`](https://agenticadvertising.org/api/agreement?type=bylaws) |
+| Membership Agreement | Member obligations, category, fees, termination | [`governance/membership-agreement.md`](./governance/membership-agreement.md) | [`/api/agreement?type=membership`](https://agenticadvertising.org/api/agreement?type=membership) |
+| IPR Policy | Copyright, patent grants, trademark, contribution terms | [`IPR_POLICY.md`](./IPR_POLICY.md) | (repo is canonical) |
+| Antitrust obligations | Conduct rules for meetings and written exchanges | Article VII of [Bylaws](./governance/bylaws.md); §6.3 and §11 of [Membership Agreement](./governance/membership-agreement.md) | (no standalone document) |
+| Terms of Use | Website and service terms | — | [`/api/agreement?type=terms_of_service`](https://agenticadvertising.org/api/agreement?type=terms_of_service) |
+| Privacy Policy | Data handling for Foundation services | — | [`/api/agreement?type=privacy_policy`](https://agenticadvertising.org/api/agreement?type=privacy_policy) |
 
 ---
 

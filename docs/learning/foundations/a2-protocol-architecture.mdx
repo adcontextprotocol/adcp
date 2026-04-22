@@ -55,6 +55,9 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
 | **Request signing** | A cryptographic signature on the request that lets the seller verify who sent it and that it wasn't tampered with in transit |
 | **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
+| **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
+| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/docs/building/compliance-catalog). |
+| **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
 
 ## Protocol versioning
 

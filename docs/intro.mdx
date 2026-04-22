@@ -6,12 +6,6 @@ sidebarTitle: Introduction
 description: "AdCP is an open agentic advertising standard. Follow Alex's team from fragmentation to a unified workflow across all protocol domains."
 ---
 
-<Warning>
-**AdCP 3.0 Release Candidate 3**
-
-You're viewing the 3.0-rc.3 documentation. Schemas may still change before the final 3.0 release. See [what's new in rc.3](/docs/reference/release-notes#version-300-rc3) and the [AdCP 3.0 overview](/docs/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
-</Warning>
-
 <img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
 Alex runs media operations at Pinnacle Agency. Her team buys across six channels — CTV, display, audio, social, retail media, and digital out-of-home. Each channel has its own buying methods, its own terminology, its own way of handling creatives, targeting, and reporting. IOs for some. APIs for others. DSPs for programmatic. Dashboards for everything.
@@ -284,6 +278,10 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 For sellers that generate creative — AI assistants, conversational ad platforms — the media buy can include a brief instead of pre-built assets. The seller's creative agent generates on the fly, pulling from the brand identity and campaign context. Both models — provided creative and generative creative — use the same `create_media_buy` task.
 
 `update_media_buy` handles mid-flight changes: shift budget between packages, adjust flight dates, swap creative assignments. No need to cancel and recreate.
+
+<Card title="The trust surface underneath" icon="shield-check">
+That `idempotency_key` on Sam's request isn't decorative. Pinnacle's buyer agent signs the POST with RFC 9421 HTTP Message Signatures before it leaves the network. StreamHaus verifies Pinnacle's signature against the JWKS it publishes in `adagents.json`, then accepts the buy. When the campaign moves from `pending_start` to `active`, StreamHaus posts a signed webhook back to Pinnacle's orchestrator — same signature profile, keys published in its own `agents[]` entry under `adcp_use: "webhook-signing"`. If Sam's laptop drops the response and his agent retries, the `idempotency_key` makes the second call safe — StreamHaus returns the original buy with `replayed: true` instead of charging twice. Governance approvals ride along as signed JWS tokens on `check_governance` so no agent in the chain can forge Jordan's sign-off. See the [Security guide](/docs/building/implementation/security).
+</Card>
 
 ---
 
@@ -572,6 +570,8 @@ AdCP doesn't assume a single AI handles everything. Specialized agents handle wh
 - **Orchestrators** coordinate the workflow and make sure humans approve what matters
 
 These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
+
+**How you know an agent does what it claims:** Every agent tells the network which broad areas it handles and which specific flows it supports — and those claims are testable. The protocol ships compliance storyboards that a runner executes against the agent. If it passes, the claim is verifiable. See the [Compliance Catalog](/docs/building/compliance-catalog).
 
 ## Brief to live ads
 
