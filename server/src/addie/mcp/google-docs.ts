@@ -359,11 +359,15 @@ function renderTable(
 /**
  * Read a Google Doc using the Docs API (docs.googleapis.com).
  * This works even when the Drive API is restricted.
+ *
+ * Returns a structured `{ title, body }` — the caller is responsible for
+ * wrapping it in a `GoogleDocResult`. Returns null on non-2xx so the
+ * caller can fall through to the Drive API.
  */
 async function readViaDocsApi(
   docId: string,
   accessToken: string,
-): Promise<string | null> {
+): Promise<{ title: string; body: string } | null> {
   const response = await fetch(
     `https://docs.googleapis.com/v1/documents/${docId}`,
     {
@@ -385,21 +389,9 @@ async function readViaDocsApi(
   const doc = await response.json() as GoogleDocsApiDocument;
 
   const title = doc.title || 'Untitled';
-  const markdown = extractMarkdownFromDocsResponse(doc);
+  const body = extractMarkdownFromDocsResponse(doc);
 
-  if (!markdown.trim()) {
-    return `# ${title}\n\n(Document is empty)`;
-  }
-
-  // If the document already has a title-style heading at the top, don't
-  // double it with the file name.
-  const body = markdown.startsWith('#') ? markdown : `# ${title}\n\n${markdown}`;
-
-  if (body.length > MAX_CONTENT_SIZE) {
-    return `${body.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
-  }
-
-  return body;
+  return { title, body };
 }
 
 /**
@@ -410,7 +402,7 @@ async function readViaDocsApi(
 async function readViaSheetsApi(
   spreadsheetId: string,
   accessToken: string,
-): Promise<string | null> {
+): Promise<{ title: string; body: string } | null> {
   // Get spreadsheet metadata and first sheet name
   const metaResponse = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties.title`,
@@ -439,7 +431,7 @@ async function readViaSheetsApi(
   const sheetNames = (meta.sheets ?? []).map(s => s.properties?.title).filter(Boolean) as string[];
 
   if (sheetNames.length === 0) {
-    return `**${title}**\n\n(Spreadsheet has no sheets)`;
+    return { title, body: '' };
   }
 
   // Read all values from the first sheet
@@ -463,7 +455,7 @@ async function readViaSheetsApi(
 
   const rows = valuesData.values ?? [];
   if (rows.length === 0) {
-    return `**${title}**\n\n(Sheet "${firstSheet}" is empty)`;
+    return { title, body: '' };
   }
 
   // Convert to CSV
@@ -480,11 +472,7 @@ async function readViaSheetsApi(
     ? `\n\n(Showing sheet "${firstSheet}" — ${sheetNames.length} sheets total: ${sheetNames.join(', ')})`
     : '';
 
-  if (csv.length > MAX_CONTENT_SIZE) {
-    return `**${title}** (csv)\n\n${csv.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]${sheetInfo}`;
-  }
-
-  return `**${title}** (csv)\n\n${csv}${sheetInfo}`;
+  return { title, body: `${csv}${sheetInfo}` };
 }
 
 /**
@@ -630,16 +618,14 @@ async function readGoogleDocStructured(
     // work even when the restricted drive.readonly scope is silently
     // blocked by Google for unverified OAuth apps.
     if (isGoogleDocUrl(urlOrId)) {
-      const text = await readViaDocsApi(docId, accessToken);
-      if (text !== null) {
-        const { title, body } = splitHeadedString(text);
-        return okResult(title, body, 'application/vnd.google-apps.document', 'markdown');
+      const result = await readViaDocsApi(docId, accessToken);
+      if (result !== null) {
+        return okResult(result.title, result.body, 'application/vnd.google-apps.document', 'markdown');
       }
     } else if (isGoogleSheetsUrl(urlOrId)) {
-      const text = await readViaSheetsApi(docId, accessToken);
-      if (text !== null) {
-        const { title, body } = splitHeadedString(text);
-        return okResult(title, body, 'application/vnd.google-apps.spreadsheet', 'csv');
+      const result = await readViaSheetsApi(docId, accessToken);
+      if (result !== null) {
+        return okResult(result.title, result.body, 'application/vnd.google-apps.spreadsheet', 'csv');
       }
     }
 
@@ -665,15 +651,13 @@ async function readGoogleDocStructured(
         } catch { /* ignore parse errors */ }
         logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: Drive API inaccessible, trying direct APIs');
 
-        const docsText = await readViaDocsApi(docId, accessToken);
-        if (docsText !== null) {
-          const { title, body } = splitHeadedString(docsText);
-          return okResult(title, body, 'application/vnd.google-apps.document', 'markdown');
+        const docsResult = await readViaDocsApi(docId, accessToken);
+        if (docsResult !== null) {
+          return okResult(docsResult.title, docsResult.body, 'application/vnd.google-apps.document', 'markdown');
         }
-        const sheetsText = await readViaSheetsApi(docId, accessToken);
-        if (sheetsText !== null) {
-          const { title, body } = splitHeadedString(sheetsText);
-          return okResult(title, body, 'application/vnd.google-apps.spreadsheet', 'csv');
+        const sheetsResult = await readViaSheetsApi(docId, accessToken);
+        if (sheetsResult !== null) {
+          return okResult(sheetsResult.title, sheetsResult.body, 'application/vnd.google-apps.spreadsheet', 'csv');
         }
 
         logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: document inaccessible via all APIs');
@@ -818,24 +802,6 @@ async function readGoogleDocStructured(
 }
 
 /**
- * Parse a legacy `"# <Title>\n\n<body>"` or `"**<Name>**\n\n<body>"`
- * string (emitted by `readViaDocsApi` / `readViaSheetsApi`) back into
- * structured title + body. Used during the structured-result
- * transition — when those two helpers are updated to return structure
- * directly, this can go away.
- */
-function splitHeadedString(text: string): { title: string; body: string } {
-  // `# Title\n\n<rest>` (Docs API converter output, see
-  // extractMarkdownFromDocsResponse)
-  const h1 = text.match(/^#\s+(.+?)\n\n([\s\S]*)$/);
-  if (h1) return { title: h1[1].trim(), body: h1[2] };
-  // `**Title** (csv)\n\n<rest>` (readViaSheetsApi output)
-  const bold = text.match(/^\*\*(.+?)\*\*(?:\s+\([^)]+\))?\n\n([\s\S]*)$/);
-  if (bold) return { title: bold[1].trim(), body: bold[2] };
-  return { title: 'Untitled', body: text };
-}
-
-/**
  * Tool definition for reading Google Docs
  */
 export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
@@ -858,10 +824,26 @@ export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
 
 /**
  * Cap the body field in the LLM-facing JSON so one doc can't dominate
- * the context window. The inner 500KB cap in `readGoogleDocStructured`
- * still applies for internal callers that want the full body.
+ * the context window or hand the model a 7k-token prompt-injection
+ * payload in one shot. A legit article rarely exceeds this. The inner
+ * 500KB cap in `readGoogleDocStructured` still applies for internal
+ * callers (committee-document-indexer, content-curator) that want the
+ * full body for hashing/summarization.
  */
-const LLM_BODY_CAP = 30000;
+const LLM_BODY_CAP = 15000;
+
+/**
+ * Replace unpaired UTF-16 surrogate code points with U+FFFD before
+ * `JSON.stringify` — V8's stringify emits lone surrogates literally,
+ * which produces invalid UTF-8 on the wire and can confuse downstream
+ * consumers. Google Docs exports are UTF-8 clean in practice, but a
+ * cheap belt-and-suspenders keeps the LLM input deterministic.
+ */
+function stripLoneSurrogates(s: string): string {
+  return s
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '\uFFFD')
+    .replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, (_, p) => `${p}\uFFFD`);
+}
 
 /**
  * Create a structured Google Docs reader for internal callers (jobs,
@@ -918,18 +900,20 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
 
       const result = await readGoogleDocStructured(url, config);
 
-      // Cap body for LLM context — don't let one doc burn 30K+ tokens.
-      // Internal callers (committee-document-indexer, content-curator)
-      // hit the inner 500KB cap in readGoogleDocStructured and don't
-      // pass through this handler.
+      // Cap body for LLM context — don't let one doc burn tokens or
+      // hand Sonnet a large prompt-injection payload. Internal callers
+      // (committee-document-indexer, content-curator) hit the inner
+      // 500KB cap in readGoogleDocStructured instead.
       let body = result.body;
       let truncated = result.truncated;
       if (body && body.length > LLM_BODY_CAP) {
-        body = body.substring(0, LLM_BODY_CAP);
+        body = body.substring(0, LLM_BODY_CAP) + '\n\n[body truncated]';
         truncated = true;
       }
+      if (body) body = stripLoneSurrogates(body);
+      const title = result.title ? stripLoneSurrogates(result.title) : result.title;
 
-      return JSON.stringify({ ...result, body, truncated });
+      return JSON.stringify({ ...result, title, body, truncated });
     },
   };
 }
