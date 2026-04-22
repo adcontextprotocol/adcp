@@ -125,6 +125,34 @@ describe('Training Agent /mcp-strict route', () => {
       expect(res.status).not.toBe(401);
     });
 
+    // signed-requests vector 011 (negative/011-malformed-header): a syntactically
+    // invalid Signature-Input header MUST fail closed even when a valid bearer
+    // is present. Silent fallthrough to bearer would be the exact downgrade
+    // attack the RFC 9421 verifier-checklist pre-check exists to prevent.
+    it('malformed Signature-Input on /mcp rejects despite valid bearer (vector 011)', async () => {
+      const res = await request(app)
+        .post('/api/training-agent/mcp')
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .set('Authorization', AUTH)
+        .set('Signature-Input', 'this-is-not-a-valid-rfc-9421-signature-input')
+        .set('Signature', 'sig1=:AAAA:')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'get_products',
+            arguments: {
+              account: { brand: { domain: 'strict-test.example.com' }, sandbox: true },
+              brand: { domain: 'strict-test.example.com' },
+              buying_mode: 'wholesale',
+            },
+          },
+        });
+      expect(res.status).toBe(401);
+    });
+
     it('unsigned get_products on /mcp-strict is allowed (not in required_for)', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_products', {
         account: { brand: { domain: 'strict-test.example.com' }, sandbox: true },
