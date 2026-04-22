@@ -923,6 +923,7 @@ phases:
         sample_request:
           intent: "comply test — initiate deterministic SI session"
           identity:
+            consent_granted: true
             user_type: 'consumer'
           supported_capabilities:
             response_formats:
