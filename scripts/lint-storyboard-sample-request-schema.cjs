@@ -30,7 +30,14 @@ const STORYBOARD_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'so
 const SCHEMA_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ALLOWLIST_PATH = path.resolve(__dirname, '..', 'tests', 'storyboard-sample-request-schema-allowlist.json');
 
-const SUBSTITUTION_RE = /^\$(context\.|generate:|test_kit\.|from_step:)/;
+// Two substitution dialects are live in storyboards today:
+//   - $-prefix: $context.foo, $generate:uuid_v4#tag, $test_kit.schemas.primary,
+//     $from_step:step_id.path
+//   - Handlebars-style: {{runner.webhook_url:step_id}}, {{prior_step.id.field}}
+// Both resolve to runtime-synthesized values that the lint cannot statically
+// check, so leaf strings matching either form are replaced with a schema-typed
+// placeholder before ajv validation.
+const SUBSTITUTION_RE = /^(\$(context\.|generate:|test_kit\.|from_step:)|\{\{(runner\.|prior_step\.))/;
 
 const schemaCache = new Map();
 
@@ -70,25 +77,74 @@ function walkYaml(dir) {
  * Resolve a schema node at a traversal step (e.g., one level of `properties.foo`
  * or `items`). Follows $ref once, and tries each branch of oneOf/anyOf before
  * giving up. Returns the first concrete node that has a typable shape, or null.
+ *
+ * When `discriminatorValue` is provided, composite branches are filtered to
+ * the one whose `properties.<discriminatorKey>` const matches. Used by the
+ * payload walker so that a sample_request object carrying `scope: "request"`
+ * picks the matching oneOf variant for placeholder generation instead of
+ * always taking branch 0.
+ *
+ * Important: this is used for placeholder generation only, not for ajv
+ * validation. Ajv does real-branch selection against the full schema.
  */
-function resolveSchemaNode(node) {
+function resolveSchemaNode(node, discriminator) {
   if (!node || typeof node !== 'object') return null;
   if (node.$ref) {
     const resolved = loadSchema(node.$ref);
-    return resolveSchemaNode(resolved);
+    return resolveSchemaNode(resolved, discriminator);
   }
   // If the node has a concrete type or shape keywords, return it as-is.
   if (node.type || node.properties || node.items || node.enum || node.const) {
     return node;
   }
-  // Try first branch of composites — good enough for placeholder generation.
   for (const key of ['oneOf', 'anyOf', 'allOf']) {
-    if (Array.isArray(node[key]) && node[key].length > 0) {
-      const branch = resolveSchemaNode(node[key][0]);
-      if (branch) return branch;
+    if (!Array.isArray(node[key]) || node[key].length === 0) continue;
+    const branches = node[key];
+    // Discriminated union: pick the branch whose const matches the payload's
+    // value for the discriminator key.
+    if (discriminator) {
+      for (const b of branches) {
+        const r = resolveSchemaNode(b);
+        const prop = r?.properties?.[discriminator.key];
+        if (prop && (prop.const === discriminator.value || (Array.isArray(prop.enum) && prop.enum.includes(discriminator.value)))) {
+          return r;
+        }
+      }
     }
+    const branch = resolveSchemaNode(branches[0]);
+    if (branch) return branch;
   }
   return node;
+}
+
+/**
+ * Inspect a payload object and a schema for a discriminator hint. Common
+ * JSON-schema idioms use a `properties.<key>.const` on each oneOf branch to
+ * signal the variant; this helper surfaces (key, value) pairs so callers can
+ * pass them to `resolveSchemaNode`.
+ */
+function discriminatorFor(payload, schema) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const branches = Array.isArray(schema?.oneOf)
+    ? schema.oneOf
+    : Array.isArray(schema?.anyOf)
+      ? schema.anyOf
+      : null;
+  if (!branches) return null;
+  const candidateKeys = new Set();
+  for (const b of branches) {
+    const r = resolveSchemaNode(b);
+    if (!r?.properties) continue;
+    for (const [k, v] of Object.entries(r.properties)) {
+      if (typeof v?.const !== 'undefined' || Array.isArray(v?.enum)) candidateKeys.add(k);
+    }
+  }
+  for (const k of candidateKeys) {
+    if (k in payload && (typeof payload[k] === 'string' || typeof payload[k] === 'number')) {
+      return { key: k, value: payload[k] };
+    }
+  }
+  return null;
 }
 
 // UUID-v4 placeholder. 36 chars, A-Z/0-9/-, which satisfies most id and
@@ -131,7 +187,8 @@ function placeholderFor(schema) {
  * string placeholder — the schema validator will flag those structurally.
  */
 function normalizeSubstitutions(value, schema) {
-  const resolved = resolveSchemaNode(schema);
+  const discriminator = discriminatorFor(value, schema);
+  const resolved = resolveSchemaNode(schema, discriminator);
   if (typeof value === 'string' && SUBSTITUTION_RE.test(value)) {
     return placeholderFor(resolved);
   }
@@ -165,8 +222,15 @@ function normalizeSubstitutions(value, schema) {
   return value;
 }
 
-function makeAjv() {
-  const ajv = new Ajv({
+// One shared ajv instance + compile cache keyed by schema_ref. Each schema
+// compiles once per run; a 78-storyboard suite hit ~12s when this was
+// per-step, ~2s with the cache.
+let sharedAjv = null;
+const validatorCache = new Map();
+
+function getAjv() {
+  if (sharedAjv) return sharedAjv;
+  sharedAjv = new Ajv({
     allErrors: true,
     strict: false,
     loadSchema: (uri) => {
@@ -175,20 +239,33 @@ function makeAjv() {
       return Promise.resolve(resolved);
     },
   });
-  addFormats(ajv);
-  return ajv;
+  addFormats(sharedAjv);
+  return sharedAjv;
+}
+
+async function getValidator(schemaRef) {
+  if (validatorCache.has(schemaRef)) return validatorCache.get(schemaRef);
+  const schema = loadSchema(schemaRef);
+  if (!schema) {
+    validatorCache.set(schemaRef, null);
+    return null;
+  }
+  try {
+    const validate = await getAjv().compileAsync(schema);
+    validatorCache.set(schemaRef, validate);
+    return validate;
+  } catch (err) {
+    validatorCache.set(schemaRef, { compileError: err.message });
+    return { compileError: err.message };
+  }
 }
 
 async function validateStep({ schemaRef, payload }) {
   const schema = loadSchema(schemaRef);
   if (!schema) return { ok: true, skipped: 'schema_not_found', schemaRef };
-  const ajv = makeAjv();
-  let validate;
-  try {
-    validate = await ajv.compileAsync(schema);
-  } catch (err) {
-    return { ok: true, skipped: `compile_error: ${err.message}`, schemaRef };
-  }
+  const validate = await getValidator(schemaRef);
+  if (!validate) return { ok: true, skipped: 'schema_not_found', schemaRef };
+  if (validate.compileError) return { ok: true, skipped: `compile_error: ${validate.compileError}`, schemaRef };
   const normalized = normalizeSubstitutions(payload, schema);
   const valid = validate(normalized);
   if (valid) return { ok: true };
@@ -236,16 +313,20 @@ async function lintFile(file) {
   try {
     doc = yaml.load(fs.readFileSync(file, 'utf8'));
   } catch (err) {
-    return [{ file, phaseId: null, stepId: null, error: `yaml_parse: ${err.message}` }];
+    return { violations, parseError: `yaml_parse: ${err.message}` };
   }
   const phases = Array.isArray(doc?.phases) ? doc.phases : [];
   for (const phase of phases) {
-    const phaseId = phase?.id || '<unnamed>';
-    const steps = Array.isArray(phase?.steps) ? phase.steps : [];
+    if (!phase || typeof phase !== 'object') continue;
+    const phaseId = phase.id;
+    if (!phaseId) continue;
+    const steps = Array.isArray(phase.steps) ? phase.steps : [];
     for (const step of steps) {
-      const stepId = step?.id || '<unnamed>';
-      const schemaRef = step?.schema_ref;
-      const sampleRequest = step?.sample_request;
+      if (!step || typeof step !== 'object') continue;
+      const stepId = step.id;
+      if (!stepId) continue;
+      const schemaRef = step.schema_ref;
+      const sampleRequest = step.sample_request;
       // Test-kit-driven schemas resolve at runtime via test_kit.schemas.*
       // and have no static file to check against.
       if (!schemaRef || schemaRef.startsWith('$test_kit.')) continue;
@@ -257,17 +338,19 @@ async function lintFile(file) {
       }
     }
   }
-  return violations;
+  return { violations };
 }
 
 async function lintAll() {
   const files = walkYaml(STORYBOARD_DIR);
-  const all = [];
+  const violations = [];
+  const parseErrors = [];
   for (const file of files) {
-    const v = await lintFile(file);
-    all.push(...v);
+    const r = await lintFile(file);
+    if (r.parseError) parseErrors.push({ file, error: r.parseError });
+    violations.push(...r.violations);
   }
-  return all;
+  return { violations, parseErrors };
 }
 
 function formatViolation(v) {
@@ -286,8 +369,19 @@ function formatViolation(v) {
  * Compact fingerprint for a single ajv error. Two errors on the same step
  * fingerprint identically iff they describe the same failure class at the
  * same path. Keep this stable — changing the format invalidates every
- * allowlist entry at once.
+ * allowlist entry at once. Expect an ajv major-version bump to require a
+ * one-off allowlist regeneration via `--write-allowlist` if param shapes
+ * change.
  */
+function serializeDetail(v) {
+  if (v === null || typeof v !== 'object') return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return '<unserializable>';
+  }
+}
+
 function fingerprintError(err) {
   const path_ = err.path || '/';
   const kw = err.keyword;
@@ -295,7 +389,7 @@ function fingerprintError(err) {
   if (err.params && typeof err.params === 'object') {
     if (err.params.missingProperty) detail = `:${err.params.missingProperty}`;
     else if (err.params.additionalProperty) detail = `:${err.params.additionalProperty}`;
-    else if (typeof err.params.allowedValue !== 'undefined') detail = `:${err.params.allowedValue}`;
+    else if (typeof err.params.allowedValue !== 'undefined') detail = `:${serializeDetail(err.params.allowedValue)}`;
     else if (typeof err.params.type !== 'undefined') detail = `:${err.params.type}`;
     else if (typeof err.params.format !== 'undefined') detail = `:${err.params.format}`;
     else if (typeof err.params.limit !== 'undefined') detail = `:${err.params.limit}`;
@@ -375,12 +469,47 @@ function violationsToAllowlist(violations) {
   return entries;
 }
 
+// Alphabetize keys so regenerations produce diff-friendly output regardless of
+// filesystem order or how the walker happened to traverse the tree.
+function sortEntries(entries) {
+  const out = {};
+  for (const k of Object.keys(entries).sort()) out[k] = entries[k];
+  return out;
+}
+
 async function main() {
   const args = new Set(process.argv.slice(2));
-  const violations = await lintAll();
+  const { violations, parseErrors } = await lintAll();
 
   if (args.has('--write-allowlist')) {
-    const entries = violationsToAllowlist(violations);
+    if (parseErrors.length > 0) {
+      console.error(`Refusing to regenerate allowlist while ${parseErrors.length} file(s) have YAML parse errors — fix those first:`);
+      for (const p of parseErrors) console.error(`  ${path.relative(STORYBOARD_DIR, p.file)}: ${p.error}`);
+      process.exit(1);
+    }
+    const existing = loadAllowlist();
+    const nextEntries = violationsToAllowlist(violations);
+    const existingEntries = existing.entries || {};
+    if (!args.has('--allow-grow')) {
+      const added = Object.keys(nextEntries).filter((k) => !(k in existingEntries));
+      const grew = added.length > 0;
+      const grewExisting = Object.keys(nextEntries).some((k) => {
+        if (!(k in existingEntries)) return false;
+        const cur = new Set(nextEntries[k].errors || []);
+        const prev = new Set(existingEntries[k].errors || []);
+        for (const fp of cur) if (!prev.has(fp)) return true;
+        return false;
+      });
+      if (grew || grewExisting) {
+        console.error('Refusing to grow the allowlist. Pass --allow-grow if this is intentional.');
+        if (added.length > 0) {
+          console.error('New entries:');
+          for (const k of added) console.error(`  ${k}`);
+        }
+        if (grewExisting) console.error('At least one existing entry gained a new error fingerprint.');
+        process.exit(1);
+      }
+    }
     const doc = {
       $comment: [
         'Known storyboard sample_request schema drift, grandfathered before the lint',
@@ -388,26 +517,33 @@ async function main() {
         'step fails the lint, and fixed drift that leaves an entry stale also fails',
         '(so follow-up PRs must remove entries as they fix fixtures). Regenerate',
         'with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist`',
-        'after a real drift fix; never hand-edit to silence a new violation.',
+        'after a real fix — defaults to shrink-only. Pass `--allow-grow` only when',
+        'adding a deliberate, newly-identified drift is the explicit intent; never',
+        'hand-edit to silence a new violation.',
       ].join(' '),
-      entries,
+      entries: sortEntries(nextEntries),
     };
     fs.writeFileSync(ALLOWLIST_PATH, JSON.stringify(doc, null, 2) + '\n');
-    console.log(`Wrote ${Object.keys(entries).length} entries to ${path.relative(process.cwd(), ALLOWLIST_PATH)}`);
+    console.log(`Wrote ${Object.keys(nextEntries).length} entries to ${path.relative(process.cwd(), ALLOWLIST_PATH)}`);
     process.exit(0);
   }
 
   const allowlist = loadAllowlist();
   const { newDrift, stale, grandfathered } = reconcileAgainstAllowlist(violations, allowlist);
 
-  if (newDrift.length === 0 && stale.length === 0) {
+  const hasFailure = newDrift.length > 0 || stale.length > 0 || parseErrors.length > 0;
+  if (!hasFailure) {
     const suffix = grandfathered.length > 0 ? ` (${grandfathered.length} grandfathered)` : '';
     console.log(`✅ sample_request schema lint: no new drift${suffix}`);
     process.exit(0);
   }
 
+  if (parseErrors.length > 0) {
+    console.log(`❌ sample_request schema lint: ${parseErrors.length} file(s) have YAML parse errors\n`);
+    for (const p of parseErrors) console.log(`  ${path.relative(STORYBOARD_DIR, p.file)}: ${p.error}`);
+  }
   if (newDrift.length > 0) {
-    console.log(`❌ sample_request schema lint: ${newDrift.length} step(s) have new drift\n`);
+    console.log(`\n❌ sample_request schema lint: ${newDrift.length} step(s) have new drift\n`);
     for (const v of newDrift) console.log(formatViolation(v));
   }
   if (stale.length > 0) {
@@ -431,5 +567,11 @@ module.exports = {
   loadAllowlist,
   reconcileAgainstAllowlist,
   violationsToAllowlist,
+  sortEntries,
+  isNegativeStep,
+  resolveSchemaNode,
+  discriminatorFor,
+  placeholderFor,
+  STORYBOARD_DIR,
   ALLOWLIST_PATH,
 };

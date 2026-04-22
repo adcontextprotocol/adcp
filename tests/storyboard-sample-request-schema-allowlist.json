@@ -1,5 +1,5 @@
 {
-  "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real drift fix; never hand-edit to silence a new violation.",
+  "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only. Pass `--allow-grow` only when adding a deliberate, newly-identified drift is the explicit intent; never hand-edit to silence a new violation.",
   "entries": {
     "protocols/creative/index.yaml#build_and_preview/preview_display": {
       "schema": "creative/preview-creative-request.json",
@@ -13,14 +13,6 @@
         "required@/:request_type"
       ]
     },
-    "protocols/governance/index.yaml#report_outcome/report_plan_outcome": {
-      "schema": "governance/report-plan-outcome-request.json",
-      "errors": [
-        "additionalProperties@/:account",
-        "type@/outcome:string",
-        "enum@/outcome"
-      ]
-    },
     "protocols/governance/index.yaml#audit_trail/get_plan_audit_logs": {
       "schema": "governance/get-plan-audit-logs-request.json",
       "errors": [
@@ -32,17 +24,18 @@
         "additionalProperties@/:plan_id"
       ]
     },
+    "protocols/governance/index.yaml#report_outcome/report_plan_outcome": {
+      "schema": "governance/report-plan-outcome-request.json",
+      "errors": [
+        "additionalProperties@/:account",
+        "type@/outcome:string",
+        "enum@/outcome"
+      ]
+    },
     "protocols/media-buy/creative-reception.yaml#preview/preview_synced": {
       "schema": "creative/preview-creative-request.json",
       "errors": [
         "required@/creative_manifest:assets"
-      ]
-    },
-    "protocols/media-buy/index.yaml#product_discovery/list_formats_integrity": {
-      "schema": "creative/list-creative-formats-request.json",
-      "errors": [
-        "required@/format_ids/0:agent_url",
-        "required@/format_ids/0:id"
       ]
     },
     "protocols/media-buy/index.yaml#create_buy/create_media_buy": {
@@ -58,6 +51,13 @@
       "errors": [
         "required@/creatives/0/format_id:agent_url",
         "required@/creatives/0/format_id:id"
+      ]
+    },
+    "protocols/media-buy/index.yaml#product_discovery/list_formats_integrity": {
+      "schema": "creative/list-creative-formats-request.json",
+      "errors": [
+        "required@/format_ids/0:agent_url",
+        "required@/format_ids/0:id"
       ]
     },
     "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml#reuse_creative_on_new_buy/reassign_creative": {
@@ -97,19 +97,10 @@
         "required@/creatives/0/format_id:id"
       ]
     },
-    "protocols/media-buy/scenarios/proposal_finalize.yaml#refine_proposal/get_products_refine": {
-      "schema": "media-buy/get-products-request.json",
+    "protocols/media-buy/scenarios/proposal_finalize.yaml#accept_proposal/create_media_buy": {
+      "schema": "media-buy/create-media-buy-request.json",
       "errors": [
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:request",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "const@/refine/0/scope:product",
-        "required@/refine/0:id",
-        "required@/refine/0:action",
-        "additionalProperties@/refine/0:proposal_id",
-        "oneOf@/refine/0"
+        "type@/total_budget:object"
       ]
     },
     "protocols/media-buy/scenarios/proposal_finalize.yaml#finalize_proposal/get_products_finalize": {
@@ -128,10 +119,19 @@
         "oneOf@/refine/0"
       ]
     },
-    "protocols/media-buy/scenarios/proposal_finalize.yaml#accept_proposal/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
+    "protocols/media-buy/scenarios/proposal_finalize.yaml#refine_proposal/get_products_refine": {
+      "schema": "media-buy/get-products-request.json",
       "errors": [
-        "type@/total_budget:object"
+        "additionalProperties@/refine/0:proposal_id",
+        "const@/refine/0/scope:request",
+        "required@/refine/0:id",
+        "required@/refine/0:action",
+        "additionalProperties@/refine/0:proposal_id",
+        "const@/refine/0/scope:product",
+        "required@/refine/0:id",
+        "required@/refine/0:action",
+        "additionalProperties@/refine/0:proposal_id",
+        "oneOf@/refine/0"
       ]
     },
     "protocols/media-buy/scenarios/refine_products.yaml#refine/get_products_refine": {
@@ -209,12 +209,6 @@
         "required@/creative_manifest:format_id"
       ]
     },
-    "specialisms/governance-delivery-monitor/index.yaml#initial_approval/check_governance_approved": {
-      "schema": "governance/check-governance-request.json",
-      "errors": [
-        "additionalProperties@/:account"
-      ]
-    },
     "specialisms/governance-delivery-monitor/index.yaml#drift_recheck/check_governance_drift": {
       "schema": "governance/check-governance-request.json",
       "errors": [
@@ -222,16 +216,16 @@
         "additionalProperties@/:media_buy_id"
       ]
     },
-    "specialisms/governance-spend-authority/index.yaml#governance_check_conditions/check_governance_conditions": {
+    "specialisms/governance-delivery-monitor/index.yaml#initial_approval/check_governance_approved": {
       "schema": "governance/check-governance-request.json",
       "errors": [
         "additionalProperties@/:account"
       ]
     },
-    "specialisms/sales-broadcast-tv/index.yaml#create_buy/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
+    "specialisms/governance-spend-authority/index.yaml#governance_check_conditions/check_governance_conditions": {
+      "schema": "governance/check-governance-request.json",
       "errors": [
-        "format@/push_notification_config/url:uri"
+        "additionalProperties@/:account"
       ]
     },
     "specialisms/sales-catalog-driven/index.yaml#account_setup/sync_accounts": {
@@ -263,6 +257,12 @@
         "required@/packages/1:package_id"
       ]
     },
+    "specialisms/sales-proposal-mode/index.yaml#accept_proposal/create_media_buy": {
+      "schema": "media-buy/create-media-buy-request.json",
+      "errors": [
+        "type@/total_budget:object"
+      ]
+    },
     "specialisms/sales-proposal-mode/index.yaml#review_refine/get_products_refine": {
       "schema": "media-buy/get-products-request.json",
       "errors": [
@@ -276,12 +276,6 @@
         "required@/refine/0:action",
         "additionalProperties@/refine/0:proposal_id",
         "oneOf@/refine/0"
-      ]
-    },
-    "specialisms/sales-proposal-mode/index.yaml#accept_proposal/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "type@/total_budget:object"
       ]
     },
     "specialisms/sales-social/index.yaml#catalog_driven_dynamic_ads/sync_dpa_creative": {
@@ -404,9 +398,6 @@
       "errors": [
         "required@/:buying_mode"
       ]
-    },
-    "universal/runner-output-contract.yaml#null/null": {
-      "errors": []
     },
     "universal/schema-validation.yaml#temporal_validation/reversed_dates": {
       "schema": "media-buy/create-media-buy-request.json",
