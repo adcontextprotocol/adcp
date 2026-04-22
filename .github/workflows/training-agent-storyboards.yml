@@ -36,24 +36,21 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 38→42 after wiring `controller_seeding: true` + `fixtures:`
-            # blocks on the six multi-package storyboards exposed by
-            # adcp-client#794 (media_buy_seller, delivery_reporting,
-            # governance_approved, creative_generative, sales_broadcast_tv,
-            # sales_guaranteed). The in-repo compliance source overlay step
-            # ensures CI sees these fixture adds before an SDK republish.
-            min_clean_storyboards: 42
-            min_passing_steps: 319
+            # 42→46 after fixing the gov_acme_q2_2027 seed divergence
+            # and adding outdoor_video_q2/display_q2 fixtures to the
+            # governance-delivery-monitor storyboard.
+            min_clean_storyboards: 46
+            min_passing_steps: 370
           - mode: framework
             flag_value: '1'
-            # 32→37 after the same fixture-seeding work. The framework-only
-            # delta vs. legacy is 5 storyboards / 7 step failures
-            # (acquire_rights_denied error code, calibrate_content verdict,
-            # log_event/provide_feedback session lookups, report_usage
-            # `accepted` field type) — tracked as the residual zod-parity
-            # follow-up. See PR description for the diff.
-            min_clean_storyboards: 37
-            min_passing_steps: 319
+            # 37→39 after the gov_acme_q2_2027 + governance-delivery-monitor
+            # fixture fixes. Framework-only delta vs. legacy remains ~9 step
+            # failures (acquire_rights_denied error code, calibrate_content
+            # verdict, log_event/provide_feedback session lookups,
+            # report_usage `accepted` field type, replayed/conditions/outcome
+            # shape) — tracked as the residual zod-parity follow-up.
+            min_clean_storyboards: 39
+            min_passing_steps: 370
     steps:
       - uses: actions/checkout@v6
 
