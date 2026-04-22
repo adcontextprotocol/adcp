@@ -57,6 +57,27 @@ const DEFAULT_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 60 };
 const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
 
 /**
+ * Workspace-aggregate caps for tools that burn an external budget
+ * shared across all users (Gemini credits, Google Docs quota, etc).
+ * Enforced in addition to the per-user cap — bounds the case where a
+ * multi-member workspace collectively drives the tool past a
+ * defensible cost ceiling, or where an attacker rotates through
+ * compromised user sessions to stay under individual caps.
+ *
+ * Only applies to tools where per-user enforcement is insufficient.
+ * Tools not listed here have no workspace-level cap.
+ *
+ * Part of #2796.
+ */
+const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
+  // Gemini generation — most expensive tool in the Addie surface.
+  // 50/day across the whole workspace keeps monthly spend bounded
+  // (~1500 generations/mo max). The per-user 5/month quota + per-user
+  // 10/10min tool limit still apply on top.
+  generate_perspective_illustration: { windowMs: 24 * 60 * 60 * 1000, max: 50 },
+};
+
+/**
  * Longest window across all caps — used as the GC staleness cutoff so
  * entries aren't prematurely dropped if a future tool gets a longer
  * window than the global cap.
@@ -65,6 +86,7 @@ const MAX_WINDOW_MS = Math.max(
   GLOBAL_CAP.windowMs,
   DEFAULT_CAP.windowMs,
   ...Object.values(CAPS).map(c => c.windowMs),
+  ...Object.values(WORKSPACE_CAPS).map(c => c.windowMs),
 );
 
 /**
@@ -91,7 +113,7 @@ const history = new Map<string, number[]>();
 export interface RateLimitResult {
   ok: boolean;
   retryAfterMs?: number;
-  scope?: 'per_tool' | 'global';
+  scope?: 'per_tool' | 'global' | 'workspace';
 }
 
 /**
@@ -136,11 +158,34 @@ export function checkToolRateLimit(toolName: string, userId: string | undefined 
     };
   }
 
-  // Record the invocation in both tracks
+  // Workspace-aggregate cap (only for tools explicitly listed in
+  // WORKSPACE_CAPS). Keyed on a singleton `__workspace__` identifier
+  // so all users' invocations count against the same bucket.
+  const workspaceCap = WORKSPACE_CAPS[toolName];
+  let workspaceHistory: number[] | null = null;
+  let workspaceKey: string | null = null;
+  if (workspaceCap) {
+    workspaceKey = `__workspace__|${toolName}`;
+    const workspaceCutoff = now - workspaceCap.windowMs;
+    workspaceHistory = (history.get(workspaceKey) ?? []).filter(t => t > workspaceCutoff);
+    if (workspaceHistory.length >= workspaceCap.max) {
+      return {
+        ok: false,
+        retryAfterMs: workspaceHistory[0] + workspaceCap.windowMs - now,
+        scope: 'workspace',
+      };
+    }
+  }
+
+  // Record the invocation in all applicable tracks
   perToolHistory.push(now);
   globalHistory.push(now);
   history.set(perToolKey, perToolHistory);
   history.set(globalKey, globalHistory);
+  if (workspaceHistory && workspaceKey) {
+    workspaceHistory.push(now);
+    history.set(workspaceKey, workspaceHistory);
+  }
 
   // Opportunistic GC once the map gets large
   if (history.size > 2000) {
@@ -175,9 +220,16 @@ export function withToolRateLimit<T extends (input: Record<string, unknown>) => 
     if (!check.ok) {
       const retrySeconds = Math.max(1, Math.ceil((check.retryAfterMs ?? 60000) / 1000));
       logger.warn({ toolName, userId, scope: check.scope, retrySeconds }, 'Addie tool call rate-limited');
-      const limit = check.scope === 'global'
-        ? `overall Addie tool call limit (${GLOBAL_CAP.max} per ${GLOBAL_CAP.windowMs / 60000} minutes)`
-        : `${toolName} limit (${(CAPS[toolName] ?? DEFAULT_CAP).max} per ${(CAPS[toolName] ?? DEFAULT_CAP).windowMs / 60000} minutes)`;
+      let limit: string;
+      if (check.scope === 'workspace') {
+        const ws = WORKSPACE_CAPS[toolName];
+        limit = `workspace-wide ${toolName} limit (${ws.max} per ${Math.round(ws.windowMs / 3600000)} hour${ws.windowMs >= 7200000 ? 's' : ''})`;
+      } else if (check.scope === 'global') {
+        limit = `overall Addie tool call limit (${GLOBAL_CAP.max} per ${GLOBAL_CAP.windowMs / 60000} minutes)`;
+      } else {
+        const cap = CAPS[toolName] ?? DEFAULT_CAP;
+        limit = `${toolName} limit (${cap.max} per ${cap.windowMs / 60000} minutes)`;
+      }
       return `Rate limit exceeded on the ${limit}. Try again in ~${retrySeconds} seconds.`;
     }
     return handler(input);
