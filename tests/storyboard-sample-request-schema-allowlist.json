@@ -58,30 +58,6 @@
         "required@/:creatives"
       ]
     },
-    "protocols/media-buy/scenarios/governance_approved.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_conditions.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_denied.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
-    "protocols/media-buy/scenarios/governance_denied_recovery.yaml#seller_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
-      ]
-    },
     "protocols/media-buy/scenarios/pending_creatives_to_start.yaml#supply_creatives/sync_creative": {
       "schema": "creative/sync-creatives-request.json",
       "errors": [
@@ -172,12 +148,6 @@
       "errors": [
         "required@/audiences/0/add/0:external_id",
         "required@/audiences/0/add/1:external_id"
-      ]
-    },
-    "specialisms/brand-rights/scenarios/governance_denied.yaml#brand_agent_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
       ]
     },
     "specialisms/brand-rights/scenarios/governance_denied.yaml#rights_denied/get_rights_catalog": {
@@ -348,12 +318,6 @@
         "required@/signal_ids/0:agent_url",
         "required@/signal_ids/0:id",
         "oneOf@/signal_ids/0"
-      ]
-    },
-    "specialisms/signal-marketplace/scenarios/governance_denied.yaml#signal_agent_setup/sync_governance": {
-      "schema": "account/sync-governance-request.json",
-      "errors": [
-        "required@/accounts/0/governance_agents/0:authentication"
       ]
     },
     "universal/deterministic-testing.yaml#deterministic_account/sync_accounts_for_state": {
