@@ -19,12 +19,38 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
+
+// `mcp/routes.ts` captures MCP_SERVER_URL at module-load time from
+// `process.env.BASE_URL || 'http://localhost:...'`, then `.replace(/\/$/, '')`.
+// In conductor workspaces `BASE_URL="/"` is set in the shell, which passes
+// the `||` fallback, strips to `''`, and then throws on `new URL('')` at
+// HTTPServer construction. `vi.hoisted()` runs before any imports, so this
+// block guards us per-file without leaking a global default via setupFiles.
+// Tracked as a server-side tolerance fix on the routes.ts fallback.
+vi.hoisted(() => {
+  const raw = process.env.BASE_URL;
+  const trimmed = typeof raw === 'string' ? raw.replace(/\/$/, '').trim() : '';
+  if (!trimmed) {
+    process.env.BASE_URL = 'http://localhost:3000';
+    return;
+  }
+  try {
+    new URL(trimmed);
+  } catch {
+    process.env.BASE_URL = 'http://localhost:3000';
+  }
+});
+
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 
-const TEST_USER_ID = 'user_test_oauth_integration';
-const TEST_ORG_ID = 'org_test_oauth_integration';
+// Random suffix so parallel runs (or leftover fixtures from a failed
+// previous run) don't collide on the seed. Still low-cardinality enough
+// to spot in psql during debugging.
+const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
+const TEST_USER_ID = `user_test_oauth_${RUN_SUFFIX}`;
+const TEST_ORG_ID = `org_test_oauth_${RUN_SUFFIX}`;
 const TEST_AGENT_URL = 'https://agent.example.com';
 const OTHER_AGENT_URL = 'https://another-agent.example.com';
 
@@ -134,6 +160,12 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
     // known state. Also reset the SDK-exchange mock.
     await pool.query('DELETE FROM agent_contexts WHERE organization_id = $1', [TEST_ORG_ID]);
     exchangeMock.mockReset();
+    // Reset the Postgres-backed rate-limit counter for brand:* keys. Both
+    // save and test endpoints run through `brandCreationRateLimiter` (60/hr),
+    // and the counter persists across test runs keyed by caller IP
+    // (typically 127.0.0.1/::ffff in supertest). Without this, repeated runs
+    // within an hour eventually trigger 429 flakes.
+    await pool.query("DELETE FROM rate_limit_hits WHERE key LIKE 'brand:%'");
   });
 
   // ── PUT /connect ────────────────────────────────────────────────
@@ -145,14 +177,14 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       const res = await request(app).put(url).send({ auth_token: 'test-bearer-123', auth_type: 'bearer' });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ connected: true, has_auth: true });
-      expect(res.body.agent_context_id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(res.body.agent_context_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
     it('creates a context without an auth_token (for OAuth-flow prep)', async () => {
       const res = await request(app).put(url).send({});
       expect(res.status).toBe(200);
       expect(res.body.has_auth).toBe(false);
-      expect(res.body.agent_context_id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(res.body.agent_context_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
     it('returns 403 for an agent the user does not own', async () => {
