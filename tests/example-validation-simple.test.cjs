@@ -75,7 +75,7 @@ async function validateExample(data, schemaId, description) {
   }
 }
 
-async function expectInvalid(data, schemaId, description) {
+async function expectInvalid(data, schemaId, description, errorPatterns) {
   totalTests++;
   try {
     const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, loadSchema: loadExternalSchema });
@@ -84,13 +84,20 @@ async function expectInvalid(data, schemaId, description) {
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     const validate = await ajv.compileAsync(schema);
     const isValid = validate(data);
-    if (!isValid) {
-      log(`✅ ${description}`, 'success');
-      passedTests++;
-    } else {
+    if (isValid) {
       log(`❌ ${description}: expected schema violation but passed`, 'error');
       failedTests++;
+      return;
     }
+    const errorText = (validate.errors || []).map(e => `${e.instancePath || ''}: ${e.message} ${JSON.stringify(e.params || {})}`).join(' | ');
+    const missing = (errorPatterns || []).filter(p => !(p instanceof RegExp ? p.test(errorText) : errorText.includes(p)));
+    if (missing.length > 0) {
+      log(`❌ ${description}: invalid as expected, but error text missing expected patterns ${JSON.stringify(missing)} — got: ${errorText}`, 'error');
+      failedTests++;
+      return;
+    }
+    log(`✅ ${description}`, 'success');
+    passedTests++;
   } catch (error) {
     log(`❌ ${description}: ${error.message}`, 'error');
     failedTests++;
@@ -670,6 +677,42 @@ async function runTests() {
     },
     '/schemas/tmp/identity-match-request.json',
     'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
+  );
+
+  // get_products refine[] — migration regressions for the `id` → `product_id`/`proposal_id` rename (adcp#2775).
+  // These fixtures exercise exactly the payload shape a pre-rename orchestrator would send today, so the test
+  // proves the schema rejects it with a migration-diagnosable error.
+  await expectInvalid(
+    {
+      "buying_mode": "refine",
+      "refine": [{ "scope": "product", "id": "prod_video_premium", "action": "include" }]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] product with old `id` field is rejected and error flags the unknown property',
+    ['product_id', /additionalProperties|must NOT have additional propert/i]
+  );
+
+  await expectInvalid(
+    {
+      "buying_mode": "refine",
+      "refine": [{ "scope": "proposal", "id": "prop_balanced_v1", "action": "finalize" }]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] proposal with old `id` field is rejected and error flags the unknown property',
+    ['proposal_id', /additionalProperties|must NOT have additional propert/i]
+  );
+
+  // Happy path — optional `action` defaults to include server-side; schema must accept the minimal shape.
+  await validateExample(
+    {
+      "buying_mode": "refine",
+      "refine": [
+        { "scope": "product",  "product_id":  "prod_video_premium" },
+        { "scope": "proposal", "proposal_id": "prop_balanced_v1", "ask": "shift 20% to video" }
+      ]
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'refine[] with new prefixed ids and omitted action (defaults to include)'
   );
 
   // Print results

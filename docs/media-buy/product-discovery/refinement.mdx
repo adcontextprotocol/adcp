@@ -238,6 +238,25 @@ Client implementations should validate refinement requests against the [request 
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
+### Troubleshooting: "must NOT have additional properties" on `refine[].id`
+
+Each scope branch in `refine[]` is `additionalProperties: false`, which means a stray `id` field from the pre-3.0-rc refine shape is rejected — not silently ignored — with an error along the lines of:
+
+```
+/refine/0: must NOT have additional properties { additionalProperty: "id" }
+/refine/0: must match oneOf schema { required: ["product_id"] }
+```
+
+If you see this, an orchestrator is still constructing product or proposal refine entries with the generic `id` field. Rename to `product_id` under `scope: "product"` and `proposal_id` under `scope: "proposal"`. See the [task reference](/docs/media-buy/task-reference/get_products#refine-array) for the current shape. The same rename applies to `refinement_applied[]` if you're echoing on the seller side.
+
+### Seller migration
+
+Sellers returning `refinement_applied` have breaking work alongside buyers:
+
+- Each response entry MUST now carry `scope`, and for product/proposal scopes MUST echo `product_id` / `proposal_id`. Flat `{status, notes}` entries are rejected by the response schema.
+- Missing `action` on an incoming `refine[]` entry MUST be treated as `action: "include"`, not parsed as an error.
+- Seller conformance tests against the 3.0 request schema will reject any lingering orchestrator payloads that still use the generic `id` field — refresh your fixture corpus after upgrading.
+
 ## Normative requirements
 
 The [Media Buy Specification](/docs/media-buy/specification#get_products) defines the following normative requirements for refinement:
