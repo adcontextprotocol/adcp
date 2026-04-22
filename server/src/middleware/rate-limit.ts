@@ -201,18 +201,19 @@ export const storyboardStepRateLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for per-agent dashboard reads (compliance state, history,
- * auth status). The Agents dashboard fans out 2-3 reads per agent on
- * load, so a member with 10+ saved agents hits the bulk-resolve cap
- * immediately — those requests aren't bulk, they're idempotent
- * per-item reads. Separate limiter with a ceiling high enough for
- * normal dashboard use (60-agent load × 3 endpoints = 180 req)
- * while still bounding a script that tries to enumerate compliance
- * state for every registered agent.
+ * Rate limiter for per-agent dashboard reads (compliance state + history).
+ * The Agents dashboard fans out these two reads per saved agent on load,
+ * so a member with 10+ agents hits the bulk-resolve cap immediately —
+ * those requests aren't bulk, they're idempotent per-item reads.
+ * Separate limiter with a ceiling high enough for normal dashboard use
+ * (60-agent load × 2 endpoints = 120 req) while still bounding a script
+ * that tries to enumerate compliance state for every registered agent.
+ * (The sibling auth-status endpoint runs under complianceWriteMiddleware
+ * and isn't gated by this limiter.)
  */
 export const agentReadRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 240, // 4/sec sustained; a dashboard burst of 60 agents × 3 = 180 fits
+  max: 240, // 4/sec sustained; a 60-agent × 2-endpoint burst (120 req) fits with headroom
   standardHeaders: true,
   legacyHeaders: false,
   store: new CachedPostgresStore('agent-read:'),
@@ -225,10 +226,12 @@ export const agentReadRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for agent dashboard reads');
 
+    // standardHeaders emits a RateLimit-Reset / Retry-After header with
+    // the real remaining window — clients should read those rather than
+    // a body field that can't reflect actual state.
     res.status(429).json({
       error: 'Too many requests',
       message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
-      retryAfter: 60,
     });
   },
 });
