@@ -26,6 +26,7 @@ import { MediaChannelSchema } from '@adcp/client/types';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
+import { markSessionHandlerThrew } from './state.js';
 import { getWebhookSigningKey } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
@@ -214,6 +215,7 @@ function adapt(handler: LegacyHandler) {
       const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
       return toAdaptedResponse(result, callerContext);
     } catch (err) {
+      markSessionHandlerThrew();
       logger.error({ err }, 'framework handler threw');
       return serviceUnavailable(err, callerContext);
     }
@@ -274,6 +276,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
           const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
           return toAdaptedResponse(result, callerContext);
         } catch (err) {
+          markSessionHandlerThrew();
           logger.error({ err, tool: name }, 'framework custom-tool handler threw');
           return serviceUnavailable(err, callerContext);
         }

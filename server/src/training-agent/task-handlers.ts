@@ -602,6 +602,23 @@ export function invalidateCache(): void {
 }
 
 /**
+ * Canonicalize an agent URL for equality comparison: lowercase scheme + host,
+ * strip a single trailing slash, preserve path case. Used to decide whether
+ * a caller-supplied `format_id.agent_url` points at this agent.
+ */
+function canonicalizeAgentUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hostname = u.hostname.toLowerCase();
+    u.protocol = u.protocol.toLowerCase();
+    const s = u.toString();
+    return s.endsWith('/') ? s.slice(0, -1) : s;
+  } catch {
+    return url.replace(/\/$/, '');
+  }
+}
+
+/**
  * Merge products and pricing options seeded via comply_test_controller
  * (`seed_product`, `seed_pricing_option`) into the in-memory product map
  * used for create/validate flows. Seeded fixtures are permissive objects
@@ -1967,7 +1984,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
-  const ownAgentUrl = getAgentUrl();
+  const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -1982,11 +1999,24 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
+    // Reject clearly-malformed agent_urls before we persist them. Prevents
+    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
+    if (formatId?.agent_url !== undefined) {
+      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
+      }
+      if (!/^https?:\/\//i.test(formatId.agent_url)) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
+      }
+    }
+
     // Validate format_id only when the format is claimed against this agent.
     // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
     // resolved by the referenced creative agent at render time — the seller
-    // just stores the pointer.
-    const isLocalFormat = !formatId?.agent_url || formatId.agent_url === ownAgentUrl;
+    // just stores the pointer. Compare canonical forms so a trailing slash
+    // or case variant of the local URL still counts as local.
+    const isLocalFormat = !formatId?.agent_url
+      || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
     if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
@@ -2836,7 +2866,10 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  return { serving_tag: { asset_type: 'html', content: html } };
+  // Core Asset types no longer declare asset_type on the object itself — the
+  // discriminator is positional (record key + context). HTMLAsset = { content,
+  // version?, accessibility?, provenance? }.
+  return { serving_tag: { content: html } };
 }
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {

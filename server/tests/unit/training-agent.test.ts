@@ -1792,6 +1792,45 @@ describe('sync_creatives handler', () => {
     expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
   });
 
+  it('validates a local format_id when agent_url is omitted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_no_url_bad',
+        format_id: { id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('treats a trailing-slash / uppercase local agent_url as local for format validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const ownUrl = getAgentUrl();
+    // Uppercase host + trailing slash — same origin, different string.
+    const variant = ownUrl.replace(/^https?:\/\/([^/]+)/i, (_m, h) => `https://${h.toUpperCase()}`) + '/';
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_local_variant',
+        format_id: { agent_url: variant, id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('rejects a non-http(s) format_id.agent_url before persisting the creative', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_evil_url',
+        format_id: { agent_url: 'javascript:alert(1)', id: 'anything' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toMatch(/http:\/\/ or https:\/\//);
+  });
+
   it('processes creative-to-package assignments', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
