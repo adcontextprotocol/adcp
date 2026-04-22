@@ -34,9 +34,11 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
   // Unwrap adcp_error envelope for error responses (L3 compliance format)
-  const result = parsed.adcp_error ?? parsed;
+  const result = (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
   return { result, isError: response.isError };
 }
 
@@ -242,6 +244,51 @@ describe('comply_test_controller', () => {
       });
       expect((result as any).success).toBe(false);
       expect((result as any).error).toBe('INVALID_PARAMS');
+    });
+
+    it('seeded product + pricing option resolves via create_media_buy (overlay consumer side)', async () => {
+      // seed_product writes to session.complyExtensions.seededProducts;
+      // handleCreateMediaBuy overlays those entries onto its catalog lookup.
+      // Without the overlay, create_media_buy returns PRODUCT_NOT_FOUND.
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          bid_price: 8.50,
+          budget: 10000,
+        }],
+      });
+      expect(result.media_buy_id).toBeDefined();
+      const pkgs = result.packages as Array<Record<string, unknown>>;
+      expect(pkgs).toHaveLength(1);
+      expect(pkgs[0].package_id).toBe('pkg-0');
     });
   });
 

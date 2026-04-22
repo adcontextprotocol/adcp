@@ -40,7 +40,10 @@ async function call(
     {},
   );
   const text = response.content?.[0]?.text;
-  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  return { parsed, isError: response.isError };
 }
 
 const basePayload = () => ({

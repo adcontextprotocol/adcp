@@ -91,8 +91,13 @@ async function simulateCallTool(
     { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
+  // Success responses carry the body on `structuredContent`; error / replay
+  // paths additionally stuff a JSON-stringified copy in `content[0].text`.
+  // Prefer structuredContent and fall back to content text for error paths.
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
   // Unwrap adcp_error envelope (MCP isError responses) and errors-in-body
   // responses (spec-compliant oneOf error variant) uniformly so tests can
   // assert against `result.code` regardless of surface.
@@ -1772,11 +1777,63 @@ describe('sync_creatives handler', () => {
     const { result } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
         creative_id: 'cr_bad_format',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
+        format_id: { agent_url: getAgentUrl(), id: 'nonexistent_format' },
       }],
     });
     expect(result.code).toBeDefined();
     expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('accepts format_id referencing a remote creative agent without local validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_remote_format',
+        format_id: { agent_url: 'https://creative.adcontextprotocol.org', id: 'product_carousel_3_to_10' },
+      }],
+    });
+    const creatives = result.creatives as Array<Record<string, unknown>> | undefined;
+    expect(creatives).toHaveLength(1);
+    expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
+  });
+
+  it('validates a local format_id when agent_url is omitted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_no_url_bad',
+        format_id: { id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('treats a trailing-slash / uppercase local agent_url as local for format validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const ownUrl = getAgentUrl();
+    // Uppercase host + trailing slash — same origin, different string.
+    const variant = ownUrl.replace(/^https?:\/\/([^/]+)/i, (_m, h) => `https://${h.toUpperCase()}`) + '/';
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_local_variant',
+        format_id: { agent_url: variant, id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('rejects a non-http(s) format_id.agent_url before persisting the creative', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_evil_url',
+        format_id: { agent_url: 'javascript:alert(1)', id: 'anything' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toMatch(/http:\/\/ or https:\/\//);
   });
 
   it('processes creative-to-package assignments', async () => {
@@ -4877,12 +4934,10 @@ describe('MCP Tasks protocol', () => {
     const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
 
     const result = await simulateGetTaskResult(server, taskId);
-    expect(result.content).toBeDefined();
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0].type).toBe('text');
-    const parsed = JSON.parse(content[0].text);
-    expect(Array.isArray(parsed.products)).toBe(true);
-    expect(parsed.products.length).toBeGreaterThan(0);
+    const parsed = result.structuredContent as Record<string, unknown> | undefined;
+    expect(parsed).toBeDefined();
+    expect(Array.isArray(parsed!.products)).toBe(true);
+    expect((parsed!.products as unknown[]).length).toBeGreaterThan(0);
 
     // Must include related-task metadata
     const meta = result._meta as Record<string, unknown>;
@@ -6369,7 +6424,10 @@ async function simulateCallToolRaw(
     {},
   );
   const text = response.content?.[0]?.text;
-  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  return { parsed, isError: response.isError };
 }
 
 describe('context echo', () => {
@@ -7525,5 +7583,32 @@ describe('human_review registry parity and edge cases', () => {
       }],
     });
     expect(isError).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2841 — security_baseline conformance
+// ---------------------------------------------------------------------------
+// Two regressions the security_baseline storyboard was catching silently:
+//   1. Success responses omitted `structuredContent`, so the storyboard
+//      runner's rawMcpProbe (which validates `context.correlation_id` via
+//      JSON-pointer paths) saw only `content[].text` and couldn't resolve
+//      field paths.
+//   2. The bearer authenticator only accepted the env-configured token, so
+//      the `demo-<kit>-v<n>` handle documented in every test-kit header was
+//      rejected and the `probe_api_key` phase failed against the canonical
+//      conformance handle the storyboard asserts against.
+describe('issue #2841 — security_baseline conformance surface', () => {
+  it('success responses include structuredContent mirroring the body', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requestHandlers = (server as unknown as { _requestHandlers: Map<string, (req: unknown, ctx: unknown) => Promise<unknown>> })._requestHandlers;
+    const handler = requestHandlers.get('tools/call');
+    if (!handler) throw new Error('CallTool handler not found');
+    const response = await handler(
+      { method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { context: { correlation_id: 'security_baseline--probe_api_key' } } } },
+      {},
+    ) as { structuredContent?: Record<string, unknown>; content?: unknown[] };
+    expect(response.structuredContent).toBeDefined();
+    expect((response.structuredContent as { context?: { correlation_id?: string } }).context?.correlation_id).toBe('security_baseline--probe_api_key');
   });
 });
