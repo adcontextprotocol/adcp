@@ -4446,6 +4446,75 @@ describe('get_adcp_capabilities handler', () => {
   });
 });
 
+// ── Governance: tool inputSchema (#2845) ───────────────────────────
+//
+// The @adcp/client storyboard runner strips request fields the server's
+// inputSchema does not declare. Governance handlers use account.brand.domain
+// and brand.domain for session keying (see state.ts::sessionKeyFromArgs), so
+// these fields must appear in the declared schema — otherwise sync_plans and
+// check_governance land in different sessions and the plan lookup returns
+// "Plan not found".
+
+describe('governance tools expose session-key fields in inputSchema', () => {
+  const server = createTrainingAgentServer(DEFAULT_CTX);
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const listHandler = requestHandlers.get('tools/list')!;
+
+  it.each(['check_governance', 'report_plan_outcome', 'get_plan_audit_logs'])(
+    '%s declares account and brand at the top level',
+    async (toolName) => {
+      const response = await listHandler({ method: 'tools/list', params: {} }, {}) as {
+        tools: Array<{ name: string; inputSchema: { properties?: Record<string, unknown> } }>;
+      };
+      const tool = response.tools.find((t) => t.name === toolName);
+      expect(tool, `${toolName} not registered`).toBeDefined();
+      const props = tool!.inputSchema.properties ?? {};
+      expect(props, `${toolName} missing 'account' property`).toHaveProperty('account');
+      expect(props, `${toolName} missing 'brand' property`).toHaveProperty('brand');
+    },
+  );
+});
+
+// Cross-tool session keying contract: a plan synced under one brand.domain MUST
+// be visible to a subsequent check_governance call carrying the same tenant.
+// The storyboard runner injects `account` at the top level on every step, so
+// this is what "sync_plans ... check_governance" looks like in a real flow.
+describe('governance tools share session via account.brand.domain', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('check_governance finds a plan synced with the same brand.domain', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const tenant = { account: { brand: { domain: 'acme.example' } } };
+
+    await simulateCallTool(server, 'sync_plans', {
+      ...tenant,
+      plans: [{
+        plan_id: 'plan-session-key',
+        brand: { domain: 'acme.example' },
+        objectives: 'verify session sharing across governance tools',
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 100000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      ...tenant,
+      plan_id: 'plan-session-key',
+      caller: 'https://buyer.example',
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.findings).toBeUndefined();
+  });
+});
+
 // ── Governance: seller compliance ──────────────────────────────────
 
 describe('check_governance seller compliance', () => {
