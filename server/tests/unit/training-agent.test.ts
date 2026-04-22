@@ -731,11 +731,7 @@ describe('session state', () => {
         expect(session.mediaBuys).toBeInstanceOf(Map);
         expect(session.mediaBuys.size).toBe(0);
         expect(session.creatives).toBeInstanceOf(Map);
-        // Sessions seed exactly the compliance-fixture creatives referenced
-        // by conformance storyboards (see seedComplianceCreatives). Pinning
-        // the size as well as membership keeps future additions deliberate.
-        expect(session.creatives.size).toBe(1);
-        expect(session.creatives.has('campaign_hero_video')).toBe(true);
+        expect(session.creatives.size).toBe(0);
       });
     });
 
@@ -1967,10 +1963,7 @@ describe('list_creatives handler', () => {
     });
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'list_creatives', {
-      account,
-      creative_ids: ['cr_list_1'],
-    });
+    const { result } = await simulateCallTool(server2, 'list_creatives', { account });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives).toHaveLength(1);
@@ -1988,25 +1981,31 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
-  it('returns only the compliance-fixture creative when nothing is synced', async () => {
+  it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'list_creatives', { account });
 
-    // Sessions pre-seed conformance fixtures (see seedComplianceCreatives) so
-    // storyboards that reference stable IDs like `campaign_hero_video`
-    // resolve on the first call. Callers that need a truly empty view filter
-    // via creative_ids.
+    // Empty sessions fall back to compliance creative fixtures (e.g.
+    // campaign_hero_video) so conformance storyboards can resolve stable IDs
+    // without controller_seeding auto-fire. Sessions with synced creatives
+    // return only those.
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+  });
 
+  it('skips the compliance fallback when creative_ids filter is explicit', async () => {
+    const account = { brand: { domain: 'filter-empty.example' }, operator: 'filter-empty.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      creative_ids: ['nonexistent_id'],
+    });
+
+    expect(result.creatives).toEqual([]);
     const qs = result.query_summary as Record<string, unknown>;
-    expect(qs.total_matching).toBe(1);
-    expect(qs.returned).toBe(1);
-
-    const pg = result.pagination as Record<string, unknown>;
-    expect(pg.has_more).toBe(false);
-    expect(pg.total_count).toBe(1);
+    expect(qs.total_matching).toBe(0);
+    expect(qs.returned).toBe(0);
   });
 
   it('query_summary reflects filtered count', async () => {
@@ -2073,7 +2072,6 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account,
       include_pricing: true,
-      creative_ids: ['cr_price_test'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
@@ -2095,7 +2093,6 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account,
       include_pricing: false,
-      creative_ids: ['cr_price_test'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
@@ -2113,7 +2110,6 @@ describe('list_creatives pricing', () => {
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account,
-      creative_ids: ['cr_price_test'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
@@ -2150,7 +2146,6 @@ describe('list_creatives pricing', () => {
     const { result } = await simulateCallTool(server2, 'list_creatives', {
       account: premiumAccount,
       include_pricing: true,
-      creative_ids: ['cr_premium'],
     });
 
     const creatives = result.creatives as Array<Record<string, unknown>>;

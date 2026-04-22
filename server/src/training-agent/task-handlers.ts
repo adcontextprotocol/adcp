@@ -168,6 +168,7 @@ import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
   runWithSessionContext, flushDirtySessions,
+  getComplianceCreatives, getComplianceCreative,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -1944,6 +1945,12 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   let creatives = Array.from(session.creatives.values());
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
+  } else if (creatives.length === 0) {
+    // Empty session falls back to compliance fixtures so storyboards that
+    // reference stable IDs (e.g., campaign_hero_video in creative_ad_server)
+    // resolve without the SDK's controller_seeding auto-fire. Sessions that
+    // have synced their own creatives return only those — no mixing.
+    creatives = getComplianceCreatives();
   }
 
   // Ad-server-capable sellers (creative.has_creative_library) quote per-
@@ -2750,7 +2757,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
   // Mode 1: Library retrieval (creative_id)
   if (req.creative_id) {
-    const creative = session.creatives.get(req.creative_id);
+    const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
       return {
         errors: [{ code: 'NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
@@ -3030,7 +3037,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
-      const creative = session.creatives.get(record.creative_id);
+      const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
         continue;

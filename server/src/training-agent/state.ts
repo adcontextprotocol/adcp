@@ -15,7 +15,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { SessionState, AccountRef, BrandRef } from './types.js';
+import type { SessionState, AccountRef, BrandRef, CreativeState } from './types.js';
 import { cleanupExpiredTasks } from '@adcp/client';
 import {
   InMemoryStateStore,
@@ -158,7 +158,7 @@ function stableStringify(value: unknown): string {
 
 function createSession(): SessionState {
   const now = new Date();
-  const session: SessionState = {
+  return {
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
@@ -181,40 +181,44 @@ function createSession(): SessionState {
     createdAt: now,
     lastAccessedAt: now,
   };
-  seedComplianceCreatives(session);
-  return session;
 }
 
 /**
- * Seed storyboard-hardcoded creative IDs into a session.
+ * Canonical compliance creative fixtures.
  *
- * Conformance storyboards (see `static/compliance/source/**` `fixtures:`
- * blocks) reference creatives by stable IDs that the test runner is meant to
- * auto-fire via `comply_test_controller.seed_creative` before phases run.
- * While the SDK's runner side of that wiring (adcp-client#778) is still open,
- * the training agent pre-seeds the same IDs on every session so storyboards
- * that assume them (e.g. `creative_ad_server` referencing
- * `campaign_hero_video`) can resolve the creative across every session key
- * the run touches — list_creatives, build_creative, get_creative_delivery,
- * and report_usage each derive their own key.
+ * Conformance storyboards reference these IDs by hardcoded value — e.g. the
+ * `creative_ad_server` storyboard calls `list_creatives` with no filter and
+ * asserts `creatives[0].pricing_options`, then calls `build_creative` /
+ * `report_usage` against `campaign_hero_video`. The storyboard declares
+ * `controller_seeding: true` to have the runner auto-fire `seed_creative`,
+ * but the SDK side of that wiring (adcp-client#778) is still open.
  *
- * The product catalog handles the equivalent aliasing for `test-product` and
- * `sports_ctv_q2` via `product-factory.ts`.
+ * Session handlers consult this map as a read-through fallback:
+ *  - `list_creatives` merges compliance fixtures in when the session has
+ *    none synced (so storyboards that never sync still see them); filtered
+ *    queries skip the fallback — an explicit `creative_ids` filter means
+ *    the caller is asking for a specific, session-owned creative.
+ *  - `build_creative` / `report_usage` fall through to the fixtures when a
+ *    requested `creative_id` is not in the session map.
+ *
+ * Agent URL is resolved lazily so the default propagates correctly in CI
+ * and local runs alike.
  */
-function seedComplianceCreatives(session: SessionState): void {
-  const seedAt = new Date().toISOString();
-  // campaign_hero_video — creative_ad_server storyboard
-  // (static/compliance/source/specialisms/creative-ad-server/index.yaml)
-  if (!session.creatives.has('campaign_hero_video')) {
-    session.creatives.set('campaign_hero_video', {
+export function getComplianceCreatives(): CreativeState[] {
+  return [
+    {
       creativeId: 'campaign_hero_video',
       formatId: { agent_url: getAgentUrl(), id: 'vast_30s' },
       name: 'Campaign Hero Video',
       status: 'approved',
-      syncedAt: seedAt,
+      syncedAt: new Date(0).toISOString(),
       pricingOptionId: 'po_vast_30s_cpm',
-    });
-  }
+    },
+  ];
+}
+
+export function getComplianceCreative(id: string): CreativeState | undefined {
+  return getComplianceCreatives().find(c => c.creativeId === id);
 }
 
 /**
@@ -313,11 +317,6 @@ export async function getSession(key: string): Promise<SessionState> {
   }
   if (!session) {
     session = createSession();
-  } else {
-    // Idempotently backfill compliance fixtures onto sessions loaded from
-    // storage that predate the seed (the load-time snapshot below captures
-    // the added entries so we don't flush a spurious write).
-    seedComplianceCreatives(session);
   }
   session.lastAccessedAt = new Date();
 
