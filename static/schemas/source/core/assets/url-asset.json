@@ -5,6 +5,11 @@
   "description": "URL reference asset",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "url",
+      "description": "Discriminator identifying this as a URL asset. See /schemas/creative/asset-types for the registry."
+    },
     "url": {
       "type": "string",
       "format": "uri-template",
@@ -24,6 +29,7 @@
     }
   },
   "required": [
+    "asset_type",
     "url"
   ],
   "additionalProperties": true

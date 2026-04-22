@@ -272,6 +272,7 @@ function getAjv() {
   sharedAjv = new Ajv({
     allErrors: true,
     strict: false,
+    discriminator: true,
     loadSchema: (uri) => {
       const resolved = loadSchema(uri);
       if (!resolved) throw new Error(`Cannot resolve $ref: ${uri}`);

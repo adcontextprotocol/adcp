@@ -19,7 +19,7 @@
         "x-entity": "governance_plan"
       },
       "minItems": 1,
-      "description": "Plan IDs to retrieve. For a single plan, pass a one-element array."
+      "description": "Plan IDs to retrieve. For a single plan, pass a one-element array. Plans uniquely scope account and operator; do not include a separate `account` field — the governance agent resolves account from each plan. Including `account` is rejected by `additionalProperties: false`."
     },
     "portfolio_plan_ids": {
       "type": "array",

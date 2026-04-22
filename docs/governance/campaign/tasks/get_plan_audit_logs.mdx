@@ -262,11 +262,15 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
 
+## Authorization
+
+The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic `PLAN_NOT_FOUND` response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/docs/building/implementation/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
+
 ## Error codes
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID, or the authenticated principal is not authorized for it. The two cases MUST be indistinguishable in the response to prevent plan-ID enumeration. |
 
 ## Related tasks
 
