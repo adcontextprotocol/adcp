@@ -257,7 +257,8 @@
     }
     .agent-connect-form input { min-width: 260px; }
     .agent-connect-save,
-    .agent-oauth-start {
+    .agent-oauth-start,
+    .agent-cc-save {
       background: var(--color-primary-600);
       color: white;
       border: none;
@@ -267,9 +268,11 @@
       cursor: pointer;
     }
     .agent-connect-save:hover,
-    .agent-oauth-start:hover { background: var(--color-primary-700); }
+    .agent-oauth-start:hover,
+    .agent-cc-save:hover { background: var(--color-primary-700); }
     .agent-connect-save:disabled,
-    .agent-oauth-start:disabled { opacity: 0.6; cursor: not-allowed; }
+    .agent-oauth-start:disabled,
+    .agent-cc-save:disabled { opacity: 0.6; cursor: not-allowed; }
     .agent-oauth-start { align-self: flex-end; }
     .agent-connect-msg {
       font-size: var(--text-xs);
@@ -760,6 +763,7 @@
       return '<div class="agent-connect-form" data-agent-url="' + escapedUrl + '"' + contextIdAttr + '>' +
         '<label>Auth type<select name="auth_type" class="auth-type-select">' +
           '<option value="oauth">OAuth (recommended)</option>' +
+          '<option value="oauth_client_credentials">OAuth client credentials (machine-to-machine)</option>' +
           '<option value="bearer">Bearer token</option>' +
           '<option value="basic">Basic auth</option>' +
         '</select></label>' +
@@ -772,6 +776,31 @@
           '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">Securely authorize via the agent\'s OAuth flow. No tokens to copy.</p>' +
           '<label>Platform type<select name="platform_type_oauth"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
           '<button class="agent-oauth-start">Authorize</button>' +
+        '</div>' +
+        '<div class="auth-cc-fields" style="display:none;">' +
+          '<p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin:var(--space-2) 0;">' +
+            'Server-to-server OAuth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before each call and refreshes on 401. ' +
+            'For secrets wired through environment variables, use <code>$ENV:ADCP_OAUTH_&lt;NAME&gt;</code> references. ' +
+            'The <code>ADCP_OAUTH_</code> prefix is required — other env-var names are rejected server-side so a misconfigured agent can\'t read unrelated secrets.' +
+          '</p>' +
+          '<label>Token endpoint<input type="url" name="cc_token_endpoint" placeholder="https://auth.example.com/oauth/token" autocomplete="off" required></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">' +
+            'Auth0: <code>https://{tenant}.auth0.com/oauth/token</code> · Okta: <code>https://{org}.okta.com/oauth2/default/v1/token</code> · Azure AD: <code>https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code> · Keycloak: <code>https://{host}/realms/{realm}/protocol/openid-connect/token</code>' +
+          '</p>' +
+          '<label>Client ID<input type="text" name="cc_client_id" placeholder="client_abc or $ENV:ADCP_OAUTH_CLIENT_ID" autocomplete="off" required></label>' +
+          '<label>Client secret<input type="password" name="cc_client_secret" placeholder="literal secret or $ENV:ADCP_OAUTH_CLIENT_SECRET" autocomplete="off" required></label>' +
+          '<label>Scope <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_scope" placeholder="adcp" autocomplete="off"></label>' +
+          '<label>Resource <span style="color:var(--color-text-secondary);">(optional, RFC 8707)</span><input type="text" name="cc_resource" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">The agent URL the token is for. Okta and Keycloak typically use <code>resource</code>.</p>' +
+          '<label>Audience <span style="color:var(--color-text-secondary);">(optional)</span><input type="text" name="cc_audience" placeholder="https://agent.example.com" autocomplete="off"></label>' +
+          '<p style="font-size:var(--text-xs);color:var(--color-text-secondary);margin:calc(-1 * var(--space-2)) 0 var(--space-2) 0;">Auth0\'s name for the same thing (the <code>aud</code> claim). Use either <code>resource</code> OR <code>audience</code> — not both unless your IdP asks for it.</p>' +
+          '<label>Auth method<select name="cc_auth_method">' +
+            '<option value="">Basic (default — HTTP Basic header)</option>' +
+            '<option value="basic">Basic (HTTP Basic header)</option>' +
+            '<option value="body">Body (client_id/client_secret as form fields)</option>' +
+          '</select></label>' +
+          '<label>Platform type<select name="platform_type_cc"><option value="">Auto-detect</option>' + platformTypeOptions + '</select></label>' +
+          '<button class="agent-cc-save">Save credentials</button>' +
         '</div>' +
       '</div>';
     }
@@ -862,7 +891,7 @@
               </div>
             </div>
             ${hasAuth
-              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
+              ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
             <div class="agent-meta-row">
               <span></span>
@@ -1083,7 +1112,7 @@
       }
     });
 
-    // Auth type toggle — show/hide token vs OAuth fields
+    // Auth type toggle — show exactly one of the three field groups.
     document.addEventListener('change', function(e) {
       const select = e.target.closest('.auth-type-select');
       if (!select) return;
@@ -1091,12 +1120,68 @@
       if (!form) return;
       const tokenFields = form.querySelector('.auth-token-fields');
       const oauthFields = form.querySelector('.auth-oauth-fields');
-      if (select.value === 'oauth') {
-        tokenFields.style.display = 'none';
-        oauthFields.style.display = '';
-      } else {
-        tokenFields.style.display = '';
-        oauthFields.style.display = 'none';
+      const ccFields = form.querySelector('.auth-cc-fields');
+      tokenFields.style.display = select.value === 'bearer' || select.value === 'basic' ? '' : 'none';
+      oauthFields.style.display = select.value === 'oauth' ? '' : 'none';
+      ccFields.style.display = select.value === 'oauth_client_credentials' ? '' : 'none';
+    });
+
+    // OAuth client-credentials save handler (PUT /oauth-client-credentials).
+    // Parallel to the bearer/basic "Save" handler, different endpoint.
+    document.addEventListener('click', async function(e) {
+      const saveBtn = e.target.closest('.agent-cc-save');
+      if (!saveBtn) return;
+      const form = saveBtn.closest('.agent-connect-form');
+      if (!form) return;
+
+      const agentUrl = form.dataset.agentUrl;
+      const tokenEndpoint = form.querySelector('[name="cc_token_endpoint"]').value.trim();
+      const clientId = form.querySelector('[name="cc_client_id"]').value.trim();
+      const clientSecret = form.querySelector('[name="cc_client_secret"]').value;
+      const scope = form.querySelector('[name="cc_scope"]').value.trim();
+      const resource = form.querySelector('[name="cc_resource"]').value.trim();
+      const audience = form.querySelector('[name="cc_audience"]').value.trim();
+      const authMethod = form.querySelector('[name="cc_auth_method"]').value;
+
+      if (!tokenEndpoint) { form.querySelector('[name="cc_token_endpoint"]').focus(); return; }
+      if (!clientId) { form.querySelector('[name="cc_client_id"]').focus(); return; }
+      if (!clientSecret) { form.querySelector('[name="cc_client_secret"]').focus(); return; }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const body = { token_endpoint: tokenEndpoint, client_id: clientId, client_secret: clientSecret };
+        if (scope) body.scope = scope;
+        if (resource) body.resource = resource;
+        if (audience) body.audience = audience;
+        if (authMethod) body.auth_method = authMethod;
+
+        const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/oauth-client-credentials', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to save credentials');
+        }
+
+        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Credentials saved. Compliance check will run on the next heartbeat cycle.</div>';
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save credentials';
+        let msg = form.querySelector('.agent-connect-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.className = 'agent-connect-msg';
+          form.appendChild(msg);
+        }
+        msg.style.color = 'var(--color-error-600)';
+        msg.textContent = err.message;
       }
     });
 
