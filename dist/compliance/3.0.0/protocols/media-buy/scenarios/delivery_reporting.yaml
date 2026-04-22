@@ -1,0 +1,180 @@
+id: media_buy_seller/delivery_reporting
+version: "1.0.0"
+title: "Seller returns valid delivery reporting"
+category: media_buy_seller
+summary: "Verifies that get_media_buy_delivery returns schema-compliant delivery data after simulated delivery via the test controller."
+track: reporting
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  Delivery reporting is how buyers know if their campaign is working. The seller must
+  return schema-compliant delivery data from get_media_buy_delivery with per-package
+  metrics (impressions, spend, pacing).
+
+  This scenario creates a media buy, injects delivery data via the test controller's
+  simulate_delivery scenario, then calls get_media_buy_delivery and validates the
+  response against the schema. Without this test, sellers can return arbitrary formats
+  and still pass certification.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any media buy seller"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with the simulate_delivery
+    scenario. This allows the test harness to inject delivery metrics into a
+    media buy so get_media_buy_delivery has data to return.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Create a media buy for delivery testing"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_brief
+        title: "Discover products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+      - id: create_media_buy
+        title: "Create media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Create the media buy. We need a media_buy_id to simulate delivery against.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "outdoor_display_q2"
+              budget: 15000
+              pricing_option_id: "cpm_standard"
+            - product_id: "outdoor_video_q2"
+              budget: 10000
+              pricing_option_id: "cpm_standard"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+  - id: simulate_and_verify
+    title: "Simulate delivery and validate reporting"
+    narrative: |
+      Inject delivery metrics via the test controller, then call get_media_buy_delivery
+      and validate the response format. This is the core test — does the seller return
+      schema-compliant delivery data with per-package metrics?
+
+    steps:
+      - id: simulate_delivery
+        title: "Inject simulated delivery metrics"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery data.
+        sample_request:
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 5000
+            clicks: 150
+            reported_spend:
+              amount: 250.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_delivery
+        title: "Get delivery report and validate schema"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics reflecting the simulated data:
+          - media_buy_deliveries array with at least one entry
+          - Per-package breakdown with impressions, spend
+          - Response matches the get-media-buy-delivery-response.json schema
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains delivery data"

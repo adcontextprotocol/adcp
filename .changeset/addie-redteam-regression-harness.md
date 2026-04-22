@@ -1,4 +1,0 @@
----
----
-
-Add a red-team regression harness for Addie so rule changes can be measured automatically instead of via ad-hoc one-off scripts. The harness sends 25 hostile questions to a live Addie endpoint and applies deterministic checks for fabricated member-company names, banned ritual phrases, sign-in deflection on substantive positioning questions, length blow-out on short sharp questions, missing concept markers, and overclaim patterns. Ships as `redteam-scenarios.ts` (25 scenarios with concept mapping and check criteria), `redteam-runner.ts` (HTTP runner with CSRF and rate-limit handling), and `redteam-cli.ts` (CLI with `--only` and `--base-url` flags). Wired into `run-tests.ts` as an opt-in suite gated on `RUN_REDTEAM=1`. Includes a vitest unit-test file covering the deterministic check functions without requiring a live LLM. New npm script: `npm run test:redteam`.

@@ -1,0 +1,203 @@
+id: brand_rights/governance_denied
+version: "1.0.0"
+title: "Brand agent rejects rights acquisition when governance denies"
+category: brand_rights
+summary: "Verifies that a brand agent propagates GOVERNANCE_DENIED when the buyer's governance plan denies a rights license."
+track: brand
+required_tools:
+  - sync_governance
+  - get_rights
+  - acquire_rights
+
+narrative: |
+  Acquiring rights is a spending event. The brand agent must consult the buyer's
+  governance agent before issuing a license and deny the acquisition when governance
+  returns denied. This keeps licensing authority consistent with media buy spending
+  authority — a buyer cannot commit to a generative campaign budget that exceeds the
+  plan even when the spending flows to a brand agent instead of a seller.
+
+  This scenario sets up a strict $50 governance plan, registers governance with the
+  brand agent via sync_governance, then attempts to acquire rights whose pricing
+  exceeds the plan. The brand agent must return GOVERNANCE_DENIED with findings
+  propagated from the governance agent.
+
+  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
+  Override with --governance-agent-url to use a custom governance agent.
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities:
+    - rights_licensing
+    - governance_aware
+  examples:
+    - "Any brand rights agent that honors governance before licensing"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent that supports sync_plans and check_governance, and a brand
+    agent that supports sync_governance + acquire_rights.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: governance_plan_setup
+    title: "Set up strict governance plan"
+    steps:
+      - id: sync_plans
+        title: "Create strict governance plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expected: |
+          The governance agent acknowledges the plan.
+        sample_request:
+          plans:
+            - plan_id: "comply-rights-gov-denied"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Restricted plan — rights licensing test"
+              budget:
+                total: 50
+                currency: "USD"
+                reallocation_threshold: 25
+              flight:
+                start: "2026-04-01T00:00:00Z"
+                end: "2026-06-30T23:59:59Z"
+              countries: ["US"]
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_governance_plan_setup_sync_plans"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+  - id: brand_agent_setup
+    title: "Register account and governance with the brand agent"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with brand agent"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Brand agent returns the account with account_id active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with brand agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Brand agent acknowledges governance registration.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  categories: ["budget_authority"]
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: rights_denied
+    title: "Attempt rights acquisition — governance denies"
+    steps:
+      - id: get_rights_catalog
+        title: "Discover rights to license"
+        task: get_rights
+        schema_ref: "brand/get-rights-request.json"
+        response_schema_ref: "brand/get-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/get_rights"
+        stateful: false
+        expected: |
+          Return rights available for licensing, each with pricing_options.
+        sample_request:
+          buyer:
+            domain: "pinnacle-agency.example"
+          query: "licensed commercial rights for a regional outdoor retail campaign"
+          uses:
+            - "commercial"
+            - "endorsement"
+        context_outputs:
+          - path: "rights[0].rights_id"
+            key: "rights_id"
+          - path: "rights[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-rights-response.json schema"
+
+      - id: acquire_rights_denied
+        title: "acquire_rights — governance denies"
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        expect_error: true
+        stateful: true
+        expected: |
+          Brand agent rejects with:
+          - code: GOVERNANCE_DENIED
+          - findings propagated from the governance agent
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          pricing_option_id: "$context.pricing_option_id"
+          buyer:
+            domain: "pinnacle-agency.example"
+          campaign:
+            description: "Governance-denied rights acquisition probe"
+            uses:
+              - "likeness"
+              - "commercial"
+            start_date: "2026-04-01"
+            end_date: "2026-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes:
+                - "Bearer"
+              credentials: "pinnacle-revocation-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_acquire_rights_denied"
+
+          context:
+            correlation_id: "brand_rights--governance_denied--acquire"
+        validations:
+          - check: error_code
+            value: "GOVERNANCE_DENIED"
+            description: "Error code is GOVERNANCE_DENIED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"

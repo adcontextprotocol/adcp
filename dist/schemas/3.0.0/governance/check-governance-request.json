@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/governance/check-governance-request.json",
+  "title": "Check Governance Request",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side). planned_delivery = execution check (committed, seller-side). governance_context maintains lifecycle continuity across either check type \u2014 its presence alone does not determine binding. To check budget availability without a specific action, omit tool and payload.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Campaign governance plan identifier. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
+      "x-entity": "governance_plan"
+    },
+    "caller": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the agent making the request."
+    },
+    "purchase_type": {
+      "$ref": "/schemas/3.0.0/enums/purchase-type.json",
+      "description": "The type of financial commitment being checked. Determines which budget allocation (if any) to validate against. Defaults to 'media_buy' when omitted.",
+      "default": "media_buy"
+    },
+    "tool": {
+      "type": "string",
+      "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activate_signal'). Present on intent checks (orchestrator). The governance agent uses the presence of tool+payload to identify an intent check."
+    },
+    "payload": {
+      "type": "object",
+      "description": "The full tool arguments as they would be sent to the seller. Present on intent checks. The governance agent can inspect any field to validate against the plan.",
+      "additionalProperties": true
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Governance context token from a prior check_governance response. Pass this on subsequent checks for the same governed action so the governance agent can maintain continuity across the lifecycle. In 3.0 governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context); callers persist and forward the value verbatim.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "phase": {
+      "$ref": "/schemas/3.0.0/enums/governance-phase.json",
+      "description": "The phase of the governed action's lifecycle. 'purchase': initial commitment (create_media_buy, acquire_rights, activate_signal). 'modification': update to existing commitment. 'delivery': periodic delivery or usage reporting. Defaults to 'purchase' if omitted.",
+      "default": "purchase"
+    },
+    "planned_delivery": {
+      "$ref": "/schemas/3.0.0/core/planned-delivery.json",
+      "description": "What the seller will actually deliver. Present on execution checks."
+    },
+    "delivery_metrics": {
+      "type": "object",
+      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compares these metrics against the planned delivery to detect drift.",
+      "properties": {
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend during the reporting period."
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend since the governed action started."
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions delivered during the reporting period."
+        },
+        "cumulative_impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total impressions since the governed action started."
+        },
+        "geo_distribution": {
+          "type": "object",
+          "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "channel_distribution": {
+          "type": "object",
+          "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "pacing": {
+          "type": "string",
+          "enum": [
+            "ahead",
+            "on_track",
+            "behind"
+          ],
+          "description": "Whether delivery is ahead of, on track with, or behind the planned pace."
+        },
+        "audience_distribution": {
+          "type": "object",
+          "description": "Actual audience composition during the reporting period. Enables mid-flight drift detection when actual delivery skews from planned audience targeting.",
+          "properties": {
+            "baseline": {
+              "type": "string",
+              "enum": [
+                "census",
+                "platform",
+                "custom"
+              ],
+              "description": "Population baseline used for index calculation. 'census': national census or equivalent population data. 'platform': the seller's active user base. 'custom': a custom baseline defined by the seller (describe in baseline_description)."
+            },
+            "baseline_description": {
+              "type": "string",
+              "description": "Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with broadband access')."
+            },
+            "indices": {
+              "type": "object",
+              "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy \u2014 dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "cumulative_indices": {
+              "type": "object",
+              "description": "Cumulative audience index values since the governed action started. Same key format as indices (dimension:value). Use for detecting sustained bias drift that may not appear in a single reporting period.",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "required": [
+            "baseline",
+            "indices"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "reporting_period"
+      ],
+      "additionalProperties": false
+    },
+    "modification_summary": {
+      "type": "string",
+      "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase.",
+      "maxLength": 1000
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/3.0.0/core/business-entity.json",
+      "description": "Invoice recipient from the purchase request. MUST be present when the tool payload includes invoice_recipient, so the governance agent can validate billing changes."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "required": [
+    "plan_id",
+    "caller"
+  ],
+  "additionalProperties": false
+}
