@@ -233,6 +233,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
           payload:
             account:

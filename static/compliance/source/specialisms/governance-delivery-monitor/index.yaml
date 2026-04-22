@@ -206,6 +206,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
           payload:
             account:
@@ -322,6 +323,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"
           media_buy_id: "mb_acme_q2_2026"
