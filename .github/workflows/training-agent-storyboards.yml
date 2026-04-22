@@ -40,21 +40,20 @@ jobs:
             # in the PR description. Rising is fine; regressing fails CI.
             # 35→27 temporarily after @adcp/client 5.6→5.8.1 bump (adcp#2663)
             # surfaced stricter schema checks; recovered to 36 in adcp#2666 by
-            # fixing training-agent fixtures (creative format asset_type/
-            # catalog_type/dimensions.unit), adding required total_budget on
-            # get_media_buys, and tightening validate_property_delivery
-            # response shape.
-            min_clean_storyboards: 36
-            min_passing_steps: 295
+            # fixing training-agent fixtures. Bumped to 43/336 in adcp#2846
+            # after @adcp/client 5.11.0 restored sample_request handling in
+            # the get_rights request builder (brand_rights/governance_denied
+            # and peer scenarios).
+            min_clean_storyboards: 43
+            min_passing_steps: 336
           - mode: framework
             flag_value: '1'
             # Framework path is opt-in and trails legacy until zod parity
             # lands. Gate keeps it from going backwards while we close the gap.
-            # Rebaselined alongside the legacy recovery in adcp#2666: the
-            # training-agent fixture fixes bought back the same 237→241
-            # passing-step delta for the framework path.
-            min_clean_storyboards: 21
-            min_passing_steps: 241
+            # Rebaselined alongside the legacy recovery in adcp#2666.
+            # 25/244 after the @adcp/client 5.11.0 bump in adcp#2846.
+            min_clean_storyboards: 25
+            min_passing_steps: 244
     steps:
       - uses: actions/checkout@v6
 
