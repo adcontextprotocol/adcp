@@ -18,9 +18,7 @@ import { logger } from '../../logger.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {
   isGoogleDocsUrl,
-  createGoogleDocsToolHandlers,
-  GOOGLE_DOCS_ERROR_PREFIX,
-  GOOGLE_DOCS_ACCESS_DENIED_PREFIX,
+  createGoogleDocsReader,
 } from '../mcp/google-docs.js';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
 import { PDFParse } from 'pdf-parse';
@@ -62,9 +60,9 @@ async function fetchGoogleDocContent(url: string): Promise<{
   error?: string;
   status: DocumentIndexStatus;
 }> {
-  const handlers = createGoogleDocsToolHandlers();
+  const reader = createGoogleDocsReader();
 
-  if (!handlers) {
+  if (!reader) {
     return {
       content: '',
       error: 'Google Docs API not configured',
@@ -73,34 +71,19 @@ async function fetchGoogleDocContent(url: string): Promise<{
   }
 
   try {
-    const result = await handlers.read_google_doc({ url });
-
-    // Check for access denied
-    if (result.startsWith(GOOGLE_DOCS_ACCESS_DENIED_PREFIX)) {
-      return {
-        content: '',
-        error: result,
-        status: 'access_denied',
-      };
+    const result = await reader(url);
+    switch (result.status) {
+      case 'access_denied':
+        return { content: '', error: result.message ?? 'Access denied', status: 'access_denied' };
+      case 'invalid_input':
+      case 'unsupported_type':
+      case 'error':
+        return { content: '', error: result.message ?? 'Error reading document', status: 'error' };
+      case 'empty':
+        return { content: '', status: 'success' };
+      case 'ok':
+        return { content: result.body ?? '', status: 'success' };
     }
-
-    // Check for other errors
-    if (result.startsWith(GOOGLE_DOCS_ERROR_PREFIX)) {
-      return {
-        content: '',
-        error: result,
-        status: 'error',
-      };
-    }
-
-    // Strip the title/format header if present
-    const contentMatch = result.match(/^\*\*[^*]+\*\*[^\n]*\n\n([\s\S]*)$/);
-    const content = contentMatch ? contentMatch[1] : result;
-
-    return {
-      content,
-      status: 'success',
-    };
   } catch (error) {
     return {
       content: '',

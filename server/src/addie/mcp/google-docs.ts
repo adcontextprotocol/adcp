@@ -12,10 +12,6 @@ import type { AddieTool } from '../types.js';
 // Addie's email for access requests
 const ADDIE_EMAIL = 'addie@agenticadvertising.org';
 
-// Error prefixes for reliable error detection
-export const GOOGLE_DOCS_ERROR_PREFIX = 'Error:';
-export const GOOGLE_DOCS_ACCESS_DENIED_PREFIX = "I don't have access";
-
 // Maximum content size (500KB)
 const MAX_CONTENT_SIZE = 500 * 1024;
 
@@ -547,38 +543,108 @@ export function isGoogleDocsUrl(url: string): boolean {
 }
 
 /**
- * Read a Google Doc as plain text
+ * Structured result shape returned by `readGoogleDocStructured`.
+ *
+ * Callers should branch on `status`, not sniff the text of `body` or
+ * `message`. Natural-language sentinels (e.g. "I don't have access")
+ * collide with legitimate document content (#2756) — the status field
+ * is the only reliable signal.
+ *
+ * Introduced per #2754; replaces the previous stringly-typed return
+ * and its companion prefix constants (GOOGLE_DOCS_ERROR_PREFIX /
+ * GOOGLE_DOCS_ACCESS_DENIED_PREFIX, now removed).
  */
-async function readGoogleDoc(
+export interface GoogleDocResult {
+  status: 'ok' | 'access_denied' | 'empty' | 'invalid_input' | 'unsupported_type' | 'error';
+  title: string | null;
+  /** Markdown (for Docs/Slides) or CSV (for Sheets). */
+  body: string | null;
+  /** The mime type reported by the Drive API, or null on early error. */
+  mime_type: string | null;
+  /** 'markdown' | 'csv' | 'text' — what `body` contains, or null. */
+  format: 'markdown' | 'csv' | 'text' | null;
+  /** Human-readable message for non-ok statuses. */
+  message: string | null;
+  /** True if `body` was cut at MAX_CONTENT_SIZE. */
+  truncated: boolean;
+}
+
+/**
+ * Read a Google Doc / Sheet / Drive file and return a structured result.
+ *
+ * Always returns a `GoogleDocResult` — does not throw for auth / not-found
+ * conditions. Only throws (via `ToolError`) for unexpected internal
+ * failures the caller can't handle meaningfully.
+ */
+async function readGoogleDocStructured(
   urlOrId: string,
   config: GoogleAuthConfig
-): Promise<string> {
+): Promise<GoogleDocResult> {
   const docId = extractDocId(urlOrId);
   if (!docId) {
-    throw new ToolError(`Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`);
+    return {
+      status: 'invalid_input',
+      title: null,
+      body: null,
+      mime_type: null,
+      format: null,
+      message: `Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`,
+      truncated: false,
+    };
   }
+
+  const accessDenied = (): GoogleDocResult => ({
+    status: 'access_denied',
+    title: null,
+    body: null,
+    mime_type: null,
+    format: null,
+    message: `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`,
+    truncated: false,
+  });
+
+  const okResult = (
+    title: string,
+    body: string,
+    mimeType: string,
+    format: 'markdown' | 'csv' | 'text',
+  ): GoogleDocResult => {
+    const truncated = body.length > MAX_CONTENT_SIZE;
+    return {
+      status: body.trim() ? 'ok' : 'empty',
+      title,
+      body: truncated ? body.substring(0, MAX_CONTENT_SIZE) : body,
+      mime_type: mimeType,
+      format,
+      message: null,
+      truncated,
+    };
+  };
 
   try {
     const auth = getAuthManager(config);
     const accessToken = await auth.getAccessToken();
 
-    // Try direct APIs first (Docs, Sheets) before Drive API.
-    // These use sensitive scopes (documents.readonly, spreadsheets.readonly) that work
-    // even when the restricted drive.readonly scope is silently blocked by Google
-    // for unverified OAuth apps.
+    // Try direct APIs first (Docs, Sheets) before Drive API. These use
+    // sensitive scopes (documents.readonly, spreadsheets.readonly) that
+    // work even when the restricted drive.readonly scope is silently
+    // blocked by Google for unverified OAuth apps.
     if (isGoogleDocUrl(urlOrId)) {
-      const docsResult = await readViaDocsApi(docId, accessToken);
-      if (docsResult !== null) {
-        return docsResult;
+      const text = await readViaDocsApi(docId, accessToken);
+      if (text !== null) {
+        const { title, body } = splitHeadedString(text);
+        return okResult(title, body, 'application/vnd.google-apps.document', 'markdown');
       }
     } else if (isGoogleSheetsUrl(urlOrId)) {
-      const sheetsResult = await readViaSheetsApi(docId, accessToken);
-      if (sheetsResult !== null) {
-        return sheetsResult;
+      const text = await readViaSheetsApi(docId, accessToken);
+      if (text !== null) {
+        const { title, body } = splitHeadedString(text);
+        return okResult(title, body, 'application/vnd.google-apps.spreadsheet', 'csv');
       }
     }
 
-    // Fall through to Drive API for Drive file links, raw IDs, or if direct APIs failed
+    // Fall through to Drive API for Drive file links, raw IDs, or if
+    // the direct APIs returned null (non-200).
     const metadataResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${docId}?fields=name,mimeType,capabilities`,
       {
@@ -589,25 +655,41 @@ async function readGoogleDoc(
 
     if (!metadataResponse.ok) {
       if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        // Drive API may be blocked for unverified OAuth apps. Try direct
+        // APIs as a last-ditch fallback before telling the user we can't
+        // access the document.
         let driveError = '';
         try {
           const body = await metadataResponse.json() as { error?: { message?: string; errors?: Array<{ reason?: string }> } };
           driveError = body.error?.message || body.error?.errors?.[0]?.reason || '';
         } catch { /* ignore parse errors */ }
-        // Drive API may be blocked for unverified OAuth apps. Try direct APIs
-        // as a fallback before telling the user we can't access the document.
         logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: Drive API inaccessible, trying direct APIs');
-        const docsResult = await readViaDocsApi(docId, accessToken);
-        if (docsResult !== null) return docsResult;
-        const sheetsResult = await readViaSheetsApi(docId, accessToken);
-        if (sheetsResult !== null) return sheetsResult;
+
+        const docsText = await readViaDocsApi(docId, accessToken);
+        if (docsText !== null) {
+          const { title, body } = splitHeadedString(docsText);
+          return okResult(title, body, 'application/vnd.google-apps.document', 'markdown');
+        }
+        const sheetsText = await readViaSheetsApi(docId, accessToken);
+        if (sheetsText !== null) {
+          const { title, body } = splitHeadedString(sheetsText);
+          return okResult(title, body, 'application/vnd.google-apps.spreadsheet', 'csv');
+        }
 
         logger.warn({ status: metadataResponse.status, docId, driveError }, 'Google Docs: document inaccessible via all APIs');
-        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
+        return accessDenied();
       }
       const error = await metadataResponse.text();
       logger.error({ error, status: metadataResponse.status, docId }, 'Google Docs: Failed to get metadata');
-      throw new ToolError(`Failed to access document (${metadataResponse.status})`);
+      return {
+        status: 'error',
+        title: null,
+        body: null,
+        mime_type: null,
+        format: null,
+        message: `Failed to access document (HTTP ${metadataResponse.status})`,
+        truncated: false,
+      };
     }
 
     const metadata = await metadataResponse.json() as { name: string; mimeType: string };
@@ -615,30 +697,33 @@ async function readGoogleDoc(
 
     logger.debug({ docId, name, mimeType }, 'Google Docs: Retrieved metadata');
 
-    // Handle different file types
-    let exportMimeType = 'text/plain';
-    let exportFormat = 'text';
-
-    if (mimeType === 'application/vnd.google-apps.document') {
-      // Google Doc - export as markdown so inline formatting, headings,
-      // links, and lists survive into Addie's reply. `text/markdown` has
-      // been a supported Docs export since 2024.
-      exportMimeType = 'text/markdown';
-      exportFormat = 'md';
-    } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
-      // Google Sheet - export as CSV
-      exportMimeType = 'text/csv';
-      exportFormat = 'csv';
-    } else if (mimeType === 'application/vnd.google-apps.presentation') {
-      // Google Slides - export as plain text
-      exportMimeType = 'text/plain';
-      exportFormat = 'txt';
-    } else if (mimeType === 'application/pdf') {
-      return `This is a PDF file (${name}). I cannot read PDF content directly. If you need me to understand the content, please copy and paste the relevant text.`;
-    } else if (mimeType?.startsWith('image/')) {
-      return `This is an image file (${name}). I can see it was shared but cannot view image contents directly.`;
-    } else if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'application/json') {
-      // Direct download for text files
+    // Non-exportable types: return unsupported_type with the mime so the
+    // caller can decide what to do (Addie will ask the user to paste
+    // instead). We don't attempt OCR / PDF extraction here.
+    if (mimeType === 'application/pdf') {
+      return {
+        status: 'unsupported_type',
+        title: name,
+        body: null,
+        mime_type: mimeType,
+        format: null,
+        message: `This is a PDF file. I cannot read PDF content directly — please copy the relevant text and paste it.`,
+        truncated: false,
+      };
+    }
+    if (mimeType?.startsWith('image/')) {
+      return {
+        status: 'unsupported_type',
+        title: name,
+        body: null,
+        mime_type: mimeType,
+        format: null,
+        message: `This is an image file. I can see it was shared but cannot view image contents directly.`,
+        truncated: false,
+      };
+    }
+    if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'application/json') {
+      // Direct download for raw text files
       const downloadResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files/${docId}?alt=media`,
         {
@@ -648,19 +733,46 @@ async function readGoogleDoc(
       );
 
       if (!downloadResponse.ok) {
-        throw new ToolError(`Failed to download file (${downloadResponse.status})`);
+        return {
+          status: 'error',
+          title: name,
+          body: null,
+          mime_type: mimeType,
+          format: null,
+          message: `Failed to download file (HTTP ${downloadResponse.status})`,
+          truncated: false,
+        };
       }
 
       const content = await downloadResponse.text();
-      if (content.length > MAX_CONTENT_SIZE) {
-        return `**${name}**\n\n${content.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
-      }
-      return `**${name}**\n\n${content}`;
-    } else {
-      return `This is a ${mimeType || 'binary'} file (${name}). I cannot read the contents of this file type directly.`;
+      const format = mimeType === 'text/markdown' ? 'markdown' : 'text';
+      return okResult(name, content, mimeType, format);
     }
 
-    // Export Google Workspace files
+    // Google Workspace files — pick export mimeType and format.
+    let exportMimeType: string;
+    let format: 'markdown' | 'csv' | 'text';
+    if (mimeType === 'application/vnd.google-apps.document') {
+      exportMimeType = 'text/markdown';
+      format = 'markdown';
+    } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+      exportMimeType = 'text/csv';
+      format = 'csv';
+    } else if (mimeType === 'application/vnd.google-apps.presentation') {
+      exportMimeType = 'text/plain';
+      format = 'text';
+    } else {
+      return {
+        status: 'unsupported_type',
+        title: name,
+        body: null,
+        mime_type: mimeType,
+        format: null,
+        message: `This is a ${mimeType || 'binary'} file. I cannot read the contents of this file type directly.`,
+        truncated: false,
+      };
+    }
+
     const exportResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${docId}/export?mimeType=${encodeURIComponent(exportMimeType)}`,
       {
@@ -672,27 +784,84 @@ async function readGoogleDoc(
     if (!exportResponse.ok) {
       if (exportResponse.status === 404 || exportResponse.status === 403) {
         logger.warn({ status: exportResponse.status, docId }, 'Google Docs: export inaccessible');
-        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
+        return accessDenied();
       }
       const error = await exportResponse.text();
       logger.error({ error, status: exportResponse.status, docId }, 'Google Docs: Failed to export');
-      throw new ToolError(`Failed to export document (${exportResponse.status})`);
+      return {
+        status: 'error',
+        title: name,
+        body: null,
+        mime_type: mimeType,
+        format: null,
+        message: `Failed to export document (HTTP ${exportResponse.status})`,
+        truncated: false,
+      };
     }
 
     const content = await exportResponse.text();
-
-    if (content.length > MAX_CONTENT_SIZE) {
-      return `**${name}** (${exportFormat})\n\n${content.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
-    }
-
-    return `**${name}** (${exportFormat})\n\n${content}`;
+    return okResult(name, content, mimeType, format);
   } catch (error) {
     if (error instanceof ToolError) throw error;
     logger.error({ error, docId }, 'Google Docs: Unexpected error');
-    if (error instanceof Error) {
-      throw new ToolError(error.message);
+    const message = error instanceof Error ? error.message : 'Unknown error reading Google Doc';
+    return {
+      status: 'error',
+      title: null,
+      body: null,
+      mime_type: null,
+      format: null,
+      message,
+      truncated: false,
+    };
+  }
+}
+
+/**
+ * Parse a legacy `"# <Title>\n\n<body>"` or `"**<Name>**\n\n<body>"`
+ * string (emitted by `readViaDocsApi` / `readViaSheetsApi`) back into
+ * structured title + body. Used during the structured-result
+ * transition — when those two helpers are updated to return structure
+ * directly, this can go away.
+ */
+function splitHeadedString(text: string): { title: string; body: string } {
+  // `# Title\n\n<rest>` (Docs API converter output, see
+  // extractMarkdownFromDocsResponse)
+  const h1 = text.match(/^#\s+(.+?)\n\n([\s\S]*)$/);
+  if (h1) return { title: h1[1].trim(), body: h1[2] };
+  // `**Title** (csv)\n\n<rest>` (readViaSheetsApi output)
+  const bold = text.match(/^\*\*(.+?)\*\*(?:\s+\([^)]+\))?\n\n([\s\S]*)$/);
+  if (bold) return { title: bold[1].trim(), body: bold[2] };
+  return { title: 'Untitled', body: text };
+}
+
+/**
+ * Legacy string-returning facade over `readGoogleDocStructured`.
+ * Preserves the original API for internal callers that haven't been
+ * migrated yet (committee-document-indexer, content-curator). New
+ * code should call `readGoogleDocStructured` directly.
+ */
+async function readGoogleDoc(
+  urlOrId: string,
+  config: GoogleAuthConfig
+): Promise<string> {
+  const result = await readGoogleDocStructured(urlOrId, config);
+  switch (result.status) {
+    case 'invalid_input':
+      throw new ToolError(result.message ?? 'Invalid Google Docs URL');
+    case 'access_denied':
+    case 'unsupported_type':
+      return result.message ?? 'Unable to read document';
+    case 'error':
+      throw new ToolError(result.message ?? 'Error reading Google Doc');
+    case 'empty':
+      return `**${result.title ?? 'Untitled'}**\n\n(Document is empty)`;
+    case 'ok': {
+      const format = result.format && result.format !== 'markdown' ? ` (${result.format})` : '';
+      const head = `**${result.title ?? 'Untitled'}**${format}`;
+      const tail = result.truncated ? `\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]` : '';
+      return `${head}\n\n${result.body}${tail}`;
     }
-    throw new ToolError('Unknown error reading Google Doc');
   }
 }
 
@@ -702,7 +871,7 @@ async function readGoogleDoc(
 export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
   {
     name: 'read_google_doc',
-    description: `Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Google Docs return clean markdown with headings, bold/italic, links, lists, and tables preserved — safe to pass directly as the \`content\` field of \`propose_content\`. Sheets return CSV. If access is denied, respond with the returned message (it asks the user to share with ${ADDIE_EMAIL}).`,
+    description: `Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: \`{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }\`. Branch on \`status\` — do not try to sniff error text out of \`body\`. On \`ok\`, Google Docs return markdown ready to pass straight to \`propose_content\`'s \`content\` field; pair with \`title\`. On \`access_denied\`, relay \`message\` (asks the user to share with ${ADDIE_EMAIL}).`,
     usage_hints: 'use when user shares a docs.google.com or drive.google.com link, or asks "can you read this doc"',
     input_schema: {
       type: 'object',
@@ -716,6 +885,31 @@ export const GOOGLE_DOCS_TOOLS: AddieTool[] = [
     },
   },
 ];
+
+/**
+ * Cap the body field in the LLM-facing JSON so one doc can't dominate
+ * the context window. The inner 500KB cap in `readGoogleDocStructured`
+ * still applies for internal callers that want the full body.
+ */
+const LLM_BODY_CAP = 30000;
+
+/**
+ * Create a structured Google Docs reader for internal callers (jobs,
+ * services, curators) that want `GoogleDocResult` directly — without
+ * going through the LLM-facing JSON-string handler.
+ *
+ * Returns null if GOOGLE_* credentials are not configured; callers
+ * should branch on null to handle that case themselves.
+ */
+export function createGoogleDocsReader(): ((url: string) => Promise<GoogleDocResult>) | null {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  const config: GoogleAuthConfig = { clientId, clientSecret, refreshToken };
+  return (url: string) => readGoogleDocStructured(url, config);
+}
 
 // Track if we've already logged the missing credentials warning
 let credentialsWarningLogged = false;
@@ -752,14 +946,20 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
       const docId = extractDocId(url);
       logger.info({ docId }, 'Addie: Reading Google Doc');
 
-      const result = await readGoogleDoc(url, config);
+      const result = await readGoogleDocStructured(url, config);
 
-      // Truncate if too long
-      if (result.length > 15000) {
-        return result.substring(0, 15000) + '\n\n[Content truncated to 15,000 characters]';
+      // Cap body for LLM context — don't let one doc burn 30K+ tokens.
+      // Internal callers (committee-document-indexer, content-curator)
+      // hit the inner 500KB cap in readGoogleDocStructured and don't
+      // pass through this handler.
+      let body = result.body;
+      let truncated = result.truncated;
+      if (body && body.length > LLM_BODY_CAP) {
+        body = body.substring(0, LLM_BODY_CAP);
+        truncated = true;
       }
 
-      return result;
+      return JSON.stringify({ ...result, body, truncated });
     },
   };
 }
