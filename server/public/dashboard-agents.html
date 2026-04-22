@@ -942,15 +942,15 @@
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                ${!hasAuth ? '<button class="agent-connect-toggle agent-action-link" data-card-id="' + cardId + '" data-agent-url="' + escapeHtml(agent.url) + '">Connect agent</button>' : ''}
+                <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
                 <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
               </div>
             </div>
-            ${!hasAuth ? '<div id="' + cardId + '-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">' +
-              buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id) +
-              '</div>' : ''}
+            <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
+              ${buildConnectForm(escapeHtml(agent.url), platformTypeOptions, authInfo?.agent_context_id)}
+            </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
             <div class="agent-requests-panel" id="${cardId}-requests" style="display:none;"></div>
