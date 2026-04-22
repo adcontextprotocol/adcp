@@ -96,6 +96,13 @@
         "3. For each asset in manifest, look up asset_id in format's assets array",
         "4. Validate asset matches the type and requirements defined in the format"
       ]
+    },
+    "nested_discriminator_pattern": {
+      "description": "Asset schemas with internal variants (e.g., VAST and DAAST support both URL-delivery and inline XML) use a two-level discriminator rather than splitting each variant into a separate top-level asset_type. The outer discriminator (`asset_type` on the composite map) selects the asset schema; an inner `oneOf` + `discriminator` inside that schema selects the variant. Future asset types with internal variants should follow this pattern — do not introduce sibling entries like `vast_url` and `vast_inline` at the registry level.",
+      "examples": [
+        "vast-asset.json: outer asset_type='vast', inner delivery_type='url'|'inline'",
+        "daast-asset.json: outer asset_type='daast', inner delivery_type='url'|'inline'"
+      ]
     }
   },
   "usage_notes": {
