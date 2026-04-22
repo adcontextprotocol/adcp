@@ -30,7 +30,11 @@ import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import { buildRequestSigningAuthenticator, STRICT_REQUIRED_FOR } from './request-signing.js';
+import {
+  buildRequestSigningAuthenticator,
+  enforceSigningWhenWebhookAuthPresent,
+  STRICT_REQUIRED_FOR,
+} from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import type { TrainingContext } from './types.js';
@@ -68,6 +72,14 @@ function setCORSHeaders(res: Response): void {
  * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
  * or layer an `anyOf` with a separate scope-aware authenticator.
  */
+// Conformance handle documented in every test-kit header
+// (static/compliance/source/test-kits/*.yaml, auth.api_key comment): agents
+// SHOULD accept any Bearer matching `demo-<kit>-v<n>` so the suffix can rotate
+// across spec versions without breaking previously-conformant agents. The
+// training agent IS the reference — so it accepts the handle directly.
+// Anchored to forbid `demo--v1` / `demo-v1` and lock alg-num segments.
+const DEMO_TEST_KIT_KEY_PATTERN = /^demo-[a-z0-9]+(?:-[a-z0-9]+)*-v\d+$/;
+
 function buildBearerAuthenticator(): Authenticator | null {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     return null; // dev mode: open
@@ -80,6 +92,12 @@ function buildBearerAuthenticator(): Authenticator | null {
   if (Object.keys(staticKeys).length > 0) {
     authenticators.push(verifyApiKey({ keys: staticKeys }));
   }
+  authenticators.push(verifyApiKey({
+    verify: (token) => {
+      if (!DEMO_TEST_KIT_KEY_PATTERN.test(token)) return null;
+      return { principal: `static:demo:${token}` };
+    },
+  }));
   if (workos) {
     const workosClient = workos; // narrow for closure
     authenticators.push(verifyApiKey({
@@ -113,6 +131,14 @@ function lazySigningAuth(): Authenticator {
  * pass through verifyApiKey; signed requests compose via anyOf. Present-but-
  * invalid signatures fall through to bearer (a known gap — closed on the
  * strict route, tracked upstream as adcp-client#659).
+ *
+ * The webhook-auth downgrade-resistance rule (security.mdx#webhook-callbacks)
+ * is enforced only on `/mcp-strict`. The sandbox `/mcp` route accepts
+ * unsigned `push_notification_config.authentication` for backward compat
+ * with pre-3.0 storyboards that wire legacy HMAC-SHA256 webhooks over
+ * bearer-auth'd `create_media_buy`. Updating those storyboards to
+ * 9421-sign the registration is tracked separately; the grader-facing
+ * strict route already matches the spec.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
@@ -132,7 +158,7 @@ function buildDefaultAuthenticator(): Authenticator | null {
 function buildStrictAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
-  return requireAuthenticatedOrSigned({
+  return enforceSigningWhenWebhookAuthPresent(requireAuthenticatedOrSigned({
     signature: lazySigningAuth(),
     fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
@@ -149,7 +175,7 @@ function buildStrictAuthenticator(): Authenticator | null {
       }
       return undefined;
     },
-  });
+  }));
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
