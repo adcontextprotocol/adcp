@@ -304,10 +304,10 @@
 #     builder, so it round-trips the captured value to the wire.
 #   - Document the workaround inline. Each `context_inputs` entry is a
 #     temporary bridge until the upstream builder is fixed; the comment
-#     should name the SDK gap and the upstream issue. See
+#     should name the SDK gap and the upstream PR. See
 #     `static/compliance/source/protocols/media-buy/index.yaml`
 #     (`list_formats_integrity` step) for a worked example tied to
-#     adcontextprotocol/adcp-client#797.
+#     adcontextprotocol/adcp-client#789.
 #
 # validations: array of Validation objects (optional)
 #

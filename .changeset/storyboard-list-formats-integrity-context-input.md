@@ -12,8 +12,8 @@ assertion then fails on a coincidence (`display_static` ≠ the captured
 format. The training-agent's filter logic was already correct.
 
 Use the runner's `context_inputs` (applied after the builder) to inject the
-captured `{agent_url, id}` object at `format_ids[0]`. Drop once
-adcontextprotocol/adcp-client#797 ships and we bump the SDK pin.
+captured `{agent_url, id}` object at `format_ids[0]`. Drop once we bump past
+the @adcp/client release that ships adcontextprotocol/adcp-client#789.
 
 Second sub-issue from #2848 (`creative_fate_after_cancellation` sync_creatives
 shape) was already addressed by #2867 / #2850.
