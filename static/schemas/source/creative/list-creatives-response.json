@@ -84,10 +84,10 @@
           },
           "assets": {
             "type": "object",
-            "description": "Assets for this creative, keyed by asset_id",
+            "description": "Assets for this creative, keyed by asset_id. Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
             "patternProperties": {
               "^[a-z0-9_]+$": {
-                "anyOf": [
+                "oneOf": [
                   { "$ref": "/schemas/core/assets/image-asset.json" },
                   { "$ref": "/schemas/core/assets/video-asset.json" },
                   { "$ref": "/schemas/core/assets/audio-asset.json" },
@@ -102,7 +102,10 @@
                   { "$ref": "/schemas/core/assets/markdown-asset.json" },
                   { "$ref": "/schemas/core/assets/brief-asset.json" },
                   { "$ref": "/schemas/core/assets/catalog-asset.json" }
-                ]
+                ],
+                "discriminator": {
+                  "propertyName": "asset_type"
+                }
               }
             },
             "additionalProperties": true
@@ -335,11 +338,13 @@
             "updated_date": "2026-02-20T09:30:00Z",
             "assets": {
               "banner_image": {
+                "asset_type": "image",
                 "url": "https://cdn.example.com/holiday_300x250.png",
                 "width": 300,
                 "height": 250
               },
               "clickthrough_url": {
+                "asset_type": "url",
                 "url": "https://acmecorp.example.com/holiday-sale"
               }
             },
@@ -376,11 +381,13 @@
             "updated_date": "2026-02-20T09:35:00Z",
             "assets": {
               "banner_image": {
+                "asset_type": "image",
                 "url": "https://cdn.example.com/holiday_728x90.png",
                 "width": 728,
                 "height": 90
               },
               "clickthrough_url": {
+                "asset_type": "url",
                 "url": "https://acmecorp.example.com/holiday-sale"
               }
             },

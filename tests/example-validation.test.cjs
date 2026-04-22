@@ -142,7 +142,15 @@ const exampleData = {
     "creative_id": "hero_video_30s",
     "name": "Nike Air Max Hero 30s",
     "format_id": { "agent_url": "https://creative.example.com", "id": "video_16x9_30s" },
-    "assets": { "main_video": { "type": "video", "url": "https://cdn.example.com/hero_30s.mp4" } }
+    "assets": {
+      "main_video": {
+        "asset_type": "video",
+        "url": "https://cdn.example.com/hero_30s.mp4",
+        "width": 1920,
+        "height": 1080,
+        "duration_ms": 30000
+      }
+    }
   },
   
   targeting: {

@@ -602,10 +602,6 @@ phases:
           - status: recorded
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
           outcome:
@@ -666,11 +662,8 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          plan_id: "$context.plan_id"
+          plan_ids:
+            - "$context.plan_id"
 
           context:
             correlation_id: "media_buy_governance_escalation--get_plan_audit_logs"

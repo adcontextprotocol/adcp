@@ -119,6 +119,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080,
@@ -130,6 +131,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080,
@@ -143,6 +145,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/video-asset.json',
     {
+      asset_type: 'video',
       url: 'https://example.com/video.mp4',
       width: 1920,
       height: 1080
@@ -157,6 +160,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.png',
       width: 300,
       height: 250,
@@ -168,6 +172,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.jpg',
       width: 728,
       height: 90,
@@ -180,6 +185,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/assets/image-asset.json',
     {
+      asset_type: 'image',
       url: 'https://example.com/image.webp',
       width: 300,
       height: 250

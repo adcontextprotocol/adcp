@@ -409,6 +409,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2"
                   objective: "conversion"
                   tone: "Bold, adventurous, urgent"
@@ -435,6 +436,7 @@ phases:
                 id: "video_30s_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2 - Video"
                   objective: "awareness"
                   tone: "Cinematic, energetic"
@@ -561,6 +563,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Test brief"
                   objective: "awareness"
                   tone: "Neutral"
@@ -631,6 +634,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2"
                   objective: "conversion"
                   tone: "Bold, adventurous, urgent"
@@ -644,6 +648,7 @@ phases:
                 id: "video_30s_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2 - Video"
                   objective: "awareness"
                   tone: "Cinematic, energetic"

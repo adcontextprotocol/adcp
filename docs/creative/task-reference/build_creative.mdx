@@ -85,6 +85,7 @@ For pure generation, provide a minimal source manifest with the required input a
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "items": [
           {
@@ -189,9 +190,11 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
     },
     "assets": {
       "ad_tag": {
+        "asset_type": "javascript",
         "content": "<script src=\"https://cdn.example.com/frameworks/js/sdk.js\"></script><script>AdSDK.createBanner({clickTag:'https://publisher.example.com/click/abc123',width:300,height:250,id:'ft_88201_{CACHEBUSTER}'});</script>"
       },
       "clickthrough_url": {
+        "asset_type": "url",
         "url": "https://acmecorp.example.com/holiday-sale?campaign={MEDIA_BUY_ID}"
       }
     }
@@ -394,6 +397,7 @@ When the request uses `target_format_id`, the response contains a single creativ
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "catalog_id": "winter-sale"
       },
@@ -603,6 +607,7 @@ Generate a creative from scratch using a generative format:
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "items": [
           {
@@ -628,6 +633,7 @@ Generate a creative from scratch using a generative format:
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "catalog_id": "winter-sale"
       },
@@ -807,6 +813,7 @@ Generate a creative using structured campaign context via `brand` and a brief as
     },
     "assets": {
       "brief": {
+        "asset_type": "brief",
         "name": "Holiday Sale 2025",
         "objective": "conversion",
         "audience": "Holiday gift shoppers aged 25-55",
@@ -828,6 +835,7 @@ Generate a creative using structured campaign context via `brand` and a brief as
         ]
       },
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "items": [
           {
@@ -865,6 +873,7 @@ Generate a financial services creative with regulatory disclosures and prohibite
     },
     "assets": {
       "brief": {
+        "asset_type": "brief",
         "name": "Retirement Advisory Q1 2026",
         "objective": "consideration",
         "audience": "Pre-retirees aged 50-65 with investable assets",
@@ -939,6 +948,7 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
     },
     "assets": {
       "brief": {
+        "asset_type": "brief",
         "name": "Spring Sale 2026",
         "objective": "conversion",
         "audience": "Value-conscious shoppers aged 25-45",
@@ -960,6 +970,7 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
         }
       },
       "product_catalog": {
+        "asset_type": "catalog",
         "type": "product",
         "catalog_id": "spring_sale_2026"
       }
@@ -998,6 +1009,7 @@ Build a creative and get preview renders in the same response:
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "items": [
           {
@@ -1023,6 +1035,7 @@ Build a creative and get preview renders in the same response:
     },
     "assets": {
       "offering_catalog": {
+        "asset_type": "catalog",
         "type": "offering",
         "catalog_id": "spring-promo"
       },
@@ -1100,6 +1113,7 @@ Generate a draft-quality creative from a large catalog, capping the number of it
     },
     "assets": {
       "product_catalog": {
+        "asset_type": "catalog",
         "type": "product",
         "catalog_id": "spring_sale_2026"
       }
@@ -1121,6 +1135,7 @@ The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4
     },
     "assets": {
       "product_catalog": {
+        "asset_type": "catalog",
         "type": "product",
         "catalog_id": "spring_sale_2026"
       },

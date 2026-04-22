@@ -328,6 +328,7 @@ async function runTests() {
       },
       "assets": {
         "brief": {
+          "asset_type": "brief",
           "name": "Holiday Sale 2025",
           "objective": "conversion",
           "compliance": {
@@ -351,11 +352,13 @@ async function runTests() {
       },
       "assets": {
         "product_catalog": {
+          "asset_type": "catalog",
           "type": "product",
           "catalog_id": "winter-products",
           "tags": ["beverage"]
         },
         "banner_image": {
+          "asset_type": "image",
           "url": "https://cdn.example.com/banner.jpg",
           "width": 300,
           "height": 250
@@ -610,8 +613,8 @@ async function runTests() {
           "creative_manifest": {
             "format_id": { "agent_url": "https://streamhaus.example", "id": "sponsored_recommendation" },
             "assets": {
-              "headline": { "content": "Built for rocky trails" },
-              "body": { "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
+              "headline": { "asset_type": "text", "content": "Built for rocky trails" },
+              "body": { "asset_type": "text", "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
             }
           }
         }

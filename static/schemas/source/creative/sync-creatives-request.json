@@ -131,6 +131,7 @@
             },
             "assets": {
               "video": {
+                "asset_type": "video",
                 "url": "https://cdn.example.com/hero-video.mp4",
                 "width": 1920,
                 "height": 1080,
@@ -172,10 +173,12 @@
             },
             "assets": {
               "product_catalog": {
+                "asset_type": "catalog",
                 "type": "product",
                 "catalog_id": "winter-products"
               },
               "generation_prompt": {
+                "asset_type": "text",
                 "content": "Create a warm, festive holiday campaign featuring winter products"
               }
             },
@@ -208,6 +211,7 @@
             },
             "assets": {
               "video": {
+                "asset_type": "video",
                 "url": "https://cdn.example.com/updated-hero.mp4",
                 "width": 1920,
                 "height": 1080,
@@ -224,6 +228,7 @@
             },
             "assets": {
               "image": {
+                "asset_type": "image",
                 "url": "https://cdn.example.com/updated-banner.png",
                 "width": 300,
                 "height": 250

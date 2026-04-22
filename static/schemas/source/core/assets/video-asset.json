@@ -5,6 +5,11 @@
   "description": "Video asset with URL and technical specifications including audio track properties",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "video",
+      "description": "Discriminator identifying this as a video asset. See /schemas/creative/asset-types for the registry."
+    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -150,6 +155,7 @@
     }
   },
   "required": [
+    "asset_type",
     "url",
     "width",
     "height"

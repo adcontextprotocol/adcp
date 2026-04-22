@@ -426,6 +426,7 @@ phases:
                   value: "NOVA0042000H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
                   width: 1920
                   height: 1080
@@ -442,6 +443,7 @@ phases:
                   value: "NOVA0042001H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
                   width: 1920
                   height: 1080
