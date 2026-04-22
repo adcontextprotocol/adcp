@@ -49,7 +49,7 @@ serve(MySeller(), name="my-seller")
 Response builders (`adcp.server.responses`) handle schema compliance so you don't construct raw JSON. Use them for every tool return.
 
 - [PyPI Package](https://pypi.org/project/adcp/)
-- [GitHub Repository](https://github.com/adcontextprotocol/adcp-python)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
 </Tab>
 <Tab title="Go">
 ```bash
@@ -90,7 +90,7 @@ Each SDK ships skills that walk a coding agent through building a specific agent
 For example, the JS/TS seller skill lives at [`adcp-client/skills/build-seller-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent). Skill coverage and naming vary per language since each SDK includes implementation guidance specific to its stack. Browse the directory for your language:
 
 - **JS/TS** — [adcp-client/skills](https://github.com/adcontextprotocol/adcp-client/tree/main/skills)
-- **Python** — [adcp-python/skills](https://github.com/adcontextprotocol/adcp-python/tree/main/skills)
+- **Python** — [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills)
 - **Go** — [adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills)
 
 ### Which domain and specialisms do you claim?
@@ -121,10 +121,10 @@ Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skill
 </Tab>
 <Tab title="Python">
 ```
-Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-python/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client-python/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
 ```
 
-Point at the `adcp-python` skill for your agent type. If the exact skill isn't there yet, browse [adcp-python/skills](https://github.com/adcontextprotocol/adcp-python/tree/main/skills) for the closest match.
+Point at the `adcp-client-python` skill for your agent type. If the exact skill isn't there yet, browse [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills) for the closest match.
 </Tab>
 <Tab title="Go">
 ```
@@ -197,7 +197,7 @@ The JS/TS SDK includes documentation designed for both humans and coding agents:
 | Protocol spec | `node_modules/@adcp/client/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
 | Server guide | `node_modules/@adcp/client/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
 
-Python and Go equivalents are in each SDK's GitHub repository. See [adcp-python](https://github.com/adcontextprotocol/adcp-python) and [adcp-go](https://github.com/adcontextprotocol/adcp-go).
+Python and Go equivalents are in each SDK's GitHub repository. See [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) and [adcp-go](https://github.com/adcontextprotocol/adcp-go).
 
 ## What's next
 

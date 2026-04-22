@@ -113,17 +113,21 @@ Here's a complete creative manifest showing the current structure without redund
   },
   "assets": {
     "banner_image": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/banner.jpg",
       "width": 300,
       "height": 250
     },
     "headline": {
+      "asset_type": "text",
       "content": "Nutrition Dogs Love"
     },
     "description": {
+      "asset_type": "text",
       "content": "Made with real chicken and wholesome grains"
     },
     "clickthrough_url": {
+      "asset_type": "url",
       "url": "https://acmecorp.example.com/products/premium-dog-food?campaign={MEDIA_BUY_ID}",
       "description": "Product landing page"
     }
@@ -131,7 +135,7 @@ Here's a complete creative manifest showing the current structure without redund
 }
 ```
 
-**Note**: Asset types (`image`, `text`, `url`) are **not** declared in the manifest. They are determined by looking up each `asset_id` in the format specification's `assets` array. The format tells us that `banner_image` should be type `image`, `headline` should be type `text`, etc.
+**Note**: Each asset carries an `asset_type` discriminator (`image`, `text`, `url`, etc. — see [asset types](/docs/creative/asset-types)). This lets validators select the matching asset schema and report errors against only the chosen branch instead of all 14. The format specification also declares the expected `asset_type` for each `asset_id`; manifest and format should agree.
 
 ## Types of Creative Manifests
 
@@ -150,23 +154,28 @@ Static manifests contain all assets ready for immediate rendering. These are pro
   },
   "assets": {
     "hero_image": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/hero.jpg",
       "width": 1200,
       "height": 627,
       "alt_text": "Product image"
     },
     "logo": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/logo.png",
       "width": 100,
       "height": 100
     },
     "headline": {
+      "asset_type": "text",
       "content": "Premium Quality You Can Trust"
     },
     "description": {
+      "asset_type": "text",
       "content": "Discover why veterinarians recommend our formula"
     },
     "cta_text": {
+      "asset_type": "text",
       "content": "Learn More"
     }
   }
@@ -192,6 +201,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
   },
   "assets": {
     "dynamic_content": {
+      "asset_type": "webhook",
       "url": "https://creative-agent.example.com/render/campaign-123",
       "method": "POST",
       "timeout_ms": 500,
@@ -203,6 +213,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
       }
     },
     "fallback_image": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/fallback-300x250.jpg",
       "width": 300,
       "height": 250
@@ -273,11 +284,13 @@ Construct manifests directly by pairing format requirements with your assets:
   },
   "assets": {
     "hero_image": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/salmon-hero.jpg",
       "width": 1200,
       "height": 627
     },
     "headline": {
+      "asset_type": "text",
       "content": "New Premium Salmon Formula"
     }
   }

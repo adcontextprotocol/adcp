@@ -602,21 +602,17 @@ phases:
           - status: recorded
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
           governance_context: "gov_ctx_acme_q2_approved"
-          outcome:
-            type: "media_buy_created"
-            media_buy_id: "$context.media_buy_id"
-            total_budget: 50000
+          outcome: "completed"
+          seller_response:
+            seller_reference: "$context.media_buy_id"
+            committed_budget: 50000
             packages:
-              - product_id: "sports_ctv_q2"
-                budget: 30000
-              - product_id: "outdoor_video_q2"
-                budget: 20000
+              - package_id: "pkg_sports_ctv_q2"
+                committed_budget: 30000
+              - package_id: "pkg_outdoor_video_q2"
+                committed_budget: 20000
 
           idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_report_outcome_report_plan_outcome"
           context:
@@ -666,11 +662,8 @@ phases:
           - Each entry includes: timestamp, event_type, actor, decision, details
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          plan_id: "$context.plan_id"
+          plan_ids:
+            - "$context.plan_id"
 
           context:
             correlation_id: "media_buy_governance_escalation--get_plan_audit_logs"

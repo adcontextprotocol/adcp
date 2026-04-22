@@ -169,7 +169,7 @@ But Sam isn't done. He likes StreamHaus's sports package but wants to shift budg
   "refine": [
     {
       "scope": "product",
-      "id": "streamhaus_sports_ctv_q2",
+      "product_id": "streamhaus_sports_ctv_q2",
       "action": "more_like_this",
       "ask": "More CTV inventory like this, willing to go up to $35 CPM"
     },
@@ -238,7 +238,7 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
       "name": "Acme Summer CTV 30s",
       "format_id": { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" },
       "assets": {
-        "video": { "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
+        "video": { "asset_type": "video", "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
       }
     }
   ]
@@ -693,7 +693,7 @@ go get github.com/adcontextprotocol/adcp-go/adcp
 </CodeGroup>
 
 - **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
-- **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-python)
+- **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-client-python)
 - **Go**: [adcp-go](https://github.com/adcontextprotocol/adcp-go)
 
 ## Open-source examples

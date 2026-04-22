@@ -101,6 +101,7 @@ import {
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
+import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
@@ -861,6 +862,29 @@ async function createUserScopedTools(
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Re-register Google Docs tools with user context for per-user rate
+  // limiting (see tool-rate-limiter.ts). The boot-time registration
+  // remains as a fallback; this per-request copy shadows whenever
+  // we have a user id (requestTools beats this.toolHandlers in the
+  // claude-client merge at line 531).
+  const userIdForRateLimit = memberContext?.workos_user?.workos_user_id ?? null;
+  const scopedGoogleDocsHandlers = createGoogleDocsToolHandlers(userIdForRateLimit);
+  if (scopedGoogleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = scopedGoogleDocsHandlers[tool.name];
+      if (handler) allHandlers.set(tool.name, handler);
+    }
+  }
+
+  // Register illustration tools (#2783). Self-gated on author
+  // permission + monthly quota + the 10/10min tool-rate-limit
+  // added in #2755.
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Add billing tools for all users (membership signup assistance)
   // Skip in public channels — billing tools enable enrollment pitching

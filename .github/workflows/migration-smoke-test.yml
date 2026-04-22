@@ -55,8 +55,8 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Build
-        run: npm run build
+      - name: Compile server (tsc only — no schemas/compliance/tarball)
+        run: npx tsc --project server/tsconfig.json
 
       - name: Stage migrations into dist
         run: |

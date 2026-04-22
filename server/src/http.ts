@@ -28,7 +28,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
@@ -3669,6 +3669,22 @@ export class HTTPServer {
                     org.workos_organization_id,
                   ]
                 );
+
+                // Enforce the visibility gate for any tier change, including
+                // full cancellation (new tier becomes null). The helper is a
+                // no-op when the new tier still has API access.
+                if (oldTier && oldTier !== subUpdate.membership_tier) {
+                  const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
+                  try {
+                    await demotePublicAgentsOnTierDowngrade(
+                      org.workos_organization_id,
+                      oldTier as MembershipTier,
+                      (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                    );
+                  } catch (err) {
+                    logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to demote public agents on tier downgrade');
+                  }
+                }
 
                 // Detect tier change and notify admins
                 if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {

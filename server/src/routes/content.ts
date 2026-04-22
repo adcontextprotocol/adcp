@@ -12,6 +12,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
+import { contentProposeRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
@@ -29,6 +30,48 @@ import { createIllustration, approveIllustration } from '../db/illustration-db.j
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 
 const logger = createLogger('content-routes');
+
+/**
+ * In-process per-user submission rate tracker.
+ *
+ * The HTTP `contentProposeRateLimiter` middleware bounds submissions
+ * through `POST /api/content/propose`, but Addie's `propose_content`
+ * MCP tool and a few internal services call `proposeContentForUser`
+ * directly to bypass HTTP auth. That leaves the function-level entry
+ * unprotected — a prompt-injected or looping Addie session could flood
+ * the editorial queue and the downstream Slack + Gemini fan-out.
+ *
+ * This tracker mirrors the HTTP limiter (20 per 10 min per user) for
+ * every caller of `proposeContentForUser`. System users (`system:*`
+ * prefix — newsletter pipelines, digest publisher) are exempt because
+ * they're automated pipelines that legitimately submit on a cadence.
+ */
+const PROPOSE_WINDOW_MS = 10 * 60 * 1000;
+const PROPOSE_MAX_PER_WINDOW = 20;
+const proposeHistory = new Map<string, number[]>();
+
+function checkProposeRateLimit(userId: string): { ok: true } | { ok: false; retryAfterMs: number } {
+  if (userId.startsWith('system:')) return { ok: true };
+  const now = Date.now();
+  const cutoff = now - PROPOSE_WINDOW_MS;
+  const history = (proposeHistory.get(userId) ?? []).filter(t => t > cutoff);
+  if (history.length >= PROPOSE_MAX_PER_WINDOW) {
+    return { ok: false, retryAfterMs: history[0] + PROPOSE_WINDOW_MS - now };
+  }
+  history.push(now);
+  proposeHistory.set(userId, history);
+  // Opportunistic GC — if we've accumulated entries for many users,
+  // prune ones with no recent activity. Cheap: runs once per call when
+  // the map is large.
+  if (proposeHistory.size > 1000) {
+    for (const [key, entries] of proposeHistory) {
+      const recent = entries.filter(t => t > cutoff);
+      if (recent.length === 0) proposeHistory.delete(key);
+      else proposeHistory.set(key, recent);
+    }
+  }
+  return { ok: true };
+}
 
 interface ContentAuthor {
   user_id: string;
@@ -334,6 +377,18 @@ export async function proposeContentForUser(
     authors,
     status: requestedStatus,
   } = request;
+
+  // Per-user rate check — bounds every entry path to proposeContentForUser,
+  // including Addie's MCP tool handler that bypasses HTTP middleware.
+  const rate = checkProposeRateLimit(user.id);
+  if (!rate.ok) {
+    const retrySeconds = Math.max(1, Math.ceil(rate.retryAfterMs / 1000));
+    logger.warn({ userId: user.id, retrySeconds }, 'proposeContentForUser rate-limited');
+    return {
+      success: false,
+      error: `Submission rate limit exceeded (${PROPOSE_MAX_PER_WINDOW} per ${PROPOSE_WINDOW_MS / 60000} minutes). Try again in ${retrySeconds} seconds.`,
+    };
+  }
 
   // Validate required fields
   if (!title) {
@@ -965,7 +1020,7 @@ export function createContentRouter(): Router {
   });
 
   // POST /api/content/propose - Submit content to any collection
-  router.post('/propose', requireAuth, async (req, res) => {
+  router.post('/propose', requireAuth, contentProposeRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
       const result = await proposeContentForUser(
@@ -1556,8 +1611,11 @@ export function createMyContentRouter(): Router {
           values.push(content_origin);
         }
       }
-      // Allow status changes: members can resubmit rejected→pending_review, or draft↔pending_review
-      // Admins can set any status
+      // Allow status changes: members can move their own drafts between
+      // draft ↔ pending_review. Moving out of a terminal state (rejected
+      // or archived) is gated to admins or the lead of the item's own
+      // committee — otherwise an unrelated co-author could resurrect a
+      // rejected item without going through the rejecter (see #2713).
       if (requestedStatus !== undefined) {
         const allowedStatuses = ['draft', 'pending_review', 'published', 'archived'];
         if (allowedStatuses.includes(requestedStatus)) {
@@ -1566,6 +1624,21 @@ export function createMyContentRouter(): Router {
             return res.status(403).json({
               error: 'Permission denied',
               message: 'Only admins can set this status',
+            });
+          }
+          // Moving out of `rejected` or `archived` requires admin or the
+          // lead of the item's committee. Prevents a co-author on an
+          // unrelated committee from resurrecting a rejected item.
+          const currentStatus = contentItem.status as string;
+          if (
+            (currentStatus === 'rejected' || currentStatus === 'archived')
+            && requestedStatus !== currentStatus
+            && !userIsAdmin
+            && !userIsLead
+          ) {
+            return res.status(403).json({
+              error: 'Permission denied',
+              message: `Only an admin or a lead of this item's committee can move it out of ${currentStatus}`,
             });
           }
           updates.push(`status = $${paramIndex++}`);

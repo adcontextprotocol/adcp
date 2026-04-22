@@ -361,11 +361,11 @@ SI sessions have explicit lifecycle management.
 
 ### Initiate Session
 
-Host → Brand, including context, capabilities, identity (if consented), and any active offer from the media buy:
+Host → Brand, including the user intent, capabilities, identity (if consented), and any active offer from the media buy:
 
 ```json
 {
-  "context": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
+  "intent": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
   "identity": {
     "consent_granted": true,
     "user": {
@@ -381,7 +381,7 @@ Host → Brand, including context, capabilities, identity (if consented), and an
 }
 ```
 
-The `context` is a conversation handoff - the host tells the brand agent what the user needs, and the brand agent responds naturally. The `offering_id` references a campaign promotion (like free upgrades on eligible flights) that the brand knows how to apply.
+The `intent` is the conversation handoff — the host tells the brand agent what the user needs in natural language, and the brand agent responds naturally. The `offering_id` references a campaign promotion (like free upgrades on eligible flights) that the brand knows how to apply.
 
 **Frequent flyer and loyalty data**: The brand looks this up from the user's email - hosts don't store loyalty numbers. Delta recognizes `jane@example.com` and retrieves her SkyMiles status automatically.
 

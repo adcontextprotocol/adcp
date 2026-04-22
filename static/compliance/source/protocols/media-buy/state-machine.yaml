@@ -151,6 +151,10 @@ phases:
           - status: active
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
           start_time: "2026-05-01T00:00:00Z"

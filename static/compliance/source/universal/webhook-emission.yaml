@@ -146,6 +146,12 @@ phases:
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_trigger
         stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_webhook_operation}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_webhook_operation"
         expected: |
           Agent accepts the request and begins async execution. Response either
           returns an immediate terminal status (no webhook needed) or an
@@ -203,6 +209,12 @@ phases:
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_retry_trigger
         stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_retry_scenario}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_retry_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_retry_scenario"
         expected: |
           Agent accepts the request and begins async execution. The webhook
           it emits will be rejected with 503 by the runner and retried.
@@ -273,6 +285,12 @@ phases:
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_signed_trigger
         stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_signed_webhook}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_signed_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_signed_webhook"
         expected: |
           Agent accepts the request; the webhook it emits will carry
           Signature-Input, Signature, and Content-Digest headers per the

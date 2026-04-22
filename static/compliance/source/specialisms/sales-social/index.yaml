@@ -447,10 +447,11 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website"
           events:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
-              timestamp: "2026-04-05T14:30:00Z"
+              event_time: "2026-04-05T14:30:00Z"
               value: 149.99
               currency: "USD"
 

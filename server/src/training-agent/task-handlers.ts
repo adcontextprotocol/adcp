@@ -718,6 +718,20 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook destination for async completion notification. RFC 9421 signed by default; HMAC-SHA256 fallback when authentication is populated.',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            authentication: {
+              type: 'object',
+              properties: {
+                schemes: { type: 'array', items: { type: 'string' } },
+                credentials: { type: 'string' },
+              },
+            },
+          },
+        },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -1023,7 +1037,20 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   }
 
   // Refine mode: apply include/omit/more_like_this/finalize
-  const refinementApplied: Array<{ status: string; notes?: string }> = [];
+  type RefineEntry =
+    | { scope: 'request'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
+
+  type RefinementAppliedEntry = {
+    scope: 'request' | 'product' | 'proposal';
+    product_id?: string;
+    proposal_id?: string;
+    status: 'applied' | 'partial' | 'unable';
+    notes?: string;
+  };
+
+  const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
@@ -1031,14 +1058,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
-    for (const op of req.refine) {
+    const askAckNotes = (ask?: string) =>
+      ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
+
+    for (const op of req.refine as unknown as RefineEntry[]) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') { omitIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        else if (op.action === 'include') { includeIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        // more_like_this: include the product plus similar channel products
-        else if (op.action === 'more_like_this') {
-          includeIds.add(op.id);
-          const source = previousProducts.find(p => p.product_id === op.id);
+        const action = op.action ?? 'include';
+        if (action === 'omit') {
+          omitIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
+        } else if (action === 'include') {
+          includeIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'more_like_this') {
+          includeIds.add(op.product_id);
+          const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of getCatalog()) {
@@ -1047,32 +1081,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               }
             }
           }
-          refinementApplied.push({ status: 'applied' });
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         }
       } else if (op.scope === 'proposal') {
-        const proposalOp = op as { scope: 'proposal'; id: string; action: string; ask?: string };
-        const proposal = previousProposals.find(p => p.proposal_id === proposalOp.id);
+        const action = op.action ?? 'include';
+        const proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
         if (!proposal) {
-          refinementApplied.push({ status: 'unable', notes: `Proposal not found: ${proposalOp.id}` });
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
           continue;
         }
-        if (proposalOp.action === 'omit') {
-          proposalOmitIds.add(proposalOp.id);
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'include') {
-          // Include is a no-op for proposals already in the response
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'finalize') {
+        if (action === 'omit') {
+          proposalOmitIds.add(op.proposal_id);
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
+        } else if (action === 'include') {
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
-            refinementApplied.push({ status: 'applied', notes: 'Proposal already committed' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
           } else if (status === 'draft') {
-            // Transition draft → committed: firm pricing, inventory hold, IO
             const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
             committed.proposal_status = 'committed';
-            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h hold
+            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-            // Attach insertion order for proposals with guaranteed products
             const hasGuaranteed = proposal.allocations.some(alloc => {
               const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
               return cp?.product.delivery_type === 'guaranteed';
@@ -1098,12 +1129,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               };
             }
 
-            // Update proposal in session context
             if (!session.lastGetProductsContext) {
               session.lastGetProductsContext = { products: [...products], proposals: [] };
             }
             const sessionProposals = session.lastGetProductsContext.proposals || [];
-            const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
+            const idx = sessionProposals.findIndex(p => p.proposal_id === op.proposal_id);
             const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
             if (idx >= 0) {
               sessionProposals[idx] = updatedProposal;
@@ -1112,14 +1142,13 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             }
             session.lastGetProductsContext.proposals = sessionProposals;
 
-            refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
           } else {
-            // No proposal_status means already ready to buy — finalize is a no-op
-            refinementApplied.push({ status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
           }
         }
       } else if (op.scope === 'request') {
-        refinementApplied.push({ status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
       }
     }
 

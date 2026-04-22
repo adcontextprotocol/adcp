@@ -3,6 +3,17 @@
   "$id": "/schemas/core/assets/brief-asset.json",
   "title": "Brief Asset",
   "description": "Campaign-level creative context as an asset. Carries the creative brief through the manifest so it travels with the creative through regeneration, resizing, and auditing.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "brief",
+      "description": "Discriminator identifying this as a brief asset. See /schemas/creative/asset-types for the registry."
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
   "allOf": [
     { "$ref": "/schemas/core/creative-brief.json" }
   ]

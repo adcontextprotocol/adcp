@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { extractMarkdownFromDocsResponse } from '../../src/addie/mcp/google-docs.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  extractMarkdownFromDocsResponse,
+  createGoogleDocsReader,
+  createGoogleDocsToolHandlers,
+  type GoogleDocResult,
+} from '../../src/addie/mcp/google-docs.js';
 
 /**
  * Unit tests for the Google Docs API → markdown converter.
@@ -300,5 +305,59 @@ describe('extractMarkdownFromDocsResponse', () => {
       ] },
     });
     expect(md).not.toMatch(/\n{3,}/);
+  });
+});
+
+describe('google-docs factories — credential gating', () => {
+  const envBackup: Record<string, string | undefined> = {};
+  const keys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN'];
+
+  beforeEach(() => {
+    for (const k of keys) envBackup[k] = process.env[k];
+  });
+  afterEach(() => {
+    for (const k of keys) {
+      if (envBackup[k] === undefined) delete process.env[k];
+      else process.env[k] = envBackup[k];
+    }
+  });
+
+  it('createGoogleDocsReader returns null when GOOGLE_* env vars are missing', () => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_REFRESH_TOKEN;
+    expect(createGoogleDocsReader()).toBeNull();
+  });
+
+  it('createGoogleDocsToolHandlers returns null when GOOGLE_* env vars are missing', () => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_REFRESH_TOKEN;
+    expect(createGoogleDocsToolHandlers()).toBeNull();
+  });
+
+  it('createGoogleDocsReader returns a function when all creds present', () => {
+    process.env.GOOGLE_CLIENT_ID = 'dummy-client';
+    process.env.GOOGLE_CLIENT_SECRET = 'dummy-secret';
+    process.env.GOOGLE_REFRESH_TOKEN = 'dummy-token';
+    const reader = createGoogleDocsReader();
+    expect(typeof reader).toBe('function');
+  });
+});
+
+describe('GoogleDocResult contract', () => {
+  // Type-level shape: if the interface drifts, this test breaks at
+  // typecheck, locking the contract that callers (Addie prompt,
+  // committee-document-indexer, content-curator) depend on.
+  it('has the documented status values', () => {
+    const statuses: Array<GoogleDocResult['status']> = [
+      'ok', 'access_denied', 'empty', 'invalid_input', 'unsupported_type', 'error',
+    ];
+    expect(statuses).toHaveLength(6);
+  });
+
+  it('has the documented format values', () => {
+    const formats: Array<GoogleDocResult['format']> = ['markdown', 'csv', 'text', null];
+    expect(formats).toHaveLength(4);
   });
 });
