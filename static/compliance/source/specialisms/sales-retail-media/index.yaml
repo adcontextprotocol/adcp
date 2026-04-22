@@ -8,6 +8,12 @@ track: media-buy
 required_tools:
   - sync_catalogs
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. approved → pending on a catalog_item.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a retail media network. Inventory spans owned-and-operated digital
   properties (site, app, kiosks), offsite extensions syndicated through DSPs, and

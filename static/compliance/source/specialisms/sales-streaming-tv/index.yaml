@@ -6,6 +6,14 @@ status: preview
 summary: "Connected TV and streaming sellers — ad-supported video inventory, audience-based buying, and frequency management across CTV apps."
 track: media-buy
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+# Wired eagerly so the assertion applies automatically once the 3.1
+# streaming-specific phases are populated.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a streaming TV seller (SSAI, ad-supported streaming service, or CTV
   platform). Inventory is sold as video impressions against audiences rather than

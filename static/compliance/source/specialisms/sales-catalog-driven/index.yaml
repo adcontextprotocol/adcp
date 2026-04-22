@@ -14,6 +14,13 @@ requires_scenarios:
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/invalid_transitions
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy or
+# approved → pending on a catalog_item.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,
   Meta Product Catalogs, or retail media product listing ads. The buyer pushes a product
