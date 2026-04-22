@@ -337,6 +337,19 @@ phases:
             - "$context.product_format_id"
           context:
             correlation_id: "media_buy_seller--list_formats_integrity"
+        # The @adcp/client (≤5.11) `list_creative_formats` request builder
+        # returns `{}` and the runner only merges envelope fields
+        # (context/ext/idempotency_key/push_notification_config) from
+        # sample_request — so `format_ids` above never reaches the wire and
+        # the seller answers with its full format catalog. context_inputs
+        # is applied after the builder runs, so this injects the captured
+        # `product_format_id` (the `{agent_url, id}` object from
+        # `products[0].format_ids[0]`) at `format_ids[0]` and lets the
+        # round-trip invariant actually grade. Drop once
+        # adcontextprotocol/adcp-client#797 ships and we bump the SDK pin.
+        context_inputs:
+          - key: product_format_id
+            inject_at: "format_ids[0]"
         validations:
           - check: response_schema
             description: "Response matches list-creative-formats-response.json schema"

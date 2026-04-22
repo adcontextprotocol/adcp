@@ -283,6 +283,32 @@
 #     reader — the capture declared a contract that the response did not meet.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #
+# context_inputs: array of ContextInput objects (optional — inject captured
+#   context values into the request at a specific path AFTER the request
+#   builder runs). Each entry:
+#     - key: string (the context variable name populated by a prior
+#            `context_outputs` capture)
+#       inject_at: string (JSON path inside the request to write to,
+#                  e.g. "format_ids[0]", "filters.creative_ids[0]")
+#   When to use:
+#   - The default substitution path is `$context.<name>` placeholders inside
+#     `sample_request:`. Prefer that path — the request body is honest about
+#     what the agent will receive.
+#   - `context_inputs` exists as a documented escape hatch for the case where
+#     the @adcp/client per-task request builder strips body fields from
+#     `sample_request` and the runner only forwards envelope fields
+#     (`context`, `ext`, `idempotency_key`, `push_notification_config`). In
+#     that case `$context.<name>` placeholders inside body fields never
+#     reach the wire and the storyboard grades on whatever the builder's
+#     fallback shape happens to be. `context_inputs` is applied after the
+#     builder, so it round-trips the captured value to the wire.
+#   - Document the workaround inline. Each `context_inputs` entry is a
+#     temporary bridge until the upstream builder is fixed; the comment
+#     should name the SDK gap and the upstream issue. See
+#     `static/compliance/source/protocols/media-buy/index.yaml`
+#     (`list_formats_integrity` step) for a worked example tied to
+#     adcontextprotocol/adcp-client#797.
+#
 # validations: array of Validation objects (optional)
 #
 # --- Phase (optional fields for conditional execution) ---
