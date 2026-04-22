@@ -125,5 +125,5 @@
   "required": [
     "list"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
