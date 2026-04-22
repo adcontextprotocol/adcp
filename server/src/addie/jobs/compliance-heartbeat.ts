@@ -120,11 +120,17 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
         try {
-          // Resolve membership org for this agent
+          // Resolve membership org for this agent — only orgs with an active
+          // API-access tier qualify for badge issuance. If the org downgrades
+          // or cancels, processAgentBadges will see undefined here and revoke
+          // any existing badges.
           const orgResult = await query(
             `SELECT mp.workos_organization_id
              FROM member_profiles mp
+             JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
              WHERE mp.agents @> $1::jsonb
+               AND o.membership_tier IN ('individual_professional', 'company_standard', 'company_icl', 'company_leader')
+               AND o.subscription_status IN ('active', 'past_due', 'trialing')
              ORDER BY mp.created_at ASC
              LIMIT 1`,
             [JSON.stringify([{ url: agent.agent_url }])],

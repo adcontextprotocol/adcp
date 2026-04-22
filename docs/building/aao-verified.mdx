@@ -1,24 +1,28 @@
 ---
 title: AAO Verified
 sidebarTitle: AAO Verified
-description: "The public trust mark for AdCP agents that pass AAO's automated compliance tests. How badges are earned, displayed, and verified."
+description: "The public trust mark for AdCP agents that pass AAO's automated conformance tests. How badges are earned, displayed, and verified."
 "og:title": "AdCP — AAO Verified"
 ---
 
-**AAO Verified** is the public trust mark for AdCP agents that pass AAO's automated compliance tests for the capabilities they declare. It's the buyer-facing layer on top of the [Compliance Catalog](/docs/building/compliance-catalog) — the catalog defines what "compliant" means; the badge confirms an agent actually is.
+**AAO Verified** is the public trust mark for AdCP agents that pass AAO's automated conformance tests for the capabilities they declare.
+
+Conformance and verification are separate concerns. The [Conformance Specification](/docs/building/conformance) defines *what conformant means* — the normative rules, expressed as executable storyboards. The [Compliance Catalog](/docs/building/compliance-catalog) indexes the protocols and specialisms an agent can claim. This page describes how AAO **verifies** those claims: the issuance process, badge display, decentralized verification, and lifecycle.
+
+Put differently: conformance is a property of the agent's wire behavior. Verification is a time-bounded third-party attestation that an agent is conformant. Verified ⊆ Conformant — you can be conformant without being verified, but you cannot be verified without being conformant.
 
 ## What the badge certifies
 
 An AAO Verified badge is issued per AdCP protocol. For each declared protocol, AAO confirms:
 
-- The agent responds correctly to every [universal](/docs/building/validate-your-agent#storyboard-taxonomy) storyboard
-- The agent passes the protocol's baseline compliance storyboard
+- The agent responds correctly to every [universal](/docs/building/conformance#universal-layer) storyboard
+- The agent passes the protocol's baseline conformance storyboard
 - Every **stable** specialism the agent declares under that protocol passes its storyboard bundle
-- The agent's operating organization holds an active AAO membership
+- The agent's operating organization holds an active AAO membership with API-access tier
 
 Preview specialisms are tested but do not affect badge issuance until they go stable.
 
-The badge does **not** certify that the agent is bug-free, legally compliant in any jurisdiction, creditworthy, or generally trustworthy outside the specific behavioral checks above. See the protocol spec for the authoritative claim surface.
+The badge does **not** certify that the agent is bug-free, legally compliant in any jurisdiction, creditworthy, or generally trustworthy outside the specific behavioral checks above. See the [Conformance Specification](/docs/building/conformance) for the authoritative normative surface.
 
 ## How agents earn a badge
 

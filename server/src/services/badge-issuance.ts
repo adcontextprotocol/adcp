@@ -46,16 +46,21 @@ export async function processAgentBadges(
   const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
   const existingByRole = new Map(existingBadges.map(b => [b.role, b]));
 
+  // If the agent's org no longer has API-access membership, revoke all existing
+  // badges. Badge issuance is a public trust signal tied to active membership.
+  if (!membershipOrgId) {
+    for (const existing of existingBadges) {
+      await complianceDb.revokeBadge(agentUrl, existing.role, 'Membership lapsed');
+      result.revoked.push({ role: existing.role, reason: 'Membership lapsed' });
+      logger.info({ agentUrl, role: existing.role }, 'Badge revoked — membership lapsed');
+    }
+    return result;
+  }
+
   for (const roleResult of verification.roles) {
     const existing = existingByRole.get(roleResult.role);
 
     if (roleResult.verified) {
-      if (!membershipOrgId) {
-        if (existing) {
-          result.unchanged.push({ role: roleResult.role });
-        }
-        continue;
-      }
 
       let token: string | undefined;
       let tokenExpiresAt: Date | undefined;
