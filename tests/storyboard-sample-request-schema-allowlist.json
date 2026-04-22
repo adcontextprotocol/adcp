@@ -38,31 +38,10 @@
         "required@/creative_manifest:assets"
       ]
     },
-    "protocols/media-buy/index.yaml#creative_sync/sync_creatives": {
-      "schema": "creative/sync-creatives-request.json",
-      "errors": [
-        "required@/creatives/0/format_id:agent_url",
-        "required@/creatives/0/format_id:id"
-      ]
-    },
-    "protocols/media-buy/index.yaml#product_discovery/list_formats_integrity": {
-      "schema": "creative/list-creative-formats-request.json",
-      "errors": [
-        "required@/format_ids/0:agent_url",
-        "required@/format_ids/0:id"
-      ]
-    },
     "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml#reuse_creative_on_new_buy/reassign_creative": {
       "schema": "creative/sync-creatives-request.json",
       "errors": [
         "required@/:creatives"
-      ]
-    },
-    "protocols/media-buy/scenarios/pending_creatives_to_start.yaml#supply_creatives/sync_creative": {
-      "schema": "creative/sync-creatives-request.json",
-      "errors": [
-        "required@/creatives/0/format_id:agent_url",
-        "required@/creatives/0/format_id:id"
       ]
     },
     "protocols/media-buy/scenarios/proposal_finalize.yaml#accept_proposal/create_media_buy": {
@@ -155,12 +134,6 @@
       "errors": [
         "required@/:query",
         "required@/:uses"
-      ]
-    },
-    "specialisms/creative-template/index.yaml#build/build_multi_format": {
-      "schema": "media-buy/build-creative-request.json",
-      "errors": [
-        "required@/creative_manifest:format_id"
       ]
     },
     "specialisms/governance-delivery-monitor/index.yaml#drift_recheck/check_governance_drift": {
@@ -294,30 +267,6 @@
       "errors": [
         "required@/:event_source_id",
         "required@/events/0:event_time"
-      ]
-    },
-    "specialisms/signal-marketplace/index.yaml#discovery/search_by_ids": {
-      "schema": "signals/get-signals-request.json",
-      "errors": [
-        "required@/signal_ids/0:source",
-        "required@/signal_ids/0:data_provider_domain",
-        "required@/signal_ids/0:id",
-        "required@/signal_ids/0:source",
-        "required@/signal_ids/0:agent_url",
-        "required@/signal_ids/0:id",
-        "oneOf@/signal_ids/0"
-      ]
-    },
-    "specialisms/signal-marketplace/index.yaml#verification/verify_provenance_metadata": {
-      "schema": "signals/get-signals-request.json",
-      "errors": [
-        "required@/signal_ids/0:source",
-        "required@/signal_ids/0:data_provider_domain",
-        "required@/signal_ids/0:id",
-        "required@/signal_ids/0:source",
-        "required@/signal_ids/0:agent_url",
-        "required@/signal_ids/0:id",
-        "oneOf@/signal_ids/0"
       ]
     },
     "universal/deterministic-testing.yaml#deterministic_account/sync_accounts_for_state": {
