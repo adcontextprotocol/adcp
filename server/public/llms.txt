@@ -45,21 +45,22 @@ AdCP supports two transport mechanisms:
 ## Adoption path
 
 Build in this order:
-- Quickstart (5-minute curl example): https://adcontextprotocol.org/docs/quickstart
-- Build an agent: https://adcontextprotocol.org/docs/building/build-an-agent
-- Validate an agent: https://adcontextprotocol.org/docs/building/validate-your-agent
-- Operate an agent: https://adcontextprotocol.org/docs/building/operating-an-agent
-- Load a seller skill directly: https://github.com/adcontextprotocol/adcp-client/blob/main/skills/build-seller-agent/SKILL.md
+1. Quickstart (5-minute curl example): https://adcontextprotocol.org/docs/quickstart
+2. Build an agent: https://adcontextprotocol.org/docs/building/build-an-agent
+3. Validate an agent: https://adcontextprotocol.org/docs/building/validate-your-agent
+4. Operate an agent: https://adcontextprotocol.org/docs/building/operating-an-agent
+
+Coding-agent shortcut — skip (2) and load a seller skill directly: https://github.com/adcontextprotocol/adcp-client/blob/main/skills/build-seller-agent/SKILL.md
 
 ## SDKs and skills
 
-SDKs are both-sides: the same package powers buyers calling agents and sellers implementing them.
+Each AdCP SDK ships both caller APIs (for buyers) and server primitives (for sellers). The JavaScript SDK also ships a storyboard runner (`npx @adcp/client storyboard run`) that validates any endpoint against the spec — use it regardless of the language your agent is written in.
 
 - `@adcp/client` (JavaScript/TypeScript): https://github.com/adcontextprotocol/adcp-client
-- `adcp` (Python): https://github.com/adcontextprotocol/adcp-python
+- `adcp` (Python): https://github.com/adcontextprotocol/adcp-client-python
 - `adcp-go` (Go): https://github.com/adcontextprotocol/adcp-go
 
-Each SDK ships `build-*-agent` skills a coding agent can load to scaffold a compliant implementation. See https://adcontextprotocol.org/llms-full.txt for the full skill inventory.
+Each SDK ships `build-*-agent` skills a coding agent can load to scaffold an agent and wire it to the storyboard runner. See https://adcontextprotocol.org/llms-full.txt for the full skill inventory.
 
 ## Registry APIs
 
