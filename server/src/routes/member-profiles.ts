@@ -27,6 +27,7 @@ import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js"
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
+import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
@@ -310,6 +311,36 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Gate agent visibility on create using the same helper the PUT
+      // path uses. Without this, an Explorer-tier user creating their
+      // first profile can land `visibility: 'public'` directly in the
+      // JSONB — subsequent readers filter strictly on `=== 'public'`
+      // with no tier re-check, so the entry stays public forever.
+      const createOrgForTier = await orgDb.getOrganization(targetOrgId);
+      const createCallerHasApi = hasApiAccess(resolveMembershipTier(createOrgForTier));
+      const { agents: gatedAgents, warnings: createWarnings } =
+        gateAgentVisibilityForCaller(agents, createCallerHasApi);
+
+      // Same tier gate for the profile-level `is_public` flag. The
+      // `/visibility` PUT route gates this through hasActiveSubscription
+      // (line 1343), but the POST create and PUT bulk-update paths
+      // previously accepted the raw body value — same smuggle class as
+      // the agent-visibility bug this PR fixes.
+      let effectiveIsPublic = is_public === true;
+      if (effectiveIsPublic && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          effectiveIsPublic = false;
+          createWarnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; stored as private instead.',
+          });
+        }
+      }
+
       const profile = await memberDb.createProfile({
         workos_organization_id: targetOrgId,
         display_name,
@@ -323,11 +354,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         linkedin_url,
         twitter_url,
         offerings: offerings || [],
-        agents: agents || [],
+        agents: gatedAgents,
         headquarters,
         markets: markets || [],
         tags: tags || [],
-        is_public: is_public ?? false,
+        is_public: effectiveIsPublic,
         show_in_carousel: show_in_carousel ?? false,
       });
 
@@ -385,7 +416,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
-      res.status(201).json({ profile });
+      res.status(201).json({
+        profile,
+        ...(createWarnings.length ? { warnings: createWarnings } : {}),
+      });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
       res.status(500).json({
@@ -496,41 +530,33 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Enforce the tier gate on agent visibility so bulk-profile updates
       // cannot bypass the per-agent PATCH. Non-API-access callers may only
       // set 'private' or 'members_only' on any agent in the array; when
-      // they send 'public' we downgrade and tell them we did.
-      const warnings: Array<Record<string, unknown>> = [];
+      // they send 'public' we downgrade and tell them we did. Shared with
+      // the POST create path via gateAgentVisibilityForCaller.
+      let warnings: VisibilityWarning[] = [];
       if (Array.isArray(updates.agents)) {
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
-        updates.agents = updates.agents.map((raw: unknown) => {
-          const a = (raw ?? {}) as Record<string, unknown>;
-          const requested = a.visibility;
-          let visibility: AgentVisibility;
-          if (isValidAgentVisibility(requested)) {
-            visibility = requested;
-          } else if (a.is_public === true) {
-            visibility = 'public';
-          } else {
-            visibility = 'private';
-          }
-          if (visibility === 'public' && !callerHasApi) {
-            warnings.push({
-              code: 'visibility_downgraded',
-              agent_url: a.url,
-              requested: 'public',
-              applied: 'members_only',
-              reason: 'tier_required',
-              message: 'Publicly listing an agent requires Professional tier or higher; stored as members_only instead.',
-            });
-            visibility = 'members_only';
-          }
-          const cleaned: Record<string, unknown> = {
-            url: a.url,
-            visibility,
-          };
-          if (typeof a.name === 'string') cleaned.name = a.name;
-          if (typeof a.type === 'string') cleaned.type = a.type;
-          return cleaned;
-        });
+        const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
+        updates.agents = gated.agents;
+        warnings = gated.warnings;
+      }
+
+      // Same gate for the profile-level `is_public` flag. The dedicated
+      // `/visibility` PUT route already gates this; the bulk-profile
+      // update path previously forwarded the raw body value, reopening
+      // the same smuggle a non-paying caller could use on POST create.
+      if (updates.is_public === true && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          updates.is_public = false;
+          warnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; left as private.',
+          });
+        }
       }
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
@@ -649,6 +675,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   ): Promise<
     | { status: 404; body: { error: string } }
     | { status: 400; body: { error: string } }
+    | { status: 403; body: { error: string; message: string } }
     | { status: 200; body: Record<string, unknown> }
   > {
     const pool = getPool();
@@ -666,6 +693,44 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (profileRow.rowCount === 0) {
         await client.query('ROLLBACK');
         return { status: 404, body: { error: 'Profile not found' } };
+      }
+
+      // Re-read tier INSIDE the transaction when the caller is trying
+      // to publish. The outer `requireApiAccessTier` check is a
+      // fast-fail for UX, but it reads the org row before this tx
+      // starts — a concurrent Stripe downgrade webhook can commit
+      // between the outer check and this UPDATE, letting a `public`
+      // write land on an org that's no longer API-access. Reading the
+      // tier-relevant columns here closes that window: if the org was
+      // downgraded after our outer check, we see the new state and
+      // ROLLBACK. The Stripe demote path locks member_profiles via
+      // FOR UPDATE, so it can't interleave past our own lock.
+      if (target === 'public') {
+        const orgRow = await client.query<{
+          membership_tier: string | null;
+          subscription_price_lookup_key: string | null;
+          subscription_status: string | null;
+          subscription_amount: number | null;
+          subscription_interval: string | null;
+          is_personal: boolean;
+        }>(
+          `SELECT membership_tier, subscription_price_lookup_key, subscription_status,
+                  subscription_amount, subscription_interval, is_personal
+           FROM organizations
+           WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        const currentTier = resolveMembershipTier(orgRow.rows[0] ?? null);
+        if (!hasApiAccess(currentTier)) {
+          await client.query('ROLLBACK');
+          return {
+            status: 403,
+            body: {
+              error: 'tier_required',
+              message: 'Publicly listing an agent requires Professional tier or higher.',
+            },
+          };
+        }
       }
       const row = profileRow.rows[0] as { id: string; agents: unknown; primary_brand_domain: string | null };
       const parsedAgents = typeof row.agents === 'string'

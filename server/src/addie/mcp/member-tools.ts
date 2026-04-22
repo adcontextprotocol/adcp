@@ -1088,7 +1088,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.',
+      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.',
     usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token", "configure client credentials", "save OAuth client credentials"',
     input_schema: {
       type: 'object',
@@ -4903,7 +4903,14 @@ export function createMemberToolHandlers(
         if (profile) {
           const agents = profile.agents || [];
           if (!agents.some((a: any) => a.url === agentUrl)) {
-            agents.push({ url: agentUrl, name: displayName, visibility: 'public' });
+            // Default to members_only, not public. The public directory
+            // requires an API-access tier (Professional+); defaulting to
+            // 'public' here lets Addie implicitly publish an agent for an
+            // Explorer-tier caller who hasn't been tier-gated. Members_only
+            // keeps the agent discoverable to peer members with API access
+            // and lets the owner promote to public through the explicit,
+            // tier-checked /publish route when eligible.
+            agents.push({ url: agentUrl, name: displayName, visibility: 'members_only' });
             await memberDb.updateProfile(profile.id, { agents });
           }
         }
@@ -4977,7 +4984,7 @@ export function createMemberToolHandlers(
         response += `\n🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
-      response += `\nThe agent has been added to your dashboard. When you test this agent, I'll automatically use the saved credentials.`;
+      response += `\nThe agent has been added to your dashboard with **members_only** visibility — other Professional-tier members can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a Professional or higher subscription). When you test this agent, I'll automatically use the saved credentials.`;
 
       return response;
     } catch (error) {
