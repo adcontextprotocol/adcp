@@ -1,18 +1,6 @@
 {
   "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only. Pass `--allow-grow` only when adding a deliberate, newly-identified drift is the explicit intent; never hand-edit to silence a new violation.",
   "entries": {
-    "protocols/creative/index.yaml#build_and_preview/preview_display": {
-      "schema": "creative/preview-creative-request.json",
-      "errors": [
-        "required@/:creative_manifest",
-        "if@/",
-        "required@/:requests",
-        "if@/",
-        "required@/:variant_id",
-        "if@/",
-        "required@/:request_type"
-      ]
-    },
     "protocols/governance/index.yaml#audit_trail/get_plan_audit_logs": {
       "schema": "governance/get-plan-audit-logs-request.json",
       "errors": [
@@ -30,24 +18,6 @@
         "additionalProperties@/:account",
         "type@/outcome:string",
         "enum@/outcome"
-      ]
-    },
-    "protocols/media-buy/creative-reception.yaml#preview/preview_synced": {
-      "schema": "creative/preview-creative-request.json",
-      "errors": [
-        "required@/creative_manifest:assets"
-      ]
-    },
-    "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml#reuse_creative_on_new_buy/reassign_creative": {
-      "schema": "creative/sync-creatives-request.json",
-      "errors": [
-        "required@/:creatives"
-      ]
-    },
-    "protocols/media-buy/scenarios/proposal_finalize.yaml#accept_proposal/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "type@/total_budget:object"
       ]
     },
     "protocols/media-buy/scenarios/proposal_finalize.yaml#finalize_proposal/get_products_finalize": {
@@ -96,12 +66,6 @@
         "oneOf@/refine/1"
       ]
     },
-    "protocols/media-buy/state-machine.yaml#setup/create_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/:account"
-      ]
-    },
     "protocols/sponsored-intelligence/index.yaml#offering_discovery/si_get_offering": {
       "schema": "sponsored-intelligence/si-get-offering-request.json",
       "errors": [
@@ -112,26 +76,6 @@
       "schema": "sponsored-intelligence/si-initiate-session-request.json",
       "errors": [
         "required@/:identity"
-      ]
-    },
-    "protocols/sponsored-intelligence/index.yaml#session_lifecycle/si_terminate_session": {
-      "schema": "sponsored-intelligence/si-terminate-session-request.json",
-      "errors": [
-        "required@/:reason"
-      ]
-    },
-    "specialisms/audience-sync/index.yaml#audience_sync/create_audience": {
-      "schema": "media-buy/sync-audiences-request.json",
-      "errors": [
-        "required@/audiences/0/add/0:external_id",
-        "required@/audiences/0/add/1:external_id"
-      ]
-    },
-    "specialisms/brand-rights/scenarios/governance_denied.yaml#rights_denied/get_rights_catalog": {
-      "schema": "brand/get-rights-request.json",
-      "errors": [
-        "required@/:query",
-        "required@/:uses"
       ]
     },
     "specialisms/governance-delivery-monitor/index.yaml#drift_recheck/check_governance_drift": {
@@ -151,33 +95,6 @@
       "schema": "governance/check-governance-request.json",
       "errors": [
         "additionalProperties@/:account"
-      ]
-    },
-    "specialisms/sales-catalog-driven/index.yaml#account_setup/sync_accounts": {
-      "schema": "account/sync-accounts-request.json",
-      "errors": [
-        "additionalProperties@/accounts/0/brand:name"
-      ]
-    },
-    "specialisms/sales-catalog-driven/index.yaml#conversion_tracking/log_events": {
-      "schema": "media-buy/log-event-request.json",
-      "errors": [
-        "required@/events/0:event_time",
-        "required@/events/1:event_time",
-        "required@/events/2:event_time"
-      ]
-    },
-    "specialisms/sales-non-guaranteed/index.yaml#adjust_bids/update_media_buy": {
-      "schema": "media-buy/update-media-buy-request.json",
-      "errors": [
-        "required@/packages/0:package_id",
-        "required@/packages/1:package_id"
-      ]
-    },
-    "specialisms/sales-proposal-mode/index.yaml#accept_proposal/create_media_buy": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "type@/total_budget:object"
       ]
     },
     "specialisms/sales-proposal-mode/index.yaml#review_refine/get_products_refine": {
@@ -260,35 +177,10 @@
         "anyOf@/creatives/0/assets/click_url"
       ]
     },
-    "specialisms/sales-social/index.yaml#event_logging/log_event": {
-      "schema": "media-buy/log-event-request.json",
-      "errors": [
-        "required@/:event_source_id",
-        "required@/events/0:event_time"
-      ]
-    },
-    "universal/deterministic-testing.yaml#deterministic_account/sync_accounts_for_state": {
-      "schema": "account/sync-accounts-request.json",
-      "errors": [
-        "required@/:accounts"
-      ]
-    },
     "universal/deterministic-testing.yaml#deterministic_session/initiate_session": {
       "schema": "sponsored-intelligence/si-initiate-session-request.json",
       "errors": [
         "required@/identity:consent_granted"
-      ]
-    },
-    "universal/error-compliance.yaml#error_responses/missing_fields": {
-      "schema": "media-buy/get-products-request.json",
-      "errors": [
-        "required@/:buying_mode"
-      ]
-    },
-    "universal/schema-validation.yaml#temporal_validation/reversed_dates": {
-      "schema": "media-buy/create-media-buy-request.json",
-      "errors": [
-        "required@/:idempotency_key"
       ]
     }
   }
