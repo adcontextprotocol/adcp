@@ -680,6 +680,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   > {
     const pool = getPool();
     const client = await pool.connect();
+
+    // Computed inside the tx, applied outside after the profile COMMIT.
+    // The brand.json manifest write (`brandDb.updateManifestAgents`) is
+    // against an external-ish surface (separate connection, different
+    // table, different consumers). Keeping it inside the tx means a
+    // manifest write that succeeds followed by a failed COMMIT orphans
+    // the manifest entry — the exact drift the `/check` endpoint
+    // exists to detect (#2825, mirror of the demote path's rewrite
+    // in #2822). So we stage the manifest work during the tx, commit
+    // the JSONB change, then execute manifest + log a structured
+    // drift event on post-commit failure.
+    type ManifestOp =
+      | { kind: 'add'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string; description?: string }>; summary: string }
+      | { kind: 'remove'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string }>; summary: string };
+    let manifestOp: ManifestOp | null = null;
+    let snippet: { type: string; url: string; id: string; description?: string } | undefined;
+    let finalTarget: AgentVisibility = target;
+
     try {
       await client.query('BEGIN');
 
@@ -794,8 +812,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         ...(agent.name ? { description: agent.name } : {}),
       };
 
-      let snippet: typeof agentEntry | undefined;
-
       if (target === 'public' && domain) {
         if (isSelfHosted) {
           snippet = agentEntry;
@@ -804,11 +820,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           const currentAgents = Array.isArray(manifest.agents)
             ? manifest.agents as Array<{ type: string; url: string; id: string; description?: string }>
             : [];
-          const updatedAgents = [...currentAgents.filter(a => a.url !== agent.url), agentEntry];
-          await brandDb.updateManifestAgents(domain, updatedAgents, {
-            ...actor,
+          manifestOp = {
+            kind: 'add',
+            domain,
+            updatedAgents: [...currentAgents.filter(a => a.url !== agent.url), agentEntry],
             summary: `Published ${agent.type || 'brand'} agent to brand.json`,
-          });
+          };
         }
       } else if (domain && discovered && !isSelfHosted) {
         const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
@@ -816,11 +833,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           ? manifest.agents as Array<{ type: string; url: string; id: string }>
           : [];
         if (currentAgents.some(a => a.url === agent.url)) {
-          const updatedAgents = currentAgents.filter(a => a.url !== agent.url);
-          await brandDb.updateManifestAgents(domain, updatedAgents, {
-            ...actor,
+          manifestOp = {
+            kind: 'remove',
+            domain,
+            updatedAgents: currentAgents.filter(a => a.url !== agent.url),
             summary: `Removed ${agent.type || 'brand'} agent from brand.json`,
-          });
+          };
         }
       }
 
@@ -832,37 +850,81 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         [JSON.stringify(agents), row.id]
       );
       await client.query('COMMIT');
-
-      if (target === 'public' && snippet) {
-        return {
-          status: 200,
-          body: {
-            action: 'snippet',
-            message: 'Add this to the agents array in your brand.json',
-            visibility: target,
-            snippet,
-          },
-        };
-      }
-      return {
-        status: 200,
-        body: {
-          action: target === 'public' ? 'published' : target === 'private' ? 'unpublished' : 'members_only',
-          message:
-            target === 'public'
-              ? 'Agent published to brand.json'
-              : target === 'members_only'
-                ? 'Agent is visible to members with API access'
-                : 'Agent removed from brand.json',
-          visibility: target,
-        },
-      };
+      finalTarget = target;
     } catch (err) {
+      // Safe to attempt rollback whether we got here before or after
+      // a successful COMMIT — pg no-ops a ROLLBACK on a finished tx
+      // and the .catch swallows any driver noise.
       await client.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
-      client.release();
+      // Don't let a release() failure mask whatever the try block threw
+      // (e.g. a COMMIT error we actually want to surface to the caller).
+      try {
+        client.release();
+      } catch (releaseErr) {
+        logger.warn({ err: releaseErr, orgId }, 'pg client release failed');
+      }
     }
+
+    // Profile JSONB is committed. Apply the manifest change outside
+    // the tx — if this throws, the JSONB is already authoritative and
+    // the `/check` endpoint's drift detection will surface the
+    // divergence. Logging as structured drift so reconciliation can
+    // pick it up automatically.
+    if (manifestOp) {
+      try {
+        await brandDb.updateManifestAgents(manifestOp.domain, manifestOp.updatedAgents, {
+          ...actor,
+          summary: manifestOp.summary,
+        });
+      } catch (manifestErr) {
+        // Narrow the error shape. pg driver errors and other library
+        // errors can carry `error.query` / `error.parameters` that
+        // pino's default err-serializer would emit — keep diagnostic
+        // logs free of raw SQL + parameter values.
+        const errPayload = manifestErr instanceof Error
+          ? { message: manifestErr.message, name: manifestErr.name }
+          : { message: String(manifestErr) };
+        logger.warn(
+          {
+            err: errPayload,
+            domain: manifestOp.domain,
+            orgId,
+            agentIndex: index,
+            target: finalTarget,
+            kind: manifestOp.kind,
+            event: 'brand_json_drift',
+          },
+          'Profile visibility committed but brand.json manifest write failed — /check will surface as drift',
+        );
+      }
+    }
+
+    if (finalTarget === 'public' && snippet) {
+      return {
+        status: 200,
+        body: {
+          action: 'snippet',
+          message: 'Add this to the agents array in your brand.json',
+          visibility: finalTarget,
+          snippet,
+        },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        action: finalTarget === 'public' ? 'published' : finalTarget === 'private' ? 'unpublished' : 'members_only',
+        message:
+          finalTarget === 'public'
+            ? 'Agent published to brand.json'
+            : finalTarget === 'members_only'
+              ? 'Agent is visible to members with API access'
+              : 'Agent removed from brand.json',
+        visibility: finalTarget,
+      },
+    };
   }
 
   /**
