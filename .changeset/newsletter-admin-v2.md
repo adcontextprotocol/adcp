@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": minor
 ---
 
 Unify newsletter admin with cherry-pick content model

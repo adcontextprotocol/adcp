@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Delete `server/src/compliance/assertions/` now that `@adcp/client@5.9.1` ships a widened `context.no_secret_echo` default (adcp-client#752/#753) that walks the whole response body, matches suspect property names at any depth, and extracts secrets from structured `auth` objects. The local override #2771 added as a stricter stand-in while upstream was a no-op for structured auth is no longer pulling any weight.
