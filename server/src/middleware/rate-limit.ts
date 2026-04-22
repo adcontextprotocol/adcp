@@ -201,6 +201,39 @@ export const storyboardStepRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for per-agent dashboard reads (compliance state, history,
+ * auth status). The Agents dashboard fans out 2-3 reads per agent on
+ * load, so a member with 10+ saved agents hits the bulk-resolve cap
+ * immediately — those requests aren't bulk, they're idempotent
+ * per-item reads. Separate limiter with a ceiling high enough for
+ * normal dashboard use (60-agent load × 3 endpoints = 180 req)
+ * while still bounding a script that tries to enumerate compliance
+ * state for every registered agent.
+ */
+export const agentReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 240, // 4/sec sustained; a dashboard burst of 60 agents × 3 = 180 fits
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('agent-read:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for agent dashboard reads');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */
