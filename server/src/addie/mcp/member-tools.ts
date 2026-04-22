@@ -1085,15 +1085,29 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. Optionally store an auth token securely (encrypted, never shown in conversations). Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide an auth token.',
-    usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token"',
+      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.',
+    usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token", "configure client credentials", "save OAuth client credentials"',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
-        auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
-        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
+        auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
+        oauth_client_credentials: {
+          type: 'object',
+          description: 'OAuth 2.0 client-credentials configuration for machine-to-machine auth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before every call and refreshes on 401. Use this when the agent requires a bearer token minted from a client_id/client_secret pair, not a human authorization flow.',
+          properties: {
+            token_endpoint: { type: 'string', description: 'Token endpoint URL (HTTPS required; localhost allowed in dev).' },
+            client_id: { type: 'string', description: 'OAuth client ID. May be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time.' },
+            client_secret: { type: 'string', description: 'OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest regardless.' },
+            scope: { type: 'string', description: 'Space-separated OAuth scope values (optional).' },
+            resource: { type: 'string', description: 'RFC 8707 resource indicator (optional).' },
+            audience: { type: 'string', description: 'Audience parameter for audience-validating authorization servers like Auth0, Okta, Azure AD (optional).' },
+            auth_method: { type: 'string', enum: ['basic', 'body'], description: 'Where to put client credentials on the token request. "basic" (default, RFC 6749 §2.3.1 preferred): HTTP Basic header. "body": form fields.' },
+          },
+          required: ['token_endpoint', 'client_id', 'client_secret'],
+        },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
       },
       required: ['agent_url'],
@@ -4873,6 +4887,54 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
+    // Parse and validate OAuth client-credentials if provided. Fail fast with
+    // a user-visible string — the tool's caller is an LLM and raw exceptions
+    // tend to get summarized into unhelpful errors.
+    let clientCredentials: {
+      token_endpoint: string;
+      client_id: string;
+      client_secret: string;
+      scope?: string;
+      resource?: string;
+      audience?: string;
+      auth_method?: 'basic' | 'body';
+    } | null = null;
+    if (input.oauth_client_credentials !== undefined && input.oauth_client_credentials !== null) {
+      const cc = input.oauth_client_credentials as Record<string, unknown>;
+      if (typeof cc !== 'object' || Array.isArray(cc)) {
+        return 'oauth_client_credentials must be an object with token_endpoint, client_id, and client_secret.';
+      }
+      if (typeof cc.token_endpoint !== 'string' || !cc.token_endpoint) {
+        return 'oauth_client_credentials.token_endpoint is required and must be a string.';
+      }
+      try {
+        const tokenUrl = new URL(cc.token_endpoint);
+        if (tokenUrl.protocol !== 'https:' && tokenUrl.hostname !== 'localhost' && tokenUrl.hostname !== '127.0.0.1') {
+          return 'oauth_client_credentials.token_endpoint must use https:// (http://localhost is OK for development).';
+        }
+      } catch {
+        return 'oauth_client_credentials.token_endpoint is not a valid URL.';
+      }
+      if (typeof cc.client_id !== 'string' || !cc.client_id) {
+        return 'oauth_client_credentials.client_id is required and must be a string.';
+      }
+      if (typeof cc.client_secret !== 'string' || !cc.client_secret) {
+        return 'oauth_client_credentials.client_secret is required and must be a string. Use `$ENV:VAR_NAME` to reference an environment variable.';
+      }
+      if (cc.auth_method !== undefined && cc.auth_method !== 'basic' && cc.auth_method !== 'body') {
+        return 'oauth_client_credentials.auth_method must be "basic" or "body" when set.';
+      }
+      clientCredentials = {
+        token_endpoint: cc.token_endpoint,
+        client_id: cc.client_id,
+        client_secret: cc.client_secret,
+        ...(typeof cc.scope === 'string' && cc.scope && { scope: cc.scope }),
+        ...(typeof cc.resource === 'string' && cc.resource && { resource: cc.resource }),
+        ...(typeof cc.audience === 'string' && cc.audience && { audience: cc.audience }),
+        ...(cc.auth_method && { auth_method: cc.auth_method as 'basic' | 'body' }),
+      };
+    }
+
     async function ensureAgentInProfile(displayName: string): Promise<void> {
       if (!saveOrgId) return;
       try {
@@ -4901,6 +4963,9 @@ export function createMemberToolHandlers(
         if (authToken) {
           await agentContextDb.saveAuthToken(context.id, authToken, authType);
         }
+        if (clientCredentials) {
+          await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
+        }
         context = await agentContextDb.getById(context.id);
 
         await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
@@ -4910,6 +4975,10 @@ export function createMemberToolHandlers(
           const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
           response += `🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
           response += `_The token is encrypted and will never be shown again._\n`;
+        }
+        if (clientCredentials) {
+          response += `🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
+          response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
         }
         return response;
       }
@@ -4925,6 +4994,11 @@ export function createMemberToolHandlers(
 
       if (authToken) {
         await agentContextDb.saveAuthToken(context.id, authToken, authType);
+      }
+      if (clientCredentials) {
+        await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
+      }
+      if (authToken || clientCredentials) {
         context = await agentContextDb.getById(context.id);
       }
 
@@ -4937,6 +5011,10 @@ export function createMemberToolHandlers(
         const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
         response += `\n🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
         response += `_The token is encrypted and will never be shown again._\n`;
+      }
+      if (clientCredentials) {
+        response += `\n🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
+        response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       response += `\nThe agent has been added to your dashboard. When you test this agent, I'll automatically use the saved credentials.`;
 

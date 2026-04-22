@@ -1659,6 +1659,56 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "put",
+  path: "/api/registry/agents/{encodedUrl}/oauth-client-credentials",
+  operationId: "saveAgentOAuthClientCredentials",
+  summary: "Save OAuth 2.0 client-credentials for an agent",
+  description:
+    "Store a machine-to-machine OAuth 2.0 client-credentials configuration (RFC 6749 §4.4) for this agent. The SDK exchanges at the token endpoint before every call and refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time, the server stores it as written (encrypted uniformly). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            token_endpoint: z.string().max(2048).openapi({ description: "Token endpoint URL (HTTPS required; localhost allowed in dev)." }),
+            client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
+            client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
+            scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
+            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
+            auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Credentials saved",
+      content: {
+        "application/json": {
+          schema: z.object({
+            connected: z.literal(true),
+            has_auth: z.literal(true),
+            agent_context_id: z.string(),
+            auth_type: z.literal("oauth_client_credentials"),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
   method: "get",
   path: "/api/registry/agents/{encodedUrl}/applicable-storyboards",
   operationId: "getApplicableStoryboards",
@@ -3806,7 +3856,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         [JSON.stringify([{ url: agentUrl }]), req.user.id],
       );
 
-      const noAuthResponse = { has_auth: false, agent_context_id: null, auth_type: null, has_oauth_token: false, has_valid_oauth: false, oauth_token_expires_at: null };
+      const noAuthResponse = {
+        has_auth: false,
+        agent_context_id: null,
+        auth_type: null,
+        has_oauth_token: false,
+        has_valid_oauth: false,
+        oauth_token_expires_at: null,
+        has_oauth_client_credentials: false,
+      };
 
       if (orgResult.rows.length === 0) {
         return res.json(noAuthResponse);
@@ -3820,14 +3878,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const hasValidOAuth = agentContextDb.hasValidOAuthTokens(context);
+      const hasCC = context.has_oauth_client_credentials;
 
       res.json({
-        has_auth: context.has_auth_token || hasValidOAuth,
+        has_auth: context.has_auth_token || hasValidOAuth || hasCC,
         agent_context_id: context.id,
-        auth_type: context.has_auth_token ? context.auth_type : hasValidOAuth ? "oauth" : null,
+        auth_type: context.has_auth_token
+          ? context.auth_type
+          : hasValidOAuth
+            ? "oauth"
+            : hasCC
+              ? "oauth_client_credentials"
+              : null,
         has_oauth_token: context.has_oauth_token,
         has_valid_oauth: hasValidOAuth,
         oauth_token_expires_at: context.oauth_token_expires_at?.toISOString() || null,
+        has_oauth_client_credentials: hasCC,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get agent auth status");
@@ -3904,6 +3970,131 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.status(500).json({ error: "Failed to connect agent" });
     }
   });
+
+  /**
+   * Save OAuth 2.0 client-credentials (RFC 6749 §4.4) for an agent. Parallel
+   * to /connect but for the machine-to-machine flow. Stored encrypted at
+   * rest; the SDK exchanges at `token_endpoint` before every call and
+   * refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference —
+   * the SDK resolves at exchange time, the server just stores the value as
+   * written (encrypted uniformly either way).
+   */
+  router.put(
+    "/registry/agents/:encodedUrl/oauth-client-credentials",
+    brandCreationRateLimiter,
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const body = req.body as Record<string, unknown>;
+        const tokenEndpoint = typeof body.token_endpoint === "string" ? body.token_endpoint : null;
+        const clientId = typeof body.client_id === "string" ? body.client_id : null;
+        const clientSecret = typeof body.client_secret === "string" ? body.client_secret : null;
+
+        if (!tokenEndpoint) {
+          return res.status(400).json({ error: "token_endpoint is required" });
+        }
+        if (!clientId) {
+          return res.status(400).json({ error: "client_id is required" });
+        }
+        if (!clientSecret) {
+          return res.status(400).json({ error: "client_secret is required" });
+        }
+        if (!validateAgentUrlParam(tokenEndpoint)) {
+          return res.status(400).json({
+            error:
+              "token_endpoint failed URL validation. Must be https:// (http://localhost is OK in development), not a cloud metadata or private-network host.",
+          });
+        }
+        // Length limits guard against accidental payload-as-credential pastes
+        // without being so tight they reject real tokens or env-var refs.
+        if (clientId.length > 2048) {
+          return res.status(400).json({ error: "client_id exceeds maximum length" });
+        }
+        if (clientSecret.length > 8192) {
+          return res.status(400).json({ error: "client_secret exceeds maximum length" });
+        }
+
+        const optionalString = (key: string, max: number): string | null | { error: string } => {
+          const value = body[key];
+          if (value === undefined || value === null || value === "") return null;
+          if (typeof value !== "string") return { error: `${key} must be a string` };
+          if (value.length > max) return { error: `${key} exceeds maximum length` };
+          return value;
+        };
+        const scopeRes = optionalString("scope", 1024);
+        const resourceRes = optionalString("resource", 2048);
+        const audienceRes = optionalString("audience", 2048);
+        for (const r of [scopeRes, resourceRes, audienceRes]) {
+          if (r && typeof r === "object" && "error" in r) {
+            return res.status(400).json({ error: r.error });
+          }
+        }
+        const scope = typeof scopeRes === "string" ? scopeRes : undefined;
+        const resource = typeof resourceRes === "string" ? resourceRes : undefined;
+        const audience = typeof audienceRes === "string" ? audienceRes : undefined;
+
+        let authMethod: "basic" | "body" | undefined;
+        if (body.auth_method !== undefined && body.auth_method !== null && body.auth_method !== "") {
+          if (body.auth_method !== "basic" && body.auth_method !== "body") {
+            return res.status(400).json({ error: 'auth_method must be "basic" or "body"' });
+          }
+          authMethod = body.auth_method;
+        }
+
+        const orgResult = await query<{ workos_organization_id: string }>(
+          `SELECT mp.workos_organization_id
+           FROM member_profiles mp
+           JOIN organization_memberships om
+             ON om.workos_organization_id = mp.workos_organization_id
+           WHERE mp.agents @> $1::jsonb
+             AND om.workos_user_id = $2
+           LIMIT 1`,
+          [JSON.stringify([{ url: agentUrl }]), req.user.id],
+        );
+        if (orgResult.rows.length === 0) {
+          return res.status(403).json({ error: "You do not have permission to modify this agent" });
+        }
+        const orgId = orgResult.rows[0].workos_organization_id;
+
+        let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+        if (!context) {
+          context = await agentContextDb.create({
+            organization_id: orgId,
+            agent_url: agentUrl,
+            created_by: req.user.id,
+          });
+        }
+
+        await agentContextDb.saveOAuthClientCredentials(context.id, {
+          token_endpoint: tokenEndpoint,
+          client_id: clientId,
+          client_secret: clientSecret,
+          ...(scope && { scope }),
+          ...(resource && { resource }),
+          ...(audience && { audience }),
+          ...(authMethod && { auth_method: authMethod }),
+        });
+
+        res.json({
+          connected: true,
+          has_auth: true,
+          agent_context_id: context.id,
+          auth_type: "oauth_client_credentials",
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to save oauth client credentials");
+        res.status(500).json({ error: "Failed to save OAuth client credentials" });
+      }
+    },
+  );
 
   // ── Storyboards ────────────────────────────────────────────────
 

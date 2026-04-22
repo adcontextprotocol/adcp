@@ -28,6 +28,27 @@ export type ResolvedOwnerAuth =
       type: 'oauth';
       tokens: { access_token: string; refresh_token: string; expires_at?: string };
       client?: { client_id: string; client_secret?: string };
+    }
+  | {
+      /**
+       * OAuth 2.0 client credentials (RFC 6749 §4.4). The SDK exchanges at
+       * `credentials.token_endpoint` before every call and refreshes on 401.
+       * `credentials.client_secret` may be a `$ENV:VAR_NAME` reference — the
+       * SDK resolves at exchange time. `tokens` is an optional cache hint
+       * from a prior exchange; omitted when none is cached (SDK will
+       * exchange on first call).
+       */
+      type: 'oauth_client_credentials';
+      credentials: {
+        token_endpoint: string;
+        client_id: string;
+        client_secret: string;
+        scope?: string;
+        resource?: string;
+        audience?: string;
+        auth_method?: 'basic' | 'body';
+      };
+      tokens?: { access_token: string; refresh_token?: string; expires_at?: string };
     };
 
 /**
@@ -596,13 +617,24 @@ export class ComplianceDatabase {
                 ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
                 ac.oauth_token_expires_at,
                 ac.oauth_client_id,
-                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
+                ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
+                ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
          WHERE ac.agent_url = $1
            AND mp.agents @> $2::jsonb
-           AND (ac.auth_token_encrypted IS NOT NULL OR ac.oauth_access_token_encrypted IS NOT NULL)
+           AND (
+             ac.auth_token_encrypted IS NOT NULL
+             OR ac.oauth_access_token_encrypted IS NOT NULL
+             OR (
+               ac.oauth_cc_token_endpoint IS NOT NULL
+               AND ac.oauth_cc_client_id IS NOT NULL
+               AND ac.oauth_cc_client_secret_encrypted IS NOT NULL
+             )
+           )
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
@@ -659,6 +691,31 @@ export class ComplianceDatabase {
           oauth.client = client;
         }
         return oauth;
+      }
+
+      if (
+        row.oauth_cc_token_endpoint &&
+        row.oauth_cc_client_id &&
+        row.oauth_cc_client_secret_encrypted &&
+        row.oauth_cc_client_secret_iv
+      ) {
+        const clientSecret = decryptToken(
+          row.oauth_cc_client_secret_encrypted,
+          row.oauth_cc_client_secret_iv,
+          row.organization_id,
+        );
+        const credentials: Extract<ResolvedOwnerAuth, { type: 'oauth_client_credentials' }>['credentials'] = {
+          token_endpoint: row.oauth_cc_token_endpoint,
+          client_id: row.oauth_cc_client_id,
+          client_secret: clientSecret,
+        };
+        if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
+        if (row.oauth_cc_resource) credentials.resource = row.oauth_cc_resource;
+        if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
+        if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
+          credentials.auth_method = row.oauth_cc_auth_method;
+        }
+        return { type: 'oauth_client_credentials', credentials };
       }
 
       return undefined;
