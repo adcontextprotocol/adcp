@@ -17,6 +17,7 @@ import {
   extractBearerToken,
   respondUnauthorized,
   requireAuthenticatedOrSigned,
+  requireSignatureWhenPresent,
   signatureErrorCodeFromCause,
   AuthError,
   type Authenticator,
@@ -127,23 +128,25 @@ function lazySigningAuth(): Authenticator {
 }
 
 /**
- * Default `/mcp` route: bearer OR valid signature. Unsigned bearer callers
- * pass through verifyApiKey; signed requests compose via anyOf. Present-but-
- * invalid signatures fall through to bearer (a known gap — closed on the
- * strict route, tracked upstream as adcp-client#659).
+ * Default `/mcp` route: presence-gated signature composition. Callers with no
+ * `Signature-Input` header fall through to bearer auth (sandbox backward
+ * compat — unsigned AAO API keys keep working). Callers that DO present a
+ * signature header MUST produce a valid one: malformed/invalid signatures
+ * fail closed with the signing-layer error code instead of silently
+ * downgrading to bearer. Closes signed-requests vector 011
+ * (`request_signature_header_malformed`) on the sandbox endpoint.
  *
  * The webhook-auth downgrade-resistance rule (security.mdx#webhook-callbacks)
  * is enforced only on `/mcp-strict`. The sandbox `/mcp` route accepts
  * unsigned `push_notification_config.authentication` for backward compat
  * with pre-3.0 storyboards that wire legacy HMAC-SHA256 webhooks over
- * bearer-auth'd `create_media_buy`. Updating those storyboards to
- * 9421-sign the registration is tracked separately; the grader-facing
- * strict route already matches the spec.
+ * bearer-auth'd `create_media_buy`. Presence-gating is orthogonal to that
+ * — it only changes behavior when a caller DOES present a signature header.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
-  return anyOf(bearerAuth, lazySigningAuth());
+  return requireSignatureWhenPresent(lazySigningAuth(), bearerAuth);
 }
 
 /**
