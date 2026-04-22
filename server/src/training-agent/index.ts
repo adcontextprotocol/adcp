@@ -25,7 +25,7 @@ import {
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
-import { startSessionCleanup, runWithSessionContext, flushDirtySessions } from './state.js';
+import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
@@ -67,6 +67,14 @@ function setCORSHeaders(res: Response): void {
  * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
  * or layer an `anyOf` with a separate scope-aware authenticator.
  */
+// Conformance handle documented in every test-kit header
+// (static/compliance/source/test-kits/*.yaml, auth.api_key comment): agents
+// SHOULD accept any Bearer matching `demo-<kit>-v<n>` so the suffix can rotate
+// across spec versions without breaking previously-conformant agents. The
+// training agent IS the reference — so it accepts the handle directly.
+// Anchored to forbid `demo--v1` / `demo-v1` and lock alg-num segments.
+const DEMO_TEST_KIT_KEY_PATTERN = /^demo-[a-z0-9]+(?:-[a-z0-9]+)*-v\d+$/;
+
 function buildBearerAuthenticator(): Authenticator | null {
   if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
     return null; // dev mode: open
@@ -79,6 +87,12 @@ function buildBearerAuthenticator(): Authenticator | null {
   if (Object.keys(staticKeys).length > 0) {
     authenticators.push(verifyApiKey({ keys: staticKeys }));
   }
+  authenticators.push(verifyApiKey({
+    verify: (token) => {
+      if (!DEMO_TEST_KIT_KEY_PATTERN.test(token)) return null;
+      return { principal: `static:demo:${token}` };
+    },
+  }));
   if (workos) {
     const workosClient = workos; // narrow for closure
     authenticators.push(verifyApiKey({
@@ -326,8 +340,7 @@ export function createTrainingAgentRouter(): Router {
         const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
         const ctx: TrainingContext = { mode: 'open', principal, strict };
 
-        const framework = useFrameworkServer();
-        server = framework
+        server = useFrameworkServer()
           ? createFrameworkTrainingAgentServer(ctx)
           : createTrainingAgentServer(ctx);
 
@@ -375,19 +388,11 @@ export function createTrainingAgentRouter(): Router {
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 
-        // Legacy path wraps dispatch in runWithSessionContext inside
-        // createTrainingAgentServer's CallToolRequestSchema handler. The
-        // framework owns dispatch, so we wrap here so session mutations
-        // (created media buys, creatives, governance state) persist across
-        // MCP calls under framework mode.
-        if (framework) {
-          await runWithSessionContext(async () => {
-            await transport.handleRequest(req, res, req.body);
-            await flushDirtySessions();
-          });
-        } else {
-          await transport.handleRequest(req, res, req.body);
-        }
+        // Both legacy and framework dispatch wrap handler execution in
+        // runWithSessionContext internally (legacy: CallToolRequestSchema,
+        // framework: adapt + customToolFor in framework-server.ts), so the
+        // transport-level handler just delegates.
+        await transport.handleRequest(req, res, req.body);
       } catch (error) {
         logger.error({ error, strict }, 'Training agent: request error');
         if (!res.headersSent) {

@@ -75,26 +75,14 @@ interface RequestSessionCtx {
   sessions: Map<string, SessionState>;
   /** Serialized snapshot taken at load time. Compared at flush to detect real mutations. */
   snapshots: Map<string, string>;
-  /** Set by a handler that threw so flushDirtySessions() discards mutations. */
-  handlerThrew: boolean;
 }
 
 const requestCtx = new AsyncLocalStorage<RequestSessionCtx>();
 
 /** Wrap a request so getSession()/flushDirtySessions() use a per-request cache. */
 export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
-  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map(), handlerThrew: false };
+  const ctx: RequestSessionCtx = { sessions: new Map(), snapshots: new Map() };
   return requestCtx.run(ctx, fn);
-}
-
-/**
- * Mark the current request as having a thrown handler so flushDirtySessions()
- * discards in-progress mutations. Matches the legacy dispatch's
- * `flushable: !handlerThrew` invariant. No-op outside a session context.
- */
-export function markSessionHandlerThrew(): void {
-  const ctx = requestCtx.getStore();
-  if (ctx) ctx.handlerThrew = true;
 }
 
 /**
@@ -117,7 +105,6 @@ export function markSessionHandlerThrew(): void {
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
   if (!ctx || ctx.sessions.size === 0) return;
-  if (ctx.handlerThrew) return;
   const store = getStore();
   const errors: Array<{ key: string; err: unknown }> = [];
   for (const [key, session] of ctx.sessions) {
