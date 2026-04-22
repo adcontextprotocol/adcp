@@ -1579,17 +1579,22 @@ export function createCommitteeRouters(): {
       }
 
       const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
-      // Non-leaders CANNOT opt out of members_only. If a non-lead passes
-      // is_members_only=false, we force it true rather than silently
-      // demoting — protects against accidental / malicious bypass of the
-      // leader-approval invariant for public posts.
-      if (!isLeader && is_members_only === false) {
+      // Non-leaders CANNOT opt out of members_only. Reject any explicit
+      // non-true value (`false`, `0`, `"false"`, `null`) with a 403 so the
+      // abuse signal surfaces in logs rather than being silently coerced.
+      // Omitting the field entirely is fine — we default to members-only.
+      if (!isLeader && is_members_only !== undefined && is_members_only !== true) {
         return res.status(403).json({
           error: 'Permission denied',
           message: 'Only committee leaders can create public (non-members-only) posts in this working group. Submit via the Perspectives flow for editorial review instead.',
         });
       }
-      const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
+      // For leaders, normalize the field to a strict boolean so a
+      // `0`/`"false"`/`null` value doesn't accidentally create a public
+      // post the leader didn't intend.
+      const finalMembersOnly = isLeader
+        ? (is_members_only === undefined ? true : Boolean(is_members_only))
+        : true;
 
       if (!title || !post_slug) {
         return res.status(400).json({
