@@ -50,21 +50,25 @@ async function callTool(
   });
 }
 
-/** Parse a StreamableHTTP `text/event-stream` response into the JSON-RPC
- *  envelope. The transport writes `event: message\ndata: {...}\n\n` for
- *  successful tools/call responses. */
-function parseSse(res: request.Response): Record<string, unknown> {
+/** Parse a StreamableHTTP response. Depending on Accept negotiation the
+ *  transport returns either SSE-framed (`event: message\ndata: {...}`) or
+ *  plain JSON; handle both so the test harness isn't brittle to transport
+ *  changes. */
+function parseEnvelope(res: request.Response): Record<string, unknown> {
   const text = res.text ?? '';
-  const match = text.match(/^data: (.*)$/m);
-  if (!match) throw new Error(`No data line in SSE response: ${text.slice(0, 200)}`);
-  return JSON.parse(match[1]) as Record<string, unknown>;
+  const sseMatch = text.match(/^data: (.*)$/m);
+  const raw = sseMatch ? sseMatch[1] : text;
+  return JSON.parse(raw) as Record<string, unknown>;
 }
 
-/** Extract the tool's inner response (parsed from the MCP text content). */
+/** Extract the tool's inner response. Prefers structuredContent (the
+ *  authoritative body on success / error paths) and falls back to parsing
+ *  content[0].text for legacy wire shapes. */
 function innerResponse(res: request.Response): Record<string, unknown> {
-  const envelope = parseSse(res) as { result?: { content?: Array<{ text?: string }> } };
+  const envelope = parseEnvelope(res) as { result?: { structuredContent?: Record<string, unknown>; content?: Array<{ text?: string }> } };
+  if (envelope.result?.structuredContent) return envelope.result.structuredContent;
   const text = envelope.result?.content?.[0]?.text;
-  if (!text) throw new Error(`No content text in envelope: ${JSON.stringify(envelope)}`);
+  if (!text) throw new Error(`No structuredContent or content text in envelope: ${JSON.stringify(envelope)}`);
   return JSON.parse(text) as Record<string, unknown>;
 }
 
