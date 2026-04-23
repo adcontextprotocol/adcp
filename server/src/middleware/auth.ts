@@ -215,7 +215,7 @@ export interface ValidatedApiKey {
  * Validate a WorkOS API key from the Authorization header
  * Returns the validated API key info or null if invalid
  */
-async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
+export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
 
