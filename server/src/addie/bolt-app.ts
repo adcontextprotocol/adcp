@@ -1680,24 +1680,44 @@ async function handleUserMessage({
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
-        await say({
-          text: slackText,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: slackText,
+        // Slack rejects section blocks with empty mrkdwn text. If sanitization
+        // stripped the response to empty, fall back: image-only if we have
+        // images, otherwise a rephrase prompt — not an apology, since nothing
+        // errored (Claude responded; validateOutput removed it).
+        if (!slackText.trim() && images.length === 0) {
+          await say("I don't have anything readable to send back for that — could you rephrase?");
+        } else if (!slackText.trim()) {
+          await say({
+            text: 'Addie response (images)',
+            blocks: [
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        } else {
+          await say({
+            text: slackText,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: slackText,
+                },
               },
-            },
-            ...images.slice(0, 3).map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
-            buildFeedbackBlock(),
-          ],
-        });
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        }
       } catch (error) {
         logger.error({ error }, 'Addie Bolt: Failed to send response');
       }
