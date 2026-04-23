@@ -29,7 +29,7 @@ In addition to the domain-specific fields listed in each vertical's table, all v
 
 Job postings for recruitment campaigns. Maps to LinkedIn Jobs XML, Google DynamicJobsAsset, and schema.org JobPosting.
 
-**Schema**: [`/schemas/core/job-item.json`](https://adcontextprotocol.org/schemas/latest/core/job-item.json)
+**Schema**: [`/schemas/core/job-item.json`](https://adcontextprotocol.org/schemas/v3/core/job-item.json)
 **Required**: `job_id`, `title`, `company_name`, `description`
 **Conversion events**: `submit_application`, `complete_registration`
 
@@ -56,7 +56,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/job-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
   "job_id": "eng-sr-2025-042",
   "title": "Senior Software Engineer",
   "company_name": "Acme Corp",
@@ -68,7 +68,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/job-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
   "job_id": "eng-sr-2025-042",
   "title": "Senior Software Engineer",
   "company_name": "Acme Corp",
@@ -90,7 +90,7 @@ Full example with optional fields:
 
 Hotel and lodging properties for travel ads and dynamic remarketing. Maps to Google Hotel Center feeds and Meta hotel catalogs.
 
-**Schema**: [`/schemas/core/hotel-item.json`](https://adcontextprotocol.org/schemas/latest/core/hotel-item.json)
+**Schema**: [`/schemas/core/hotel-item.json`](https://adcontextprotocol.org/schemas/v3/core/hotel-item.json)
 **Required**: `hotel_id`, `name`, `location`
 **Conversion events**: `purchase` (booking)
 
@@ -119,7 +119,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/hotel-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
   "hotel_id": "grand-amsterdam",
   "name": "Grand Hotel Amsterdam",
   "location": { "lat": 52.3676, "lng": 4.9041 }
@@ -130,7 +130,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/hotel-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
   "hotel_id": "grand-amsterdam",
   "name": "Grand Hotel Amsterdam",
   "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
@@ -157,7 +157,7 @@ Full example with optional fields:
 
 Vehicle listings for automotive inventory ads. Maps to Meta Automotive Inventory Ads, Microsoft Auto Inventory feeds, and Google vehicle ads.
 
-**Schema**: [`/schemas/core/vehicle-item.json`](https://adcontextprotocol.org/schemas/latest/core/vehicle-item.json)
+**Schema**: [`/schemas/core/vehicle-item.json`](https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json)
 **Required**: `vehicle_id`, `title`, `make`, `model`, `year`
 **Conversion events**: `lead`, `schedule` (test drive)
 
@@ -187,7 +187,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/vehicle-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
   "vehicle_id": "dlr-2024-horizon-001",
   "title": "2024 Apex Horizon EX Sedan",
   "make": "Apex",
@@ -200,7 +200,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/vehicle-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
   "vehicle_id": "dlr-2024-horizon-001",
   "title": "2024 Apex Horizon EX Sedan",
   "make": "Apex",
@@ -223,7 +223,7 @@ Full example with optional fields:
 
 Flight routes for travel ads and dynamic remarketing. Maps to Google DynamicFlightsAsset and Meta flight catalogs.
 
-**Schema**: [`/schemas/core/flight-item.json`](https://adcontextprotocol.org/schemas/latest/core/flight-item.json)
+**Schema**: [`/schemas/core/flight-item.json`](https://adcontextprotocol.org/schemas/v3/core/flight-item.json)
 **Required**: `flight_id`, `origin`, `destination`
 **Conversion events**: `purchase` (booking)
 
@@ -247,7 +247,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/flight-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
   "flight_id": "ams-jfk-summer",
   "origin": { "airport_code": "AMS" },
   "destination": { "airport_code": "JFK" }
@@ -258,7 +258,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/flight-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
   "flight_id": "ams-jfk-summer",
   "origin": { "airport_code": "AMS", "city": "Amsterdam" },
   "destination": { "airport_code": "JFK", "city": "New York" },
@@ -275,7 +275,7 @@ Full example with optional fields:
 
 Property listings for real estate ads. Maps to Google DynamicRealEstateAsset and Meta home listing catalogs.
 
-**Schema**: [`/schemas/core/real-estate-item.json`](https://adcontextprotocol.org/schemas/latest/core/real-estate-item.json)
+**Schema**: [`/schemas/core/real-estate-item.json`](https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json)
 **Required**: `listing_id`, `title`, `address`
 **Conversion events**: `lead`, `schedule` (viewing)
 
@@ -302,7 +302,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/real-estate-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
   "listing_id": "ams-jordaan-3br",
   "title": "Spacious 3BR Apartment in Jordaan",
   "address": { "city": "Amsterdam", "country": "NL" }
@@ -313,7 +313,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/real-estate-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
   "listing_id": "ams-jordaan-3br",
   "title": "Spacious 3BR Apartment in Jordaan",
   "description": "Bright canal-view apartment with original features and modern kitchen, steps from Noordermarkt.",
@@ -341,7 +341,7 @@ Full example with optional fields:
 
 Educational programs and courses for student recruitment. Maps to Google DynamicEducationAsset and schema.org Course.
 
-**Schema**: [`/schemas/core/education-item.json`](https://adcontextprotocol.org/schemas/latest/core/education-item.json)
+**Schema**: [`/schemas/core/education-item.json`](https://adcontextprotocol.org/schemas/v3/core/education-item.json)
 **Required**: `program_id`, `name`, `school`
 **Conversion events**: `submit_application`, `complete_registration`
 
@@ -368,7 +368,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/education-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
   "program_id": "pinnacle-msc-cs-2025",
   "name": "MSc Computer Science",
   "school": "Pinnacle University"
@@ -379,7 +379,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/education-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
   "program_id": "pinnacle-msc-cs-2025",
   "name": "MSc Computer Science",
   "school": "Pinnacle University",
@@ -402,7 +402,7 @@ Full example with optional fields:
 
 Travel destinations for destination ads and travel remarketing. Maps to Meta destination catalogs and Google travel ads.
 
-**Schema**: [`/schemas/core/destination-item.json`](https://adcontextprotocol.org/schemas/latest/core/destination-item.json)
+**Schema**: [`/schemas/core/destination-item.json`](https://adcontextprotocol.org/schemas/v3/core/destination-item.json)
 **Required**: `destination_id`, `name`
 **Conversion events**: `purchase` (booking)
 
@@ -426,7 +426,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/destination-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
   "destination_id": "barcelona",
   "name": "Barcelona"
 }
@@ -436,7 +436,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/destination-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
   "destination_id": "barcelona",
   "name": "Barcelona",
   "description": "Mediterranean city blending Gaudí architecture, beaches, and world-class dining.",
@@ -457,7 +457,7 @@ Full example with optional fields:
 
 Mobile applications for app install and re-engagement campaigns. Maps to Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, and Snapchat App Install Ads. iOS and Android variants are separate items.
 
-**Schema**: [`/schemas/core/app-item.json`](https://adcontextprotocol.org/schemas/latest/core/app-item.json)
+**Schema**: [`/schemas/core/app-item.json`](https://adcontextprotocol.org/schemas/v3/core/app-item.json)
 **Required**: `app_id`, `name`, `platform`
 **Conversion events**: `app_install`, `app_launch`
 
@@ -488,7 +488,7 @@ Minimal — just required fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/app-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
   "app_id": "puzzlequest-ios",
   "name": "Puzzle Quest: Match 3",
   "platform": "ios"
@@ -499,7 +499,7 @@ Full example with optional fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/app-item.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
   "app_id": "puzzlequest-ios",
   "name": "Puzzle Quest: Match 3",
   "platform": "ios",

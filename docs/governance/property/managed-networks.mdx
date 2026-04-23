@@ -31,7 +31,7 @@ Each managed domain hosts a minimal pointer file at `/.well-known/adagents.json`
 **Pointer file** (on each domain):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
   "last_updated": "2025-06-01T00:00:00Z"
 }
@@ -42,7 +42,7 @@ The `last_updated` timestamp in the pointer file reflects when the pointer itsel
 **Authoritative file** (at the network):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Example Network Ad Operations",
     "email": "adops@network.example.com",
@@ -338,7 +338,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/.well-known/adagents.json') {
       return new Response(JSON.stringify({
-        "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+        "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
         "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
         "last_updated": "2025-06-01T00:00:00Z"
       }), {
@@ -367,7 +367,7 @@ function handler(event) {
         'access-control-allow-origin': { value: '*' }
       },
       body: JSON.stringify({
-        "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+        "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
         "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
         "last_updated": "2025-06-01T00:00:00Z"
       })
@@ -389,7 +389,7 @@ add_action('init', function () {
         header('Content-Type: application/json');
         header('Cache-Control: public, max-age=86400');
         echo json_encode([
-            '$schema' => 'https://adcontextprotocol.org/schemas/latest/adagents.json',
+            '$schema' => 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             'authoritative_location' => 'https://network.example.com/adagents/v2/adagents.json',
             'last_updated' => '2025-06-01T00:00:00Z',
         ]);
@@ -426,7 +426,7 @@ jobs:
             mkdir -p "dist/${domain}/.well-known"
             cat > "dist/${domain}/.well-known/adagents.json" <<EOF
           {
-            "\$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+            "\$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
             "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
             "last_updated": "${TIMESTAMP}"
           }

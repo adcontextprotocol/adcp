@@ -90,7 +90,7 @@ AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
   "accounts": [
     {
@@ -122,7 +122,7 @@ With AdCP, `get_products` sends the same brief to every connected seller. Sam de
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "buying_mode": "brief",
   "brief": "Premium sports video inventory, Q2 2026, targeting 25-45 males interested in outdoor recreation. Budget $50K across CTV and display.",
   "brand": { "domain": "acmeoutdoor.com" }
@@ -164,7 +164,7 @@ But Sam isn't done. He likes StreamHaus's sports package but wants to shift budg
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "buying_mode": "refine",
   "refine": [
     {
@@ -199,7 +199,7 @@ First, Maya discovers what each seller accepts:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/list-creative-formats-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json",
   "type": "video"
 }
 ```
@@ -210,7 +210,7 @@ Then Maya briefs the creative agent. One brief produces all formats:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/build-creative-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
   "idempotency_key": "c1d2e3f4-a5b6-4789-c012-789012345678",
   "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
   "brand": { "domain": "acmeoutdoor.com" },
@@ -229,7 +229,7 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
   "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "creatives": [
@@ -259,7 +259,7 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
   "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "brand": { "domain": "acmeoutdoor.com" },
@@ -305,7 +305,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
   "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "audiences": [
@@ -322,7 +322,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
   "signal_spec": "Outdoor recreation enthusiasts near sporting goods retailers, 25-45"
 }
 ```
@@ -331,7 +331,7 @@ Kai's Meridian Geo returns matching signal segments with pricing, coverage, and 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
   "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
   "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
   "destinations": [
@@ -358,7 +358,7 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/governance/check-governance-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
   "plan_id": "acme_outdoor_q2_plan",
   "caller": "https://buyer.pinnacle-agency.com/a2a",
   "tool": "create_media_buy",
@@ -436,7 +436,7 @@ For deeper performance tracking, AdCP provides two more tools:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/log-event-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
   "idempotency_key": "a5b6c7d8-e9f0-4123-a456-123456789012",
   "event_source_id": "acme_website_pixel",
   "events": [
@@ -455,7 +455,7 @@ For deeper performance tracking, AdCP provides two more tools:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/provide-performance-feedback-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "b6c7d8e9-f0a1-4234-b567-234567890123",
   "media_buy_id": "mb_acme_q2_001",
   "measurement_period": {
@@ -478,7 +478,7 @@ Acme Outdoor has a Shopify store with 200 products. They want their catalog avai
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
   "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "catalogs": [
@@ -510,7 +510,7 @@ https://novamotors.com/.well-known/brand.json
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "house": {
     "domain": "novamotors.com",
     "name": "Nova Motors"
