@@ -133,8 +133,18 @@ export interface Organization {
   discount_granted_at: Date | null;
   stripe_coupon_id: string | null;
   stripe_promotion_code: string | null;
+  billing_address: BillingAddress | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface BillingAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
 }
 
 export interface SubscriptionInfo {
@@ -806,6 +816,7 @@ export class OrganizationDatabase {
       discount_granted_at: 'discount_granted_at',
       stripe_coupon_id: 'stripe_coupon_id',
       stripe_promotion_code: 'stripe_promotion_code',
+      billing_address: 'billing_address',
     };
 
     const setClauses: string[] = [];
