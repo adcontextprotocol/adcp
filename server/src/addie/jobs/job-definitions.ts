@@ -45,6 +45,7 @@ import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
 import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
+import { runAnnouncementTriggerJob } from './announcement-trigger.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -552,6 +553,18 @@ export function registerAllJobs(): void {
     runner: runProfileCompletionNudgeJob,
     businessHours: { startHour: 10, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.nudgesSent > 0,
+  });
+
+  // Announcement trigger - drafts welcome posts for newly announce-ready members
+  // and posts them to the editorial review channel for HITL approval.
+  jobScheduler.register({
+    name: 'announcement-trigger',
+    description: 'Draft new-member announcements for editorial review',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 4, unit: 'minutes' },
+    runner: runAnnouncementTriggerJob,
+    businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
+    shouldLogResult: (r) => r.drafted > 0 || r.skipped > 0,
   });
 
   // Weekly spec insight post - Addie posts a thought-provoking spec question to Slack
