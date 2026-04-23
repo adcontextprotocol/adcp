@@ -59,6 +59,17 @@ export interface ClaudeUsage {
  */
 export function costUsdMicros(model: string, usage: ClaudeUsage): number {
   const rates = PRICING_PER_MILLION_TOKENS[model] ?? UNKNOWN_MODEL_FALLBACK;
+  // Guard against upstream weirdness: NaN would poison the running
+  // total, negatives would silently credit the user, Infinity would
+  // saturate the Postgres BIGINT column. Anthropic doesn't emit any
+  // of these today, but the function has no contract saying so —
+  // clamp each token field to a non-negative finite integer before
+  // pricing. Zero is the safe fallback: under-charging a single
+  // response by a handful of micros is strictly preferable to
+  // letting a single malformed response disable the cap.
+  const safeTokens = (v: number | undefined): number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
+
   // Rate is per-million-tokens, answer is per-token; integer math
   // directly in micros avoids float accumulation across calls.
   //
@@ -66,12 +77,11 @@ export function costUsdMicros(model: string, usage: ClaudeUsage): number {
   // costMicros = costUsd * 1e6
   //            = tokens * rateUsdPerMillion
   //
-  // So tokens * rate is already in micros. Multiply by `1` for
-  // clarity, keep as number until we floor to int at the end.
-  const inputMicros = usage.input_tokens * rates.inputUsd;
-  const outputMicros = usage.output_tokens * rates.outputUsd;
-  const cacheCreationMicros = (usage.cache_creation_input_tokens ?? 0) * rates.cacheCreationUsd;
-  const cacheReadMicros = (usage.cache_read_input_tokens ?? 0) * rates.cacheReadUsd;
+  // So tokens * rate is already in micros.
+  const inputMicros = safeTokens(usage.input_tokens) * rates.inputUsd;
+  const outputMicros = safeTokens(usage.output_tokens) * rates.outputUsd;
+  const cacheCreationMicros = safeTokens(usage.cache_creation_input_tokens) * rates.cacheCreationUsd;
+  const cacheReadMicros = safeTokens(usage.cache_read_input_tokens) * rates.cacheReadUsd;
   const total = inputMicros + outputMicros + cacheCreationMicros + cacheReadMicros;
   return Math.ceil(total);
 }

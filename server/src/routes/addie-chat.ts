@@ -796,11 +796,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           // (filed as follow-up) — until then, real paying members
           // sit on member_free which is still plenty for normal
           // conversational use.
+          // Cost-cap scope (#2790). Authenticated callers key off the
+          // WorkOS user ID directly. Anonymous callers key off a
+          // hashed IP — the client-generated `externalId` alone was a
+          // bypass vector (an attacker could rotate it to get a
+          // fresh budget per request). The per-IP 50 msg/day limiter
+          // above bounds rotation within a single host; a botnet
+          // defeats both, which is acknowledged in the module header.
           ...(req.user?.id
             ? { costScope: { userId: req.user.id, tier: 'member_free' as const } }
-            : externalId
-              ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
-              : {}),
+            : { costScope: { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const } }),
         });
       } catch (error) {
         // Provide user-friendly error message based on error type

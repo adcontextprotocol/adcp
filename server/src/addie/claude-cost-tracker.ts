@@ -14,14 +14,38 @@
  * connection.
  *
  * System users (automated pipelines — newsletter, registry review)
- * are exempt by literal allowlist. Router-layer Claude calls (Haiku
- * for routing decisions) are also exempt because they aren't
- * user-initiated; the cost there is amortized across the workspace.
+ * are exempt by literal allowlist (see `./system-identities.ts`).
+ * Router-layer Claude calls (Haiku for routing decisions) are also
+ * exempt because they aren't user-initiated; the cost there is
+ * amortized across the workspace.
+ *
+ * Known trade-offs:
+ *
+ * - **Check/record race.** The flow is `check → Claude call → record`,
+ *   which is TOCTOU. N concurrent requests from one user can all see
+ *   the same stale sum and all pass. Worst case a user overshoots
+ *   the cap by a factor equal to their concurrency (10 parallel
+ *   streams at member_free ≈ $50 instead of $5). Acceptable given
+ *   this is a cost-defense gate, not an account-freeze, and the
+ *   overshoot self-limits within one window.
+ *
+ * - **Recording-failure tolerance.** `recordCost` catches DB write
+ *   errors and logs them — a sustained DB outage quietly disables
+ *   the cap. Alternative behavior (fail the response when we can't
+ *   record) would cause user-visible outages from an accounting-layer
+ *   issue; logging loudly + alerting on sustained failures is the
+ *   documented fallback.
+ *
+ * - **Charges record even on flagged / truncated responses.** The
+ *   tokens went to Anthropic whether or not we liked the result, so
+ *   the cost accumulates. Avoids a bypass where an attacker
+ *   intentionally triggers truncation to make responses "free".
  */
 
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { costUsdMicros, type ClaudeUsage } from './claude-pricing.js';
+import { SYSTEM_USER_IDS } from './system-identities.js';
 
 const logger = createLogger('addie-cost-tracker');
 
@@ -54,20 +78,6 @@ const DAILY_BUDGET_MICROS: Record<keyof typeof DAILY_BUDGET_USD, number> = {
   member_free: DAILY_BUDGET_USD.member_free * MICROS_PER_DOLLAR,
   member_paid: DAILY_BUDGET_USD.member_paid * MICROS_PER_DOLLAR,
 };
-
-/**
- * Literal allowlist — identical list to `tool-rate-limiter.ts`'s
- * SYSTEM_USER_IDS by design. A prefix match on `system:` would be
- * fragile for the same reason documented there: dev-mode cookies can
- * produce arbitrary `workos_user_id` strings.
- */
-const SYSTEM_USER_IDS = new Set<string>([
-  'system:addie',
-  'system:sage',
-  'system:scope3_seed',
-  'system:logo-service',
-  'system:google-alias-merge',
-]);
 
 export type UserTier = keyof typeof DAILY_BUDGET_USD;
 
@@ -216,14 +226,23 @@ export async function recordCost(
  * understands what happened.
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
-  const retryMinutes = Math.max(1, Math.ceil((result.retryAfterMs ?? 60000) / 60000));
   const tier = result.tier ?? 'anonymous';
   const capUsd = DAILY_BUDGET_USD[tier];
   const spentUsd = ((result.spentCents ?? 0) / 100).toFixed(2);
+  // Render the wait as hours when a user trips the cap early in the
+  // window — "reset in ~1440 minutes" reads as noise. Minutes only
+  // below 2 hours; rounded hours beyond that. The number is already
+  // approximate (the user can retry sooner as individual charges
+  // drop out), so hours-as-round-numbers is honest.
+  const retryMs = result.retryAfterMs ?? 60_000;
+  const retryMinutes = Math.max(1, Math.ceil(retryMs / 60_000));
+  const humanReset = retryMinutes >= 120
+    ? `~${Math.ceil(retryMinutes / 60)} hour${retryMinutes >= 180 ? 's' : ''}`
+    : `~${retryMinutes} minute${retryMinutes === 1 ? '' : 's'}`;
   return (
     `You've hit today's Claude API usage cap (${capUsd} USD) — ` +
     `spent ≈ $${spentUsd} in the last 24 hours. ` +
-    `The cap resets in ~${retryMinutes} minute${retryMinutes === 1 ? '' : 's'}. ` +
+    `The cap resets in ${humanReset}. ` +
     (tier === 'member_paid'
       ? 'Ping the AAO team if you need a higher ceiling for legitimate work.'
       : 'Upgrade your membership at /membership for a higher daily ceiling.')

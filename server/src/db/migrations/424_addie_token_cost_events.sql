@@ -20,10 +20,10 @@
 CREATE TABLE IF NOT EXISTS addie_token_cost_events (
   id                BIGSERIAL PRIMARY KEY,
   scope_key         TEXT        NOT NULL,
-  cost_usd_micros   BIGINT      NOT NULL,
+  cost_usd_micros   BIGINT      NOT NULL CHECK (cost_usd_micros >= 0),
   model             TEXT        NOT NULL,
-  tokens_input      INTEGER     NOT NULL,
-  tokens_output     INTEGER     NOT NULL,
+  tokens_input      INTEGER     NOT NULL CHECK (tokens_input >= 0),
+  tokens_output     INTEGER     NOT NULL CHECK (tokens_output >= 0),
   recorded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
