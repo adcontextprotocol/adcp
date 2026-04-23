@@ -331,12 +331,12 @@
 
         const rows = data.leaderboard.map(row => {
           const fillCls = percentFillClass(row.percent_of_cap);
-          const widthPct = Math.min(100, row.percent_of_cap);
+          const widthPct = Math.max(0, Math.min(100, row.percent_of_cap));
           const memberCell = row.member_name
             ? `<div class="member-name">${escapeHtml(row.member_name)}</div><div class="scope-key">${escapeHtml(row.member_email || '')}</div>`
             : '<span class="scope-key" style="color: var(--color-text-muted);">—</span>';
           return `
-            <tr onclick='openDetail(${JSON.stringify(row.scope_key)})'>
+            <tr data-scope-key="${escapeHtml(row.scope_key)}">
               <td>
                 <div><span class="ns-badge">${escapeHtml(row.namespace)}</span></div>
                 <div class="scope-key" style="margin-top: 4px;">${escapeHtml(row.scope_key)}</div>
@@ -438,6 +438,15 @@
 
     document.getElementById('windowFilter').addEventListener('change', loadLeaderboard);
     document.getElementById('limitFilter').addEventListener('change', loadLeaderboard);
+
+    // Delegated click handler for leaderboard rows — avoids inline
+    // onclick with its attribute-quoting hazards (some scope keys could
+    // in principle contain characters that break quoted attributes).
+    document.getElementById('leaderboardTable').addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-scope-key]');
+      if (!tr) return;
+      openDetail(tr.getAttribute('data-scope-key'));
+    });
 
     loadSummary();
     loadLeaderboard();

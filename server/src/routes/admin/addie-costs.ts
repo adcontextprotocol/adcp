@@ -42,21 +42,25 @@ const MAX_LEADERBOARD_LIMIT = 200;
 const MAX_EVENTS_PER_SCOPE = 200;
 
 /**
- * SQL expression that classifies a `scope_key` into a namespace label.
- * Shared between summary and leaderboard queries so the two views can't
- * disagree on classification.
+ * SQL expression that classifies `<col>` into a namespace label. Must
+ * stay in sync with the JS `classifyScopeKey` helper — unit tests pin
+ * the JS side, and the SQL uses `ESCAPE '\\'` on the `user\_%` pattern
+ * so the default LIKE wildcard on `_` doesn't drift from the JS
+ * `startsWith('user_')` semantics.
  */
-const NAMESPACE_CASE = `
-  CASE
-    WHEN scope_key LIKE 'email:%' THEN 'email'
-    WHEN scope_key LIKE 'slack:%' THEN 'slack'
-    WHEN scope_key LIKE 'mcp:%' THEN 'mcp'
-    WHEN scope_key LIKE 'tavus:ip:%' THEN 'tavus'
-    WHEN scope_key LIKE 'anon:%' THEN 'anon'
-    WHEN scope_key LIKE 'user_%' THEN 'workos'
-    ELSE 'unknown'
-  END
-`;
+function namespaceCaseSql(col: string): string {
+  return `
+    CASE
+      WHEN ${col} LIKE 'email:%' THEN 'email'
+      WHEN ${col} LIKE 'slack:%' THEN 'slack'
+      WHEN ${col} LIKE 'mcp:%' THEN 'mcp'
+      WHEN ${col} LIKE 'tavus:ip:%' THEN 'tavus'
+      WHEN ${col} LIKE 'anon:%' THEN 'anon'
+      WHEN ${col} LIKE 'user\\_%' ESCAPE '\\' THEN 'workos'
+      ELSE 'unknown'
+    END
+  `;
+}
 
 
 export function setupAddieCostRoutes(apiRouter: Router): void {
@@ -92,7 +96,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
           event_count: string;
         }>(
           `SELECT
-             ${NAMESPACE_CASE} AS namespace,
+             ${namespaceCaseSql('scope_key')} AS namespace,
              COUNT(DISTINCT scope_key)::text AS unique_scopes,
              SUM(cost_usd_micros)::text AS total_micros,
              COUNT(*)::text AS event_count
@@ -147,8 +151,18 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
       const limit = Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(rawLimit, MAX_LEADERBOARD_LIMIT)
         : DEFAULT_LEADERBOARD_LIMIT;
-      const windowHours = req.query.window === '7d' ? 24 * 7 : 24;
+      const windowParam = req.query.window;
+      if (windowParam !== undefined && windowParam !== '24h' && windowParam !== '7d') {
+        return res.status(400).json({ error: 'window must be 24h or 7d' });
+      }
+      const windowHours = windowParam === '7d' ? 24 * 7 : 24;
 
+      // Aggregate per-scope spend FIRST in a CTE, then join to user/org
+      // metadata via a LATERAL subquery that picks one membership per
+      // user (active-subscription preferred). This is critical: a flat
+      // LEFT JOIN organization_memberships would multiply rows for users
+      // in multiple orgs and the SUM would double-count before GROUP BY
+      // collapsed them.
       const { rows } = await pool.query<{
         scope_key: string;
         namespace: Namespace;
@@ -163,31 +177,47 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
         org_name: string | null;
         org_has_active_subscription: boolean | null;
       }>(
-        `SELECT
-           e.scope_key,
-           ${NAMESPACE_CASE.replace(/scope_key/g, 'e.scope_key')} AS namespace,
-           SUM(e.cost_usd_micros)::text AS total_micros,
-           COUNT(*)::text AS event_count,
-           MIN(e.recorded_at) AS first_at,
-           MAX(e.recorded_at) AS last_at,
-           ARRAY_AGG(DISTINCT e.model) AS models,
+        `WITH scope_totals AS (
+           SELECT
+             scope_key,
+             SUM(cost_usd_micros) AS total_micros,
+             COUNT(*) AS event_count,
+             MIN(recorded_at) AS first_at,
+             MAX(recorded_at) AS last_at,
+             ARRAY_AGG(DISTINCT model) AS models
+           FROM addie_token_cost_events
+           WHERE recorded_at > NOW() - make_interval(hours => $1::int)
+           GROUP BY scope_key
+           ORDER BY SUM(cost_usd_micros) DESC
+           LIMIT $2
+         )
+         SELECT
+           t.scope_key,
+           ${namespaceCaseSql('t.scope_key')} AS namespace,
+           t.total_micros::text AS total_micros,
+           t.event_count::text AS event_count,
+           t.first_at,
+           t.last_at,
+           t.models,
            u.first_name AS member_first_name,
-           u.last_name AS member_last_name,
-           u.email AS member_email,
-           o.name AS org_name,
-           CASE
-             WHEN o.workos_organization_id IS NULL THEN NULL
-             WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN true
-             ELSE false
-           END AS org_has_active_subscription
-         FROM addie_token_cost_events e
-         LEFT JOIN users u ON u.workos_user_id = e.scope_key
-         LEFT JOIN organization_memberships om ON om.workos_user_id = e.scope_key
-         LEFT JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-         WHERE e.recorded_at > NOW() - ($1::int || ' hours')::interval
-         GROUP BY e.scope_key, u.first_name, u.last_name, u.email, o.name, o.workos_organization_id, o.subscription_status, o.subscription_canceled_at
-         ORDER BY SUM(e.cost_usd_micros) DESC
-         LIMIT $2`,
+           u.last_name  AS member_last_name,
+           u.email      AS member_email,
+           best_org.name AS org_name,
+           best_org.has_active_subscription AS org_has_active_subscription
+         FROM scope_totals t
+         LEFT JOIN users u ON u.workos_user_id = t.scope_key
+         LEFT JOIN LATERAL (
+           SELECT
+             o.name,
+             (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AS has_active_subscription
+           FROM organization_memberships om
+           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+           WHERE om.workos_user_id = t.scope_key
+           ORDER BY
+             CASE WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END
+           LIMIT 1
+         ) best_org ON true
+         ORDER BY t.total_micros DESC`,
         [windowHours, limit],
       );
 
@@ -232,7 +262,11 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   apiRouter.get('/addie-costs/scope/:scopeKey/events', requireAuth, requireAdmin, async (req, res) => {
     try {
       const scopeKey = req.params.scopeKey;
-      if (!scopeKey || scopeKey.length > 256) {
+      // Charset + length guard — scope keys in practice are
+      // alphanumeric plus `:`, `.`, `_`, `-`; a hostile or accidental
+      // value with control characters won't break the parameterized
+      // query but shouldn't reach our logs either.
+      if (!scopeKey || scopeKey.length > 256 || !/^[A-Za-z0-9:_.\-]+$/.test(scopeKey)) {
         return res.status(400).json({ error: 'Invalid scope key' });
       }
       const pool = getPool();
@@ -250,6 +284,21 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
          ORDER BY recorded_at DESC
          LIMIT $2`,
         [scopeKey, MAX_EVENTS_PER_SCOPE],
+      );
+
+      // Audit log: scope-events is the narrowest query in the set —
+      // an admin pulling per-user event detail (including for opaque
+      // `email:<hash>` keys they could compute offline) should leave a
+      // trail. Log aggregation alerts can watch this event if the view
+      // is ever opened to a broader admin pool.
+      logger.info(
+        {
+          event: 'admin_addie_cost_scope_inspected',
+          scopeKey,
+          eventCount: rows.length,
+          adminUserId: (req as unknown as { user?: { id?: string } }).user?.id,
+        },
+        'Admin inspected Addie cost scope detail',
       );
 
       res.json({

@@ -38,6 +38,18 @@ describe('classifyScopeKey', () => {
     expect(classifyScopeKey('legacy_email:abc')).toBe('unknown');
     expect(classifyScopeKey('org_slack:U12')).toBe('unknown');
   });
+
+  it('does NOT mis-classify a scope key where `_` would be a SQL LIKE wildcard', () => {
+    // SQL `LIKE 'user_%'` without an ESCAPE clause would match
+    // `userX...` because `_` is a single-char wildcard. The JS helper
+    // uses `startsWith('user_')` with a literal underscore — the SQL
+    // side is paired with `ESCAPE '\\'` on `user\_%` to match. If that
+    // escape is ever removed, this test flags the resulting drift.
+    expect(classifyScopeKey('userX01H_something')).toBe('unknown');
+    expect(classifyScopeKey('users_list')).toBe('unknown');
+    // The canonical WorkOS shape must still classify as workos.
+    expect(classifyScopeKey('user_01H2ABC3DEF')).toBe('workos');
+  });
 });
 
 describe('inferDisplayTier', () => {
