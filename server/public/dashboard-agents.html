@@ -1027,8 +1027,6 @@
           ? timeAgo(new Date(cs.last_checked_at))
           : 'never';
 
-        const isPublic = !(cs.compliance_opt_out ?? false);
-
         return `
           <div class="agent-compliance-card" id="${cardId}">
             <div class="agent-compliance-header">
@@ -1037,12 +1035,6 @@
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
                 <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
                 ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
-              </div>
-              <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
-                <label class="agent-toggle" title="Show compliance on public registry">
-                  <input type="checkbox" class="registry-visibility-toggle" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
-                  <span class="agent-toggle-label">Show on registry</span>
-                </label>
               </div>
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
@@ -1098,27 +1090,6 @@
       const days = Math.floor(hours / 24);
       return days + 'd ago';
     }
-
-    // Registry visibility toggle
-    document.addEventListener('change', async function(e) {
-      const checkbox = e.target.closest('.registry-visibility-toggle');
-      if (checkbox) {
-        const agentUrl = checkbox.dataset.agentUrl;
-        try {
-          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/opt-out`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ opt_out: !checkbox.checked }),
-          });
-          if (!res.ok) {
-            checkbox.checked = !checkbox.checked;
-          }
-        } catch {
-          checkbox.checked = !checkbox.checked;
-        }
-      }
-    });
 
     // Retry a single agent's compliance fetch after a load error.
     document.addEventListener('click', async function(e) {
