@@ -482,7 +482,7 @@
     <div class="container">
         <div class="search-section">
             <div class="search-box">
-                <input type="text" id="agent-search" placeholder="Search by agent name, URL, or publisher..." aria-label="Search agents" onkeyup="filterAgents()">
+                <input type="text" id="agent-search" placeholder="Search by agent name, URL, owner, or publisher..." aria-label="Search agents" onkeyup="filterAgents()">
             </div>
             <div class="filter-row">
                 <div class="filter-group">
@@ -634,13 +634,18 @@
                 const query = filters.search.toLowerCase();
                 const matchesName = agent.name.toLowerCase().includes(query);
                 const matchesUrl = agent.url.toLowerCase().includes(query);
+                const matchesOwner = agent.contact && (
+                    (agent.contact.name && agent.contact.name.toLowerCase().includes(query)) ||
+                    (agent.contact.email && agent.contact.email.toLowerCase().includes(query)) ||
+                    (agent.contact.website && agent.contact.website.toLowerCase().includes(query))
+                );
                 const matchesProperty = agent.properties.some(p =>
                     (p.identifier && p.identifier.toLowerCase().includes(query)) ||
                     (p.domain && p.domain.toLowerCase().includes(query)) ||
                     (p.country && p.country.toLowerCase().includes(query))
                 );
                 const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
-                if (!matchesName && !matchesUrl && !matchesProperty && !matchesFormat) return false;
+                if (!matchesName && !matchesUrl && !matchesOwner && !matchesProperty && !matchesFormat) return false;
             }
             return true;
         });
