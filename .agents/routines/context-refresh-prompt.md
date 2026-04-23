@@ -16,10 +16,11 @@ already answered by recent activity.
      (last 30 days)
    - `gh pr list --limit 30 --state open --json number,title,labels`
    - Any issue/PR with labels like `roadmap`, `in-progress`, `tracking`
-3. Also scan `adcontextprotocol/adcp-client` and
-   `adcontextprotocol/adcp-client-python` for open PRs and recent
-   merges — these are the spec's clients and their velocity is part of
-   current context.
+3. Also scan `adcontextprotocol/adcp-client`,
+   `adcontextprotocol/adcp-client-python`, and
+   `adcontextprotocol/adcp-go` (TMP Go SDK + reference agents) for
+   open PRs and recent merges — these are the spec's implementations
+   and their velocity is part of current context.
 4. Identify themes. Group by major initiative (e.g., "v2 sunset",
    "upstream spec issues", "release cadence", "new task/capability").
    Drop themes that haven't had activity in 60 days.

@@ -65,13 +65,16 @@ Last refresh: 2026-04-23 (initial seed)
   DPA scrutiny, pricing is offline. Drove new data-protection-roles
   doc. Status: **shipped**.
 
-## Clients
+## Clients and implementations
 
 - **adcp-client** (TypeScript) — conformance runs via Addie's
   `test_adcp_agent` tool. PR #423 waits on buy-terms (spec #1962).
-- **adcp-client-python** — published Python client. Both SDKs ship
-  server primitives + testing utilities. Docs framing reads
-  caller-first.
+- **adcp-client-python** — published Python client. SDKs ship server
+  primitives + testing utilities. Docs framing reads caller-first.
+- **adcp-go** — Go SDK and reference TMP implementation. TEE-hardened,
+  zero-dep root module, embeddable router. See `adcp-go/AGENTS.md` for
+  hardening constraints (pinhole, metric cardinality, error
+  sanitization).
 
 ## Recent infra
 
