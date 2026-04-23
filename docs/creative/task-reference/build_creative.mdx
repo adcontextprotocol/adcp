@@ -20,7 +20,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the creative agent. For generation, this provides creative direction. For transformation, this guides how to adapt the creative. For refinement, this describes the desired changes. |
-| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
+| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
 | `creative_id` | string | No | Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of `creative_manifest` when retrieving an existing creative for tag generation or format adaptation. |
 | `concept_id` | string | No | Creative concept containing the creative. Used to disambiguate when the same `creative_id` exists in multiple concepts. |
 | `media_buy_id` | string | No | Buyer's media buy reference for tag generation context. When the creative agent is also the ad server (e.g., CM360), this provides the trafficking context needed to generate placement-specific tags. Omit when the platform generates tags at the creative level (Flashtalking, Celtra). This is the buyer's reference — the seller-assigned identifier from `create_media_buy`. |
@@ -46,7 +46,7 @@ When the creative agent charges and `account` is provided, the response includes
 | `pricing_option_id` | string | Which rate card pricing option was applied |
 | `vendor_cost` | number | Cost incurred for this build. May be 0 for CPM-priced creatives where cost accrues at serve time. |
 | `currency` | string | ISO 4217 currency code |
-| `consumption` | object | Structured consumption details — `tokens`, `images_generated`, `renders`, `duration_seconds`. See [`creative-consumption.json`](https://adcontextprotocol.org/schemas/latest/core/creative-consumption.json). Informational for cost verification; `vendor_cost` is the billing source of truth. |
+| `consumption` | object | Structured consumption details — `tokens`, `images_generated`, `renders`, `duration_seconds`. See [`creative-consumption.json`](https://adcontextprotocol.org/schemas/v3/core/creative-consumption.json). Informational for cost verification; `vendor_cost` is the billing source of truth. |
 
 For async builds (`status: "working"` with `context_id` polling), pricing fields appear on the final completed response only.
 

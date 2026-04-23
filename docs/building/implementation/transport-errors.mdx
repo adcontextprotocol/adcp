@@ -4,7 +4,7 @@ description: "How AdCP structured errors travel over MCP and A2A transports: ext
 "og:title": "AdCP — Transport Error Mapping"
 ---
 
-AdCP errors are **application-layer** errors. They belong in the tool/task response, not in the transport error channel. This page defines how the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema maps to MCP and A2A response envelopes.
+AdCP errors are **application-layer** errors. They belong in the tool/task response, not in the transport error channel. This page defines how the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema maps to MCP and A2A response envelopes.
 
 For the error schema itself, standard codes, and recovery strategies, see [Error Handling](/docs/building/implementation/error-handling).
 
@@ -539,26 +539,26 @@ Sellers SHOULD keep `details` compact. Error responses flow through LLM context 
 
 JSON Schemas for all recommended `details` shapes are published alongside the error code enum:
 
-- [`/schemas/latest/error-details/rate-limited.json`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json)
-- [`/schemas/latest/error-details/budget-too-low.json`](https://adcontextprotocol.org/schemas/latest/error-details/budget-too-low.json)
-- [`/schemas/latest/error-details/audience-too-small.json`](https://adcontextprotocol.org/schemas/latest/error-details/audience-too-small.json)
-- [`/schemas/latest/error-details/account-setup-required.json`](https://adcontextprotocol.org/schemas/latest/error-details/account-setup-required.json)
-- [`/schemas/latest/error-details/creative-rejected.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-rejected.json)
-- [`/schemas/latest/error-details/policy-violation.json`](https://adcontextprotocol.org/schemas/latest/error-details/policy-violation.json)
-- [`/schemas/latest/error-details/conflict.json`](https://adcontextprotocol.org/schemas/latest/error-details/conflict.json)
+- [`/schemas/v3/error-details/rate-limited.json`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json)
+- [`/schemas/v3/error-details/budget-too-low.json`](https://adcontextprotocol.org/schemas/v3/error-details/budget-too-low.json)
+- [`/schemas/v3/error-details/audience-too-small.json`](https://adcontextprotocol.org/schemas/v3/error-details/audience-too-small.json)
+- [`/schemas/v3/error-details/account-setup-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/account-setup-required.json)
+- [`/schemas/v3/error-details/creative-rejected.json`](https://adcontextprotocol.org/schemas/v3/error-details/creative-rejected.json)
+- [`/schemas/v3/error-details/policy-violation.json`](https://adcontextprotocol.org/schemas/v3/error-details/policy-violation.json)
+- [`/schemas/v3/error-details/conflict.json`](https://adcontextprotocol.org/schemas/v3/error-details/conflict.json)
 
 These schemas are recommended, not required. Sellers that omit `details` entirely are conformant. Agents MUST NOT require specific `details` keys — fall back to `code`, `message`, and `recovery` when `details` is absent or has unexpected shape.
 
 ## Seller-Specific Error Codes
 
-Sellers MAY use error codes not in the [standard vocabulary](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). To distinguish seller-specific codes from standard codes and avoid collisions between sellers:
+Sellers MAY use error codes not in the [standard vocabulary](https://adcontextprotocol.org/schemas/v3/enums/error-code.json). To distinguish seller-specific codes from standard codes and avoid collisions between sellers:
 
 - Seller-specific codes MUST use the format `X_{VENDOR}_{CODE}` (e.g., `X_STREAMHAUS_FLOOR_NOT_MET`)
 - `{VENDOR}` MUST be an uppercase alphanumeric identifier (matching `/^[A-Z][A-Z0-9]{1,19}$/`) registered in the vendor error code registry
 - `{CODE}` MUST be uppercase alphanumeric with underscores (matching `/^[A-Z][A-Z0-9_]{1,39}$/`)
 - Agents MUST handle unknown codes by falling back to the `recovery` classification
 - If `recovery` is absent on an unknown code, treat as `terminal`
-- Sellers SHOULD register their vendor prefix and codes in the [vendor error code registry](https://adcontextprotocol.org/schemas/latest/error-details/vendor-error-codes.json) by submitting a PR
+- Sellers SHOULD register their vendor prefix and codes in the [vendor error code registry](https://adcontextprotocol.org/schemas/v3/error-details/vendor-error-codes.json) by submitting a PR
 
 ```javascript
 function handleError(error) {

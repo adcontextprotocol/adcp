@@ -59,7 +59,7 @@ The legacy `pricing` object (with a single `cpm` field) is replaced by a `pricin
 **CPM** — Fixed cost per thousand impressions:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_cpm",
   "model": "cpm",
   "cpm": 2.50,
@@ -70,7 +70,7 @@ The legacy `pricing` object (with a single `cpm` field) is replaced by a `pricin
 **Percent of media** — Percentage of media spend, with optional CPM cap:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_pom",
   "model": "percent_of_media",
   "percent": 15,
@@ -82,7 +82,7 @@ The legacy `pricing` object (with a single `cpm` field) is replaced by a `pricin
 **Flat fee** — Fixed charge per reporting period (monthly licensed segments):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-pricing-option.json",
   "pricing_option_id": "po_auto_flat",
   "model": "flat_fee",
   "amount": 10000.00,
@@ -120,7 +120,7 @@ When activating a signal, pass the selected `pricing_option_id`:
 **rc.1 usage report:**
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/report-usage-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/report-usage-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
   "reporting_period": {
     "start": "2025-03-01T00:00:00Z",
