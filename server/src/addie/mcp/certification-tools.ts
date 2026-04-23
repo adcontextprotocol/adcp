@@ -19,6 +19,7 @@ function safeSubscriptionStatus(status: string | null | undefined): string | nul
   return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
 }
 import * as certDb from '../../db/certification-db.js';
+import { isUuid } from '../../utils/uuid.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
@@ -1926,9 +1927,8 @@ export function createCertificationToolHandlers(
       if (!attemptId || !scores || typeof scores !== 'object') return 'attempt_id and scores are required.';
 
       // Look up the active attempt: accept the UUID directly, or resolve from module ID
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
       let attempt: certDb.CertificationAttempt | null;
-      if (isUuid) {
+      if (isUuid(attemptId)) {
         attempt = await certDb.getAttempt(attemptId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID

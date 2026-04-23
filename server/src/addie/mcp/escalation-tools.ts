@@ -10,6 +10,7 @@ import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
+import { isUuid } from '../../utils/uuid.js';
 import {
   createEscalation,
   markNotificationSent,
@@ -287,7 +288,7 @@ export function createEscalationToolHandlers(
     const perspectiveSlug = input.perspective_slug as string | undefined;
 
     // Validate UUID format on perspective_id if provided.
-    if (perspectiveId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(perspectiveId)) {
+    if (perspectiveId && !isUuid(perspectiveId)) {
       throw new ToolError('perspective_id must be a UUID string if provided');
     }
 

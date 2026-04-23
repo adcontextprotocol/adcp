@@ -44,6 +44,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { isUuid } from "./utils/uuid.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -926,7 +927,6 @@ export class HTTPServer {
 
     // Serve brand logos by UUID — public endpoint so agents can download them.
     const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
     const brandLogoDb = new BrandLogoDatabase();
 
     // LRU cache: bounded to ~100MB / ~200 entries, 5-minute TTL
@@ -973,7 +973,7 @@ export class HTTPServer {
           return res.redirect(301, `/logos/brands/${domain}/${newId}`);
         }
 
-        if (!uuidPattern.test(id)) {
+        if (!isUuid(id)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
 
@@ -2847,8 +2847,7 @@ export class HTTPServer {
     // GET /brand/:id/brand.json - Serve hosted brand.json
     this.app.get('/brand/:id/brand.json', async (req, res) => {
       try {
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(req.params.id)) {
+        if (!isUuid(req.params.id)) {
           return res.status(404).json({ error: 'Brand not found' });
         }
         const brand = await this.brandDb.getHostedBrandById(req.params.id);
@@ -3247,8 +3246,7 @@ export class HTTPServer {
     // GET /property/:id/adagents.json - Serve hosted adagents.json
     this.app.get('/property/:id/adagents.json', async (req, res) => {
       try {
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(req.params.id)) {
+        if (!isUuid(req.params.id)) {
           return res.status(404).json({ error: 'Property not found' });
         }
         const property = await this.propertyDb.getHostedPropertyById(req.params.id);
@@ -4598,8 +4596,7 @@ export class HTTPServer {
 
     // GET /api/admin/agreements/:id - Get single agreement with full text
     this.app.get('/api/admin/agreements/:id', requireAuth, requireAdmin, async (req, res) => {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(req.params.id)) {
+      if (!isUuid(req.params.id)) {
         return res.status(400).json({ error: 'Invalid agreement ID format' });
       }
 
@@ -5651,7 +5648,7 @@ Disallow: /api/admin/
     this.app.put('/api/admin/content/:id/origin', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { id } = req.params;
-        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const { content_origin } = req.body;
         if (!content_origin || !['official', 'member', 'external'].includes(content_origin)) {
           return res.status(400).json({ error: 'content_origin must be official, member, or external' });
@@ -5668,13 +5665,11 @@ Disallow: /api/admin/
       }
     });
 
-    const isValidUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-
     // DELETE /api/admin/content/:id - Delete any perspective (admin only)
     this.app.delete('/api/admin/content/:id', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
       try {
         const { id } = req.params;
-        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const pool = getPool();
         const result = await pool.query(
           `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
@@ -5695,7 +5690,7 @@ Disallow: /api/admin/
     this.app.get('/api/admin/content/:id', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { id } = req.params;
-        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const pool = getPool();
         const result = await pool.query(
           `SELECT p.id, p.slug, p.content_type, p.title, p.subtitle, p.category,
@@ -5730,7 +5725,7 @@ Disallow: /api/admin/
     this.app.post('/api/admin/content/:id/social-drafts', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { id } = req.params;
-        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         if (!isLLMConfigured()) {
           return res.status(503).json({ error: 'LLM not configured' });
         }
@@ -5802,7 +5797,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.put('/api/admin/content/:id/status', requireAuth, requireAdmin, adminContentWriteRateLimiter, async (req, res) => {
       try {
         const { id } = req.params;
-        if (!isValidUUID(id)) return res.status(400).json({ error: 'Invalid content ID' });
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const { status } = req.body;
         if (!status || !['draft', 'pending_review', 'published', 'archived'].includes(status)) {
           return res.status(400).json({ error: 'status must be draft, pending_review, published, or archived' });

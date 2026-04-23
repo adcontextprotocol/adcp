@@ -20,6 +20,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
+import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate } from './untrusted-input.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -2820,8 +2821,7 @@ export function createMemberToolHandlers(
     const isFeatured = input.is_featured as boolean | undefined;
 
     // Validate UUID format before API call
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(documentId)) {
+    if (!isUuid(documentId)) {
       return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
     }
 
@@ -2889,8 +2889,7 @@ export function createMemberToolHandlers(
     const documentId = input.document_id as string;
 
     // Validate UUID format before API call
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(documentId)) {
+    if (!isUuid(documentId)) {
       return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
     }
 
