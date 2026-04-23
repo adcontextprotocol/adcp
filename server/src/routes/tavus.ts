@@ -456,12 +456,14 @@ export function createTavusRouter() {
     let voiceRequestTools: RequestTools | undefined;
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
+    let voiceUserId: string | null = null;
     if (threadId) {
       const threadService = getThreadService();
       try {
         const thread = await threadService.getThread(threadId);
         if (thread?.user_id && thread.channel === 'video') {
           userDisplayName = thread.user_display_name;
+          voiceUserId = thread.user_id;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -565,7 +567,20 @@ export function createTavusRouter() {
         currentMessage,
         threadContext,
         voiceRequestTools,
-        { requestContext }
+        {
+          requestContext,
+          // Cost cap (#2790 / #2950): voice sessions are authenticated
+          // at session init (req.user.id flows into thread.user_id),
+          // so we always have a WorkOS identity when a voice stream
+          // fires. If the thread lookup didn't resolve a user_id (e.g.
+          // misconfigured / abandoned thread), mark uncapped rather
+          // than guess a scope — voice sessions are shared-secret
+          // gated at the Bearer layer, so ungated is acceptable on
+          // that narrow path.
+          ...(voiceUserId
+            ? { costScope: { userId: voiceUserId, tier: 'member_free' as const } }
+            : { uncapped: true as const }),
+        }
       )) {
         if (connectionClosed) break;
         if (event.type === "text") {

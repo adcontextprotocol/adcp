@@ -89,3 +89,67 @@ describe('claude-client entry-gate behavior (#2790)', () => {
   // no-costScope path is exercised implicitly by every other
   // Addie test that doesn't pass `costScope`.
 });
+
+describe('fail-closed warn for unwired callers (#2950)', () => {
+  // Claude-client logs `event: 'cost_cap_unwired'` at `warn` level
+  // when neither `costScope` nor `uncapped: true` is passed. This is
+  // the observability signal that a future caller shipped without
+  // either — log aggregation should alert on it so unwired paths
+  // don't stay unnoticed.
+  //
+  // We can only assert the warn fires ON ENTRY, before the SDK is
+  // reached — the tracker-gate tests above already prove the
+  // entry-log-plus-SDK path, so here we just verify the log shape.
+  const logs: Array<{ msg: string; event?: string; method?: string }> = [];
+  beforeEach(() => {
+    __setCostTrackerStore(__createInMemoryCostStore());
+    anthropicCreate.mockClear();
+    logs.length = 0;
+  });
+
+  // Lightweight stub of the logger to capture the warn. The
+  // claude-client uses the module-scoped `logger` from
+  // `../logger.js`; vi.spyOn on a re-imported instance is enough.
+  it('emits cost_cap_unwired warn when processMessage is called without costScope or uncapped', async () => {
+    const loggerModule = await import('../../src/logger.js');
+    const spy = vi.spyOn(loggerModule.logger, 'warn').mockImplementation((obj: unknown, msg?: string) => {
+      if (typeof obj === 'object' && obj !== null) {
+        logs.push({ msg: msg ?? '', ...(obj as Record<string, string>) });
+      }
+      return loggerModule.logger;
+    });
+
+    try {
+      const client = new AddieClaudeClient('sk-fake', 'claude-sonnet-4-6');
+      // No costScope, no uncapped → should warn, then try to hit the
+      // mocked SDK (which throws) — we don't care about the throw,
+      // we only care that the warn fired first.
+      await client.processMessage('hi').catch(() => {});
+
+      const unwired = logs.find(l => l.event === 'cost_cap_unwired');
+      expect(unwired).toBeDefined();
+      expect(unwired?.method).toBe('processMessage');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does NOT emit cost_cap_unwired when uncapped: true is set', async () => {
+    const loggerModule = await import('../../src/logger.js');
+    const spy = vi.spyOn(loggerModule.logger, 'warn').mockImplementation((obj: unknown, msg?: string) => {
+      if (typeof obj === 'object' && obj !== null) {
+        logs.push({ msg: msg ?? '', ...(obj as Record<string, string>) });
+      }
+      return loggerModule.logger;
+    });
+
+    try {
+      const client = new AddieClaudeClient('sk-fake', 'claude-sonnet-4-6');
+      await client.processMessage('hi', undefined, undefined, undefined, { uncapped: true }).catch(() => {});
+      const unwired = logs.find(l => l.event === 'cost_cap_unwired');
+      expect(unwired).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

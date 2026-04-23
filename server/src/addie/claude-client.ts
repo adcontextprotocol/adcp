@@ -236,14 +236,21 @@ export interface ProcessMessageOptions {
   threadId?: string;
   /**
    * User identity + tier for the per-user Anthropic cost cap (#2790).
-   * Both are required together for the cap to apply; if either is
-   * omitted the request runs uncapped (router / system paths).
-   * Callers that want the cap enforced should always populate both.
+   * Callers must pass either `costScope` (to apply the cap) OR
+   * `uncapped: true` (to opt out explicitly for router / system
+   * paths). When both are missing, claude-client logs a warn with
+   * `event: 'cost_cap_unwired'` so observability catches future
+   * callers that ship without either (#2950).
    */
   costScope?: {
     userId: string;
     tier: 'anonymous' | 'member_free' | 'member_paid';
   };
+  /**
+   * Explicit opt-out for system / router callers that shouldn't
+   * count against a per-user budget.
+   */
+  uncapped?: true;
 }
 
 /**
@@ -485,6 +492,19 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
+    // #2950: warn when a caller has neither `costScope` nor explicit
+    // `uncapped: true`. Silent default meant a future user-facing
+    // caller could ship uncapped and nobody would notice — this log
+    // turns that into an observability signal. A hard throw would
+    // break legitimate callers we haven't migrated yet; loud-log
+    // lets audit rules alert on the event.
+    if (!options?.costScope && !options?.uncapped) {
+      logger.warn(
+        { event: 'cost_cap_unwired', method: 'processMessage' },
+        'claude-client called without costScope or uncapped:true — cost cap silently bypassed',
+      );
+    }
+
     // #2790: per-user Anthropic cost cap. Check at entry; when the
     // user has exhausted their daily budget, return a friendly
     // "try again later" response instead of firing another
@@ -1071,6 +1091,14 @@ export class AddieClaudeClient {
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
+    // #2950: matching fail-closed warn on the stream path.
+    if (!options?.costScope && !options?.uncapped) {
+      logger.warn(
+        { event: 'cost_cap_unwired', method: 'processMessageStream' },
+        'claude-client stream called without costScope or uncapped:true — cost cap silently bypassed',
+      );
+    }
+
     // #2790: per-user Anthropic cost cap (streaming path). Same
     // contract as `processMessage` — yield a `done` event with the
     // friendly cap-exceeded text and return early instead of firing

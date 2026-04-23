@@ -202,13 +202,19 @@ export async function handleChatTool(args: Record<string, unknown>): Promise<str
       text: msg.content,
     }));
 
-    // Process the message
+    // Process the message. `uncapped: true` is deliberate (#2950):
+    // the MCP chat-tool is intended for external partners via safe
+    // tools only (no userId is available in the tool call), and
+    // the global system budget is bounded by the MCP auth layer
+    // above. Marking uncapped rather than defaulting silently lets
+    // the #2790 fail-closed warn fire on any future user-facing
+    // caller that forgets to pass costScope.
     const response = await client.processMessage(
       message,
       threadContext,
       undefined, // No request-specific tools for anonymous
       undefined, // No rules override
-      { maxIterations: 5 } // Lower iteration limit for anonymous users
+      { maxIterations: 5, uncapped: true }, // Lower iteration limit for anonymous users
     );
 
     const result: ChatResponse = {
