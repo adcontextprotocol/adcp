@@ -3238,6 +3238,10 @@ export class HTTPServer {
     // GET /property/:id/adagents.json - Serve hosted adagents.json
     this.app.get('/property/:id/adagents.json', async (req, res) => {
       try {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(req.params.id)) {
+          return res.status(404).json({ error: 'Property not found' });
+        }
         const property = await this.propertyDb.getHostedPropertyById(req.params.id);
         if (!property || !property.is_public) {
           return res.status(404).json({ error: 'Property not found' });
