@@ -58,6 +58,23 @@ Every triage lands at exactly one of these:
    `FIRST_TIME_CONTRIBUTOR` (so they know it was seen); otherwise
    silent. Never burn expert cycles on a deferred issue.
 
+## Concurrency check — first thing, every issue
+
+Multiple triggers (cron, manual, bridge) can race on the same queue.
+Before spending any tokens on an issue, make sure another session
+didn't just process it:
+
+```
+gh api repos/<owner>/<repo>/issues/<N>/comments \
+  --jq '[.[] | select((.body | startswith("## Triage")) and
+    ((now - (.created_at | fromdate)) < 600))] | length'
+```
+
+If the result is > 0, another session beat you to this issue within
+the last 10 minutes. **Skip.** Do not apply `claude-triaged`. Do not
+spawn experts. Move to the next issue and note the skip in your run
+summary. This is the dedup lock — it costs one API call per issue.
+
 ## Decision order
 
 ### Step 1 — Pre-classification (cheap, no experts)
@@ -156,6 +173,33 @@ Combine the experts' reports. Look for:
 - **Missing info** — experts can't decide → Clarify
 
 Never paper over expert disagreement. Surface it.
+
+**Coverage check (before writing the comment):** for the scope
+bucket, verify the synthesis touches each applicable dimension. If a
+dimension is material and missing, loop back with a targeted
+follow-up to the relevant expert — don't ship the comment with an
+obvious gap.
+
+| Bucket | Dimensions the synthesis should cover |
+|---|---|
+| spec / protocol | operator reality (what DSPs/SSPs actually do), codebase/schema coherence (existing enums, task boundaries), industry precedent (OpenRTB / VAST / GAM / prebid), migration cost, governance / backwards-compat |
+| addie | pull vs. push dynamics, context use, channel choice, drop-off/decay handling, relationship-model fit |
+| compliance suite | conformance coverage, test reliability, schema alignment, CI cost |
+| training / certification | learning objectives, assessment fairness, accreditation risk, tone |
+| admin / ops tools | usage pattern, overbuild risk, access control, workflow fit |
+| web / site / docs | audience fit, agent-parseability, cross-links, tone |
+| registry / discovery | protocol soundness, operator behavior, governance of shared registry |
+| security-sensitive | attack surface, mitigations, multi-tenant isolation, TEE boundary (adcp-go) |
+
+Not every dimension matters for every issue — skip ones that aren't
+material. But if a dimension *is* material (e.g., SSAI behavior on a
+VAST asset-model RFC) and no expert addressed it, that's a gap.
+
+**For RFC / epic / cross-cutting issues:** consider spawning 2× per
+expert type in parallel. Variance in expert framing is a feature for
+high-scope issues — different instances surface different angles
+(operator reality vs. codebase coherence vs. migration). Synthesize
+across the 2× outputs. Don't do this for small bugs — overkill.
 
 ### Step 6 — Comment (only when it adds signal)
 
