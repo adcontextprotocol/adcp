@@ -334,7 +334,7 @@ export class ThreadService {
   async updateThreadTitle(threadId: string, title: string): Promise<void> {
     await query(
       `UPDATE addie_threads SET title = $2, updated_at = NOW() WHERE thread_id = $1`,
-      [threadId, title]
+      [threadId, title.slice(0, 500)]
     );
   }
 
