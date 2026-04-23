@@ -265,16 +265,22 @@ async function notifyPendingReview(
     ],
   };
 
-  const targets: Array<{ channelId: string; label: string }> = [];
-  if (wgChannelId) targets.push({ channelId: wgChannelId, label: 'working group' });
+  // The editorial channel comes from the admin settings (#2735) which
+  // originally validates `is_private === true` at write time. Slack
+  // channels can flip public later; the `requirePrivate` gate makes
+  // `sendChannelMessage` refuse to post if the channel has drifted.
+  // WG channels come from the working_groups table, not admin
+  // settings, so they stay on the default (ungated).
+  const targets: Array<{ channelId: string; label: string; requirePrivate: boolean }> = [];
+  if (wgChannelId) targets.push({ channelId: wgChannelId, label: 'working group', requirePrivate: false });
   // Avoid double-posting if WG and editorial channels are the same
   if (editorialChannelId && editorialChannelId !== wgChannelId) {
-    targets.push({ channelId: editorialChannelId, label: 'editorial' });
+    targets.push({ channelId: editorialChannelId, label: 'editorial', requirePrivate: true });
   }
 
-  const results = await Promise.all(targets.map(async ({ channelId, label }) => {
+  const results = await Promise.all(targets.map(async ({ channelId, label, requirePrivate }) => {
     try {
-      await sendChannelMessage(channelId, message);
+      await sendChannelMessage(channelId, message, { requirePrivate });
       logger.info(
         { workingGroupId, perspectiveId: perspective.id, channelId, target: label },
         'Sent pending content notification'

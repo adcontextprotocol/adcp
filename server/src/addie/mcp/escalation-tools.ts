@@ -237,7 +237,12 @@ async function sendEscalationNotification(
     lines.push('', `<https://agenticadvertising.org/admin/addie?thread=${context.threadId}|View Thread>`);
   }
 
-  return sendChannelMessage(channelId, { text: lines.join('\n') });
+  // channelId originates from system_settings.escalation_slack_channel
+  // (`getEscalationChannelId` above) — the admin settings route
+  // validates `is_private === true` at write time but not at send
+  // time. Gate here so a toggled-public channel stops receiving
+  // escalation content within one channel-info cache TTL (#2735).
+  return sendChannelMessage(channelId, { text: lines.join('\n') }, { requirePrivate: true });
 }
 
 /**
