@@ -540,7 +540,7 @@ These libraries handle protocol details, authentication, and provide typed inter
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
 **CLI tools in @adcp/client:**
-The `adcp` CLI runs via `npx @adcp/client@latest`. Key commands:
+The `adcp` CLI runs via `npx @adcp/client@latest`. Always include the `@latest` pin when you suggest a command — unpinned `npx @adcp/client` silently reuses whatever version is cached in `~/.npm/_npx/`, which can be months stale. If a user reports behavior that does not match current docs (a missing flag, an old warning, wrong output shape), suspect a stale cache first and tell them: "run `npx @adcp/client@latest …` to force a fresh resolution, or `rm -rf ~/.npm/_npx` to clear all cached versions." Key commands:
 - `npx @adcp/client@latest <agent> [tool] [payload]` — Call any tool on an agent
 - `npx @adcp/client@latest storyboard list` — List all available storyboards
 - `npx @adcp/client@latest storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
