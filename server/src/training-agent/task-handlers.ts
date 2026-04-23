@@ -2043,6 +2043,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = Boolean(req.account) && req.include_pricing !== false;
+  const agentUrl = getAgentUrl();
 
   return {
     query_summary: {
@@ -2054,10 +2055,20 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       total_count: creatives.length,
     },
     creatives: creatives.map(c => {
+      // Schema requires creatives[].name and creatives[].format_id.agent_url.
+      // sync_creatives accepts payloads missing either (buyer may omit name,
+      // SDK request builders occasionally drop agent_url), so stamp defaults
+      // at emit time: creative_id stands in for name, own agent_url stands
+      // in for format_id.agent_url. Keeps list_creatives response-schema
+      // valid regardless of what was synced.
+      const formatId = {
+        ...(c.formatId ?? { id: 'unknown' }),
+        agent_url: c.formatId?.agent_url ?? agentUrl,
+      };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        format_id: c.formatId,
-        name: c.name,
+        format_id: formatId,
+        name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,

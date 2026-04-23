@@ -445,6 +445,47 @@ export function stopSessionCleanup(): void {
   }
 }
 
+/**
+ * Search every persisted session for the first one that matches a
+ * predicate. Tools whose published input schema omits `account` (SDK
+ * auto-generated schemas for log_event, provide_performance_feedback,
+ * report_plan_outcome, etc.) land on `open:default` while earlier
+ * writes by sync_event_sources / create_media_buy / sync_plans went to
+ * `open:<brand.domain>`. This helper lets handlers keep their primary
+ * session lookup and fall back to a cross-session scan.
+ *
+ * Iterates the per-request cache first (fresh writes), then the
+ * persisted store (listed in pages of 100).
+ */
+export async function findSessionMatching(predicate: (s: SessionState) => boolean): Promise<SessionState | null> {
+  const ctx = requestCtx.getStore();
+  if (ctx) {
+    for (const session of ctx.sessions.values()) {
+      if (predicate(session)) return session;
+    }
+  }
+  const store = storeInstance;
+  if (!store) return null;
+  try {
+    const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
+    for (const row of page.items ?? []) {
+      const session = deserializeSession(row);
+      if (predicate(session)) return session;
+    }
+  } catch (err) {
+    logger.warn({ err }, 'findSessionMatching: store list failed');
+  }
+  return null;
+}
+
+export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionState | null> {
+  return findSessionMatching(s => s.mediaBuys.has(mediaBuyId));
+}
+
+export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
+  return findSessionMatching(s => s.governancePlans.has(planId));
+}
+
 /** Clear all sessions (tests only). */
 export async function clearSessions(): Promise<void> {
   const ctx = requestCtx.getStore();

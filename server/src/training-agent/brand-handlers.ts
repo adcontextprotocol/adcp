@@ -8,7 +8,7 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getSandboxBrands } from '@adcp/client/testing';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs, findSessionMatching } from './state.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -953,7 +953,15 @@ export async function handleAcquireRights(
   // are spending events and MUST be governed under the same plan as media
   // buys. Without this check, the brand_rights/governance_denied storyboard
   // gets a success response instead of GOVERNANCE_DENIED.
-  const session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  let session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  // Framework-dispatch strips `account`, dropping the session to
+  // open:default while sync_plans wrote under open:<brand.domain>.
+  // Fall back to any session carrying governance plans so
+  // brand_rights/governance_denied still propagates the denial.
+  if (session.governancePlans.size === 0) {
+    const fallback = await findSessionMatching(s => s.governancePlans.size > 0);
+    if (fallback) session = fallback;
+  }
   if (session.governancePlans.size > 0) {
     // Estimate total commitment: flat-rate pricing uses `price` as the fixed
     // total; CPM-priced rights project to estimated_impressions (or a

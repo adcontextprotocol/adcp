@@ -398,7 +398,10 @@ describe('comply_test_controller', () => {
       expect(result.current_state).toBeNull();
     });
 
-    it('rejects transition to rejected from approved (no valid path)', async () => {
+    it('rejects transition to rejected from approved without a rejection_reason', async () => {
+      // approved → rejected is a valid path (brand-safety flagging an
+      // already-approved creative is a real lifecycle edge); but rejecting
+      // still requires a reason, so the call must fail with INVALID_PARAMS.
       const creativeId = await syncCreative(server);
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_creative_status',
@@ -407,7 +410,25 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(result.success).toBe(false);
-      expect(result.error).toBe('INVALID_TRANSITION');
+      expect(result.error).toBe('INVALID_PARAMS');
+      expect(result.error_detail).toContain('rejection_reason');
+    });
+
+    it('allows approved -> rejected with a rejection_reason (post-approval brand-safety flag)', async () => {
+      const creativeId = await syncCreative(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: {
+          creative_id: creativeId,
+          status: 'rejected',
+          rejection_reason: 'Brand safety policy violation discovered post-approval',
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(true);
+      expect(result.previous_state).toBe('approved');
+      expect(result.current_state).toBe('rejected');
     });
 
     it('allows approved -> pending_review (seller re-review)', async () => {

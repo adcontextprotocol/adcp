@@ -198,6 +198,8 @@ phases:
         context_outputs:
           - path: "rights.0.rights_id"
             key: "rights_id"
+          - path: "rights.0.pricing_options.0.pricing_option_id"
+            key: "pricing_option_id"
 
         validations:
           - check: response_schema
@@ -246,7 +248,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
-          pricing_option_id: "standard_monthly"
+          pricing_option_id: "$context.pricing_option_id"
           buyer:
             domain: "pinnacle-agency.example"
           campaign:
@@ -324,7 +326,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
-          pricing_option_id: "standard_monthly"
+          pricing_option_id: "$context.pricing_option_id"
           buyer:
             domain: "pinnacle-agency.example"
           campaign:

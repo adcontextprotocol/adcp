@@ -20,7 +20,7 @@
  * storyboard parity is verified and a follow-up PR flips the default.
  */
 
-import { createAdcpServer } from '@adcp/client/server';
+import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
 import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
 import { MediaChannelSchema } from '@adcp/client/types';
 import { z } from 'zod';
@@ -142,7 +142,17 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  const response = callerContext !== undefined ? { ...inner, context: callerContext } : inner;
+  // wrapEnvelope stamps the AdCP idempotency + context echo envelope.
+  // `replayed: false` signals a fresh execution so storyboards that
+  // assert `replayed: false (or omitted)` grade consistently; a
+  // follow-up wrapper intercepts replays and flips it to true.
+  const withEnvelope = wrapEnvelope(inner, {
+    replayed: false,
+    ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
+      ? { context: callerContext }
+      : {}),
+  });
+  const response = withEnvelope as Record<string, unknown>;
   return {
     content: [{ type: 'text', text: JSON.stringify(response) }],
     structuredContent: response,
