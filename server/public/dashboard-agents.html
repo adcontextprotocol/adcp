@@ -924,7 +924,7 @@
               </div>
               <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
                 <label class="agent-toggle" title="Show compliance on public registry">
-                  <input type="checkbox" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
+                  <input type="checkbox" class="registry-visibility-toggle" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
                   <span class="agent-toggle-label">Show on registry</span>
                 </label>
               </div>
@@ -983,8 +983,8 @@
     }
 
     // Registry visibility toggle
-    document.addEventListener('click', async function(e) {
-      const checkbox = e.target.closest('.agent-toggle input[type="checkbox"]');
+    document.addEventListener('change', async function(e) {
+      const checkbox = e.target.closest('.registry-visibility-toggle');
       if (checkbox) {
         const agentUrl = checkbox.dataset.agentUrl;
         try {

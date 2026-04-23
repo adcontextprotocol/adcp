@@ -268,6 +268,7 @@ export const AgentComplianceDetailSchema = z
     agent_url: z.string(),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
+    compliance_opt_out: z.boolean().optional(),
     tracks: z.record(z.string(), z.string()).optional(),
     streak_days: z.number().int().optional(),
     last_checked_at: z.string().nullable().optional(),

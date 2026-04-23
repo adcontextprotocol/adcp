@@ -3411,6 +3411,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           agent_url: agentUrl,
           status: "opted_out",
           lifecycle_stage: metadata.lifecycle_stage || "production",
+          compliance_opt_out: true,
         });
       }
 
@@ -3419,6 +3420,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           agent_url: agentUrl,
           status: "unknown",
           lifecycle_stage: metadata?.lifecycle_stage || "production",
+          compliance_opt_out: false,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -3441,6 +3443,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         agent_url: agentUrl,
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
+        compliance_opt_out: metadata?.compliance_opt_out ?? false,
         tracks: status.tracks_summary_json || {},
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
