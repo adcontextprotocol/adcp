@@ -226,12 +226,23 @@ export const agentReadRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for agent dashboard reads');
 
-    // standardHeaders emits a RateLimit-Reset / Retry-After header with
-    // the real remaining window — clients should read those rather than
-    // a body field that can't reflect actual state.
+    // standardHeaders emits `Retry-After` / `RateLimit-Reset` with the
+    // real remaining window — that's the authoritative signal. We also
+    // surface the same value in the JSON body as a proxy-stripped
+    // fallback (#2804): some reverse proxies drop non-standard
+    // headers, and the dashboard needs SOMETHING to key its countdown
+    // off. `retryAfter` is seconds-to-retry, matching the header's
+    // delta-seconds format.
+    const retryAfterHeader = res.getHeader('Retry-After');
+    const retryAfter = typeof retryAfterHeader === 'number'
+      ? retryAfterHeader
+      : typeof retryAfterHeader === 'string'
+        ? parseInt(retryAfterHeader, 10) || undefined
+        : undefined;
     res.status(429).json({
       error: 'Too many requests',
       message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });
