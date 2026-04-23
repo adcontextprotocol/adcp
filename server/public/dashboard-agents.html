@@ -683,6 +683,10 @@
       orgId: null,
       hasApiAccess: false,
       brandHostingType: null,
+      // Tracks agents that have already auto-retried once after a 429
+      // (#2804). A second 429 on the same agent freezes the card with
+      // "you've refreshed too quickly" guidance instead of looping.
+      autoRetriedAgents: new Set(),
     };
 
     // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
@@ -738,7 +742,32 @@
         }
         const res = s.value;
         if (!res.ok) {
-          return { data: null, error: { source, code: res.status, message: res.statusText || `HTTP ${res.status}` } };
+          const error = { source, code: res.status, message: res.statusText || `HTTP ${res.status}` };
+          // On a 429, surface how long to wait before retrying. Prefer
+          // the Retry-After header (authoritative, standard); fall back
+          // to the JSON body's retryAfter when a proxy strips the
+          // header (#2804). Stored on the error object so the renderer
+          // can drive a live countdown.
+          if (res.status === 429) {
+            const headerSeconds = parseInt(res.headers.get('retry-after') || '', 10);
+            let retryAfterSeconds = Number.isFinite(headerSeconds) && headerSeconds > 0
+              ? headerSeconds
+              : undefined;
+            if (retryAfterSeconds === undefined) {
+              try {
+                const body = await res.clone().json();
+                if (typeof body?.retryAfter === 'number' && body.retryAfter > 0) {
+                  retryAfterSeconds = body.retryAfter;
+                }
+              } catch {
+                // body wasn't json — fall through with no hint
+              }
+            }
+            if (retryAfterSeconds !== undefined) {
+              error.retryAfterSeconds = retryAfterSeconds;
+            }
+          }
+          return { data: null, error };
         }
         try {
           return { data: await res.json(), error: null };
@@ -820,18 +849,38 @@
           });
         }
 
-        // Fetch compliance data for org's agents. A hard 15s ceiling guards
-        // against any single fetch hanging the entire page — unresolved agents
-        // fall through to the per-card "not yet checked" / error state, and
-        // the user can still interact with the page.
+        // Fetch compliance data for org's agents with a concurrency cap
+        // so a large agent list doesn't self-DOS the per-agent read
+        // limiter (#2804). Each agent fans out to 2 server routes
+        // (agentReadRateLimiter, 240/min) + 1 auth-status call, so
+        // holding 6 agents in-flight keeps the burst well under the
+        // cap while still feeling fast for typical (1-10 agent) users.
+        // A hard 15s ceiling still guards against any single fetch
+        // hanging the entire page — unresolved agents fall through to
+        // the per-card "not yet checked" / error state.
+        const AGENT_FETCH_CONCURRENCY = 6;
         const agentCompliance = new Map();
         const agents = profileData?.profile?.agents || [];
         if (agents.length > 0) {
-          const allSettled = Promise.allSettled(agents.map(fetchAgentState));
+          const queue = agents.slice();
+          const settled = [];
+          async function worker() {
+            while (queue.length > 0) {
+              const agent = queue.shift();
+              if (!agent) break;
+              try {
+                settled.push({ status: 'fulfilled', value: await fetchAgentState(agent) });
+              } catch (err) {
+                settled.push({ status: 'rejected', reason: err });
+              }
+            }
+          }
+          const workerCount = Math.min(AGENT_FETCH_CONCURRENCY, agents.length);
+          const workers = Promise.all(Array.from({ length: workerCount }, worker));
           const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
-          const results = await Promise.race([allSettled, timeout]);
-          if (Array.isArray(results)) {
-            for (const r of results) {
+          const completed = await Promise.race([workers, timeout]);
+          if (completed !== null) {
+            for (const r of settled) {
               if (r.status === 'fulfilled') {
                 agentCompliance.set(r.value.url, r.value);
               } else {
@@ -840,6 +889,14 @@
             }
           } else {
             console.warn('Agent compliance fetch timed out after 15s; rendering with partial data');
+            // Even on timeout, harvest whatever workers managed to
+            // resolve before the deadline so the user sees partial
+            // results instead of nothing.
+            for (const r of settled) {
+              if (r.status === 'fulfilled') {
+                agentCompliance.set(r.value.url, r.value);
+              }
+            }
           }
         }
 
@@ -1054,11 +1111,44 @@
 
         if (loadError) {
           const isRateLimited = loadError.code === 429;
-          const errMsg = isRateLimited
-            ? 'Rate-limited — too many requests. Retry in a moment.'
-            : 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
+          // Rate-limit rendering has three modes (#2804):
+          //   - first 429 with a known retry time → live countdown +
+          //     auto-retry-once when the countdown hits zero.
+          //   - first 429 with no known retry time → generic "Retry in
+          //     a moment" text, manual retry only.
+          //   - post-auto-retry second 429 → "You've refreshed too
+          //     quickly" guidance, retry button disabled for the
+          //     remaining window.
+          const autoRetried = pageState.autoRetriedAgents?.has(agent.url);
+          const retryAfterSeconds = isRateLimited && typeof loadError.retryAfterSeconds === 'number'
+            ? loadError.retryAfterSeconds
+            : null;
+          const retryAtMs = retryAfterSeconds !== null ? Date.now() + retryAfterSeconds * 1000 : null;
+
+          let errMsg;
+          if (!isRateLimited) {
+            errMsg = 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
+          } else if (autoRetried) {
+            errMsg = 'You\'ve refreshed too quickly — wait a minute before trying again.';
+          } else if (retryAfterSeconds !== null) {
+            // Replaced live by the countdown interval below. The
+            // initial value is rendered server-side so the user sees
+            // a number even before the first tick fires.
+            errMsg = `Rate-limited — retry in ${retryAfterSeconds}s…`;
+          } else {
+            errMsg = 'Rate-limited — retry in a moment.';
+          }
+
+          // Disable the retry button until the countdown expires or
+          // (if we already auto-retried) for the rest of the known
+          // rate-limit window.
+          const retryDisabled = isRateLimited && (autoRetried || retryAtMs !== null);
+          const retryLabel = retryDisabled && retryAtMs !== null
+            ? `Retry in ${retryAfterSeconds}s`
+            : 'Retry';
+
           return `
-          <div class="agent-compliance-card" id="${cardId}">
+          <div class="agent-compliance-card" id="${cardId}"${isRateLimited ? ' data-rate-limited="1"' : ''}${autoRetried ? ' data-auto-retried="1"' : ''}>
             <div class="agent-compliance-header">
               <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
                 <span class="agent-status-dot agent-status-dot--error"></span>
@@ -1066,10 +1156,10 @@
                 <span class="agent-status-label" style="color: var(--color-warning-700, var(--color-text-secondary));">couldn't load</span>
               </div>
               <div style="display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0;">
-                <button class="agent-reload-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Retry</button>
+                <button class="agent-reload-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${retryDisabled ? ' disabled' : ''}>${escapeHtml(retryLabel)}</button>
               </div>
             </div>
-            <div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+            <div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);"${retryAtMs !== null && !autoRetried ? ` data-rate-limited-until="${retryAtMs}" data-card-id="${cardId}"` : ''}>
               ${escapeHtml(errMsg)}
             </div>
             ${visibilitySelectorHtml}
@@ -1190,18 +1280,21 @@
       return days + 'd ago';
     }
 
-    // Retry a single agent's compliance fetch after a load error.
-    document.addEventListener('click', async function(e) {
-      const retryBtn = e.target.closest('.agent-reload-btn');
-      if (!retryBtn) return;
-      const agentUrl = retryBtn.dataset.agentUrl;
-      const cardId = retryBtn.dataset.cardId;
-      if (!agentUrl || !cardId) return;
+    // Retry a single agent's compliance fetch after a load error. Shared
+    // between the explicit Retry button click and the post-countdown
+    // auto-retry triggered by the rate-limit UI. `auto` is true when
+    // called from the countdown, which marks the agent as having
+    // auto-retried so a subsequent 429 freezes the card with
+    // "you've refreshed too quickly" guidance instead of looping.
+    async function retryAgentCard(agentUrl, cardId, { auto = false } = {}) {
       const card = document.getElementById(cardId);
       if (!card) return;
-
-      retryBtn.disabled = true;
-      retryBtn.textContent = 'Retrying...';
+      const retryBtn = card.querySelector('.agent-reload-btn');
+      if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.textContent = 'Retrying...';
+      }
+      if (auto) pageState.autoRetriedAgents.add(agentUrl);
       try {
         const state = await fetchAgentState({ url: agentUrl });
         pageState.complianceMap.set(agentUrl, state);
@@ -1213,10 +1306,56 @@
         if (newCard) card.replaceWith(newCard);
       } catch (err) {
         console.error('Retry failed:', err);
-        retryBtn.disabled = false;
-        retryBtn.textContent = 'Retry';
+        if (retryBtn) {
+          retryBtn.disabled = false;
+          retryBtn.textContent = 'Retry';
+        }
       }
+    }
+
+    document.addEventListener('click', function(e) {
+      const retryBtn = e.target.closest('.agent-reload-btn');
+      if (!retryBtn || retryBtn.disabled) return;
+      const agentUrl = retryBtn.dataset.agentUrl;
+      const cardId = retryBtn.dataset.cardId;
+      if (!agentUrl || !cardId) return;
+      retryAgentCard(agentUrl, cardId);
     });
+
+    // Live countdown + auto-retry for rate-limited cards. One page-level
+    // interval scans for `[data-rate-limited-until]` elements every
+    // second, updates their text to "Retry in Ns…", and fires a
+    // single auto-retry when the countdown hits zero (#2804).
+    setInterval(function() {
+      const nodes = document.querySelectorAll('[data-rate-limited-until]');
+      if (nodes.length === 0) return;
+      const now = Date.now();
+      for (const node of nodes) {
+        const until = parseInt(node.dataset.rateLimitedUntil || '', 10);
+        if (!Number.isFinite(until)) continue;
+        const remainingSec = Math.max(0, Math.ceil((until - now) / 1000));
+        if (remainingSec > 0) {
+          node.textContent = `Rate-limited — retry in ${remainingSec}s…`;
+          // Update the button label too so disabled button reflects
+          // the live countdown instead of a stale "Retry in 30s".
+          const card = node.closest('.agent-compliance-card');
+          const retryBtn = card?.querySelector('.agent-reload-btn');
+          if (retryBtn && retryBtn.disabled) {
+            retryBtn.textContent = `Retry in ${remainingSec}s`;
+          }
+          continue;
+        }
+        // Countdown expired. Clear the attribute so we don't fire
+        // multiple retries if the re-render is slow, then trigger.
+        const cardId = node.dataset.cardId;
+        const card = document.getElementById(cardId);
+        const agentUrl = card?.querySelector('.agent-reload-btn')?.dataset.agentUrl;
+        node.removeAttribute('data-rate-limited-until');
+        if (cardId && agentUrl) {
+          retryAgentCard(agentUrl, cardId, { auto: true });
+        }
+      }
+    }, 1000);
 
     // Connect agent toggle
     document.addEventListener('click', function(e) {
