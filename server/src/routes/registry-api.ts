@@ -85,6 +85,7 @@ import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { query as dbQuery } from "../db/client.js";
+import { validateWorkOSApiKey } from "../middleware/auth.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -4660,7 +4661,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Lookups & Authorization ───────────────────────────────────
 
-  router.get("/registry/operator", async (req, res) => {
+  router.get("/registry/operator", optAuth, async (req, res) => {
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
@@ -4679,8 +4680,43 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
+      // Resolve caller's organization. API key path (optAuth skips Bearer
+      // API keys — see middleware/auth.ts:1332) takes precedence over session.
+      let callerOrgId: string | null = null;
+      const apiKey = await validateWorkOSApiKey(req);
+      if (apiKey) {
+        callerOrgId = apiKey.organizationId;
+      } else if (req.user?.id) {
+        try {
+          const row = await dbQuery<{ primary_organization_id: string | null }>(
+            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+            [req.user.id],
+          );
+          callerOrgId = row.rows[0]?.primary_organization_id ?? null;
+        } catch (err) {
+          logger.warn({ err, userId: req.user.id }, 'operator: org resolution failed — falling back to public-only');
+        }
+      }
+
+      let includeMembersOnly = false;
+      if (callerOrgId) {
+        const org = await orgDb.getOrganization(callerOrgId);
+        if (org && hasApiAccess(resolveMembershipTier(org))) {
+          includeMembersOnly = true;
+        }
+      }
+
+      const isProfileOwner = !!(
+        callerOrgId && profile?.workos_organization_id && profile.workos_organization_id === callerOrgId
+      );
+
       const displayName = profile?.display_name || domain;
-      const agentConfigs = (profile?.agents || []).filter(a => a.visibility === 'public').slice(0, 20);
+      const agentConfigs = (profile?.agents || []).filter(a => {
+        if (a.visibility === 'public') return true;
+        if (includeMembersOnly && a.visibility === 'members_only') return true;
+        if (isProfileOwner && a.visibility === 'private') return true;
+        return false;
+      }).slice(0, 20);
 
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {
