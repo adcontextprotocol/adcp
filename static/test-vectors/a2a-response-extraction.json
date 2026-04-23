@@ -436,6 +436,366 @@
         }]
       },
       "expected_data": null
+    },
+    {
+      "id": "a2a-1.0-completed-no-kind",
+      "description": "A2A 1.0 wire format — TASK_STATE_COMPLETED, Parts without kind discriminator",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_019",
+        "contextId": "ctx_019",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "2026-04-23T10:30:00.000Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"text": "Found 2 products matching your brief."},
+            {
+              "data": {
+                "status": "completed",
+                "products": [
+                  {"product_id": "ctv_premium", "name": "Premium CTV"},
+                  {"product_id": "ctv_standard", "name": "Standard CTV"}
+                ]
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [
+          {"product_id": "ctv_premium", "name": "Premium CTV"},
+          {"product_id": "ctv_standard", "name": "Standard CTV"}
+        ]
+      }
+    },
+    {
+      "id": "a2a-1.0-multiple-dataparts-no-kind",
+      "description": "A2A 1.0 — multiple DataParts without kind, last wins",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_020",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "2026-04-23T10:35:00.000Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"text": "Found products"},
+            {"data": {"progress": 50}},
+            {"data": {"status": "completed", "products": [{"product_id": "final"}], "total": 1}}
+          ]
+        }]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [{"product_id": "final"}],
+        "total": 1
+      }
+    },
+    {
+      "id": "a2a-1.0-working-status-message",
+      "description": "A2A 1.0 — TASK_STATE_WORKING with progress in status.message.parts, ROLE_AGENT",
+      "status": "working",
+      "path": "status_message",
+      "response": {
+        "id": "task_021",
+        "status": {
+          "state": "TASK_STATE_WORKING",
+          "timestamp": "2026-04-23T10:31:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Processing inventory search..."},
+              {"data": {"percentage": 45, "current_step": "analyzing_inventory"}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"percentage": 45, "current_step": "analyzing_inventory"}
+    },
+    {
+      "id": "a2a-1.0-input-required",
+      "description": "A2A 1.0 — TASK_STATE_INPUT_REQUIRED normalizes to input-required",
+      "status": "input-required",
+      "path": "status_message",
+      "response": {
+        "id": "task_022",
+        "status": {
+          "state": "TASK_STATE_INPUT_REQUIRED",
+          "timestamp": "2026-04-23T10:32:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Budget exceeds auto-approval limit."},
+              {"data": {"reason": "budget_approval", "total_budget": 150000}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"reason": "budget_approval", "total_budget": 150000}
+    },
+    {
+      "id": "a2a-1.0-failed-adcp-error",
+      "description": "A2A 1.0 — TASK_STATE_FAILED with adcp_error in artifact DataPart (no kind)",
+      "status": "failed",
+      "path": "artifact",
+      "response": {
+        "id": "task_023",
+        "status": {
+          "state": "TASK_STATE_FAILED",
+          "timestamp": "2026-04-23T10:40:00.000Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {"text": "Rate limit exceeded."},
+            {
+              "data": {
+                "adcp_error": {
+                  "code": "RATE_LIMITED",
+                  "message": "Request rate exceeded",
+                  "recovery": "transient",
+                  "retry_after": 5
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "adcp_error": {
+          "code": "RATE_LIMITED",
+          "message": "Request rate exceeded",
+          "recovery": "transient",
+          "retry_after": 5
+        }
+      }
+    },
+    {
+      "id": "a2a-1.0-wrapper-rejected",
+      "description": "A2A 1.0 — wrapper rejection works for Parts without kind",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_024",
+        "status": {
+          "state": "TASK_STATE_COMPLETED",
+          "timestamp": "2026-04-23T10:45:00.000Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {
+              "data": {
+                "response": {
+                  "products": [{"product_id": "ctv_001"}]
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": null,
+      "expected_error_type": "wrapper_detected"
+    },
+    {
+      "id": "a2a-1.0-canceled",
+      "description": "A2A 1.0 — TASK_STATE_CANCELED normalizes to canceled, no DataPart returns null",
+      "status": "canceled",
+      "path": "none",
+      "response": {
+        "id": "task_025",
+        "status": {
+          "state": "TASK_STATE_CANCELED",
+          "timestamp": "2026-04-23T10:50:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Task canceled by user."}
+            ]
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "a2a-1.0-submitted",
+      "description": "A2A 1.0 — TASK_STATE_SUBMITTED normalizes to submitted",
+      "status": "submitted",
+      "path": "status_message",
+      "response": {
+        "id": "task_026",
+        "status": {
+          "state": "TASK_STATE_SUBMITTED",
+          "timestamp": "2026-04-23T10:55:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Task queued for processing."},
+              {"data": {"queue_position": 3}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"queue_position": 3}
+    },
+    {
+      "id": "a2a-1.0-rejected-adcp-error",
+      "description": "A2A 1.0 — TASK_STATE_REJECTED (terminal), adcp_error in artifacts",
+      "status": "rejected",
+      "path": "artifact",
+      "response": {
+        "id": "task_027",
+        "status": {
+          "state": "TASK_STATE_REJECTED",
+          "timestamp": "2026-04-23T11:00:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Request rejected: budget exceeds tier limit"}
+            ]
+          }
+        },
+        "artifacts": [{
+          "artifactId": "rejection-detail",
+          "parts": [
+            {"text": "Request rejected by policy"},
+            {
+              "data": {
+                "adcp_error": {
+                  "code": "POLICY_VIOLATION",
+                  "message": "Budget $500K exceeds Silver tier limit of $250K",
+                  "recovery": "permanent",
+                  "details": {
+                    "requested_budget": 500000,
+                    "tier_limit": 250000,
+                    "tier": "silver"
+                  }
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "adcp_error": {
+          "code": "POLICY_VIOLATION",
+          "message": "Budget $500K exceeds Silver tier limit of $250K",
+          "recovery": "permanent",
+          "details": {
+            "requested_budget": 500000,
+            "tier_limit": 250000,
+            "tier": "silver"
+          }
+        }
+      }
+    },
+    {
+      "id": "a2a-1.0-auth-required",
+      "description": "A2A 1.0 — TASK_STATE_AUTH_REQUIRED (interim), challenge data in status.message.parts",
+      "status": "auth-required",
+      "path": "status_message",
+      "response": {
+        "id": "task_028",
+        "status": {
+          "state": "TASK_STATE_AUTH_REQUIRED",
+          "timestamp": "2026-04-23T11:05:00.000Z",
+          "message": {
+            "role": "ROLE_AGENT",
+            "parts": [
+              {"text": "Re-authentication required to access Peer39 data on PubMatic"},
+              {
+                "data": {
+                  "auth_scheme": "oauth2",
+                  "challenge_url": "https://auth.pubmatic.example/challenge?session=abc123",
+                  "scopes": ["peer39:read", "peer39:activate"],
+                  "expires_in": 300
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected_data": {
+        "auth_scheme": "oauth2",
+        "challenge_url": "https://auth.pubmatic.example/challenge?session=abc123",
+        "scopes": ["peer39:read", "peer39:activate"],
+        "expires_in": 300
+      }
+    },
+    {
+      "id": "a2a-1.0-stream-wrapped-status-update",
+      "description": "A2A 1.0 — SSE/push envelope { statusUpdate: ... } unwraps to TaskStatusUpdateEvent",
+      "status": "working",
+      "path": "status_message",
+      "response": {
+        "statusUpdate": {
+          "taskId": "task_029",
+          "contextId": "ctx_029",
+          "status": {
+            "state": "TASK_STATE_WORKING",
+            "timestamp": "2026-04-23T11:10:00.000Z",
+            "message": {
+              "role": "ROLE_AGENT",
+              "parts": [
+                {"text": "Analyzing inventory"},
+                {"data": {"percentage": 72, "current_step": "scoring_products"}}
+              ]
+            }
+          }
+        }
+      },
+      "expected_data": {"percentage": 72, "current_step": "scoring_products"}
+    },
+    {
+      "id": "a2a-1.0-stream-wrapped-task-final",
+      "description": "A2A 1.0 — push notification payload { task: ... } unwraps to Task with final state",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "task": {
+          "id": "task_030",
+          "contextId": "ctx_030",
+          "status": {
+            "state": "TASK_STATE_COMPLETED",
+            "timestamp": "2026-04-23T11:15:00.000Z"
+          },
+          "artifacts": [{
+            "artifactId": "result",
+            "parts": [
+              {"text": "Media buy created"},
+              {"data": {"media_buy_id": "mb_wrapped", "status": "active"}}
+            ]
+          }]
+        }
+      },
+      "expected_data": {"media_buy_id": "mb_wrapped", "status": "active"}
+    },
+    {
+      "id": "a2a-1.0-stream-wrapped-artifact-update-no-state",
+      "description": "A2A 1.0 — { artifactUpdate: ... } carries no task status; extractor returns null",
+      "status": "working",
+      "path": "none",
+      "response": {
+        "artifactUpdate": {
+          "taskId": "task_031",
+          "contextId": "ctx_031",
+          "artifact": {
+            "artifactId": "a1",
+            "parts": [{"data": {"partial": true, "chunk": 1}}]
+          },
+          "append": true,
+          "lastChunk": false
+        }
+      },
+      "expected_data": null
     }
   ]
 }
