@@ -200,7 +200,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'search_repos',
     description:
       'Search indexed external GitHub repositories for ad tech specifications and protocols. Includes: ' +
-      'AdCP (core protocol spec, sales agent, signals agent, JS/Python clients), ' +
+      'AdCP (core protocol spec, sales agent, signals agent, JS/Python/Go clients), ' +
       'A2A (Google Agent-to-Agent protocol and samples), ' +
       'MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), ' +
       'IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), ' +
@@ -219,7 +219,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         repo_id: {
           type: 'string',
           description:
-            'Optional filter to search only a specific repo: adcp, salesagent, signals-agent, adcp-client, adcp-client-python, a2a, a2a-samples, mcp-spec, mcp-typescript-sdk, mcp-python-sdk, mcp-servers, iab-artf, iab-ucp, iab-openrtb2, iab-openrtb3, iab-adcom, iab-opendirect, iab-gpp, iab-tcf, iab-usprivacy, iab-uid2-docs, iab-vast, iab-adscert, prebid-js, prebid-server, prebid-docs, langgraph',
+            'Optional filter to search only a specific repo: adcp, salesagent, signals-agent, adcp-client, adcp-client-python, adcp-go, a2a, a2a-samples, mcp-spec, mcp-typescript-sdk, mcp-python-sdk, mcp-servers, iab-artf, iab-ucp, iab-openrtb2, iab-openrtb3, iab-adcom, iab-opendirect, iab-gpp, iab-tcf, iab-usprivacy, iab-uid2-docs, iab-vast, iab-adscert, prebid-js, prebid-server, prebid-docs, langgraph',
         },
         limit: {
           type: 'number',

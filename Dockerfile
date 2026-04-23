@@ -39,6 +39,7 @@ git clone --depth=1 --branch main https://github.com/prebid/salesagent.git sales
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/signals-agent.git signals-agent & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client.git adcp-client & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client-python.git adcp-client-python & pids="$pids $!"
+git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-go.git adcp-go & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/a2aproject/A2A.git a2a & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/a2aproject/a2a-samples.git a2a-samples & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/modelcontextprotocol/modelcontextprotocol.git mcp-spec & pids="$pids $!"
