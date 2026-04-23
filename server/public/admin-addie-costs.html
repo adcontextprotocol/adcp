@@ -236,7 +236,7 @@
   <!-- Detail modal -->
   <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true">
     <div class="panel">
-      <button class="close-btn" onclick="closeDetail()">Close</button>
+      <button id="detailCloseBtn" class="close-btn" type="button">Close</button>
       <h3 id="detailTitle">Scope detail</h3>
       <div id="detailContent"><div class="loading">Loading…</div></div>
     </div>
@@ -432,6 +432,7 @@
     document.getElementById('detailModal').addEventListener('click', (e) => {
       if (e.target.id === 'detailModal') closeDetail();
     });
+    document.getElementById('detailCloseBtn').addEventListener('click', closeDetail);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeDetail();
     });

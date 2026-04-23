@@ -188,7 +188,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
            FROM addie_token_cost_events
            WHERE recorded_at > NOW() - make_interval(hours => $1::int)
            GROUP BY scope_key
-           ORDER BY SUM(cost_usd_micros) DESC
+           ORDER BY SUM(cost_usd_micros) DESC, scope_key
            LIMIT $2
          )
          SELECT
@@ -214,10 +214,11 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
            WHERE om.workos_user_id = t.scope_key
            ORDER BY
-             CASE WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END
+             CASE WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END,
+             o.workos_organization_id
            LIMIT 1
          ) best_org ON true
-         ORDER BY t.total_micros DESC`,
+         ORDER BY t.total_micros DESC, t.scope_key`,
         [windowHours, limit],
       );
 
@@ -262,11 +263,15 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   apiRouter.get('/addie-costs/scope/:scopeKey/events', requireAuth, requireAdmin, async (req, res) => {
     try {
       const scopeKey = req.params.scopeKey;
-      // Charset + length guard — scope keys in practice are
-      // alphanumeric plus `:`, `.`, `_`, `-`; a hostile or accidental
-      // value with control characters won't break the parameterized
-      // query but shouldn't reach our logs either.
-      if (!scopeKey || scopeKey.length > 256 || !/^[A-Za-z0-9:_.\-]+$/.test(scopeKey)) {
+      // Charset + length guard — accept any printable ASCII (no
+      // whitespace or control characters). JWT `sub` values in
+      // `mcp:<sub>` keys can contain `+`, `/`, `@` depending on the
+      // IdP (Microsoft v2, email-as-sub, etc.), so a narrow
+      // `[A-Za-z0-9:_.-]` allowlist would 400-reject legitimate
+      // traffic. SQL injection is already prevented by $N
+      // parameterization; this regex is belt-and-suspenders to keep
+      // control bytes out of logs.
+      if (!scopeKey || scopeKey.length > 256 || !/^[\x21-\x7E]+$/.test(scopeKey)) {
         return res.status(400).json({ error: 'Invalid scope key' });
       }
       const pool = getPool();
