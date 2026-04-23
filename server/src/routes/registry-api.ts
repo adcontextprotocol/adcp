@@ -85,8 +85,7 @@ import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
-import { query as dbQuery } from "../db/client.js";
-import { validateWorkOSApiKey } from "../middleware/auth.js";
+import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -3252,21 +3251,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
       let includeMembersOnly = false;
-      if (req.user?.id) {
-        try {
-          const row = await dbQuery<{ primary_organization_id: string | null }>(
-            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-            [req.user.id],
-          );
-          const orgId = row.rows[0]?.primary_organization_id;
-          if (orgId) {
-            const org = await orgDb.getOrganization(orgId);
-            if (org && hasApiAccess(resolveMembershipTier(org))) {
-              includeMembersOnly = true;
-            }
-          }
-        } catch (err) {
-          logger.warn({ err, userId: req.user.id }, 'members_only visibility check failed — falling back to public-only');
+      const callerOrgId = await resolveCallerOrgId(req);
+      if (callerOrgId) {
+        const org = await orgDb.getOrganization(callerOrgId);
+        if (org && hasApiAccess(resolveMembershipTier(org))) {
+          includeMembersOnly = true;
         }
       }
 
@@ -4679,23 +4668,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
-      // Resolve caller's organization. API key path (optAuth skips Bearer
-      // API keys — see middleware/auth.ts:1332) takes precedence over session.
-      let callerOrgId: string | null = null;
-      const apiKey = await validateWorkOSApiKey(req);
-      if (apiKey) {
-        callerOrgId = apiKey.organizationId;
-      } else if (req.user?.id) {
-        try {
-          const row = await dbQuery<{ primary_organization_id: string | null }>(
-            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-            [req.user.id],
-          );
-          callerOrgId = row.rows[0]?.primary_organization_id ?? null;
-        } catch (err) {
-          logger.warn({ err, userId: req.user.id }, 'operator: org resolution failed — falling back to public-only');
-        }
-      }
+      const callerOrgId = await resolveCallerOrgId(req);
 
       let includeMembersOnly = false;
       if (callerOrgId) {
