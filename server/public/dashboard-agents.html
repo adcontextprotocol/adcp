@@ -166,9 +166,14 @@
     }
     .agent-history-btn:hover { text-decoration: underline; }
 
-    .agent-history-panel {
+    .agent-history-panel,
+    .agent-requests-panel {
       margin-top: var(--space-3);
+      padding: var(--space-3);
       font-size: var(--text-xs);
+      background: var(--color-gray-50);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
     }
     .history-run {
       display: flex;
@@ -310,6 +315,66 @@
     .agent-toggle-label { user-select: none; }
 
     /* =========================================================================
+       Compact visibility dropdown
+       (overrides the stacked .agent-visibility-option styles from member-card.js)
+       ========================================================================= */
+    .agent-compliance-card .agent-card-visibility {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-top: var(--space-3);
+    }
+    .agent-compliance-card .agent-visibility-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .agent-compliance-card .agent-visibility-select {
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      padding: 2px var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+    }
+    .agent-compliance-card .agent-visibility-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+    .agent-compliance-card .agent-visibility-upsell {
+      margin: 0;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* Combined footer row: last-checked + monitoring + actions */
+    .agent-compliance-card .agent-meta-row {
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      padding-top: var(--space-3);
+      margin-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .agent-meta-row-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      color: var(--color-text-muted);
+    }
+    .agent-meta-row-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .agent-meta-sep {
+      color: var(--color-border);
+    }
+
+    /* =========================================================================
        Storyboards
        ========================================================================= */
     .agent-storyboard-btn {
@@ -363,49 +428,87 @@
       border-radius: 3px;
       font-size: var(--text-xs);
     }
-    .storyboard-track-group { margin-bottom: var(--space-4); }
+    .storyboard-track-group { margin-bottom: var(--space-3); }
     .storyboard-track-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
       font-weight: var(--font-semibold);
-      font-size: var(--text-sm);
-      margin-bottom: var(--space-2);
-      color: var(--color-text-primary);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: var(--space-1);
+      color: var(--color-text-muted);
     }
     .storyboard-track-count {
       font-size: var(--text-xs);
       color: var(--color-text-tertiary);
       font-weight: normal;
+      text-transform: none;
+      letter-spacing: 0;
     }
     .storyboard-map-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: var(--space-3);
       padding: var(--space-2) var(--space-3);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
-      margin-bottom: var(--space-1);
+      margin-bottom: 4px;
     }
-    .storyboard-map-item-title { font-size: var(--text-sm); font-weight: 500; }
-    .storyboard-map-item-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
-    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; }
+    .storyboard-map-item-main {
+      min-width: 0;
+      flex: 1;
+    }
+    .storyboard-map-item-row1 {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      min-width: 0;
+    }
+    .storyboard-map-item-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .storyboard-map-item-steps {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .storyboard-map-item-summary {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
     .storyboard-map-actions button {
       font-size: var(--text-xs);
       padding: 2px var(--space-2);
       border-radius: var(--radius-sm);
       cursor: pointer;
-      border: 1px solid var(--color-border);
-      background: var(--color-bg-card);
-      color: var(--color-text-secondary);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--color-primary-600);
+      font-weight: var(--font-medium);
     }
-    .storyboard-map-actions button:hover { border-color: var(--color-primary-500); color: var(--color-primary-600); }
+    .storyboard-map-actions button:hover { text-decoration: underline; }
     .storyboard-map-actions .btn-run {
       background: var(--color-primary-600);
       color: white;
       border-color: var(--color-primary-600);
     }
-    .storyboard-map-actions .btn-run:hover { background: var(--color-primary-700); }
+    .storyboard-map-actions .btn-run:hover {
+      background: var(--color-primary-700);
+      text-decoration: none;
+    }
 
     .step-runner { margin-top: var(--space-3); }
     .step-runner-current {
@@ -840,9 +943,10 @@
       '</div>';
     }
 
-    // Renders the three-tier visibility selector used inside each agent card.
-    // Mirrors the markup from member-card.js so the shared
-    // `.agent-card-visibility` / `.agent-visibility-option` styles apply.
+    // Renders a compact visibility dropdown for each agent card.
+    // Shows a single inline hint describing what the currently-selected
+    // visibility means. Public may be disabled for users without API access
+    // or without a primary brand domain.
     function renderVisibilitySelector(index, visibility) {
       const vis = visibility || 'private';
       const canSetPublic = !!pageState.hasApiAccess;
@@ -855,38 +959,32 @@
           ? 'Set a primary brand domain to publish publicly.'
           : '';
 
-      const optionRow = (value, label, hint, disabled, disabledReason) => {
-        const id = `agent-${index}-vis-${value}`;
-        const checked = vis === value ? 'checked' : '';
-        const disabledAttr = disabled ? 'disabled' : '';
-        const titleAttr = disabled && disabledReason
-          ? ` title="${escapeHtml(disabledReason)}"`
-          : '';
-        return `<label for="${id}" class="agent-visibility-option${disabled ? ' disabled' : ''}"${titleAttr}>
-            <input type="radio" id="${id}" name="agent-${index}-visibility" value="${value}" ${checked} ${disabledAttr}
-              onchange="setAgentVisibility(${index}, '${value}')" />
-            <div class="agent-visibility-option-body">
-              <div class="agent-visibility-option-label">${label}</div>
-              <div class="agent-visibility-option-hint">${hint}</div>
-            </div>
-          </label>`;
+      const hints = {
+        private: 'Only you can see it.',
+        members_only: 'Discoverable by Professional+ members.',
+        public: 'Listed publicly and added to brand.json.',
       };
 
-      const rows = [
-        optionRow('private', 'Private', 'Only you can see it.', false, ''),
-        optionRow('members_only', 'Members only', 'Discoverable by Professional+ members.', false, ''),
-        optionRow('public', 'Public', 'Listed publicly and added to brand.json.', publicDisabled, publicDisabledReason),
-      ].join('');
+      const selectId = `agent-${index}-visibility`;
+      const publicLabel = publicDisabled ? 'Public (unavailable)' : 'Public';
 
       const upsell = !canSetPublic
-        ? `<div class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</div>`
+        ? `<span class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</span>`
         : '';
       const brandNudge = canSetPublic && publicRequiresDomain
-        ? `<div class="agent-visibility-upsell">Set a <a href="/member-profile#brand-domain-input">primary brand domain</a> to publish publicly.</div>`
+        ? `<span class="agent-visibility-upsell">Set a <a href="/member-profile#brand-domain-input">primary brand domain</a> to publish publicly.</span>`
         : '';
 
-      return `<div class="agent-card-visibility" style="margin-top: var(--space-3);">
-          <div class="agent-visibility-options">${rows}</div>
+      return `<div class="agent-card-visibility">
+          <label for="${selectId}" class="agent-visibility-label">Visibility</label>
+          <select id="${selectId}" class="agent-visibility-select"
+            title="${escapeHtml(hints[vis] || '')}"
+            onchange="setAgentVisibility(${index}, this.value)">
+            <option value="private" ${vis === 'private' ? 'selected' : ''}>Private</option>
+            <option value="members_only" ${vis === 'members_only' ? 'selected' : ''}>Members only</option>
+            <option value="public" ${vis === 'public' ? 'selected' : ''} ${publicDisabled ? 'disabled' : ''} title="${escapeHtml(publicDisabledReason)}">${publicLabel}</option>
+          </select>
+          <span class="agent-visibility-hint">${escapeHtml(hints[vis] || '')}</span>
           ${upsell}${brandNudge}
         </div>`;
     }
@@ -1042,31 +1140,32 @@
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
             ${visibilitySelectorHtml}
-            <div class="agent-monitoring-controls" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); margin-top: var(--space-3);">
-              <label class="agent-toggle" title="Pause automated compliance and health checks">
-                <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
-                <span class="agent-toggle-label">Pause automated checks</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary);">
-                Check every
-                <select class="monitoring-interval-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''} style="font-size: var(--text-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm, 4px); border: 1px solid var(--border-subtle);${cs.monitoring_paused ? ' opacity: 0.4;' : ''}">
-                  <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
-                  <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
-                  <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
-                  <option value="48" ${(cs.check_interval_hours || 12) === 48 ? 'selected' : ''}>48h</option>
-                  <option value="72" ${(cs.check_interval_hours || 12) === 72 ? 'selected' : ''}>72h</option>
-                  <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
-                </select>
-              </label>
-              ${cs.monitoring_paused ? '<span style="font-size: var(--text-xs); color: var(--color-warning-700, #b45309);">Compliance status will not update while paused</span>' : ''}
-            </div>
             <div class="agent-meta-row">
-              <span>Last checked: ${escapeHtml(lastChecked)}</span>
-              <div style="display: flex; gap: var(--space-3); align-items: center;">
+              <div class="agent-meta-row-left">
+                <span>Last checked: ${escapeHtml(lastChecked)}</span>
+                <span class="agent-meta-sep" aria-hidden="true">·</span>
+                <label class="agent-toggle" title="Pause automated compliance and health checks">
+                  <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
+                  <span class="agent-toggle-label">Pause</span>
+                </label>
+                <label class="agent-toggle" title="How often to re-run automated compliance checks">
+                  <span class="agent-toggle-label">Every</span>
+                  <select class="monitoring-interval-select agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''}>
+                    <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
+                    <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
+                    <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
+                    <option value="48" ${(cs.check_interval_hours || 12) === 48 ? 'selected' : ''}>48h</option>
+                    <option value="72" ${(cs.check_interval_hours || 12) === 72 ? 'selected' : ''}>72h</option>
+                    <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
+                  </select>
+                </label>
+                ${cs.monitoring_paused ? '<span style="color: var(--color-warning-700, #b45309);">paused</span>' : ''}
+              </div>
+              <div class="agent-meta-row-actions">
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test your agent</button>
-                <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
-                <button class="agent-requests-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View requests</button>
+                <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
+                <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test</button>
               </div>
             </div>
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
@@ -1622,6 +1721,7 @@
 
       panel.style.display = 'block';
       panel.innerHTML = '<div style="padding: var(--space-3); color: var(--text-secondary);">Loading requests...</div>';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
       try {
         const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50`, {
@@ -1746,6 +1846,7 @@
         }
         panel.style.display = 'block';
         panel.innerHTML = '<em>Loading history...</em>';
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
         try {
           const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=10', { credentials: 'include' });
@@ -1863,15 +1964,18 @@
               html += '<div class="storyboard-track-header"><span>' + escapeHtml(label) + '</span><span class="storyboard-track-count">' + storyboards.length + ' storyboard' + (storyboards.length === 1 ? '' : 's') + '</span></div>';
 
               for (const sb of storyboards) {
+                const stepsLabel = (sb.step_count || 0) + ' step' + ((sb.step_count || 0) === 1 ? '' : 's');
                 html += '<div class="storyboard-map-item">';
-                html += '<div>';
-                html += '<div class="storyboard-map-item-title">' + escapeHtml(sb.title || sb.id) + '</div>';
-                if (sb.summary) html += '<div class="storyboard-map-item-meta">' + escapeHtml(sb.summary) + '</div>';
-                html += '<div class="storyboard-map-item-meta">' + (sb.step_count || 0) + ' steps</div>';
+                html += '<div class="storyboard-map-item-main">';
+                html += '<div class="storyboard-map-item-row1">';
+                html += '<span class="storyboard-map-item-title">' + escapeHtml(sb.title || sb.id) + '</span>';
+                html += '<span class="storyboard-map-item-steps">· ' + stepsLabel + '</span>';
+                html += '</div>';
+                if (sb.summary) html += '<div class="storyboard-map-item-summary" title="' + escapeHtml(sb.summary) + '">' + escapeHtml(sb.summary) + '</div>';
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
-                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" style="border:none;background:none;padding:0;font-size:var(--text-xs);color:var(--color-primary-600);cursor:pointer;">Preview</button>';
-                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Run step by step</button>';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
