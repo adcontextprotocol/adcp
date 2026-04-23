@@ -83,6 +83,8 @@ import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
+import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
+import { query as dbQuery } from "../db/client.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -128,6 +130,7 @@ export interface RegistryApiConfig {
     search(query: import('../db/agent-inventory-profiles-db.js').SearchQuery): Promise<import('../db/agent-inventory-profiles-db.js').SearchResponse>;
   };
   requireAuth?: RequestHandler;
+  optionalAuth?: RequestHandler;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -2237,7 +2240,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     crawler,
     registryRequestsDb,
     requireAuth: authMiddleware,
+    optionalAuth: optionalAuthMiddleware,
   } = config;
+  const noopMiddleware: RequestHandler = (_req, _res, next) => next();
+  const optAuth: RequestHandler = optionalAuthMiddleware ?? noopMiddleware;
+  const orgDb = new OrganizationDatabase();
 
   const catalogDb = new CatalogDatabase();
 
@@ -3232,7 +3239,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Agent Discovery (registry) ────────────────────────────────
 
-  router.get("/registry/agents", async (req, res) => {
+  router.get("/registry/agents", optAuth, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       const type = req.query.type as AgentType | undefined;
@@ -3241,7 +3248,29 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const withProperties = req.query.properties === "true";
       const withCompliance = req.query.compliance === "true";
 
-      const federatedAgents = await federatedIndex.listAllAgents(type);
+      // members_only agents are discoverable to authenticated API-access
+      // members (Professional+). Crawlers and anonymous callers only see
+      // public agents.
+      let includeMembersOnly = false;
+      if (req.user?.id) {
+        try {
+          const row = await dbQuery<{ primary_organization_id: string | null }>(
+            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+            [req.user.id],
+          );
+          const orgId = row.rows[0]?.primary_organization_id;
+          if (orgId) {
+            const org = await orgDb.getOrganization(orgId);
+            if (org && hasApiAccess(resolveMembershipTier(org))) {
+              includeMembersOnly = true;
+            }
+          }
+        } catch (err) {
+          logger.warn({ err, userId: req.user.id }, 'members_only visibility check failed — falling back to public-only');
+        }
+      }
+
+      const federatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
 
       const agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
