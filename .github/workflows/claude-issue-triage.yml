@@ -1,0 +1,68 @@
+name: Claude Issue Triage Bridge
+
+# Bridges GitHub `issues` events to a Claude Code routine's /fire endpoint.
+# Routines do not natively subscribe to issue events, so this workflow
+# POSTs issue context to a per-routine URL the moment an issue is opened.
+# Scheduled + manual triage still happens via the routine itself; this
+# just closes the "react within minutes" gap.
+#
+# Required repo secrets (set after creating the routine at claude.ai/code/routines):
+#   CLAUDE_ROUTINE_TRIAGE_URL    — full /fire URL including routine ID
+#   CLAUDE_ROUTINE_TRIAGE_TOKEN  — bearer token for that routine (shown once in web UI)
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  fire-routine:
+    name: Fire triage routine
+    runs-on: ubuntu-latest
+    if: github.event.issue.user.type != 'Bot'
+    steps:
+      - name: POST to routine /fire
+        env:
+          ROUTINE_URL: ${{ secrets.CLAUDE_ROUTINE_TRIAGE_URL }}
+          ROUTINE_TOKEN: ${{ secrets.CLAUDE_ROUTINE_TRIAGE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "${ROUTINE_URL:-}" ] || [ -z "${ROUTINE_TOKEN:-}" ]; then
+            echo "::warning::CLAUDE_ROUTINE_TRIAGE_URL or CLAUDE_ROUTINE_TRIAGE_TOKEN not set — skipping."
+            exit 0
+          fi
+
+          payload=$(jq -n \
+            --arg repo "$REPO" \
+            --arg num "$ISSUE_NUMBER" \
+            --arg title "$ISSUE_TITLE" \
+            --arg url "$ISSUE_URL" \
+            --arg author "$ISSUE_AUTHOR" \
+            --arg labels "$ISSUE_LABELS" \
+            --arg body "$ISSUE_BODY" \
+            '{text: "Issue #\($num) opened in \($repo) by @\($author)\nTitle: \($title)\nURL: \($url)\nLabels: \($labels)\n\nBody:\n\($body)"}')
+
+          http_code=$(curl -sS -o /tmp/fire-response.json -w "%{http_code}" \
+            -X POST "$ROUTINE_URL" \
+            -H "Authorization: Bearer $ROUTINE_TOKEN" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+
+          echo "HTTP $http_code"
+          cat /tmp/fire-response.json
+          echo
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::Failed to fire routine (HTTP $http_code)"
+            exit 1
+          fi
