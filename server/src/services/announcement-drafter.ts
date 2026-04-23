@@ -101,6 +101,7 @@ export function sanitizeUntrusted(input: string | null | undefined, maxLen: numb
   const stripped = input
     .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/<\/?\s*untrusted\s*>/gi, '')
     .trim();
   if (!stripped) return null;
   if (stripped.length <= maxLen) return stripped;
@@ -149,9 +150,9 @@ function renderInputsForPrompt(input: DrafterInputs): string {
   const profileUrl = `${APP_URL}/members/${input.profileSlug}`;
 
   return [
-    `Member: ${orgName}`,
+    untrusted('Member', orgName),
     `Tier: ${tierLabel}`,
-    `Display name: ${displayName}`,
+    untrusted('Display name', displayName),
     untrusted('Tagline', tagline),
     untrusted('Description', description),
     `Offerings: ${offerings}`,
