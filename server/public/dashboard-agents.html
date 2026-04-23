@@ -72,6 +72,15 @@
       border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-lg);
       margin-bottom: var(--space-3);
+      /*
+       * Skeleton → hydrated transition can change the card's intrinsic
+       * height substantially (rate-limited card ≈ header + 1 line;
+       * fully-passed card ≈ header + headline + track pills + history
+       * sparkline). Reserving a minimum height dampens the reflow
+       * cascade on list hydration — especially material for users
+       * with prefers-reduced-motion (#2939 DX review).
+       */
+      min-height: 120px;
     }
     .agent-compliance-card:last-child { margin-bottom: 0; }
 
@@ -1135,15 +1144,30 @@
             ? Date.now() + effectiveRetryAfterSeconds * 1000
             : null;
 
-          let errMsg;
+          // Rate-limit copy splits into static prefix (outside the
+          // live region — doesn't re-announce every tick) + dynamic
+          // countdown number (inside the aria-live region). Screen
+          // readers hear "12 seconds" at 10s intervals instead of the
+          // full "Still rate-limited — retry in 12s" each tick.
+          // "Still rate-limited" (vs the earlier "you've refreshed too
+          // quickly") is accurate without blaming the user for the
+          // auto-retry they didn't ask for.
+          let staticPrefix;
+          let countdownSuffix;
+          let plainMsg = '';
           if (!isRateLimited) {
-            errMsg = 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
-          } else if (autoRetried && effectiveRetryAfterSeconds !== null) {
-            errMsg = `You've refreshed too quickly — retry in ${effectiveRetryAfterSeconds}s…`;
+            plainMsg = 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
+            staticPrefix = '';
+            countdownSuffix = '';
           } else if (effectiveRetryAfterSeconds !== null) {
-            errMsg = `Rate-limited — retry in ${effectiveRetryAfterSeconds}s…`;
+            staticPrefix = autoRetried
+              ? 'Still rate-limited — retry in '
+              : 'Rate-limited — retry in ';
+            countdownSuffix = `${effectiveRetryAfterSeconds}s…`;
           } else {
-            errMsg = 'Rate-limited — retry in a moment.';
+            plainMsg = 'Rate-limited — retry in a moment.';
+            staticPrefix = '';
+            countdownSuffix = '';
           }
 
           // Disable the retry button whenever we have a known window;
@@ -1155,10 +1179,15 @@
             : 'Retry';
           // The countdown only auto-retries on the FIRST 429 — second
           // 429 is purely a waiting-room; the button re-enables at
-          // zero for a manual retry. That gap is encoded in the
-          // `data-rate-limited-auto` flag so the interval logic stays
-          // simple.
+          // zero for a manual retry.
           const shouldAutoRetryAtZero = retryAtMs !== null && !autoRetried;
+
+          // When we have a countdown: static text + nested live region
+          // holding just the number. When we don't (plain error): a
+          // single paragraph, no live region.
+          const bodyHtml = retryAtMs !== null
+            ? `<div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(staticPrefix)}<span role="status" aria-live="polite" aria-atomic="true" data-rate-limited-until="${retryAtMs}" data-rate-limited-auto="${shouldAutoRetryAtZero ? '1' : '0'}" data-card-id="${cardId}">${escapeHtml(countdownSuffix)}</span></div>`
+            : `<div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(plainMsg)}</div>`;
 
           return `
           <div class="agent-compliance-card" id="${cardId}"${isRateLimited ? ' data-rate-limited="1"' : ''}${autoRetried ? ' data-auto-retried="1"' : ''}>
@@ -1172,13 +1201,7 @@
                 <button class="agent-reload-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${retryDisabled ? ' disabled' : ''}>${escapeHtml(retryLabel)}</button>
               </div>
             </div>
-            <div
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);"${retryAtMs !== null ? ` data-rate-limited-until="${retryAtMs}" data-rate-limited-auto="${shouldAutoRetryAtZero ? '1' : '0'}" data-card-id="${cardId}"` : ''}>
-              ${escapeHtml(errMsg)}
-            </div>
+            ${bodyHtml}
             ${visibilitySelectorHtml}
           </div>`;
         }
@@ -1312,7 +1335,14 @@
       if (clearAutoRetried) pageState.autoRetriedAgents.delete(agentUrl);
       const cardId = 'agent-' + encodeURIComponent(agentUrl).replace(/%/g, '_');
       const card = document.getElementById(cardId);
-      if (!card) return;
+      if (!card) {
+        // This branch shouldn't fire in today's flow — initial render
+        // inserts cards synchronously before the worker pool awaits.
+        // Log loudly if it does, because silent returns hide the bug
+        // class if anyone later moves the render behind a microtask.
+        console.warn('swapAgentCard: card not found for', agentUrl);
+        return;
+      }
       const agent = pageState.agents.find(a => a.url === agentUrl) || { url: agentUrl };
       const newHtml = renderAgentsSection([agent], pageState.complianceMap, pageState.orgId);
       const wrapper = document.createElement('div');
@@ -1344,11 +1374,14 @@
       try {
         const state = await fetchAgentState({ url: agentUrl });
         pageState.complianceMap.set(agentUrl, state);
-        // Successful refresh (no loadError, or at least a non-429
-        // response) → clear any auto-retry marker so a future 429
-        // later in the session starts from a clean slate (#2938).
-        const cleanedUp = !state.loadError || state.loadError.code !== 429;
-        swapAgentCard(agentUrl, { clearAutoRetried: cleanedUp });
+        // Clear any prior auto-retry marker UNLESS we hit another 429
+        // — keeping the marker on a back-to-back 429 is what drives
+        // the second-429 "Still rate-limited" UI. Anything else (a
+        // success or a non-429 failure) means the limiter window has
+        // elapsed or was never the problem; wipe the marker so a
+        // later 429 this session starts fresh (#2938).
+        const shouldClearAutoRetried = !state.loadError || state.loadError.code !== 429;
+        swapAgentCard(agentUrl, { clearAutoRetried: shouldClearAutoRetried });
       } catch (err) {
         console.error('Retry failed:', err);
         if (retryBtn) {
@@ -1383,6 +1416,10 @@
     // textContent at meaningful intervals (every 10s + the last 5s
     // + the terminal state).
     function tickRateLimitCountdowns() {
+      // The live region is the narrow <span> holding only the
+      // countdown suffix ("30s…"). The static prefix ("Rate-limited
+      // — retry in ") is outside the live region so screen readers
+      // don't re-announce the same context string on every tick.
       const nodes = document.querySelectorAll('[data-rate-limited-until]');
       if (nodes.length === 0) return;
       const now = Date.now();
@@ -1392,16 +1429,12 @@
         const remainingSec = Math.max(0, Math.ceil((until - now) / 1000));
         const card = node.closest('.agent-compliance-card');
         const retryBtn = card?.querySelector('.agent-reload-btn');
-        const autoRetried = card?.dataset.autoRetried === '1';
-        const leadingCopy = autoRetried
-          ? 'You\'ve refreshed too quickly — retry in'
-          : 'Rate-limited — retry in';
 
         if (remainingSec > 0) {
           // Throttle textContent updates for a11y — screen readers
-          // announce changes; every-second updates are noisy. Only
-          // update on 10s boundaries, the final 5s, or when the
-          // card was just rendered.
+          // announce changes on polite regions; every-second updates
+          // are noisy. Announce at 10s boundaries, the final 5s, or
+          // when the node was just rendered.
           const lastAnnounced = parseInt(node.dataset.lastAnnouncedSec || '', 10);
           const shouldAnnounce =
             !Number.isFinite(lastAnnounced) ||
@@ -1409,9 +1442,12 @@
             remainingSec % 10 === 0 ||
             Math.abs(lastAnnounced - remainingSec) >= 10;
           if (shouldAnnounce) {
-            node.textContent = `${leadingCopy} ${remainingSec}s…`;
+            node.textContent = `${remainingSec}s…`;
             node.dataset.lastAnnouncedSec = String(remainingSec);
           }
+          // Retry button label updates every tick regardless of the
+          // a11y throttle — the button isn't in a live region, so
+          // there's no announcement cost. (Intentional asymmetry.)
           if (retryBtn && retryBtn.disabled) {
             retryBtn.textContent = `Retry in ${remainingSec}s`;
           }
@@ -1429,13 +1465,15 @@
         if (shouldAutoRetry && cardId && agentUrl) {
           // A small "Retrying now…" beat before the card swap so the
           // transition reads as an action, not a sudden DOM change.
-          // The swap in retryAgentCard will overwrite this immediately
-          // on success or replace the whole node on failure.
+          // retryAgentCard's swap will replace the whole card shortly.
           node.textContent = 'Retrying now…';
           retryAgentCard(agentUrl, cardId, { auto: true });
         } else if (retryBtn) {
-          // Second-429 waiting-room: just re-enable the button so
-          // the user can manually try again.
+          // Second-429 waiting-room: re-enable the button for manual
+          // retry. Leave the "Still rate-limited" prefix visible —
+          // clearing only the dynamic span so the static context
+          // stays present without a stale time.
+          node.textContent = 'now';
           retryBtn.disabled = false;
           retryBtn.textContent = 'Retry';
         }

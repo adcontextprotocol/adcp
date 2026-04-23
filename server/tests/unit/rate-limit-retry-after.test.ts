@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { parseRetryAfterSeconds, agentReadRateLimiter } from '../../src/middleware/rate-limit.js';
@@ -40,28 +40,34 @@ describe('parseRetryAfterSeconds', () => {
 
 describe('agentReadRateLimiter 429 body', () => {
   // Exercise the actual middleware through a tiny express app so the
-  // assertion lives at the same layer production depends on. This is
-  // cheap — the limiter uses a cached Postgres store by default, but
-  // in tests we use a trivial in-memory store by monkey-patching the
-  // store interface isn't exposed here. Instead we just overwhelm
-  // the limiter by setting a very low max via the existing limiter
-  // and checking that the 429 body carries retryAfter.
-  //
-  // The live limiter has max=240/min; we can't easily reach that in a
-  // unit test. Instead, mount it on a dummy route and fire 241 reqs
-  // so the 429 fires on the last one.
+  // assertion lives at the same layer production depends on.
+  // `agentReadRateLimiter` is a module-singleton with a cached
+  // Postgres store — the increment hot path is in-memory, so no real
+  // DB is needed, but the counter persists across tests. `resetKey`
+  // scrubs the per-key counter in `beforeEach` so each test starts
+  // from zero regardless of what ran earlier in the suite.
   function buildApp() {
     const app = express();
     app.get('/ping', agentReadRateLimiter, (_req, res) => res.status(200).json({ ok: true }));
     return app;
   }
 
-  it('includes `retryAfter` (seconds) in the body when the header is set', async () => {
+  // Supertest hits loopback; the limiter's keyGenerator falls back to
+  // `::ffff:127.0.0.1` (IPv4-mapped IPv6) when no req.user is present.
+  const LOOPBACK_KEY = '::ffff:127.0.0.1';
+  beforeEach(async () => {
+    await agentReadRateLimiter.resetKey(LOOPBACK_KEY);
+    // Also clear the raw IPv4 key as a belt-and-braces in case
+    // Node/Express ever flips the default representation.
+    await agentReadRateLimiter.resetKey('127.0.0.1');
+  });
+
+  it('includes `retryAfter` (seconds) in the body matching the Retry-After header', async () => {
     const app = buildApp();
     // Race past the 240/min cap. Same IP so the limiter keys identically.
-    // We do this serially because express-rate-limit's in-flight
-    // tracking can be fiddly with parallel supertest calls and the
-    // test point is the 429 body, not concurrent behavior.
+    // Serial rather than parallel — express-rate-limit's in-flight
+    // tracking is more deterministic, and the assertion is about the
+    // 429 body shape, not concurrent behavior.
     let last: Awaited<ReturnType<typeof request>>;
     for (let i = 0; i < 241; i++) {
       last = await request(app).get('/ping');
@@ -70,10 +76,15 @@ describe('agentReadRateLimiter 429 body', () => {
     expect(last!.body.error).toBe('Too many requests');
     expect(typeof last!.body.retryAfter).toBe('number');
     expect(last!.body.retryAfter).toBeGreaterThan(0);
-    // Header and body should agree.
+
+    // Unconditional cross-check: the body's `retryAfter` must equal
+    // the `Retry-After` header's delta-seconds. If the header is
+    // malformed or missing, this assertion fails loudly rather than
+    // silently skipping — either outcome would be a bug the test
+    // needs to catch.
     const headerSeconds = parseInt(last!.headers['retry-after'] ?? '', 10);
-    if (Number.isFinite(headerSeconds) && headerSeconds > 0) {
-      expect(last!.body.retryAfter).toBe(headerSeconds);
-    }
+    expect(Number.isFinite(headerSeconds)).toBe(true);
+    expect(headerSeconds).toBeGreaterThan(0);
+    expect(last!.body.retryAfter).toBe(headerSeconds);
   }, 30_000);
 });
