@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
+  <script src="/member-card.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -573,7 +574,13 @@
 
     // Shared across the page so event handlers (e.g. retry) can re-render
     // a single card without a full reload.
-    const pageState = { agents: [], complianceMap: new Map(), orgId: null };
+    const pageState = {
+      agents: [],
+      complianceMap: new Map(),
+      orgId: null,
+      hasApiAccess: false,
+      brandHostingType: null,
+    };
 
     // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
     // network failures, honoring Retry-After when present. Rate-limit hits
@@ -737,7 +744,25 @@
         pageState.agents = agents;
         pageState.complianceMap = agentCompliance;
         pageState.orgId = currentOrgId;
+        pageState.hasApiAccess = !!profileData?.has_api_access;
+        pageState.brandHostingType = null;
         renderPage(agents, agentCompliance, currentOrgId);
+
+        // Brand hosting type gates the "Public" visibility option. Fetched
+        // asynchronously — the cards re-render once the answer lands.
+        const primaryBrandDomain = profileData?.profile?.primary_brand_domain;
+        if (primaryBrandDomain) {
+          fetch(`/api/brands/discovered/${encodeURIComponent(primaryBrandDomain)}/edit-status`, { credentials: 'include' })
+            .then(r => (r.ok ? r.json() : null))
+            .then(editStatus => {
+              pageState.brandHostingType = editStatus?.source_type === 'brand_json' ? 'self-hosted' : 'community';
+              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+            })
+            .catch(() => {
+              pageState.brandHostingType = 'community';
+              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+            });
+        }
       } catch (err) {
         console.error('Agents page load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -749,6 +774,12 @@
       document.getElementById('hub-loading').style.display = 'none';
       const content = document.getElementById('hub-content');
       content.style.display = 'block';
+
+      // Pull in the shared agent-card CSS so the tri-state visibility radios
+      // pick up the same styling as /member-profile.
+      if (typeof injectAgentCardStyles === 'function') {
+        injectAgentCardStyles();
+      }
 
       const addPrompt = encodeURIComponent('I want to add an agent for compliance monitoring.');
 
@@ -809,6 +840,88 @@
       '</div>';
     }
 
+    // Renders the three-tier visibility selector used inside each agent card.
+    // Mirrors the markup from member-card.js so the shared
+    // `.agent-card-visibility` / `.agent-visibility-option` styles apply.
+    function renderVisibilitySelector(index, visibility) {
+      const vis = visibility || 'private';
+      const canSetPublic = !!pageState.hasApiAccess;
+      const brandHostingType = pageState.brandHostingType;
+      const publicRequiresDomain = !brandHostingType;
+      const publicDisabled = !canSetPublic || publicRequiresDomain;
+      const publicDisabledReason = !canSetPublic
+        ? 'Publicly listing an agent requires Professional tier or higher.'
+        : publicRequiresDomain
+          ? 'Set a primary brand domain to publish publicly.'
+          : '';
+
+      const optionRow = (value, label, hint, disabled, disabledReason) => {
+        const id = `agent-${index}-vis-${value}`;
+        const checked = vis === value ? 'checked' : '';
+        const disabledAttr = disabled ? 'disabled' : '';
+        const titleAttr = disabled && disabledReason
+          ? ` title="${escapeHtml(disabledReason)}"`
+          : '';
+        return `<label for="${id}" class="agent-visibility-option${disabled ? ' disabled' : ''}"${titleAttr}>
+            <input type="radio" id="${id}" name="agent-${index}-visibility" value="${value}" ${checked} ${disabledAttr}
+              onchange="setAgentVisibility(${index}, '${value}')" />
+            <div class="agent-visibility-option-body">
+              <div class="agent-visibility-option-label">${label}</div>
+              <div class="agent-visibility-option-hint">${hint}</div>
+            </div>
+          </label>`;
+      };
+
+      const rows = [
+        optionRow('private', 'Private', 'Only you can see it.', false, ''),
+        optionRow('members_only', 'Members only', 'Discoverable by Professional+ members.', false, ''),
+        optionRow('public', 'Public', 'Listed publicly and added to brand.json.', publicDisabled, publicDisabledReason),
+      ].join('');
+
+      const upsell = !canSetPublic
+        ? `<div class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</div>`
+        : '';
+      const brandNudge = canSetPublic && publicRequiresDomain
+        ? `<div class="agent-visibility-upsell">Set a <a href="/member-profile#brand-domain-input">primary brand domain</a> to publish publicly.</div>`
+        : '';
+
+      return `<div class="agent-card-visibility" style="margin-top: var(--space-3);">
+          <div class="agent-visibility-options">${rows}</div>
+          ${upsell}${brandNudge}
+        </div>`;
+    }
+
+    // PATCH the agent visibility and re-render on success; revert on failure.
+    window.setAgentVisibility = async function setAgentVisibility(index, target) {
+      const agent = pageState.agents[index];
+      if (!agent) return;
+      const previous = agent.visibility || 'private';
+      if (previous === target) return;
+      try {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: target }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          alert(data.message || data.error || 'Failed to update visibility');
+          renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+          return;
+        }
+        pageState.agents[index] = { ...agent, visibility: target };
+        if (data.action === 'snippet' && data.snippet) {
+          const snippet = JSON.stringify(data.snippet, null, 2);
+          prompt('Add this to the agents array in your brand.json:', snippet);
+        }
+        renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+      } catch (err) {
+        alert('Failed to update visibility: ' + (err?.message || err));
+        renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+      }
+    };
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -821,8 +934,9 @@
         `;
       }
 
-      return agents.map(agent => {
+      return agents.map((agent, index) => {
         const data = complianceMap?.get(agent.url);
+        const visibilitySelectorHtml = renderVisibilitySelector(index, agent.visibility);
         const cs = data?.status;
         const history = data?.history;
         const hostname = (() => {
@@ -860,6 +974,7 @@
             <div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
               ${escapeHtml(errMsg)}
             </div>
+            ${visibilitySelectorHtml}
           </div>`;
         }
 
@@ -876,6 +991,7 @@
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
+            ${visibilitySelectorHtml}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -933,6 +1049,7 @@
             ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
+            ${visibilitySelectorHtml}
             <div class="agent-monitoring-controls" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); margin-top: var(--space-3);">
               <label class="agent-toggle" title="Pause automated compliance and health checks">
                 <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
