@@ -23,6 +23,7 @@ import {
   type CheckoutSessionData,
 } from "../billing/stripe-client.js";
 import * as referralDb from "../db/referral-codes-db.js";
+import { sanitizeBillingAddress } from "../billing/billing-address.js";
 import {
   OrganizationDatabase,
   type CompanyType,
@@ -213,16 +214,11 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      if (
-        !billingAddress.line1 ||
-        !billingAddress.city ||
-        !billingAddress.state ||
-        !billingAddress.postal_code ||
-        !billingAddress.country
-      ) {
+      const sanitizedAddress = sanitizeBillingAddress(billingAddress);
+      if (!sanitizedAddress) {
         return res.status(400).json({
           error: "Incomplete billing address",
-          message: "Please provide line1, city, state, postal_code, and country",
+          message: "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
         });
       }
 
@@ -275,11 +271,24 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      // Agreement gate. Caller either already accepted (pending_agreement_version
-      // set on the org) or accepts inline. We store the acceptance as "pending"
-      // here; the webhook on invoice.paid / subscription.created records it
-      // permanently (existing machinery from the checkout flow).
-      const pendingVersion = agreement_version?.trim() || org.pending_agreement_version;
+      // Agreement gate. If the caller is accepting inline we validate the
+      // version against the currently-published agreement. If they're
+      // relying on a previous acceptance we use whatever was stored on the
+      // org. Either way, store the acceptance as "pending"; the webhook on
+      // invoice.paid / subscription.created records it permanently.
+      let pendingVersion = org.pending_agreement_version;
+      if (agreement_version?.trim()) {
+        const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+        if (!currentAgreement || agreement_version.trim() !== currentAgreement.version) {
+          return res.status(400).json({
+            error: "Agreement version mismatch",
+            message:
+              "The membership agreement has changed. Please reload and accept the current version.",
+            current_version: currentAgreement?.version ?? null,
+          });
+        }
+        pendingVersion = currentAgreement.version;
+      }
       if (!pendingVersion) {
         return res.status(400).json({
           error: "Membership agreement required",
@@ -288,24 +297,14 @@ export function createPublicBillingRouter(): Router {
           required: "agreement_version",
         });
       }
-      if (agreement_version) {
-        await orgDb.updateOrganization(orgId, {
-          pending_agreement_version: agreement_version,
-          pending_agreement_accepted_at: new Date(),
-        });
-      }
 
-      // Store the confirmed billing address on the org so future invoices
-      // pre-fill from it.
+      // Atomic: record (or re-affirm) the pending agreement + store the
+      // billing address in a single UPDATE so a partial failure can't leave
+      // one set without the other.
       await orgDb.updateOrganization(orgId, {
-        billing_address: {
-          line1: billingAddress.line1,
-          line2: billingAddress.line2,
-          city: billingAddress.city,
-          state: billingAddress.state,
-          postal_code: billingAddress.postal_code,
-          country: billingAddress.country,
-        },
+        pending_agreement_version: pendingVersion,
+        pending_agreement_accepted_at: new Date(),
+        billing_address: sanitizedAddress,
       });
 
       // Referral discount (same logic as checkout).
@@ -348,7 +347,7 @@ export function createPublicBillingRouter(): Router {
         companyName: org.name,
         contactName: displayName,
         contactEmail: user.email,
-        billingAddress,
+        billingAddress: sanitizedAddress,
         lookupKey,
         workosOrganizationId: orgId,
         couponId: invoiceCouponId ?? org.stripe_coupon_id ?? undefined,

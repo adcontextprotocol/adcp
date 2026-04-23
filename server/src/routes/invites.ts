@@ -24,6 +24,7 @@ import {
   getProductsForCustomer,
   createCoupon,
 } from '../billing/stripe-client.js';
+import { sanitizeBillingAddress } from '../billing/billing-address.js';
 import * as referralDb from '../db/referral-codes-db.js';
 
 const logger = createLogger('invites-routes');
@@ -103,8 +104,27 @@ export function createInvitesRouter(): Router {
       ) {
         return res.status(400).json({ error: 'Incomplete billing address' });
       }
+      // Build a clean, length-capped address object. We persist this to
+      // organizations.billing_address (JSONB) and pass to Stripe, so we don't
+      // want arbitrary client fields leaking through.
+      const sanitizedAddress = sanitizeBillingAddress(billingAddress);
+      if (!sanitizedAddress) {
+        return res.status(400).json({ error: 'Billing address fields exceed length limits' });
+      }
+
       if (!agreement_version?.trim()) {
         return res.status(400).json({ error: 'agreement_version is required' });
+      }
+      // Server validates against the currently-published agreement version.
+      // Accepting arbitrary strings would let a caller record a "signed" state
+      // against a version that never existed, defeating the audit trail.
+      const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+      if (!currentAgreement || agreement_version.trim() !== currentAgreement.version) {
+        return res.status(400).json({
+          error: 'Agreement version mismatch',
+          message: 'The membership agreement has changed. Please reload and accept the current version.',
+          current_version: currentAgreement?.version ?? null,
+        });
       }
 
       const invite = await getMembershipInviteByToken(token);
@@ -133,8 +153,14 @@ export function createInvitesRouter(): Router {
         });
       }
 
-      // Ensure the accepting user is a member of the target org. First user
-      // in becomes owner (new-org common case); everyone else is a member.
+      // Ensure the accepting user is a member of the target org.
+      //
+      // Role is always 'member'. We never auto-grant 'owner' via invite accept:
+      // the invite token is a bearer capability and could be forwarded or
+      // intercepted (email logs, proxy logs, shared Slack links). An admin can
+      // promote a member to owner through the normal admin UI once they've
+      // confirmed the person is the right one. This closes the "anyone with a
+      // leaked link becomes owner of an empty prospect org" escalation path.
       if (workos) {
         try {
           const existing = await workos.userManagement.listOrganizationMemberships({
@@ -142,30 +168,21 @@ export function createInvitesRouter(): Router {
             organizationId: org.workos_organization_id,
           });
           if (!existing.data || existing.data.length === 0) {
-            const current = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-            const hasAnyMember = (current.data?.length ?? 0) > 0;
-            const roleSlug = hasAnyMember ? 'member' : 'owner';
             try {
               await workos.userManagement.createOrganizationMembership({
                 userId: user.id,
                 organizationId: org.workos_organization_id,
-                roleSlug,
+                roleSlug: 'member',
               });
               logger.info(
-                {
-                  userId: user.id,
-                  orgId: org.workos_organization_id,
-                  roleSlug,
-                },
-                'Added user to org via invite accept'
+                { userId: user.id, orgId: org.workos_organization_id },
+                'Added user to org via invite accept (role: member)'
               );
             } catch (membershipErr) {
               const code = (membershipErr as { code?: string }).code;
               if (code === 'organization_membership_already_exists') {
                 logger.info({ userId: user.id, orgId: org.workos_organization_id },
-                  'Membership already exists (race)');
+                  'Membership already exists (race) — continuing');
               } else {
                 throw membershipErr;
               }
@@ -181,11 +198,13 @@ export function createInvitesRouter(): Router {
         }
       }
 
-      // Record pending agreement + store billing address on the org.
+      // Record pending agreement + store billing address on the org in one
+      // atomic write so a partial failure can't leave pending_agreement set
+      // without an address (or vice versa).
       await orgDb.updateOrganization(org.workos_organization_id, {
-        pending_agreement_version: agreement_version.trim(),
+        pending_agreement_version: currentAgreement.version,
         pending_agreement_accepted_at: new Date(),
-        billing_address: billingAddress,
+        billing_address: sanitizedAddress,
       });
 
       // Referral discount (if invite carried one).
@@ -219,9 +238,13 @@ export function createInvitesRouter(): Router {
         companyName: org.name,
         contactName,
         contactEmail: user.email,
-        billingAddress,
+        billingAddress: sanitizedAddress,
         workosOrganizationId: org.workos_organization_id,
         couponId: couponId ?? org.stripe_coupon_id ?? undefined,
+        // Token-keyed idempotency. Two concurrent clicks converge to one
+        // subscription on Stripe's side; the DB atomic mark below then picks
+        // one winner and the other sees 409.
+        idempotencyKey: `invite_${invite.token}`,
       });
 
       if (!invoiceResult) {

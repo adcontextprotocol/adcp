@@ -2742,10 +2742,12 @@ export function setupAccountRoutes(
           });
         }
 
+        const normalizedEmail = contact_email.trim().toLowerCase();
+
         const invite = await createMembershipInvite({
           workos_organization_id: orgId,
           lookup_key,
-          contact_email,
+          contact_email: normalizedEmail,
           contact_name: contact_name?.trim() || undefined,
           referral_code: referral_code?.trim() || undefined,
           invited_by_user_id: req.user!.id,
@@ -2760,7 +2762,7 @@ export function setupAccountRoutes(
           req.user!.email;
 
         const emailSent = await sendMembershipInviteEmail({
-          to: contact_email,
+          to: normalizedEmail,
           contactName: contact_name?.trim() || null,
           orgName: org.name,
           tierDisplayName: product.display_name,
@@ -2779,7 +2781,7 @@ export function setupAccountRoutes(
             prospect_contact_name = COALESCE($1, prospect_contact_name),
             prospect_contact_email = $2
            WHERE workos_organization_id = $3`,
-          [contact_name?.trim() || null, contact_email, orgId]
+          [contact_name?.trim() || null, normalizedEmail, orgId]
         );
 
         logger.info(

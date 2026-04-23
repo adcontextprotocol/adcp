@@ -903,6 +903,10 @@ export interface InvoiceRequestData {
   invoiceDate?: string; // ISO date (YYYY-MM-DD) for backdating the invoice
   dueDate?: string; // ISO date (YYYY-MM-DD) for explicit due date
   poNumber?: string; // Customer PO number to display on invoice
+  idempotencyKey?: string; // Passed through to Stripe as its Idempotency-Key header;
+                           // repeat calls with the same key return the same subscription/invoice.
+                           // Callers pass the invite token to prevent duplicate invoices from
+                           // concurrent accept clicks.
 }
 
 /**
@@ -937,6 +941,7 @@ export async function createAndSendInvoice(
     // where the org is linked to one customer but the invoice goes to a new
     // one, and the webhook can't reconcile. DB is the source of truth.
     let customerId: string | null = null;
+    let linkedCustomerDeletedOnStripe = false;
     if (data.workosOrganizationId && stripe) {
       const existing = await getPool().query<{ stripe_customer_id: string | null }>(
         'SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
@@ -946,16 +951,25 @@ export async function createAndSendInvoice(
       if (linkedId) {
         try {
           const existingCustomer = await stripe.customers.retrieve(linkedId);
-          if (!('deleted' in existingCustomer && existingCustomer.deleted)) {
+          if ('deleted' in existingCustomer && existingCustomer.deleted) {
+            linkedCustomerDeletedOnStripe = true;
+            logger.warn({ linkedId, orgId: data.workosOrganizationId },
+              'Org-linked Stripe customer is deleted on Stripe — clearing link and falling through to new-customer creation');
+          } else {
+            // Keep the customer's email and name stable — multiple people may
+            // run through this flow (different accepters, different admins)
+            // and rewriting the email on every call hands whoever clicks last
+            // control of future billing notifications. Only top up metadata +
+            // backfill name when it's missing.
+            const current = existingCustomer as Stripe.Customer;
+            const metadataUpdate = {
+              ...current.metadata,
+              workos_organization_id: data.workosOrganizationId,
+            };
+            const needsNameBackfill = !current.name?.trim();
             await stripe.customers.update(linkedId, {
-              email: data.contactEmail,
-              name: data.companyName,
-              metadata: {
-                ...(existingCustomer as Stripe.Customer).metadata,
-                contact_name: data.contactName,
-                invoice_request: 'true',
-                workos_organization_id: data.workosOrganizationId,
-              },
+              ...(needsNameBackfill && { name: data.companyName }),
+              metadata: metadataUpdate,
             });
             customerId = linkedId;
             logger.info({ customerId, orgId: data.workosOrganizationId }, 'Reusing org-linked Stripe customer for invoice');
@@ -965,6 +979,16 @@ export async function createAndSendInvoice(
             'Org-linked Stripe customer could not be retrieved; falling back to dedup');
         }
       }
+    }
+
+    // If the linked customer was deleted, clear the stale DB link so we
+    // don't re-enter the email-dedup path and re-bind an unrelated orphan
+    // (exactly the bug that hit Stefan).
+    if (linkedCustomerDeletedOnStripe && data.workosOrganizationId) {
+      await getPool().query(
+        'UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1',
+        [data.workosOrganizationId]
+      );
     }
 
     if (!customerId) {
@@ -1089,21 +1113,27 @@ export async function createAndSendInvoice(
     // Create subscription with invoice billing
     // This creates a subscription AND generates an invoice for the first payment
     // When the invoice is paid, the subscription becomes active and will auto-renew
-    const subscription = await stripe.subscriptions.create({
-      customer: customer.id,
-      items: [{ price: priceId }],
-      collection_method: 'send_invoice',
-      days_until_due: daysUntilDue,
-      // Backdate subscription start if invoice date is in the past
-      ...(invoiceDateUnix && { backdate_start_date: invoiceDateUnix }),
-      // Apply coupon if validated
-      ...(validatedCouponId && { discounts: [{ coupon: validatedCouponId }] }),
-      metadata: {
-        lookup_key: data.lookupKey,
-        contact_name: data.contactName,
-        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+    const subscription = await stripe.subscriptions.create(
+      {
+        customer: customer.id,
+        items: [{ price: priceId }],
+        collection_method: 'send_invoice',
+        days_until_due: daysUntilDue,
+        // Backdate subscription start if invoice date is in the past
+        ...(invoiceDateUnix && { backdate_start_date: invoiceDateUnix }),
+        // Apply coupon if validated
+        ...(validatedCouponId && { discounts: [{ coupon: validatedCouponId }] }),
+        metadata: {
+          lookup_key: data.lookupKey,
+          contact_name: data.contactName,
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
       },
-    });
+      // Idempotency-Key: concurrent accept clicks on the same invite converge
+      // to the same subscription/invoice on Stripe's side (24h window). Callers
+      // pass the invite token; without one we let Stripe generate a fresh call.
+      data.idempotencyKey ? { idempotencyKey: data.idempotencyKey } : undefined,
+    );
     subscriptionId = subscription.id;
 
     // Get the invoice that was created with the subscription

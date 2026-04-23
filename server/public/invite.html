@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="same-origin">
   <title>Membership Invitation - AgenticAdvertising.org</title>
   <meta name="description" content="Accept your AgenticAdvertising.org membership invitation.">
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
@@ -188,10 +189,14 @@
       }
 
       var agreementVersion = null;
-      fetch('/api/agreement/current?type=membership')
+      var agreementReady = false;
+      var agreementPromise = fetch('/api/agreement/current?type=membership')
         .then(function (res) { return res.ok ? res.json() : null; })
-        .then(function (data) { if (data) agreementVersion = data.version || null; })
-        .catch(function () { /* fall through — server will reject if missing */ });
+        .then(function (data) {
+          if (data && data.version) agreementVersion = data.version;
+          agreementReady = true;
+        })
+        .catch(function () { agreementReady = true; /* server will reject on submit */ });
 
       fetch('/api/invite/' + encodeURIComponent(token))
         .then(function (res) {
@@ -278,6 +283,15 @@
         var btn = document.getElementById('acceptBtn');
         var err = document.getElementById('acceptError');
         err.classList.add('hidden');
+
+        if (!agreementVersion) {
+          err.textContent = agreementReady
+            ? "We couldn't load the current membership agreement. Please refresh and try again."
+            : 'Still loading the membership agreement — please try again in a moment.';
+          err.classList.remove('hidden');
+          return;
+        }
+
         btn.disabled = true;
         btn.textContent = 'Submitting…';
 
@@ -290,7 +304,7 @@
             postal_code: document.getElementById('postal_code').value,
             country: document.getElementById('country').value,
           },
-          agreement_version: agreementVersion || '1.0',
+          agreement_version: agreementVersion,
         };
 
         fetch('/api/invite/' + encodeURIComponent(token) + '/accept', {
