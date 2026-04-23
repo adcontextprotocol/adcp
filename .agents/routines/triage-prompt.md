@@ -86,6 +86,36 @@ the last 10 minutes. **Skip.** Do not apply `claude-triaged`. Do not
 spawn experts. Move to the next issue and note the skip in your run
 summary. This is the dedup lock — it costs one API call per issue.
 
+## Already-engaged check — before any expert work
+
+You can't see Conductor workspaces, local drafts, or Slack
+conversations. A human may be actively working on an issue without
+any on-GitHub signal. Before spawning experts, check whether a
+maintainer is already engaged. If **any** of these is true, apply
+`claude-triaged` silently and move on — do not post an analysis that
+competes with in-progress work:
+
+1. **Assigned to a repo member.** Check `issue.assignees[].login`
+   and each login's `author_association` on the issue (via the
+   `assignees` API); if any assignee is `OWNER | MEMBER |
+   COLLABORATOR`, silent-defer.
+2. **Open PR references the issue.**
+   `gh pr list --repo <owner>/<repo> --search "in:body #<N>" --state open`.
+   A human is mid-PR; silent-defer.
+3. **Recent repo-member comment.** Any comment from an
+   `OWNER | MEMBER | COLLABORATOR` (non-bot) posted in the last 7
+   days. Exception: the comment explicitly asks for triage help —
+   e.g., "@bokelley can we get triage on this?" — in which case
+   proceed to full consultation.
+
+A bot comment on an issue the maintainer is already deep on is
+noise at best and pre-framing at worst. The bot's value is highest
+on issues no human is currently working on. When in doubt, silent-
+defer and let the human decide if they want triage help.
+
+This check is cheap (2–3 API calls per issue) and saves expert
+cycles on issues where consultation adds no value.
+
 ## Decision order
 
 ### Step 1 — Pre-classification (cheap, no experts)
