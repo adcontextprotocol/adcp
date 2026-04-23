@@ -22,20 +22,23 @@ import { AddieClaudeClient } from '../../src/addie/claude-client.js';
 
 // Spy that would throw if the Anthropic SDK got invoked. This is the
 // integration assertion — no SDK call means the gate fired at entry.
-const anthropicCreate = vi.fn(() => {
+// claude-client uses `beta.messages.create` for non-stream and
+// `messages.stream` for stream, so wire both to the same spy.
+const anthropicCall = vi.fn(() => {
   throw new Error('SDK should not be reached when cap is exhausted');
 });
 vi.mock('@anthropic-ai/sdk', () => {
   return {
     default: class {
-      messages = { create: anthropicCreate };
+      beta = { messages: { create: anthropicCall } };
+      messages = { create: anthropicCall, stream: anthropicCall };
     },
   };
 });
 
 beforeEach(() => {
   __setCostTrackerStore(__createInMemoryCostStore());
-  anthropicCreate.mockClear();
+  anthropicCall.mockClear();
 });
 
 describe('claude-client entry-gate behavior (#2790)', () => {
@@ -57,7 +60,7 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(response.text).toMatch(/usage cap/);
     // No token usage because no Claude call fired.
     expect(response.usage).toBeUndefined();
-    expect(anthropicCreate).not.toHaveBeenCalled();
+    expect(anthropicCall).not.toHaveBeenCalled();
   });
 
   it('processMessageStream yields a single cost_cap_exceeded done event when over budget', async () => {
@@ -79,7 +82,7 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(events[0].type).toBe('done');
     expect(events[0].response?.flagged).toBe(true);
     expect(events[0].response?.flag_reason).toBe('cost_cap_exceeded');
-    expect(anthropicCreate).not.toHaveBeenCalled();
+    expect(anthropicCall).not.toHaveBeenCalled();
   });
 
   // A third case — "no costScope → runs uncapped, SDK IS reached" —
@@ -103,7 +106,7 @@ describe('fail-closed warn for unwired callers (#2950)', () => {
   const logs: Array<{ msg: string; event?: string; method?: string }> = [];
   beforeEach(() => {
     __setCostTrackerStore(__createInMemoryCostStore());
-    anthropicCreate.mockClear();
+    anthropicCall.mockClear();
     logs.length = 0;
   });
 

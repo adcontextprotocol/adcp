@@ -569,17 +569,17 @@ export function createTavusRouter() {
         voiceRequestTools,
         {
           requestContext,
-          // Cost cap (#2790 / #2950): voice sessions are authenticated
-          // at session init (req.user.id flows into thread.user_id),
-          // so we always have a WorkOS identity when a voice stream
-          // fires. If the thread lookup didn't resolve a user_id (e.g.
-          // misconfigured / abandoned thread), mark uncapped rather
-          // than guess a scope — voice sessions are shared-secret
-          // gated at the Bearer layer, so ungated is acceptable on
-          // that narrow path.
+          // Cost cap (#2790 / #2950): voice sessions carry a
+          // thread.user_id resolved from session-init auth. When
+          // that resolves, charge the WorkOS user at member_free.
+          // If it doesn't (misconfigured / abandoned thread, or a
+          // caller reaching the LLM endpoint with the shared-secret
+          // but no valid thread), bucket by IP under the anonymous
+          // tier so a leaked TAVUS_LLM_SECRET still hits a bounded
+          // daily spend rather than going uncapped.
           ...(voiceUserId
             ? { costScope: { userId: voiceUserId, tier: 'member_free' as const } }
-            : { uncapped: true as const }),
+            : { costScope: { userId: `tavus:ip:${req.ip ?? 'unknown'}`, tier: 'anonymous' as const } }),
         }
       )) {
         if (connectionClosed) break;

@@ -34,6 +34,7 @@ import {
 } from '../addie/mcp/member-tools.js';
 import { createLogger } from '../logger.js';
 import type { AddieTool } from '../addie/types.js';
+import type { MCPAuthContext } from './auth.js';
 
 const logger = createLogger('mcp-chat');
 
@@ -176,7 +177,10 @@ Include 'history' for multi-turn conversations.`,
 /**
  * Handle the chat_with_addie tool call
  */
-export async function handleChatTool(args: Record<string, unknown>): Promise<string> {
+export async function handleChatTool(
+  args: Record<string, unknown>,
+  authContext?: MCPAuthContext,
+): Promise<string> {
   const message = args.message;
   const history = args.history as ConversationMessage[] | undefined;
 
@@ -202,19 +206,25 @@ export async function handleChatTool(args: Record<string, unknown>): Promise<str
       text: msg.content,
     }));
 
-    // Process the message. `uncapped: true` is deliberate (#2950):
-    // the MCP chat-tool is intended for external partners via safe
-    // tools only (no userId is available in the tool call), and
-    // the global system budget is bounded by the MCP auth layer
-    // above. Marking uncapped rather than defaulting silently lets
-    // the #2790 fail-closed warn fire on any future user-facing
-    // caller that forgets to pass costScope.
+    // Cost cap (#2790 / #2950): bucket by the authenticated MCP sub
+    // when available. In prod, MCP auth is OAuth Bearer, so `sub` is
+    // the user or M2M client id — either is a legitimate per-caller
+    // bucket key. The anonymous tier (~$1/day) is the right ceiling
+    // for safe-tools-only chat traffic. If auth is disabled (dev
+    // mode) or the sub is missing, fall back to `uncapped: true` so
+    // local testing isn't budget-limited; prod MCP requires auth by
+    // default so the fallback doesn't expose a production surface.
+    const sub = authContext?.sub;
+    const costOption = sub && sub !== 'anonymous'
+      ? { costScope: { userId: `mcp:${sub}`, tier: 'anonymous' as const } }
+      : { uncapped: true as const };
+
     const response = await client.processMessage(
       message,
       threadContext,
       undefined, // No request-specific tools for anonymous
       undefined, // No rules override
-      { maxIterations: 5, uncapped: true }, // Lower iteration limit for anonymous users
+      { maxIterations: 5, ...costOption }, // Lower iteration limit for anonymous users
     );
 
     const result: ChatResponse = {
@@ -234,8 +244,14 @@ export async function handleChatTool(args: Record<string, unknown>): Promise<str
 /**
  * Create the chat tool handler map
  */
-export function createChatToolHandler(): Map<string, (args: Record<string, unknown>) => Promise<string>> {
-  const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
+export function createChatToolHandler(): Map<
+  string,
+  (args: Record<string, unknown>, authContext?: MCPAuthContext) => Promise<string>
+> {
+  const handlers = new Map<
+    string,
+    (args: Record<string, unknown>, authContext?: MCPAuthContext) => Promise<string>
+  >();
   handlers.set(CHAT_TOOL.name, handleChatTool);
   return handlers;
 }

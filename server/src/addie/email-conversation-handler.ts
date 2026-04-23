@@ -192,13 +192,13 @@ export async function handleEmailConversation(
     // Per-user cost cap scope (#2790 / #2950): email is the highest-
     // priority bypass vector because From headers are spoofable — a
     // cooperative mail server can hit Claude with any identity it
-    // wants. We deliberately hash the From address (rather than use
-    // it raw) so that (a) attackers rotating alias variants end up
-    // in the same scope bucket for common spoofing patterns, and
-    // (b) if the hash IS observable, it doesn't leak the underlying
-    // sender identity in logs. The existing 10-emails-per-hour
-    // per-sender limiter above bounds single-sender abuse; the
-    // cost cap keys off the same identity at a rougher grain.
+    // wants. We hash the From address (rather than use it raw) so
+    // the scope key and surrounding logs don't carry sender PII.
+    // 16 hex = 64 bits; for realistic sender volumes, collision is
+    // negligible (birthday bound well above any plausible corpus).
+    // The upstream 10-emails-per-hour per-sender limiter already
+    // bounds single-sender abuse; the cost cap is the second line
+    // of defense against a spoofing mail server.
     const emailScopeKey = `email:${crypto
       .createHash('sha256')
       .update(input.senderEmail.toLowerCase().trim())
