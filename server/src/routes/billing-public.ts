@@ -174,14 +174,26 @@ export function createPublicBillingRouter(): Router {
     }
   });
 
-  // POST /api/invoice-request - Request an invoice for a product (public endpoint)
-  router.post("/invoice-request", async (req: Request, res: Response) => {
+  // POST /api/invoice-request - Issue a Stripe invoice for the caller's org.
+  //
+  // Requires:
+  //   - Authenticated user who is a member of `orgId`
+  //   - `lookupKey` for a membership product eligible for that org type
+  //   - `billingAddress` (stored on the org for future invoices)
+  //   - The org has accepted the membership agreement for this tier —
+  //     either previously (via /api/organizations/:orgId/pending-agreement)
+  //     or inline via the `agreement_version` field in this request body.
+  //
+  // This replaces the old unauthenticated contact-form version, which could
+  // create orphaned Stripe customers (free-text email → new customer with no
+  // workos_organization_id metadata → webhook couldn't link payment to an org).
+  router.post("/invoice-request", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { companyName, contactName, contactEmail, billingAddress, lookupKey, referral_code } =
+      const user = req.user!;
+      const { orgId, lookupKey, billingAddress, referral_code, agreement_version } =
         req.body as {
-          companyName: string;
-          contactName: string;
-          contactEmail: string;
+          orgId: string;
+          lookupKey: string;
           billingAddress: {
             line1: string;
             line2?: string;
@@ -190,22 +202,14 @@ export function createPublicBillingRouter(): Router {
             postal_code: string;
             country: string;
           };
-          lookupKey: string;
           referral_code?: string;
+          agreement_version?: string;
         };
 
-      // Validate required fields
-      if (
-        !companyName ||
-        !contactName ||
-        !contactEmail ||
-        !billingAddress ||
-        !lookupKey
-      ) {
+      if (!orgId || !lookupKey || !billingAddress) {
         return res.status(400).json({
           error: "Missing required fields",
-          message:
-            "Please provide companyName, contactName, contactEmail, billingAddress, and lookupKey",
+          message: "Please provide orgId, lookupKey, and billingAddress",
         });
       }
 
@@ -222,7 +226,6 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      // Validate lookup key starts with our prefix
       if (!lookupKey.startsWith("aao_")) {
         logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
         return res.status(400).json({
@@ -231,22 +234,81 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      logger.info({
-        lookupKey,
-        companyName,
-        contactEmail,
-      }, 'Invoice request received');
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-      if (!emailRegex.test(contactEmail)) {
-        return res.status(400).json({
-          error: "Invalid email format",
-          message: "Please provide a valid email address",
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return res.status(404).json({
+          error: "Organization not found",
+          message: "The specified organization does not exist",
         });
       }
 
-      // Validate referral code and create a Stripe coupon if it carries a discount
+      const isDevUserInvoice =
+        isDevModeEnabled() &&
+        Object.values(DEV_USERS).some((du) => du.id === user.id) &&
+        orgId.startsWith("org_dev_");
+
+      if (!isDevUserInvoice) {
+        const membership = await workos?.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+        if (!membership?.data?.length) {
+          return res.status(403).json({
+            error: "Access denied",
+            message: "You are not a member of this organization",
+          });
+        }
+      }
+
+      // Product must be eligible for this org type (individual → personal
+      // workspace, company → non-personal org).
+      const customerType = org.is_personal ? 'individual' : 'company';
+      const eligibleProducts = await getProductsForCustomer({
+        customerType,
+        category: 'membership',
+      });
+      const product = eligibleProducts.find((p) => p.lookup_key === lookupKey);
+      if (!product) {
+        return res.status(400).json({
+          error: "Product not available",
+          message: "This membership tier is not available for your organization.",
+        });
+      }
+
+      // Agreement gate. Caller either already accepted (pending_agreement_version
+      // set on the org) or accepts inline. We store the acceptance as "pending"
+      // here; the webhook on invoice.paid / subscription.created records it
+      // permanently (existing machinery from the checkout flow).
+      const pendingVersion = agreement_version?.trim() || org.pending_agreement_version;
+      if (!pendingVersion) {
+        return res.status(400).json({
+          error: "Membership agreement required",
+          message:
+            "Please accept the membership agreement before requesting an invoice.",
+          required: "agreement_version",
+        });
+      }
+      if (agreement_version) {
+        await orgDb.updateOrganization(orgId, {
+          pending_agreement_version: agreement_version,
+          pending_agreement_accepted_at: new Date(),
+        });
+      }
+
+      // Store the confirmed billing address on the org so future invoices
+      // pre-fill from it.
+      await orgDb.updateOrganization(orgId, {
+        billing_address: {
+          line1: billingAddress.line1,
+          line2: billingAddress.line2,
+          city: billingAddress.city,
+          state: billingAddress.state,
+          postal_code: billingAddress.postal_code,
+          country: billingAddress.country,
+        },
+      });
+
+      // Referral discount (same logic as checkout).
       let invoiceCouponId: string | undefined;
       let validatedInvoiceReferralCode: Awaited<ReturnType<typeof referralDb.getReferralCode>> = null;
 
@@ -279,14 +341,20 @@ export function createPublicBillingRouter(): Router {
         }
       }
 
+      const displayName =
+        [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+
       const invoiceData: InvoiceRequestData = {
-        companyName,
-        contactName,
-        contactEmail,
+        companyName: org.name,
+        contactName: displayName,
+        contactEmail: user.email,
         billingAddress,
         lookupKey,
-        couponId: invoiceCouponId,
+        workosOrganizationId: orgId,
+        couponId: invoiceCouponId ?? org.stripe_coupon_id ?? undefined,
       };
+
+      logger.info({ orgId, lookupKey, userId: user.id }, 'Invoice request received');
 
       const result = await createAndSendInvoice(invoiceData);
 
@@ -298,33 +366,25 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      // Record referral after invoice is confirmed
       if (validatedInvoiceReferralCode) {
         try {
-          await referralDb.redeemReferralCodeForInvoice(validatedInvoiceReferralCode.code, companyName, contactEmail);
+          await referralDb.redeemReferralCodeForInvoice(
+            validatedInvoiceReferralCode.code,
+            org.name,
+            user.email,
+          );
         } catch (err) {
-          logger.warn({ err, referral_code, companyName }, 'Failed to record referral for invoice — continuing');
+          logger.warn({ err, referral_code, orgId }, 'Failed to record referral for invoice — continuing');
         }
       }
 
-      // Get product details for the notification
-      const products = await getInvoiceableProducts();
-      const product = products.find((p) => p.lookup_key === lookupKey);
-      const productDisplay = product
-        ? `${product.display_name} ($${(product.amount_cents / 100).toLocaleString()})`
-        : lookupKey;
+      const productDisplay = `${product.display_name} ($${(product.amount_cents / 100).toLocaleString()})`;
 
       logger.info(
-        {
-          invoiceId: result.invoiceId,
-          companyName,
-          contactEmail,
-          lookupKey,
-        },
+        { invoiceId: result.invoiceId, orgId, lookupKey, userId: user.id },
         "Invoice request processed successfully"
       );
 
-      // Send Slack notification for invoice request
       if (process.env.SLACK_WEBHOOK_URL) {
         fetch(process.env.SLACK_WEBHOOK_URL, {
           method: "POST",
@@ -336,7 +396,7 @@ export function createPublicBillingRouter(): Router {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `*New Invoice Request*\n\n*Company:* ${companyName}\n*Contact:* ${contactName} (${contactEmail})\n*Product:* ${productDisplay}\n*Invoice ID:* ${result.invoiceId}`,
+                  text: `*New Invoice Request*\n\n*Org:* ${org.name}\n*Requested by:* ${displayName} (${user.email})\n*Product:* ${productDisplay}\n*Invoice ID:* ${result.invoiceId}`,
                 },
               },
             ],
@@ -348,7 +408,7 @@ export function createPublicBillingRouter(): Router {
 
       res.json({
         success: true,
-        message: `Invoice sent to ${contactEmail}. Please check your email for payment instructions.`,
+        message: `Invoice sent to ${user.email}. Please check your email for payment instructions.`,
         invoiceId: result.invoiceId,
         invoiceUrl: result.invoiceUrl,
       });
@@ -756,6 +816,7 @@ export function createPublicBillingRouter(): Router {
           revenue_tier: org.revenue_tier || null,
           is_personal: org.is_personal || false,
           pending_invoices: pendingInvoices,
+          billing_address: org.billing_address || null,
           // Enrichment-based suggestions for prefilling the profile modal
           suggested_company_type: suggestedCompanyType,
           suggested_revenue_tier: suggestedRevenueTier,

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
+import { getPool } from '../db/client.js';
 
 const logger = createLogger('stripe-client');
 
@@ -929,17 +930,55 @@ export async function createAndSendInvoice(
 
   let subscriptionId: string | undefined;
   try {
-    // Find or create customer using shared deduplication logic
-    const customerId = await createStripeCustomer({
-      email: data.contactEmail,
-      name: data.companyName,
-      updateEmail: true,
-      metadata: {
-        contact_name: data.contactName,
-        invoice_request: 'true',
-        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
-      },
-    });
+    // If the org already has a linked Stripe customer in our DB, reuse it
+    // directly. createStripeCustomer's dedup lookups (by workos_organization_id
+    // metadata, then by email) can miss customers that were auto-provisioned
+    // at org-creation time without the org metadata tag — causing a split
+    // where the org is linked to one customer but the invoice goes to a new
+    // one, and the webhook can't reconcile. DB is the source of truth.
+    let customerId: string | null = null;
+    if (data.workosOrganizationId && stripe) {
+      const existing = await getPool().query<{ stripe_customer_id: string | null }>(
+        'SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+        [data.workosOrganizationId]
+      );
+      const linkedId = existing.rows[0]?.stripe_customer_id;
+      if (linkedId) {
+        try {
+          const existingCustomer = await stripe.customers.retrieve(linkedId);
+          if (!('deleted' in existingCustomer && existingCustomer.deleted)) {
+            await stripe.customers.update(linkedId, {
+              email: data.contactEmail,
+              name: data.companyName,
+              metadata: {
+                ...(existingCustomer as Stripe.Customer).metadata,
+                contact_name: data.contactName,
+                invoice_request: 'true',
+                workos_organization_id: data.workosOrganizationId,
+              },
+            });
+            customerId = linkedId;
+            logger.info({ customerId, orgId: data.workosOrganizationId }, 'Reusing org-linked Stripe customer for invoice');
+          }
+        } catch (err) {
+          logger.warn({ err, linkedId, orgId: data.workosOrganizationId },
+            'Org-linked Stripe customer could not be retrieved; falling back to dedup');
+        }
+      }
+    }
+
+    if (!customerId) {
+      customerId = await createStripeCustomer({
+        email: data.contactEmail,
+        name: data.companyName,
+        updateEmail: true,
+        metadata: {
+          contact_name: data.contactName,
+          invoice_request: 'true',
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      });
+    }
 
     if (!customerId) {
       logger.error({ email: data.contactEmail }, 'Failed to find or create Stripe customer for invoice');
