@@ -1652,20 +1652,32 @@ async function handleUserMessage({
           const fallbackValidation = validateOutput(guarded.text);
           const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
-          await say({
-            text: slackText,
-            blocks: [
-              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
-              ...fallbackImages.slice(0, 3).map(img => ({
-                type: 'image' as const,
-                image_url: img.url,
-                alt_text: img.alt,
-              })),
-              buildFeedbackBlock(),
-            ],
-          });
+          // Slack rejects section blocks with empty mrkdwn text. If streaming
+          // produced nothing (e.g. upstream overload before any deltas), fall
+          // back to a plain apology so the user isn't left silent.
+          if (!slackText.trim()) {
+            const apology = isRetriesExhaustedError(stopError)
+              ? `${stopError.reason}. Please try again in a moment.`
+              : "I'm sorry, I encountered an error. Please try again.";
+            await say(apology);
+          } else {
+            await say({
+              text: slackText,
+              blocks: [
+                { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+                ...fallbackImages.slice(0, 3).map(img => ({
+                  type: 'image' as const,
+                  image_url: img.url,
+                  alt_text: img.alt,
+                })),
+                buildFeedbackBlock(),
+              ],
+            });
+          }
         } catch (sayError) {
-          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+          const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+          const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+          logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
         }
       }
     } else {
