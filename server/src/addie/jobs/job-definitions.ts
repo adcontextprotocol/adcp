@@ -46,6 +46,7 @@ import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
 import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
+import { runChannelPrivacyAudit } from './channel-privacy-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
@@ -143,6 +144,20 @@ export function registerAllJobs(): void {
     runner: runSummaryGeneratorJob,
     options: { batchSize: 10 },
     shouldLogResult: (r) => r.summariesGenerated > 0,
+  });
+
+  // Channel privacy audit (#2849) — daily backstop for the send-time
+  // recheck in #2735. Catches drift on admin-settings channels that
+  // sit idle between writes so the drift doesn't linger until
+  // someone tries to post.
+  jobScheduler.register({
+    name: 'channel-privacy-audit',
+    description: 'Channel privacy audit',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runChannelPrivacyAudit,
+    shouldLogResult: (r: { drifted: unknown[]; unknown: unknown[] }) =>
+      r.drifted.length > 0 || r.unknown.length > 0,
   });
 
   // Relationship orchestrator - continues member relationships across channels
