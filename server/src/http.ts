@@ -31,6 +31,7 @@ import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
+import { getGitHubConnectedAccount, getGitHubAuthorizeUrl } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -6985,6 +6986,36 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         res.status(500).json({
           error: 'Failed to get agreement history',
         });
+      }
+    });
+
+    // GET /api/me/connected-accounts/github - Report whether the user has linked their GitHub via WorkOS Pipes
+    this.app.get('/api/me/connected-accounts/github', requireAuth, async (req, res) => {
+      try {
+        const account = await getGitHubConnectedAccount(req.user!.id);
+        if (!account) {
+          return res.json({ connected: false });
+        }
+        return res.json({ connected: true, login: account.login ?? null });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to look up GitHub connected account');
+        res.status(500).json({ error: 'Failed to look up connection status' });
+      }
+    });
+
+    // POST /api/me/connected-accounts/github/authorize - Mint a WorkOS Pipes authorize URL for GitHub
+    this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
+      try {
+        const host = req.get('host') || '';
+        const protocol = req.protocol === 'http' && !host.startsWith('localhost') ? 'https' : req.protocol;
+        const requested = typeof req.body?.return_to === 'string' ? req.body.return_to : '/member-hub?connected=github';
+        const safeReturn = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/member-hub?connected=github';
+        const returnTo = `${protocol}://${host}${safeReturn}`;
+        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
+        res.json({ url });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
+        res.status(502).json({ error: 'Failed to start GitHub connection' });
       }
     });
 
