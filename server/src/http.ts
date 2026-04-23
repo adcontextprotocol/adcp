@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
-import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
+import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
 import { HealthChecker } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
@@ -554,6 +554,20 @@ export class HTTPServer {
     this.app.get('/.well-known/openapi.yaml', (_req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.redirect(302, '/openapi/registry.yaml');
+    });
+
+    // RFC 9728 protected-resource metadata for the REST API. Points at the same
+    // OAuth 2.1 authorization server that the MCP endpoint uses, so a single
+    // SSO'd token issued via mcpAuthRouter works against /api/* too.
+    this.app.get('/.well-known/oauth-protected-resource/api', (_req, res) => {
+      const issuer = resolveMCPServerURL();
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json({
+        resource: `${issuer}/api`,
+        authorization_servers: [issuer],
+        bearer_methods_supported: ['header'],
+        scopes_supported: ['openid', 'profile', 'email'],
+      });
     });
 
     // Serve other static files (robots.txt, images, etc.)

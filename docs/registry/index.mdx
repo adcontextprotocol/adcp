@@ -218,20 +218,38 @@ These controls are enforced by the hosted AgenticAdvertising.org registry. Self-
 
 ## Authentication
 
-Public endpoints (resolution, discovery, search) require no authentication. Write endpoints require a Bearer token issued to an AgenticAdvertising.org member organization.
+Public endpoints (resolution, discovery, search) require no authentication. Write endpoints accept either an **organization API key** (server-to-server) or a **user JWT** obtained via OAuth 2.1 (interactive / agent clients). Both are sent in the `Authorization: Bearer ...` header.
 
-### Obtaining an API key
+### Option A: Organization API key
+
+Long-lived, org-scoped. Best for server-to-server integrations where no user is present.
 
 1. Sign in at [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys)
 2. Click **Create key** and copy the generated key
-
-### Using the API key
 
 Pass the key in the `Authorization` header:
 
 ```
 Authorization: Bearer sk_...
 ```
+
+### Option B: User SSO via OAuth 2.1
+
+Short-lived, user-scoped. Best for agent clients (MCP, AI assistants, custom apps) where a human is signing in. A single token works against both `/mcp` and the REST API.
+
+Discovery follows [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728):
+
+- Authorization server metadata: `GET /.well-known/oauth-authorization-server`
+- Protected-resource metadata (REST API): `GET /.well-known/oauth-protected-resource/api`
+- Protected-resource metadata (MCP): `GET /.well-known/oauth-protected-resource/mcp`
+
+The flow is authorization code with PKCE. Dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)) is available at `/register`. Users authenticate via AuthKit; the token is a WorkOS-signed JWT.
+
+```
+Authorization: Bearer <jwt>
+```
+
+A valid user JWT proves identity, not entitlement. Endpoints gated on organization membership or admin role (most write endpoints) still return `403` if the authenticated user lacks the required standing.
 
 ### Authenticated endpoints
 
