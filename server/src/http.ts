@@ -886,6 +886,7 @@ export class HTTPServer {
       eventsDb: this.catalogEventsDb,
       profilesDb: this.agentProfilesDb,
       requireAuth,
+      optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
 
