@@ -2139,13 +2139,18 @@ async function handleAppMention({
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
   const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
+  // namespaced Slack ID so unmapped users still get a bounded
+  // daily Addie spend budget.
+  const mentionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: mentionCostScopeUserId, tier: 'member_free' as const },
   };
 
   // Process with Claude
@@ -3097,13 +3102,16 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
+  const dmCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: dmCostScopeUserId, tier: 'member_free' as const },
   };
 
   // Process with Claude
@@ -3475,13 +3483,16 @@ async function handleActiveThreadReply({
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
   const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
 
-  // Admin users get higher iteration limit
+  // Admin users get higher iteration limit.
+  // Cost cap scope follows the mention-handler pattern above.
+  const threadCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: threadCostScopeUserId, tier: 'member_free' as const },
   };
 
   // Process with Claude
@@ -4056,12 +4067,15 @@ async function handleChannelMessage({
     const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
     const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
     const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+    // Cost cap scope follows the mention-handler pattern above.
+    const channelCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
+      costScope: { userId: channelCostScopeUserId, tier: 'member_free' as const },
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4841,12 +4855,15 @@ async function handleReactionAdded({
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
+  const reactionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${reactingUserId}`;
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
+    costScope: { userId: reactionCostScopeUserId, tier: 'member_free' as const },
   };
 
   // Process with Claude

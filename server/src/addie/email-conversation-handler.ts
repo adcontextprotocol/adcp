@@ -9,6 +9,7 @@
  * - CC: Only respond if explicitly invoked (Addie is observing)
  */
 
+import crypto from 'crypto';
 import { createLogger } from '../logger.js';
 import {
   sanitizeInput,
@@ -186,7 +187,24 @@ export async function handleEmailConversation(
     // 5. Build email-specific system context
     const emailSystemContext = buildEmailSystemContext(input, prepared.requestContext);
 
-    // 6. Process with Claude
+    // 6. Process with Claude.
+    //
+    // Per-user cost cap scope (#2790 / #2950): email is the highest-
+    // priority bypass vector because From headers are spoofable — a
+    // cooperative mail server can hit Claude with any identity it
+    // wants. We hash the From address (rather than use it raw) so
+    // the scope key and surrounding logs don't carry sender PII.
+    // 16 hex = 64 bits; for realistic sender volumes, collision is
+    // negligible (birthday bound well above any plausible corpus).
+    // The upstream 10-emails-per-hour per-sender limiter already
+    // bounds single-sender abuse; the cost cap is the second line
+    // of defense against a spoofing mail server.
+    const emailScopeKey = `email:${crypto
+      .createHash('sha256')
+      .update(input.senderEmail.toLowerCase().trim())
+      .digest('hex')
+      .substring(0, 16)}`;
+
     const claudeClient = await getChatClaudeClient();
     const response = await claudeClient.processMessage(
       prepared.messageToProcess,
@@ -198,6 +216,7 @@ export async function handleEmailConversation(
         requestContext: emailSystemContext,
         threadId: thread.thread_id,
         userDisplayName: input.senderDisplayName || undefined,
+        costScope: { userId: emailScopeKey, tier: 'anonymous' },
       }
     );
 

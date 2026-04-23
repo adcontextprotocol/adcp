@@ -456,12 +456,14 @@ export function createTavusRouter() {
     let voiceRequestTools: RequestTools | undefined;
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
+    let voiceUserId: string | null = null;
     if (threadId) {
       const threadService = getThreadService();
       try {
         const thread = await threadService.getThread(threadId);
         if (thread?.user_id && thread.channel === 'video') {
           userDisplayName = thread.user_display_name;
+          voiceUserId = thread.user_id;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -565,7 +567,20 @@ export function createTavusRouter() {
         currentMessage,
         threadContext,
         voiceRequestTools,
-        { requestContext }
+        {
+          requestContext,
+          // Cost cap (#2790 / #2950): voice sessions carry a
+          // thread.user_id resolved from session-init auth. When
+          // that resolves, charge the WorkOS user at member_free.
+          // If it doesn't (misconfigured / abandoned thread, or a
+          // caller reaching the LLM endpoint with the shared-secret
+          // but no valid thread), bucket by IP under the anonymous
+          // tier so a leaked TAVUS_LLM_SECRET still hits a bounded
+          // daily spend rather than going uncapped.
+          ...(voiceUserId
+            ? { costScope: { userId: voiceUserId, tier: 'member_free' as const } }
+            : { costScope: { userId: `tavus:ip:${req.ip ?? 'unknown'}`, tier: 'anonymous' as const } }),
+        }
       )) {
         if (connectionClosed) break;
         if (event.type === "text") {
