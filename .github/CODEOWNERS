@@ -1,0 +1,20 @@
+# CODEOWNERS — required reviewers on PRs touching these paths.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+#
+# These paths are inputs to agent behavior (prompts, cloud-env setup,
+# current-context snapshot) or CI/infra that an agent-authored PR must
+# not modify without human review. Claude-bot PRs touching these paths
+# will fail to merge until an owner approves.
+
+# Agent infrastructure: prompts, context snapshots, setup scripts.
+# A prompt-injection attack would try to rewrite these to expand the
+# agent's capabilities; CODEOWNERS forces a human in the loop.
+/.agents/                   @bokelley
+/.github/                   @bokelley
+/.github/workflows/         @bokelley
+
+# Protocol schemas — the source of truth the spec is built from.
+/static/schemas/source/     @bokelley
+
+# Release tooling.
+/.changeset/                @bokelley
