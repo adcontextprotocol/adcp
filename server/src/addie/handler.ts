@@ -596,8 +596,16 @@ export async function handleAssistantMessage(
     // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790): prefer WorkOS user ID; fall back to a
+    // namespaced Slack ID so unmapped users still get a bounded
+    // daily Addie spend budget.
+    const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${event.user}`;
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: { userId: costScopeUserId, tier: 'member_free' },
+    };
 
     // Process with Claude
     try {
@@ -763,8 +771,16 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // Create user-scoped tools (these can only operate on behalf of this user)
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790): prefer WorkOS user ID; fall back to a
+    // namespaced Slack ID so unmapped users still get a bounded
+    // daily Addie spend budget.
+    const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${event.user}`;
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: { userId: costScopeUserId, tier: 'member_free' },
+    };
 
     // Process with Claude
     try {

@@ -789,6 +789,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           requestContext,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
+          // Per-user Anthropic cost cap (#2790). Anonymous callers
+          // fall under a tighter $1/day ceiling; authenticated
+          // callers get $5/day as member_free. Upgrading to
+          // member_paid tier requires the subscription-status lookup
+          // (filed as follow-up) — until then, real paying members
+          // sit on member_free which is still plenty for normal
+          // conversational use.
+          ...(req.user?.id
+            ? { costScope: { userId: req.user.id, tier: 'member_free' as const } }
+            : externalId
+              ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
+              : {}),
         });
       } catch (error) {
         // Provide user-friendly error message based on error type
@@ -1041,6 +1053,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         requestContext,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
+        // Cost cap — see matching block in the non-streaming path.
+        ...(req.user?.id
+          ? { costScope: { userId: req.user.id, tier: 'member_free' as const } }
+          : externalId
+            ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
+            : {}),
       })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
