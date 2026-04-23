@@ -1692,24 +1692,31 @@ async function handleUserMessage({
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
-        await say({
-          text: slackText,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: slackText,
+        // Slack rejects section blocks with empty mrkdwn text. If the model
+        // returned nothing (or everything was sanitized/extracted), fall back
+        // to a plain apology instead of a malformed blocks payload.
+        if (!slackText.trim()) {
+          await say("I'm sorry, I encountered an error. Please try again.");
+        } else {
+          await say({
+            text: slackText,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: slackText,
+                },
               },
-            },
-            ...images.slice(0, 3).map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
-            buildFeedbackBlock(),
-          ],
-        });
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        }
       } catch (error) {
         logger.error({ error }, 'Addie Bolt: Failed to send response');
       }
