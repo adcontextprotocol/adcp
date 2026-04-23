@@ -46,7 +46,7 @@ import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
 import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
-import { runChannelPrivacyAudit } from './channel-privacy-audit.js';
+import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
@@ -156,7 +156,7 @@ export function registerAllJobs(): void {
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
     runner: runChannelPrivacyAudit,
-    shouldLogResult: (r: { drifted: unknown[]; unknown: unknown[] }) =>
+    shouldLogResult: (r: ChannelPrivacyAuditResult) =>
       r.drifted.length > 0 || r.unknown.length > 0,
   });
 

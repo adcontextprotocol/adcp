@@ -116,8 +116,12 @@ export async function runChannelPrivacyAudit(): Promise<ChannelPrivacyAuditResul
     try {
       state = await verifyChannelStillPrivate(cfg.channelId);
     } catch (err) {
+      // Narrow the error shape (pg/net errors can carry diagnostic
+      // fields pino's default err-serializer would emit — mirror the
+      // sanitization pattern from #2830's brand_json_drift log).
+      const errMessage = err instanceof Error ? err.message : String(err);
       logger.warn(
-        { err, settingName: cfg.settingName, channelId: cfg.channelId },
+        { error: errMessage, settingName: cfg.settingName, channelId: cfg.channelId },
         'Channel privacy audit: verify threw',
       );
       state = 'unknown';
@@ -146,14 +150,21 @@ export async function runChannelPrivacyAudit(): Promise<ChannelPrivacyAuditResul
 
   // Post a summary to the admin channel — but only when:
   //   (a) it's configured, AND
-  //   (b) the admin channel itself is NOT on the drifted list (posting
-  //       sensitive content to a now-public channel is what this whole
-  //       audit is trying to prevent).
+  //   (b) the admin channel's OWN privacy state is confirmed `'private'`
+  //       in this audit pass. The #2849 acceptance calls out "notifies
+  //       a human without using the drifted channel as the notification
+  //       surface" — we extend that to `'unknown'` too: if the admin
+  //       channel's state couldn't be verified, there's a narrow window
+  //       where it's actually public and we'd leak drift details about
+  //       the other channels into a workspace-visible thread. Log
+  //       aggregation alerting on `event: 'channel_privacy_drift_audit'`
+  //       is the documented backstop for this case.
   let summaryPosted = false;
   if (drifted.length > 0 || unknown.length > 0) {
     const adminSetting = configured.find((c) => c.settingName === 'admin_slack_channel');
     const adminDrifted = drifted.some((d) => d.settingName === 'admin_slack_channel');
-    if (adminSetting && !adminDrifted) {
+    const adminUnknown = unknown.some((u) => u.settingName === 'admin_slack_channel');
+    if (adminSetting && !adminDrifted && !adminUnknown) {
       const lines: string[] = [
         `:mag: *Channel privacy audit* — ${configured.length} channels checked`,
       ];
@@ -170,14 +181,14 @@ export async function runChannelPrivacyAudit(): Promise<ChannelPrivacyAuditResul
         }
       }
       lines.push('', 'Re-privatize the listed channels or update the settings at /admin/settings.');
+      // We already confirmed the admin channel is `'private'` in this
+      // audit pass. `requirePrivate: true` (strict) belts-and-braces
+      // the send-time gate against a drift that raced between the
+      // audit loop and this send.
       const result = await sendChannelMessage(
         adminSetting.channelId,
         { text: lines.join('\n') },
-        // 'strict-public-only': we already confirmed admin_slack_channel
-        // itself is NOT drifted (checked above). If Slack returns
-        // 'unknown' here, send anyway — the summary is the notification
-        // and losing it silently would defeat the point of the audit.
-        { requirePrivate: 'strict-public-only' },
+        { requirePrivate: true },
       );
       summaryPosted = result.ok;
     }
