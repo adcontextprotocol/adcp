@@ -190,7 +190,7 @@
 
       var agreementVersion = null;
       var agreementReady = false;
-      var agreementPromise = fetch('/api/agreement/current?type=membership')
+      fetch('/api/agreement/current?type=membership')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
           if (data && data.version) agreementVersion = data.version;
