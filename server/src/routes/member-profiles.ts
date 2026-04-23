@@ -18,7 +18,7 @@ import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
-import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
+import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { AAO_HOST } from "../config/aao.js";
@@ -724,21 +724,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // ROLLBACK. The Stripe demote path locks member_profiles via
       // FOR UPDATE, so it can't interleave past our own lock.
       if (target === 'public') {
-        const orgRow = await client.query<{
-          membership_tier: string | null;
-          subscription_price_lookup_key: string | null;
-          subscription_status: string | null;
-          subscription_amount: number | null;
-          subscription_interval: string | null;
-          is_personal: boolean;
-        }>(
-          `SELECT membership_tier, subscription_price_lookup_key, subscription_status,
-                  subscription_amount, subscription_interval, is_personal
-           FROM organizations
-           WHERE workos_organization_id = $1`,
-          [orgId]
-        );
-        const currentTier = resolveMembershipTier(orgRow.rows[0] ?? null);
+        const currentTier = await readMembershipTierFromClient(client, orgId);
         if (!hasApiAccess(currentTier)) {
           await client.query('ROLLBACK');
           return {
