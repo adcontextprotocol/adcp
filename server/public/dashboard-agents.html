@@ -1289,6 +1289,12 @@
     async function retryAgentCard(agentUrl, cardId, { auto = false } = {}) {
       const card = document.getElementById(cardId);
       if (!card) return;
+      // Re-entry guard: drop concurrent retries (e.g., the countdown
+      // interval firing at the moment a user clicks Retry). The flag
+      // lives on the DOM — successful retries replace the card and
+      // lose it; failures clear it in the catch branch below.
+      if (card.dataset.retryInFlight === '1') return;
+      card.dataset.retryInFlight = '1';
       const retryBtn = card.querySelector('.agent-reload-btn');
       if (retryBtn) {
         retryBtn.disabled = true;
@@ -1304,12 +1310,17 @@
         wrapper.innerHTML = newHtml.trim();
         const newCard = wrapper.firstElementChild;
         if (newCard) card.replaceWith(newCard);
+        // Clear the auto-retry marker on success so a genuine 429 later
+        // in the same session doesn't render "refreshed too quickly" on
+        // its first strike.
+        pageState.autoRetriedAgents.delete(agentUrl);
       } catch (err) {
         console.error('Retry failed:', err);
         if (retryBtn) {
           retryBtn.disabled = false;
           retryBtn.textContent = 'Retry';
         }
+        card.dataset.retryInFlight = '';
       }
     }
 
