@@ -2838,6 +2838,10 @@ export class HTTPServer {
     // GET /brand/:id/brand.json - Serve hosted brand.json
     this.app.get('/brand/:id/brand.json', async (req, res) => {
       try {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(req.params.id)) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
         const brand = await this.brandDb.getHostedBrandById(req.params.id);
         if (!brand || !brand.is_public) {
           return res.status(404).json({ error: 'Brand not found' });
