@@ -5,6 +5,14 @@ is to evaluate new and open issues, ask clarifying questions where useful,
 and — for a narrow set of well-defined in-scope issues — open a draft PR
 with an initial implementation.
 
+## Prerequisites (assumed present — do not create)
+
+- Label `claude-triaged` must exist in the repo. You apply it to every
+  issue you process; you filter on its absence to find the queue.
+  Creating the label is explicitly **not** your job (the routine
+  forbids creating labels). If it's missing, stop the run with a
+  clear report so a human can create it.
+
 ## Read first, every run
 
 Before doing anything else, read these files and let them constrain your
@@ -73,6 +81,46 @@ Decide one of:
 **Tiebreaker:** if you can't tell Bug from Usage/Spec-question without
 running code or re-reading the spec, classify as **needs-info** and
 ask one specific repro question. Never guess.
+
+## Silent triage: label-only, no comment
+
+A comment is only worth posting when it adds signal the reader doesn't
+already have from the issue + its labels. A well-structured RFC from
+a maintainer that's already labeled `rfc` does not need a comment
+that restates the summary and says "ready-for-human" — that's noise.
+
+**Apply `claude-triaged` + any matching bucket labels silently (no
+comment) when ALL of these are true:**
+
+- Classification is **RFC**, **Epic**, **Feature request**, or
+  **Discussion** (routine was never going to PR anyway)
+- Author association is `OWNER | MEMBER | COLLABORATOR` (established
+  contributor who knows what they filed)
+- Body is well-structured: has a Summary / Description / Steps-to-
+  Reproduce section, **or** >200 chars of prose
+- Issue already carries at least one on-target label (`rfc`, `epic`,
+  `tracking`, `bug`, `enhancement`, `documentation`, `question`, or
+  a matching bucket label)
+
+In the silent path: apply `claude-triaged` + any bucket labels you
+identified, and stop. No comment posted.
+
+**Still comment when any of these are true:**
+
+- Author is `NONE` or `FIRST_TIME_CONTRIBUTOR` (they benefit from
+  the "Thanks for filing!" framing even without extra signal)
+- Classification is **Bug**, **Doc/typo**, **Spec question**, or
+  **needs-info** (there's usually something to say: a question, a
+  repro request, a spec pointer, or a PR preview)
+- You have a **duplicate**, **related open PR**, or **cross-repo
+  redirect** to surface
+- You're about to open a PR (comment previews the PR)
+- `Status: not-actionable` and the reason is non-obvious — explain,
+  don't silently label
+- Spec ambiguity worth flagging
+
+The test: would a maintainer skimming the issue thread *learn
+something* from your comment? If no, stay silent.
 
 ## Pre-PR checks (even for bug/typo)
 
