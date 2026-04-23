@@ -50,6 +50,7 @@ interface AnnounceCandidate {
   offerings: string[] | null;
   primary_brand_domain: string | null;
   brand_manifest: Record<string, unknown> | null;
+  last_published_at: Date | null;
 }
 
 /**
@@ -146,8 +147,11 @@ export function summarizeAgents(
  * wrapping the LinkedIn preview.
  *
  *  - `<!channel>` / `<!here>` / `<!everyone>` → plain text
- *  - `<@Uxxxxxxx>` user mentions → `@user`
+ *  - `<!subteam^Sxxx|@name>` user-group pings → `@group`
+ *  - `<@Uxxxxxxx>` and `<@Wxxxxxxx>` user mentions → `@user`
  *  - `<#Cxxxxxxx|name>` / `<#Cxxxxxxx>` channel mentions → `#channel`
+ *  - `<https://url|label>` linkified labels → raw `https://url` so a
+ *    friendly-looking label can't disguise a hostile URL in the review card
  *
  * When `forFencedBlock` is true (LinkedIn block wraps in triple-backticks),
  * backticks in the content are also replaced so the fence cannot be
@@ -161,8 +165,10 @@ export function sanitizeDraftForSlack(
     .replace(/<!channel>/gi, '[channel]')
     .replace(/<!here>/gi, '[here]')
     .replace(/<!everyone>/gi, '[everyone]')
-    .replace(/<@U[A-Z0-9]+>/g, '@user')
-    .replace(/<#C[A-Z0-9]+(?:\|[^>]+)?>/g, '#channel');
+    .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]+)?>/g, '@group')
+    .replace(/<@[UW][A-Z0-9]+>/g, '@user')
+    .replace(/<#C[A-Z0-9]+(?:\|[^>]+)?>/g, '#channel')
+    .replace(/<(https?:\/\/[^|>\s]+)\|[^>]+>/g, '$1');
   if (options.forFencedBlock) {
     out = out.replace(/`/g, "'");
   }
@@ -345,15 +351,22 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
           { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
           'Activity write failed after posting draft — unwinding Slack message',
         );
-        const undo = await deleteChannelMessage(reviewChannel, post.ts);
-        if (!undo.ok) {
+        try {
+          const undo = await deleteChannelMessage(reviewChannel, post.ts);
+          if (!undo.ok) {
+            logger.error(
+              {
+                orgId: candidate.workos_organization_id,
+                ts: post.ts,
+                undoError: undo.error,
+              },
+              'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
+            );
+          }
+        } catch (undoErr) {
           logger.error(
-            {
-              orgId: candidate.workos_organization_id,
-              ts: post.ts,
-              undoError: undo.error,
-            },
-            'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
+            { err: undoErr, orgId: candidate.workos_organization_id, ts: post.ts },
+            'CRITICAL: Slack unwind threw — orphan review card, no idempotency row',
           );
         }
         result.failed++;

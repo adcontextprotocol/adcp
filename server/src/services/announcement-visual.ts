@@ -47,11 +47,24 @@ export function isSafeVisualUrl(url: string): boolean {
     return false;
   }
   if (parsed.protocol !== 'https:') return false;
-  const host = parsed.hostname.toLowerCase();
-  if (!host || host === 'localhost') return false;
+  const rawHost = parsed.hostname.toLowerCase();
+  if (!rawHost || rawHost === 'localhost') return false;
+  const host = rawHost.startsWith('[') && rawHost.endsWith(']')
+    ? rawHost.slice(1, -1)
+    : rawHost;
   if (host.startsWith('127.') || host === '0.0.0.0' || host === '::1') return false;
   if (host.startsWith('10.') || host.startsWith('192.168.')) return false;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  if (host.startsWith('169.254.')) return false;
+  if (host.startsWith('100.')) {
+    const second = Number(host.split('.')[1]);
+    if (second >= 64 && second <= 127) return false;
+  }
+  if (host.startsWith('::ffff:')) return false;
+  if (/^f[cd][0-9a-f]{0,2}:/i.test(host)) return false;
+  if (host.startsWith('fe80:') || /^fe[89ab][0-9a-f]?:/i.test(host)) return false;
+  if (/^\d+$/.test(host)) return false;
+  if (/^0x[0-9a-f]+$/i.test(host)) return false;
   if (host.endsWith('.internal') || host.endsWith('.local')) return false;
   const lastDot = parsed.pathname.lastIndexOf('.');
   if (lastDot < 0) return false;

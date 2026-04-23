@@ -74,6 +74,25 @@ describe('isSafeVisualUrl', () => {
     expect(isSafeVisualUrl('https://api.internal/logo.png')).toBe(false);
   });
 
+  it('rejects cloud metadata, link-local, and CGNAT hosts', () => {
+    expect(isSafeVisualUrl('https://169.254.169.254/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://169.254.0.1/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://100.64.0.1/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://100.127.255.255/logo.png')).toBe(false);
+  });
+
+  it('rejects IPv4-mapped IPv6 and IPv6 private ranges', () => {
+    expect(isSafeVisualUrl('https://[::ffff:127.0.0.1]/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://[fc00::1]/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://[fd12:3456:789a::1]/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://[fe80::1]/logo.png')).toBe(false);
+  });
+
+  it('rejects IPv4 obfuscation via decimal or hex hostname', () => {
+    expect(isSafeVisualUrl('https://2130706433/logo.png')).toBe(false);
+    expect(isSafeVisualUrl('https://0x7f000001/logo.png')).toBe(false);
+  });
+
   it('rejects malformed or empty URLs', () => {
     expect(isSafeVisualUrl('')).toBe(false);
     expect(isSafeVisualUrl('not a url')).toBe(false);

@@ -135,14 +135,16 @@ function renderInputsForPrompt(input: DrafterInputs): string {
         .map((o) => sanitizeUntrusted(o, 60))
         .filter((o): o is string => !!o)
         .join(', ')
-    : '(none listed)';
+    : null;
   const agentLines = input.agents.length
     ? input.agents
         .map((a) => {
           const type = sanitizeUntrusted(a.type, 60);
           if (!type) return null;
           const desc = sanitizeUntrusted(a.description ?? null, MAX_AGENT_DESC);
-          return desc ? `  - ${type}:\n    <untrusted>${desc}</untrusted>` : `  - ${type}`;
+          return desc
+            ? `  - <untrusted>${type}</untrusted>:\n    <untrusted>${desc}</untrusted>`
+            : `  - <untrusted>${type}</untrusted>`;
         })
         .filter((line): line is string => !!line)
         .join('\n')
@@ -155,8 +157,8 @@ function renderInputsForPrompt(input: DrafterInputs): string {
     untrusted('Display name', displayName),
     untrusted('Tagline', tagline),
     untrusted('Description', description),
-    `Offerings: ${offerings}`,
-    `Primary brand domain: ${domain ?? '(none)'}`,
+    untrusted('Offerings', offerings),
+    untrusted('Primary brand domain', domain),
     `Agents published on brand.json:`,
     agentLines,
     `Public profile URL (the ONLY URL you may include in either draft): ${profileUrl}`,
@@ -287,7 +289,7 @@ export async function draftAnnouncement(input: DrafterInputs): Promise<Announcem
 
   logger.debug(
     {
-      orgName: input.orgName,
+      orgName: sanitizeUntrusted(input.orgName, MAX_ORG_NAME),
       model: result.model,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,

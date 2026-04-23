@@ -58,7 +58,7 @@ describe('buildReviewBlocks', () => {
     slackText: 'Welcome Acme. They build buyer agents.',
     linkedinText: 'Welcome Acme to AAO.\n\n#AdvertisingAgents',
     visual: {
-      url: 'https://cdn.example/acme.svg',
+      url: 'https://cdn.example/acme.png',
       altText: 'Acme logo',
       source: 'brand_logo' as const,
     },
@@ -73,7 +73,7 @@ describe('buildReviewBlocks', () => {
     expect(header?.text?.text).toContain('Acme Ad Tech');
 
     const image = blocks.find((b) => b.type === 'image');
-    expect(image?.image_url).toBe('https://cdn.example/acme.svg');
+    expect(image?.image_url).toBe('https://cdn.example/acme.png');
     expect(image?.alt_text).toBe('Acme logo');
 
     const sections = blocks.filter((b) => b.type === 'section');
@@ -151,5 +151,23 @@ describe('sanitizeDraftForSlack', () => {
   it('leaves regular text untouched', () => {
     const clean = 'Welcome to AAO — Acme builds buyer agents.';
     expect(sanitizeDraftForSlack(clean)).toBe(clean);
+  });
+
+  it('neutralizes user-group (subteam) pings', () => {
+    expect(sanitizeDraftForSlack('cc <!subteam^S012ABC|@oncall>')).toBe('cc @group');
+    expect(sanitizeDraftForSlack('cc <!subteam^S012ABC>')).toBe('cc @group');
+  });
+
+  it('handles enterprise-grid W-prefixed user mentions', () => {
+    expect(sanitizeDraftForSlack('ping <@W012ABC>')).toBe('ping @user');
+  });
+
+  it('strips the label off linkified URLs so the raw URL is visible', () => {
+    expect(
+      sanitizeDraftForSlack('check <https://evil.example|totally legit aao.org> now'),
+    ).toBe('check https://evil.example now');
+    expect(sanitizeDraftForSlack('<https://agenticadvertising.org|AAO>')).toBe(
+      'https://agenticadvertising.org',
+    );
   });
 });
