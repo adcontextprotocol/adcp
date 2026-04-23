@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import { createLogger } from "../logger.js";
+import { isUuid } from "../utils/uuid.js";
 import { requireAuth } from "../middleware/auth.js";
 import { CommunityDatabase, type CommunityProfile } from "../db/community-db.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -129,7 +130,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
       const user = req.user!;
       const { status } = req.body;
 
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      if (!isUuid(req.params.id)) {
         return res.status(400).json({ error: 'Invalid connection ID' });
       }
 

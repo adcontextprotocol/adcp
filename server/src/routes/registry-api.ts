@@ -15,6 +15,7 @@ import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
+import { isUuid } from "../utils/uuid.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
@@ -2985,8 +2986,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Property List Check ────────────────────────────────────────
 
-  const REPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
@@ -3010,7 +3009,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/properties/check/:reportId", async (req, res) => {
     try {
       const { reportId } = req.params;
-      if (!REPORT_UUID_RE.test(reportId)) {
+      if (!isUuid(reportId)) {
         return res.status(404).json({ error: "Report not found or expired" });
       }
       const results = await propertyCheckDb.getReport(reportId);
@@ -3049,7 +3048,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/properties/check/bulk/:reportId", async (req, res) => {
     try {
       const { reportId } = req.params;
-      if (!REPORT_UUID_RE.test(reportId)) {
+      if (!isUuid(reportId)) {
         return res.status(404).json({ error: "Report not found or expired" });
       }
       const results = await bulkCheckService.getReport(reportId);
@@ -5495,7 +5494,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
 
         // Validate cursor format (should be a UUID if provided)
-        if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cursor)) {
+        if (cursor && !isUuid(cursor)) {
           return res.status(400).json({ error: "Invalid cursor format. Must be a UUID." });
         }
 
