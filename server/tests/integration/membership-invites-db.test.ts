@@ -94,7 +94,7 @@ describe('membership-invites-db', () => {
       contact_email: 'a@example.com',
       invited_by_user_id: TEST_ADMIN_ID,
     });
-    const b = await createMembershipInvite({
+    await createMembershipInvite({
       workos_organization_id: orgId,
       lookup_key: 'aao_membership_builder',
       contact_email: 'b@example.com',
