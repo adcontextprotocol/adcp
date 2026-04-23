@@ -683,7 +683,7 @@
           </div>
           <div style="display: flex; gap: var(--space-2);">
             <button class="btn btn-secondary" onclick="openPaymentLinkModal()">Pay Link</button>
-            <button class="btn btn-secondary" onclick="openInvoiceModal()">Invoice</button>
+            <button class="btn btn-secondary" onclick="openInvoiceModal()">Invite</button>
             <button class="btn btn-secondary" onclick="openEditModal()">Edit</button>
             <button class="btn btn-secondary" onclick="openMergeSearch()" title="Merge another organization into this one">Merge with...</button>
             <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
@@ -1293,105 +1293,52 @@
     </div>
   </div>
 
-  <!-- Invoice Modal -->
+  <!-- Membership Invite Modal -->
   <div id="invoiceModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-content" style="max-width: 520px;">
       <div class="modal-header">
-        <h2>Generate Invoice</h2>
+        <h2>Send Membership Invitation</h2>
         <button class="modal-close" onclick="closeModal('invoiceModal')">&times;</button>
       </div>
 
-      <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
-
-      <!-- Discount notice -->
-      <div id="invoiceDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
-        <div style="font-size: var(--text-sm);">
-          <strong style="color: var(--color-success-700);">Discount available:</strong>
-          <span id="invoiceDiscountText"></span>
-        </div>
-        <div style="margin-top: var(--space-2);">
-          <label style="font-size: var(--text-sm);">
-            <input type="checkbox" id="applyDiscountToInvoice" checked>
-            Apply discount to invoice
-          </label>
-        </div>
-      </div>
+      <p id="invoiceOrgName" style="margin-bottom: var(--space-3); color: var(--color-text-secondary);"></p>
+      <p style="margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted);">
+        The prospect receives an email with a link. They sign in, review the membership agreement, confirm billing details, and an invoice is issued automatically.
+      </p>
 
       <form id="invoiceForm" onsubmit="submitInvoice(event)">
-        <!-- Product Selection -->
         <div id="invoiceProductSection">
           <div class="form-group">
-            <label>Select Product</label>
+            <label>Select Tier</label>
             <div id="invoiceProducts" style="margin-bottom: var(--space-4);">
               Loading products...
             </div>
           </div>
         </div>
 
-        <!-- Billing Details (shown after product selection) -->
         <div id="invoiceBillingSection" style="display: none;">
           <div class="form-group">
-            <label>Selected Product</label>
+            <label>Selected Tier</label>
             <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Contact Name *</label>
-              <input type="text" id="invoiceContactName" required>
+              <label>Contact Name (optional)</label>
+              <input type="text" id="invoiceContactName" placeholder="For the email greeting">
             </div>
             <div class="form-group">
               <label>Contact Email *</label>
               <input type="email" id="invoiceContactEmail" required>
             </div>
           </div>
-
-          <div class="form-group">
-            <label>Company Name *</label>
-            <input type="text" id="invoiceCompanyName" required>
-          </div>
-
-          <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing Address</h4>
-
-          <div class="form-group">
-            <label>Street Address *</label>
-            <input type="text" id="invoiceAddressLine1" required>
-          </div>
-
-          <div class="form-group">
-            <label>Address Line 2</label>
-            <input type="text" id="invoiceAddressLine2">
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>City *</label>
-              <input type="text" id="invoiceCity" required>
-            </div>
-            <div class="form-group">
-              <label>State/Province *</label>
-              <input type="text" id="invoiceState" required>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Postal Code *</label>
-              <input type="text" id="invoicePostalCode" required>
-            </div>
-            <div class="form-group">
-              <label>Country *</label>
-              <input type="text" id="invoiceCountry" value="US" required>
-            </div>
-          </div>
         </div>
 
-        <!-- Success Message -->
         <div id="invoiceResult" style="display: none;">
           <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
-            <strong style="color: var(--color-success-700);">Invoice Sent!</strong>
+            <strong style="color: var(--color-success-700);">Invitation sent!</strong>
             <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
-              The invoice has been emailed to the contact. You can also share this link:
+              The prospect has 30 days to accept. Share the link directly if helpful:
             </p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
@@ -1402,7 +1349,7 @@
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>
-          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invitation</button>
         </div>
       </form>
     </div>
@@ -3693,33 +3640,9 @@
       document.getElementById('sendInvoiceBtn').style.display = 'none';
       document.getElementById('invoiceForm').reset();
 
-      // Show discount notice if org has a discount
-      const invoiceDiscountNotice = document.getElementById('invoiceDiscountNotice');
-      if (accountData.discount_percent || accountData.discount_amount_cents) {
-        invoiceDiscountNotice.style.display = 'block';
-        let discountText = '';
-        if (accountData.discount_percent) {
-          discountText = `${accountData.discount_percent}% off`;
-        } else {
-          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
-        }
-        if (accountData.stripe_promotion_code) {
-          discountText += ` (code: ${accountData.stripe_promotion_code})`;
-        }
-        document.getElementById('invoiceDiscountText').textContent = discountText;
-        document.getElementById('applyDiscountToInvoice').checked = true;
-        document.getElementById('applyDiscountToInvoice').onchange = () => {
-          if (invoiceProductsData.length > 0) renderInvoiceProducts(invoiceProductsData);
-        };
-      } else {
-        invoiceDiscountNotice.style.display = 'none';
-      }
-
-      // Pre-fill from account data
       if (accountData) {
         document.getElementById('invoiceContactName').value = accountData.prospect_contact_name || '';
         document.getElementById('invoiceContactEmail').value = accountData.prospect_contact_email || '';
-        document.getElementById('invoiceCompanyName').value = accountData.name || '';
       }
 
       openModal('invoiceModal');
@@ -3742,21 +3665,6 @@
       }
     }
 
-    function invoiceDiscountActive() {
-      return document.getElementById('applyDiscountToInvoice')?.checked &&
-        (accountData.discount_percent || accountData.discount_amount_cents);
-    }
-
-    function applyInvoiceDiscount(amountCents) {
-      if (accountData.discount_percent) {
-        return Math.round(amountCents * (1 - accountData.discount_percent / 100));
-      }
-      if (accountData.discount_amount_cents) {
-        return Math.max(0, amountCents - accountData.discount_amount_cents);
-      }
-      return amountCents;
-    }
-
     function renderInvoiceProducts(products) {
       const container = document.getElementById('invoiceProducts');
 
@@ -3765,18 +3673,9 @@
         return;
       }
 
-      const hasDiscount = invoiceDiscountActive();
-
       container.innerHTML = products.map((product, index) => {
         const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
         const price = fmt(product.amount_cents);
-
-        let discountedPriceHtml = '';
-        if (hasDiscount) {
-          const discountedCents = applyInvoiceDiscount(product.amount_cents);
-          discountedPriceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted); font-weight: normal;">${price}</span> <span style="color: var(--color-success-700); font-weight: var(--font-semibold);">${fmt(discountedCents)}</span>`;
-        }
-
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
         const description = product.description ? escapeHtml(product.description) : '';
@@ -3796,16 +3695,12 @@
           " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
             <strong>${displayName}</strong>
             <br>
-            ${hasDiscount
-              ? `${discountedPriceHtml}${interval}`
-              : `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>`
-            }
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
       }).join('');
 
-      // Event delegation for product selection
       container.onclick = function(e) {
         const btn = e.target.closest('[data-product-index]');
         if (!btn) return;
@@ -3827,12 +3722,7 @@
 
       const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
       const price = fmt(product.amount_cents);
-
-      let priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
-      if (invoiceDiscountActive()) {
-        const discountedCents = applyInvoiceDiscount(product.amount_cents);
-        priceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted);">${price}</span> <span style="color: var(--color-success-700);">${fmt(discountedCents)}</span>`;
-      }
+      const priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
 
       document.getElementById('selectedProductDisplay').innerHTML = `
         <strong>${escapeHtml(displayName)}</strong> - ${priceHtml}
@@ -3847,7 +3737,7 @@
       event.preventDefault();
 
       if (!selectedInvoiceProduct) {
-        alert('Please select a product first');
+        alert('Please select a tier first');
         return;
       }
 
@@ -3855,25 +3745,14 @@
       btn.disabled = true;
       btn.textContent = 'Sending...';
 
-      const applyDiscount = document.getElementById('applyDiscountToInvoice')?.checked;
       const data = {
         lookup_key: selectedInvoiceProduct.lookupKey,
-        company_name: document.getElementById('invoiceCompanyName').value,
-        contact_name: document.getElementById('invoiceContactName').value,
         contact_email: document.getElementById('invoiceContactEmail').value,
-        billing_address: {
-          line1: document.getElementById('invoiceAddressLine1').value,
-          line2: document.getElementById('invoiceAddressLine2').value || undefined,
-          city: document.getElementById('invoiceCity').value,
-          state: document.getElementById('invoiceState').value,
-          postal_code: document.getElementById('invoicePostalCode').value,
-          country: document.getElementById('invoiceCountry').value,
-        },
-        coupon_id: applyDiscount && accountData.stripe_coupon_id ? accountData.stripe_coupon_id : null,
+        contact_name: document.getElementById('invoiceContactName').value || undefined,
       };
 
       try {
-        const response = await fetch(`/api/admin/prospects/${accountId}/invoice`, {
+        const response = await fetch(`/api/admin/accounts/${accountId}/invite-membership`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -3881,29 +3760,26 @@
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error || error.message || 'Failed to send invoice');
+          throw new Error(error.error || error.message || 'Failed to send invitation');
         }
 
         const result = await response.json();
 
-        if (result.success && result.invoice_url) {
+        if (result.success && result.invite?.url) {
           document.getElementById('invoiceBillingSection').style.display = 'none';
-          document.getElementById('invoiceDiscountNotice').style.display = 'none';
           document.getElementById('sendInvoiceBtn').style.display = 'none';
-          document.getElementById('invoiceUrl').value = result.invoice_url;
+          document.getElementById('invoiceUrl').value = result.invite.url;
           document.getElementById('invoiceResult').style.display = 'block';
-
-          // Refresh page to show the new pending invoice
-          setTimeout(() => location.reload(), 2000);
+          setTimeout(() => location.reload(), 2500);
         } else {
           throw new Error(result.message || 'Unknown error');
         }
       } catch (error) {
-        console.error('Error sending invoice:', error);
+        console.error('Error sending invitation:', error);
         alert('Error: ' + error.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Send Invoice';
+        btn.textContent = 'Send Invitation';
       }
     }
 
@@ -3911,10 +3787,10 @@
       const input = document.getElementById('invoiceUrl');
       input.select();
       navigator.clipboard.writeText(input.value).then(() => {
-        showToast('Invoice link copied to clipboard!');
+        showToast('Invitation link copied to clipboard!');
       }).catch(() => {
         document.execCommand('copy');
-        showToast('Invoice link copied to clipboard!');
+        showToast('Invitation link copied to clipboard!');
       });
     }
 
