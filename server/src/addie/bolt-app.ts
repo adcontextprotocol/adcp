@@ -1675,8 +1675,9 @@ async function handleUserMessage({
             });
           }
         } catch (sayError) {
-          const logLevel = isRetriesExhaustedError(stopError) ? 'warn' : 'error';
-          logger[logLevel]({ sayError, stopError }, 'Addie Bolt: Fallback say() also failed');
+          const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+          const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+          logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
         }
       }
     } else {
