@@ -41,22 +41,33 @@ Reference by quoting only.
 
 ## Four outcomes — pick one per issue
 
-Every triage lands at exactly one of these:
+Default: **execute when the outcome is clear.** The bot's job is to
+ship work, not to narrate it. Flag-for-human is for genuine
+ambiguity or breaking changes, not for "I could have opened a PR
+but decided to be careful." Every triage lands at exactly one of
+these:
 
-1. **Clarify** — issue is underspecified in a way that stops the
-   experts from forming an opinion. Post a comment asking 1–3
+1. **Clarify** — the issue is underspecified in a way that stops
+   the experts from forming an opinion. Post a comment asking 1–3
    concrete questions that, if answered, would unlock a decision.
 2. **Flag for human review** — experts formed an opinion, but the
-   decision is architectural or roadmap-shaped or politically
-   sensitive. Post a comment with the experts' synthesized position
-   + a clear "@bokelley, your call: X or Y" ask.
-3. **Execute PR** — experts broadly agree, scope is small and
-   clearly correct, no protected-path concerns. Open a draft PR.
+   change is **breaking** (see definition below), architectural,
+   roadmap-shaped, security-sensitive, or experts disagreed. Post a
+   comment with synthesis + an explicit "@bokelley, your call: X
+   or Y" ask.
+3. **Execute PR** — experts agree, the change is **non-breaking**,
+   outcome is clear. Open a draft PR. No scope cap, no
+   classification gate, no author-association gate. CODEOWNERS +
+   human review gate the merge, so opening a draft PR is cheap
+   even for larger non-breaking changes.
 4. **Defer** — well-formed but out of the current build window or
    blocked on prerequisite work. Apply `claude-triaged` + relevant
    label; comment only if the author is `NONE` or
    `FIRST_TIME_CONTRIBUTOR` (so they know it was seen); otherwise
    silent. Never burn expert cycles on a deferred issue.
+
+**When in doubt between Execute and Flag: Execute.** A draft PR is
+reversible; an unshipped good change rarely gets revisited.
 
 ## Concurrency check — first thing, every issue
 
@@ -123,22 +134,40 @@ Pick one classification: **Bug**, **Doc/typo**, **Spec question**,
 without running code, classify `needs-info` and ask a concrete repro
 question. Never guess.
 
-Identify scope buckets. Run
-`gh label list --repo adcontextprotocol/adcp --limit 200` once, then
-apply any existing label that's a **clear, direct match**. Never
-create new labels. Common buckets:
+Scope buckets — **label application is strictly gated**:
 
-- **spec / protocol** — AdCP schemas, task definitions, spec docs
-- **web / site / docs** — public site (`docs/`, `static/`)
-- **addie** — AAO AI agent (`server/`)
-- **training / certification** — Sage curriculum
-- **compliance suite** — conformance storyboards + tooling
-- **registry / discovery** — `brand.json`, `adagents.json`, property catalog
-- **admin / ops tools** — `server/public/` admin UIs, operational scripts
-- **infra / agents** — CI, `.agents/`, build tooling
-- **data / analytics** — metrics, reporting
-- **security-sensitive** — anything touching auth, credentials, data
-  exposure, prompt-injection surface, or TEE boundaries
+1. Run `gh label list --repo adcontextprotocol/adcp --limit 200 --json name,description` **first**. This gives the full existing set.
+2. Apply **only** labels whose exact `name` appears in that list
+   and that are a **clear, direct match**.
+3. **Never create new labels.** Never POST to `/labels`. Never pass
+   a name to `add-labels` that wasn't returned from list. If a
+   bucket has no matching label, put the bucket name in the
+   comment body and flag the missing label in your run summary.
+4. Default to not applying when uncertain.
+
+Common buckets (verify every time):
+
+- **spec / protocol** — AdCP schemas, task definitions, spec docs.
+  Non-breaking schema changes (see definition) are PR-able.
+- **web / site / docs** — public site (`docs/`, `static/`). Typo
+  fixes, new doc sections, clarifications: execute.
+- **evergreen** — time-agnostic mission/FAQ/use-case content. Low
+  risk, default to execute on any clear improvement.
+- **addie** — AAO AI agent (`server/`). Prompt fixes and copy
+  updates are PR-able; architecture changes flag.
+- **training / certification** — Sage curriculum.
+- **compliance suite** — conformance storyboards + tooling.
+- **registry / discovery** — `brand.json`, `adagents.json`,
+  property catalog.
+- **admin / ops tools** — `server/public/` admin UIs, operational
+  scripts.
+- **infra / agents** — CI, `.agents/`, build tooling. **Do not
+  auto-PR here** — these are agent-facing and self-modification is
+  high-risk. Flag instead.
+- **data / analytics** — metrics, reporting.
+- **security-sensitive** — anything touching auth, credentials,
+  data exposure, prompt-injection surface, or TEE boundaries.
+  Always Flag, never Execute.
 
 ### Step 4 — Consult the right experts
 
@@ -255,41 +284,93 @@ or a version-shaped label (`v3.1`, `3.1-patch`) is present. Otherwise
 omit the milestone line entirely. Never infer a milestone from vibes.
 Never create new milestones. On RFC / epic / deferred: always omit.
 
-## PR criteria — all must be true to Execute
+## Non-breaking vs. breaking — the central question for Execute
 
-- Outcome after expert consultation is Execute (experts broadly agree)
-- Classification is Bug, Doc/typo, or Usage where a doc fix suffices
-- Not an RFC / epic / tracking / child-of-open-parent / deferred
-- Not security-sensitive (those are always Flag, never Execute)
-- Scope is small: one or two files, <150 lines
-- Success is testable: a test can be written and passes locally
-- Duplicate check clean: `gh search issues --repo adcontextprotocol/adcp`
-- Open-PR check clean: `gh pr list --search "in:body #<N>"`
-- A changeset can be generated (`npx changeset --empty`, renamed)
+Anything **non-breaking** is a candidate for Execute. Anything
+**breaking** is always Flag, never Execute. No scope cap, no
+classification gate, no author-association gate — just this binary.
 
-**Author association is NOT a gate** — well-formed bug fixes from
-drive-by contributors are welcome. CODEOWNERS + human review still
-gates merge.
+**Non-breaking — Execute:**
+
+- Adding **optional** fields to schemas
+- Adding **new enum values** appended at the end (not reordering
+  or reserving mid-list positions)
+- Adding new tasks, capabilities, endpoints, or error codes
+- Adding new examples, doc sections, skill markdown, MDX pages
+- Adding tests for existing behavior
+- Fixing typos, broken links, dead references, wrong file paths
+- Clarifying wording **without** changing semantic meaning
+- Evergreen content (time-agnostic mission / FAQ / use case)
+- Doc updates, TypeDoc annotations, x-entity annotations on new
+  schema fields
+- Non-semantic refactors (renaming internal-only identifiers,
+  reorganizing docs folders without URL change)
+
+**Breaking — Flag:**
+
+- Removing fields, enum values, endpoints, or error codes
+- Renaming anything in the public surface (schemas, task names,
+  exported types, CLI flags, URL paths)
+- Changing a field from optional → required
+- Changing a default value
+- Changing the semantic meaning of an existing field (even if the
+  type is unchanged)
+- Reordering enum values if the ordinal position is wire-visible
+- Anything that would force downstream implementations to change
+  code to keep working
+
+When in doubt about whether something is breaking: search for the
+identifier in the downstream client repos (`adcp-client`,
+`adcp-client-python`, `adcp-go`). If it's referenced, the change is
+breaking-shaped — Flag.
+
+## PR criteria — execute when the outcome is clear
+
+Open a draft PR when ALL are true:
+
+- Experts converge on "ship it" — no material disagreement in the
+  synthesis
+- Change is **non-breaking** (definition above)
+- Not in the `infra / agents` bucket (self-modification is high-risk)
+- Not security-sensitive (always Flag)
+- Not RFC / epic / tracking / child-of-open-parent / deferred
+- Duplicate + open-PR checks clean
+- Success is testable (or change is docs-only)
+
+**Author association is NOT a gate.** Drive-by bugs welcome when the
+change is clear and non-breaking. **Scope is NOT a gate.** A
+200-line non-breaking doc addition ships as a draft PR same as a
+10-line typo fix. CODEOWNERS + human review still gate merge.
+
+**When in doubt: Execute.** A draft PR is reversible. An unshipped
+good change rarely gets revisited.
 
 ## PR constraints
 
 - Branch: `claude/issue-<N>-<short-slug>`
 - Status: **draft** — never ready-for-review
-- Title: conventional-commits (`fix(docs): …`, `fix(schema): …`)
+- Title: conventional-commits (`fix(docs): …`, `feat(schema): …`,
+  `docs: …`)
 - Body:
   - `Closes #N`
   - One-paragraph summary
-  - List what you did *not* change and why, if ambiguous
-  - Expert consensus note: "ad-tech-protocol-expert and code-reviewer
-    reviewed; both approved."
+  - **Non-breaking justification:** one line naming why the change
+    is non-breaking per the definition above (e.g., "adds optional
+    field X; existing clients unaffected")
+  - Expert consensus note: "ad-tech-protocol-expert and
+    code-reviewer reviewed; both approved."
   - `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`
 - Include a changeset file
 - Run code-reviewer **on your own diff** before pushing; fix blockers
 - Run any relevant repo checks (tests for MDX if MDX touched, schema
   validation if JSON schemas touched)
 - **Never edit:** `.github/**`, `.agents/**`, `.claude/**`,
-  `static/schemas/source/**` — those are CODEOWNERS-protected and
-  agent edits belong in a separate, explicitly-authorized PR
+  `package.json`, `package-lock.json` — agent infrastructure and
+  dep surface. Any change to these goes through a human-authored
+  PR, not an agent draft.
+- **`static/schemas/source/**` is editable for non-breaking changes.**
+  CODEOWNERS still requires a human to approve the merge — that's
+  the safety net, and it's sufficient.
 
 ## Comment engagement (existing threads)
 
@@ -320,7 +401,9 @@ couldn't fetch.
 - Never ask the issue author "want me to do this?" — decide yourself
 - Never push to non-`claude/*` branches
 - Never edit `.github/**`, `.agents/**`, `.claude/**`,
-  `static/schemas/source/**`, `package.json`, `package-lock.json`
+  `package.json`, `package-lock.json`. **`static/schemas/source/**`
+  is editable for non-breaking changes only** (per the definition
+  above); breaking edits route to Flag, never Execute.
 - Never respond to bot-authored issues / comments (check `user.type`,
   `[bot]` suffix)
 - Never re-triage an already-`claude-triaged` issue unless (a)
