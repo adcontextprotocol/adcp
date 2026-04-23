@@ -72,15 +72,6 @@
       border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-lg);
       margin-bottom: var(--space-3);
-      /*
-       * Skeleton → hydrated transition can change the card's intrinsic
-       * height substantially (rate-limited card ≈ header + 1 line;
-       * fully-passed card ≈ header + headline + track pills + history
-       * sparkline). Reserving a minimum height dampens the reflow
-       * cascade on list hydration — especially material for users
-       * with prefers-reduced-motion (#2939 DX review).
-       */
-      min-height: 120px;
     }
     .agent-compliance-card:last-child { margin-bottom: 0; }
 
@@ -1144,29 +1135,31 @@
             ? Date.now() + effectiveRetryAfterSeconds * 1000
             : null;
 
-          // Rate-limit copy splits into static prefix (outside the
-          // live region — doesn't re-announce every tick) + dynamic
-          // countdown number (inside the aria-live region). Screen
-          // readers hear "12 seconds" at 10s intervals instead of the
-          // full "Still rate-limited — retry in 12s" each tick.
-          // "Still rate-limited" (vs the earlier "you've refreshed too
-          // quickly") is accurate without blaming the user for the
-          // auto-retry they didn't ask for.
-          let staticPrefix;
+          // Rate-limit copy splits into a stable status LABEL (the
+          // short, never-changing "Rate-limited" / "Still rate-limited"
+          // — outside the live region) and a dynamic SUFFIX that owns
+          // everything after it ("— retry in 30s…" / "— retrying now…"
+          // / "— try again" — inside the live region, so screen readers
+          // announce the whole updated clause as a unit). Earlier this
+          // tried to put the static text "retry in " in the prefix,
+          // which then left dangling prepositions when the span
+          // rewrote to "Retrying now…" or "now" — the expert reviewers
+          // flagged both. Owning the whole clause from the preposition
+          // onward keeps the countdown updates grammatical through
+          // every transition.
+          let statusLabel;
           let countdownSuffix;
           let plainMsg = '';
           if (!isRateLimited) {
             plainMsg = 'Couldn\'t load compliance data. The service may be temporarily unavailable.';
-            staticPrefix = '';
+            statusLabel = '';
             countdownSuffix = '';
           } else if (effectiveRetryAfterSeconds !== null) {
-            staticPrefix = autoRetried
-              ? 'Still rate-limited — retry in '
-              : 'Rate-limited — retry in ';
-            countdownSuffix = `${effectiveRetryAfterSeconds}s…`;
+            statusLabel = autoRetried ? 'Still rate-limited' : 'Rate-limited';
+            countdownSuffix = ` — retry in ${effectiveRetryAfterSeconds}s…`;
           } else {
             plainMsg = 'Rate-limited — retry in a moment.';
-            staticPrefix = '';
+            statusLabel = '';
             countdownSuffix = '';
           }
 
@@ -1182,11 +1175,13 @@
           // zero for a manual retry.
           const shouldAutoRetryAtZero = retryAtMs !== null && !autoRetried;
 
-          // When we have a countdown: static text + nested live region
-          // holding just the number. When we don't (plain error): a
-          // single paragraph, no live region.
+          // Structure: static status LABEL outside the live region,
+          // dynamic clause (from the em-dash onward) inside it. The
+          // live span owns the transition between "— retry in 30s…",
+          // "— retrying now…", and "— try again" so every variant
+          // reads cleanly next to the static label.
           const bodyHtml = retryAtMs !== null
-            ? `<div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(staticPrefix)}<span role="status" aria-live="polite" aria-atomic="true" data-rate-limited-until="${retryAtMs}" data-rate-limited-auto="${shouldAutoRetryAtZero ? '1' : '0'}" data-card-id="${cardId}">${escapeHtml(countdownSuffix)}</span></div>`
+            ? `<div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(statusLabel)}<span role="status" aria-live="polite" aria-atomic="true" data-rate-limited-until="${retryAtMs}" data-rate-limited-auto="${shouldAutoRetryAtZero ? '1' : '0'}" data-card-id="${cardId}">${escapeHtml(countdownSuffix)}</span></div>`
             : `<div style="padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(plainMsg)}</div>`;
 
           return `
@@ -1416,10 +1411,13 @@
     // textContent at meaningful intervals (every 10s + the last 5s
     // + the terminal state).
     function tickRateLimitCountdowns() {
-      // The live region is the narrow <span> holding only the
-      // countdown suffix ("30s…"). The static prefix ("Rate-limited
-      // — retry in ") is outside the live region so screen readers
-      // don't re-announce the same context string on every tick.
+      // The live region is the <span> owning the dynamic clause from
+      // the em-dash onward (" — retry in 30s…" / " — retrying now…"
+      // / " — try again"). The static status label ("Rate-limited" /
+      // "Still rate-limited") sits outside the live region so screen
+      // readers don't re-announce it on every tick, but the span
+      // always carries a grammatical self-contained clause — no
+      // dangling prepositions when it rewrites to "retrying now…".
       const nodes = document.querySelectorAll('[data-rate-limited-until]');
       if (nodes.length === 0) return;
       const now = Date.now();
@@ -1442,7 +1440,7 @@
             remainingSec % 10 === 0 ||
             Math.abs(lastAnnounced - remainingSec) >= 10;
           if (shouldAnnounce) {
-            node.textContent = `${remainingSec}s…`;
+            node.textContent = ` — retry in ${remainingSec}s…`;
             node.dataset.lastAnnouncedSec = String(remainingSec);
           }
           // Retry button label updates every tick regardless of the
@@ -1463,17 +1461,17 @@
         node.removeAttribute('data-rate-limited-auto');
 
         if (shouldAutoRetry && cardId && agentUrl) {
-          // A small "Retrying now…" beat before the card swap so the
+          // A small "retrying now…" beat before the card swap so the
           // transition reads as an action, not a sudden DOM change.
           // retryAgentCard's swap will replace the whole card shortly.
-          node.textContent = 'Retrying now…';
+          node.textContent = ' — retrying now…';
           retryAgentCard(agentUrl, cardId, { auto: true });
         } else if (retryBtn) {
           // Second-429 waiting-room: re-enable the button for manual
-          // retry. Leave the "Still rate-limited" prefix visible —
-          // clearing only the dynamic span so the static context
-          // stays present without a stale time.
-          node.textContent = 'now';
+          // retry. The span rewrites to a grammatical clause ("— try
+          // again") so the card reads "Still rate-limited — try again"
+          // until the user clicks.
+          node.textContent = ' — try again';
           retryBtn.disabled = false;
           retryBtn.textContent = 'Retry';
         }
