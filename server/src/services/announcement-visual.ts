@@ -6,14 +6,59 @@
  *
  * Never falls back to third-party logo sources (Brandfetch etc.) — consent
  * principle: "Visual is theirs."
+ *
+ * Brand.json URLs are third-party-authored. Every candidate logo URL is
+ * validated before it leaves this module: https-only, public host only,
+ * whitelisted raster image extensions (no svg — it can carry script).
+ * On any failure the resolver falls back to the AAO mark rather than
+ * posting an attacker-chosen URL into a Slack review channel.
  */
 
+import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
+
+const logger = createLogger('announcement-visual');
 
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 /** Absolute URL to AAO's fallback mark. */
 export const AAO_FALLBACK_VISUAL_URL = `${APP_URL}/AAo-social.png`;
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+const MAX_VISUAL_URL_LENGTH = 2048;
+
+/**
+ * Returns `true` when `url` is safe to hand to Slack as an `image_url`:
+ *  - Parses as an absolute URL.
+ *  - Scheme is https.
+ *  - Host is not localhost, a loopback IP, or an RFC1918 private range.
+ *  - Pathname ends in an allowlisted raster extension (svg intentionally
+ *    excluded — Slack won't execute script but downstream surfaces
+ *    (LinkedIn paste, profile page) might).
+ */
+export function isSafeVisualUrl(url: string): boolean {
+  if (typeof url !== 'string' || url.length === 0 || url.length > MAX_VISUAL_URL_LENGTH) {
+    return false;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname.toLowerCase();
+  if (!host || host === 'localhost') return false;
+  if (host.startsWith('127.') || host === '0.0.0.0' || host === '::1') return false;
+  if (host.startsWith('10.') || host.startsWith('192.168.')) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
+  const lastDot = parsed.pathname.lastIndexOf('.');
+  if (lastDot < 0) return false;
+  const ext = parsed.pathname.slice(lastDot).toLowerCase();
+  if (!ALLOWED_IMAGE_EXTENSIONS.has(ext)) return false;
+  return true;
+}
 
 export interface VisualResolution {
   url: string;
@@ -74,7 +119,13 @@ async function fetchBrandLogoByDomain(domain: string): Promise<string | null> {
      LIMIT 1`,
     [domain],
   );
-  return result.rows[0]?.logo_url ?? null;
+  const raw = result.rows[0]?.logo_url ?? null;
+  if (!raw) return null;
+  if (!isSafeVisualUrl(raw)) {
+    logger.warn({ domain, reason: 'unsafe_visual_url' }, 'Rejected brand.json logo URL');
+    return null;
+  }
+  return raw;
 }
 
 async function fetchApprovedPortraitUrlByOrg(orgId: string): Promise<string | null> {

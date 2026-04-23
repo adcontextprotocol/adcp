@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   summarizeAgents,
   buildReviewBlocks,
+  sanitizeDraftForSlack,
 } from '../../server/src/addie/jobs/announcement-trigger.js';
 
 describe('summarizeAgents', () => {
@@ -109,5 +110,46 @@ describe('buildReviewBlocks', () => {
     expect(byId.get('announcement_approve_slack')?.style).toBe('primary');
     expect(byId.get('announcement_skip')?.style).toBe('danger');
     expect(byId.get('announcement_mark_linkedin')?.style).toBeUndefined();
+  });
+
+  it('neutralizes @channel, user tags, and backticks injected into drafts', () => {
+    const hostile = {
+      ...base,
+      slackText: 'Welcome <!channel> — meet <@U12345> from <#C67890|random>!',
+      linkedinText: 'Welcome `rm -rf` friends. ```evil``` #AAO',
+    };
+    const { blocks } = buildReviewBlocks(hostile);
+    const sections = blocks.filter((b) => b.type === 'section');
+    const slackBlock = sections.find((s) => s.text?.text?.includes('Slack draft'))!;
+    expect(slackBlock.text!.text).not.toMatch(/<!channel>/);
+    expect(slackBlock.text!.text).toMatch(/\[channel\]/);
+    expect(slackBlock.text!.text).toMatch(/@user/);
+    expect(slackBlock.text!.text).toMatch(/#channel/);
+
+    const liBlock = sections.find((s) => s.text?.text?.includes('LinkedIn draft'))!;
+    const inside = liBlock.text!.text.split('```')[1] ?? '';
+    expect(inside).not.toMatch(/`/);
+  });
+});
+
+describe('sanitizeDraftForSlack', () => {
+  it('replaces channel/here/everyone mentions case-insensitively', () => {
+    const out = sanitizeDraftForSlack('hey <!channel> and <!HERE> and <!Everyone>');
+    expect(out).toBe('hey [channel] and [here] and [everyone]');
+  });
+
+  it('replaces user and channel mentions', () => {
+    const out = sanitizeDraftForSlack('ping <@UABC123> in <#C9XYZ|general>');
+    expect(out).toBe('ping @user in #channel');
+  });
+
+  it('only strips backticks when forFencedBlock is true', () => {
+    expect(sanitizeDraftForSlack('a `b` c')).toBe('a `b` c');
+    expect(sanitizeDraftForSlack('a `b` c', { forFencedBlock: true })).toBe("a 'b' c");
+  });
+
+  it('leaves regular text untouched', () => {
+    const clean = 'Welcome to AAO — Acme builds buyer agents.';
+    expect(sanitizeDraftForSlack(clean)).toBe(clean);
   });
 });

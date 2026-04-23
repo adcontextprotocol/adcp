@@ -10,11 +10,16 @@
  * Records `announcement_draft_posted` activity on success for
  * idempotency. Stage 2 handlers read that row's metadata to publish
  * the approved copy.
+ *
+ * Post-then-record ordering: Slack post first, activity write second.
+ * If the activity write fails we delete the Slack message so the next
+ * run re-drafts cleanly instead of leaving an orphan review card with
+ * no idempotency row (which would produce duplicate posts).
  */
 
 import { createLogger } from '../../logger.js';
 import { query } from '../../db/client.js';
-import { sendChannelMessage } from '../../slack/client.js';
+import { sendChannelMessage, deleteChannelMessage } from '../../slack/client.js';
 import { draftAnnouncement } from '../../services/announcement-drafter.js';
 import {
   resolveAnnouncementVisual,
@@ -30,7 +35,7 @@ const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 export interface TriggerResult {
   candidates: number;
   drafted: number;
-  skipped: number;
+  failed: number;
 }
 
 interface AnnounceCandidate {
@@ -44,7 +49,6 @@ interface AnnounceCandidate {
   description: string | null;
   offerings: string[] | null;
   primary_brand_domain: string | null;
-  no_announcement: boolean;
   brand_manifest: Record<string, unknown> | null;
 }
 
@@ -55,6 +59,10 @@ interface AnnounceCandidate {
  *  - A brand.json manifest exists for their primary_brand_domain
  *  - `member_profiles.metadata->>'no_announcement'` is not 'true'
  *  - No prior `announcement_draft_posted` or `announcement_skipped` activity
+ *
+ * Ordered by most recent `profile_published` activity first so freshly
+ * announce-ready members are not starved by a stale backlog when the
+ * per-run cap kicks in.
  */
 export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
   const result = await query<AnnounceCandidate>(
@@ -69,8 +77,13 @@ export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
         mp.description,
         mp.offerings,
         mp.primary_brand_domain,
-        COALESCE(mp.metadata->>'no_announcement', 'false') = 'true' AS no_announcement,
-        b.brand_manifest
+        b.brand_manifest,
+        (
+          SELECT MAX(activity_date)
+          FROM org_activities
+          WHERE organization_id = o.workos_organization_id
+            AND activity_type = 'profile_published'
+        ) AS last_published_at
       FROM organizations o
       JOIN member_profiles mp
         ON mp.workos_organization_id = o.workos_organization_id
@@ -89,7 +102,7 @@ export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
            WHERE organization_id = o.workos_organization_id
              AND activity_type IN ('announcement_draft_posted', 'announcement_skipped')
         )
-      ORDER BY mp.updated_at ASC`,
+      ORDER BY last_published_at DESC NULLS LAST`,
   );
   return result.rows;
 }
@@ -127,6 +140,35 @@ export function summarizeAgents(
   return out;
 }
 
+/**
+ * Neutralize Slack-specific tokens that would otherwise let drafter
+ * output ping channels, tag users, or break out of the code fence
+ * wrapping the LinkedIn preview.
+ *
+ *  - `<!channel>` / `<!here>` / `<!everyone>` → plain text
+ *  - `<@Uxxxxxxx>` user mentions → `@user`
+ *  - `<#Cxxxxxxx|name>` / `<#Cxxxxxxx>` channel mentions → `#channel`
+ *
+ * When `forFencedBlock` is true (LinkedIn block wraps in triple-backticks),
+ * backticks in the content are also replaced so the fence cannot be
+ * closed early.
+ */
+export function sanitizeDraftForSlack(
+  text: string,
+  options: { forFencedBlock?: boolean } = {},
+): string {
+  let out = text
+    .replace(/<!channel>/gi, '[channel]')
+    .replace(/<!here>/gi, '[here]')
+    .replace(/<!everyone>/gi, '[everyone]')
+    .replace(/<@U[A-Z0-9]+>/g, '@user')
+    .replace(/<#C[A-Z0-9]+(?:\|[^>]+)?>/g, '#channel');
+  if (options.forFencedBlock) {
+    out = out.replace(/`/g, "'");
+  }
+  return out;
+}
+
 export function buildReviewBlocks(args: {
   orgName: string;
   workosOrganizationId: string;
@@ -136,6 +178,8 @@ export function buildReviewBlocks(args: {
   profileSlug: string;
 }): { text: string; blocks: SlackBlock[] } {
   const profileUrl = `${APP_URL}/members/${args.profileSlug}`;
+  const safeSlack = sanitizeDraftForSlack(args.slackText);
+  const safeLinkedIn = sanitizeDraftForSlack(args.linkedinText, { forFencedBlock: true });
   const blocks: SlackBlock[] = [
     {
       type: 'header',
@@ -157,14 +201,14 @@ export function buildReviewBlocks(args: {
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Slack draft*\n${args.slackText}` },
+      text: { type: 'mrkdwn', text: `*Slack draft*\n${safeSlack}` },
     },
     { type: 'divider' },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*LinkedIn draft* (copy-paste)\n\`\`\`${args.linkedinText}\`\`\``,
+        text: `*LinkedIn draft* (copy-paste)\n\`\`\`${safeLinkedIn}\`\`\``,
       },
     },
     {
@@ -213,7 +257,7 @@ async function recordDraftPosted(
 }
 
 export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
-  const result: TriggerResult = { candidates: 0, drafted: 0, skipped: 0 };
+  const result: TriggerResult = { candidates: 0, drafted: 0, failed: 0 };
 
   const reviewChannel = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
   if (!reviewChannel) {
@@ -269,24 +313,52 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
         profileSlug: candidate.slug,
       });
 
-      const post = await sendChannelMessage(reviewChannel, { text, blocks });
+      const post = await sendChannelMessage(
+        reviewChannel,
+        { text, blocks },
+        { requirePrivate: true },
+      );
       if (!post.ok || !post.ts) {
         logger.error(
-          { orgId: candidate.workos_organization_id, error: post.error },
+          {
+            orgId: candidate.workos_organization_id,
+            error: post.error,
+            skipped: post.skipped,
+          },
           'Failed to post announcement draft to editorial channel',
         );
-        result.skipped++;
+        result.failed++;
         continue;
       }
 
-      await recordDraftPosted(candidate.workos_organization_id, {
-        review_channel_id: reviewChannel,
-        review_message_ts: post.ts,
-        slack_text: draft.slackText,
-        linkedin_text: draft.linkedinText,
-        visual_url: visual.url,
-        visual_source: visual.source,
-      });
+      try {
+        await recordDraftPosted(candidate.workos_organization_id, {
+          review_channel_id: reviewChannel,
+          review_message_ts: post.ts,
+          slack_text: draft.slackText,
+          linkedin_text: draft.linkedinText,
+          visual_url: visual.url,
+          visual_source: visual.source,
+        });
+      } catch (recordErr) {
+        logger.error(
+          { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+          'Activity write failed after posting draft — unwinding Slack message',
+        );
+        const undo = await deleteChannelMessage(reviewChannel, post.ts);
+        if (!undo.ok) {
+          logger.error(
+            {
+              orgId: candidate.workos_organization_id,
+              ts: post.ts,
+              undoError: undo.error,
+            },
+            'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
+          );
+        }
+        result.failed++;
+        continue;
+      }
 
       result.drafted++;
       logger.info(
@@ -302,7 +374,7 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
         { err, orgId: candidate.workos_organization_id },
         'Failed to draft/post announcement — will retry next run',
       );
-      result.skipped++;
+      result.failed++;
     }
   }
 

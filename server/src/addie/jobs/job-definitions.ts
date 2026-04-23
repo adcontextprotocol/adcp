@@ -564,7 +564,7 @@ export function registerAllJobs(): void {
     initialDelay: { value: 4, unit: 'minutes' },
     runner: runAnnouncementTriggerJob,
     businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
-    shouldLogResult: (r) => r.drafted > 0 || r.skipped > 0,
+    shouldLogResult: (r) => r.drafted > 0 || r.failed > 0,
   });
 
   // Weekly spec insight post - Addie posts a thought-provoking spec question to Slack

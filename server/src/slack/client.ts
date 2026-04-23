@@ -518,6 +518,28 @@ export async function sendChannelMessage(
 }
 
 /**
+ * Delete a posted channel message. Used to unwind a post when a
+ * subsequent write (e.g. activity row) fails and would otherwise leave
+ * an orphan message in a review channel with no idempotency record.
+ */
+export async function deleteChannelMessage(
+  channelId: string,
+  ts: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<Record<string, unknown>>('chat.delete', {
+      channel: channelId,
+      ts,
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error, channelId, ts }, 'Failed to delete Slack channel message');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
  * Test-only: clear the channel-info cache. Used by tests that reuse
  * channel IDs across cases — the module-level cache otherwise carries
  * a `is_private` value from case N into case N+1, which can silently
