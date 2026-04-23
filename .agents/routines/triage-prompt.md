@@ -24,6 +24,21 @@ behavior:
   don't have the `claude-triaged` label and haven't been closed. Cap
   at 10 issues per run to stay well under session limits.
 
+## Pre-classification: skip these for auto-PR
+
+Before full classification, check if the issue is one of:
+
+- **RFC / proposal** — title starts with "RFC:" or "Proposal:", or
+  labeled `rfc` / `proposal`
+- **Epic** — labeled `epic`, title starts with "Epic:", or body
+  contains a task list of child issues
+- **Tracking / meta** — labeled `tracking`, `meta`, or `roadmap`
+
+If so: **do not open a PR**. Roadmap-shaped work belongs to humans.
+Still post a triage comment (scope + bucket + suggested milestone +
+any obvious follow-up work it decomposes into), apply
+`claude-triaged`, then stop.
+
 ## For each issue, classify
 
 Decide one of:
@@ -39,6 +54,37 @@ Decide one of:
   act.
 - **Doc/typo** — narrow, obviously-correct edit. PR-able.
 
+## Scope bucket
+
+After classifying, identify which bucket(s) the issue touches. **Run
+`gh label list --repo adcontextprotocol/adcp --limit 200 --json name,description`
+first — prefer existing labels to invented ones.** Apply the matching
+label(s) when you apply `claude-triaged`.
+
+AdCP-wide buckets (map to the closest existing label):
+
+- **spec / protocol** — AdCP schemas, task definitions, spec docs
+- **web / site** — adcontextprotocol.org public site (`docs/`, `static/`)
+- **addie** — AAO AI agent, lives under `server/`
+- **training / certification** — Sage curriculum, learning content
+- **compliance suite** — conformance storyboards + tooling
+- **evergreen** — time-agnostic mission/marketing content
+- **infra / agents** — CI workflows, `.agents/`, build tooling
+
+If no existing label maps cleanly, use the bucket name in the comment
+text but don't invent a new label — flag the gap for a human.
+
+## Milestone
+
+Run `gh api repos/adcontextprotocol/adcp/milestones --jq '.[] | {title, number, due_on, description}'`.
+
+- If a milestone naturally fits (e.g., "3.1 patch", "4.0", "Q2 2026"),
+  include `**Suggested milestone:** <title> (#<number>)` in the
+  triage comment.
+- For small bug/doc fixes you're auto-PR-ing, also apply that
+  milestone to the PR.
+- Never create new milestones — if uncertain, leave unset.
+
 ## Comment format
 
 Post one comment with this structure:
@@ -46,8 +92,10 @@ Post one comment with this structure:
 ```
 ## Triage
 
-**Classification:** <one of the five above>
+**Classification:** <one of the types above>
 **Scope:** <small / medium / large / unclear>
+**Bucket(s):** <comma-separated buckets>
+**Suggested milestone:** <title (#N) or "none">
 **Status:** <one of: needs-info / ready-for-human / drafting-pr / not-actionable>
 
 <2-4 sentences on what you found: relevant docs, prior art, related PRs.
@@ -63,7 +111,7 @@ Link generously.>
 Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}
 ```
 
-Apply the label `claude-triaged` after commenting.
+Apply the `claude-triaged` label and any matching bucket labels.
 
 ## PR criteria (if opening one)
 
