@@ -109,7 +109,8 @@ export type EmailType =
   | 'slack_invite'
   | 'email_link_verification'
   | 'escalation_resolution'
-  | 'newsletter_subscribe_confirmation';
+  | 'newsletter_subscribe_confirmation'
+  | 'membership_invite';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -1687,6 +1688,144 @@ ${footerText}
     return true;
   } catch (error) {
     logger.error({ error, to: data.to }, 'Error sending newsletter confirmation');
+    return false;
+  }
+}
+
+/**
+ * Send a membership invitation to a prospect contact. The link drops them
+ * on /invite/:token where they sign in, join the org, sign the membership
+ * agreement, confirm billing details, and an invoice is issued.
+ */
+export async function sendMembershipInviteEmail(data: {
+  to: string;
+  contactName?: string | null;
+  orgName: string;
+  tierDisplayName: string;
+  priceDisplay: string;
+  inviteUrl: string;
+  invitedByName: string;
+  invitedByEmail: string;
+  expiresAt: Date;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping membership invite email');
+    return false;
+  }
+
+  const emailType: EmailType = 'membership_invite';
+  const subject = `You're invited to join ${data.orgName} on AgenticAdvertising.org`;
+
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const greeting = data.contactName ? `Hi ${escapeHtml(data.contactName)},` : 'Hi,';
+  const safeOrg = escapeHtml(data.orgName);
+  const safeTier = escapeHtml(data.tierDisplayName);
+  const safePrice = escapeHtml(data.priceDisplay);
+  const safeInviter = escapeHtml(data.invitedByName);
+  const safeInviterEmail = escapeHtml(data.invitedByEmail);
+  const expiresLocal = data.expiresAt.toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  try {
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      metadata: {
+        orgName: data.orgName,
+        tierDisplayName: data.tierDisplayName,
+        invitedByEmail: data.invitedByEmail,
+      },
+    });
+
+    const trackingId = emailEvent.tracking_id;
+    const trackedInviteUrl = trackedUrl(trackingId, 'cta_accept_invite', data.inviteUrl);
+    // Transactional email: no unsubscribe (this is a one-off invite).
+    const footerHtml = generateFooterHtml(trackingId, null);
+    const footerText = generateFooterText(null);
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: data.to,
+      replyTo: data.invitedByEmail,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Membership Invitation</h1>
+  </div>
+
+  <p>${greeting}</p>
+
+  <p><strong>${safeInviter}</strong> from AgenticAdvertising.org has invited <strong>${safeOrg}</strong> to become a member.</p>
+
+  <div style="background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 24px 0;">
+    <div style="font-size: 13px; color: #666; margin-bottom: 4px;">Tier</div>
+    <div style="font-size: 18px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px;">${safeTier}</div>
+    <div style="font-size: 13px; color: #666; margin-bottom: 4px;">Annual membership</div>
+    <div style="font-size: 16px; color: #1a1a1a;">${safePrice}</div>
+  </div>
+
+  <p>Accepting the invitation walks you through:</p>
+  <ol style="padding-left: 20px;">
+    <li>Sign in (or create your account)</li>
+    <li>Review and sign the membership agreement</li>
+    <li>Confirm your billing address</li>
+    <li>Receive your invoice for payment</li>
+  </ol>
+
+  <p style="text-align: center; margin: 30px 0;">
+    <a href="${trackedInviteUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Accept Invitation</a>
+  </p>
+
+  <p style="font-size: 13px; color: #666;">This invitation expires on ${escapeHtml(expiresLocal)}. If you have questions, reply to this email — it goes straight to ${safeInviterEmail}.</p>
+
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+Membership Invitation — AgenticAdvertising.org
+
+${data.contactName ? `Hi ${data.contactName},` : 'Hi,'}
+
+${data.invitedByName} from AgenticAdvertising.org has invited ${data.orgName} to become a member.
+
+Tier: ${data.tierDisplayName}
+Annual membership: ${data.priceDisplay}
+
+Accept the invitation to sign in, review the membership agreement, confirm your billing address, and receive your invoice:
+
+${data.inviteUrl}
+
+This invitation expires on ${expiresLocal}. Questions? Reply to this email — it goes to ${data.invitedByEmail}.
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to }, 'Failed to send membership invite email');
+      return false;
+    }
+
+    if (sendData?.id) {
+      await emailDb.markEmailSent(trackingId, sendData.id);
+    }
+
+    logger.info({ to: data.to, orgName: data.orgName, trackingId }, 'Membership invite sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending membership invite email');
     return false;
   }
 }

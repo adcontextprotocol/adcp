@@ -546,17 +546,23 @@ describe('stripe-client', () => {
       expect(result?.subscriptionId).toBe('sub_xyz789');
       expect(result?.invoiceUrl).toBe('https://invoice.stripe.com/i/acct_xxx/test_xxx');
 
-      // Verify subscription was created with correct parameters
-      expect(mockStripeInstance.subscriptions.create).toHaveBeenCalledWith({
-        customer: 'cus_new123',
-        items: [{ price: 'price_abc123' }],
-        collection_method: 'send_invoice',
-        days_until_due: 30,
-        metadata: expect.objectContaining({
-          lookup_key: 'aao_membership_corporate_5m',
-          contact_name: 'Ruben Schreurs',
-        }),
-      });
+      // Verify subscription was created with correct parameters.
+      // createAndSendInvoice now passes a second argument (Stripe RequestOptions)
+      // when an idempotency key is supplied — undefined here since this test
+      // doesn't exercise that path.
+      expect(mockStripeInstance.subscriptions.create).toHaveBeenCalledWith(
+        {
+          customer: 'cus_new123',
+          items: [{ price: 'price_abc123' }],
+          collection_method: 'send_invoice',
+          days_until_due: 30,
+          metadata: expect.objectContaining({
+            lookup_key: 'aao_membership_corporate_5m',
+            contact_name: 'Ruben Schreurs',
+          }),
+        },
+        undefined,
+      );
     });
 
     test('returns null when price has zero amount', async () => {

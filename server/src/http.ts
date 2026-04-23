@@ -81,6 +81,7 @@ import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createReferralsRouter } from "./routes/referrals.js";
+import { createInvitesRouter } from "./routes/invites.js";
 import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
@@ -872,6 +873,9 @@ export class HTTPServer {
     // Mount public referral routes
     const referralsRouter = createReferralsRouter();
     this.app.use('/api', referralsRouter); // Public referral routes: /api/referral/*
+
+    // Mount membership invite routes (GET /api/invite/:token public, POST /api/invite/:token/accept authed)
+    this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
     const registryApiRouter = createRegistryApiRouter({
@@ -2204,6 +2208,10 @@ export class HTTPServer {
     // Referral landing page - personalized invite page for prospects
     this.app.get("/join/:code", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'join.html');
+    });
+
+    this.app.get("/invite/:token", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'invite.html');
     });
 
     // About AAO page - serve about.html at /about

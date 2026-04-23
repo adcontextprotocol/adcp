@@ -1032,28 +1032,14 @@
       </div>
       <form id="invoiceRequestForm" onsubmit="submitInvoiceRequest(event)">
         <div style="padding: 24px;">
-          <div style="margin-bottom: 16px;">
-            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Company Name *</label>
-            <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          <div id="invoice-summary" style="margin-bottom: 16px; padding: 12px 16px; background: var(--color-bg-subtle); border-radius: 8px; font-size: 14px;">
+            <div style="color: var(--color-text-muted); margin-bottom: 4px;">Invoicing</div>
+            <div style="font-weight: 600; color: var(--color-text-heading);" id="invoice-org-name">—</div>
+            <div style="color: var(--color-text-secondary); margin-top: 6px;" id="invoice-product-summary">—</div>
+            <div style="color: var(--color-text-muted); margin-top: 6px; font-size: 13px;" id="invoice-recipient-summary">—</div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-            <div>
-              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Contact Name *</label>
-              <input type="text" id="invoice-contact" name="contactName" required placeholder="John Smith" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
-            </div>
-            <div>
-              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Email *</label>
-              <input type="email" id="invoice-email" name="contactEmail" required placeholder="billing@acme.com" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
-            </div>
-          </div>
-
-          <div style="margin-bottom: 16px;">
-            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Product *</label>
-            <select id="invoice-product" name="lookupKey" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;">
-              <option value="">Select a product...</option>
-            </select>
-          </div>
+          <input type="hidden" id="invoice-lookup-key" name="lookupKey">
 
           <div style="margin-bottom: 16px;">
             <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 1 *</label>
@@ -1087,11 +1073,18 @@
             </div>
           </div>
 
+          <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+              <input type="checkbox" id="invoice-agreement-checkbox" style="margin-top: 3px; cursor: pointer;">
+              <span style="font-size: 14px;">I have read and agree to the <a href="/membership-agreement" target="_blank" rel="noopener" style="color: var(--color-brand);">AgenticAdvertising.org Membership Agreement</a>.</span>
+            </label>
+          </div>
+
           <div id="invoiceFormError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-50); border-radius: 8px;"></div>
         </div>
         <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 12px; justify-content: flex-end;">
           <button type="button" class="btn btn-secondary" onclick="closeInvoiceRequestModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn">Send Invoice</button>
+          <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn" disabled>Send Invoice</button>
         </div>
       </form>
     </div>
@@ -1222,6 +1215,7 @@
               suggested_company_type: billingData.suggested_company_type,
               suggested_revenue_tier: billingData.suggested_revenue_tier,
             };
+            currentOrg.billing_address = billingData.billing_address || null;
           }
         } catch (billingError) {
           console.error('Error loading billing info:', billingError);
@@ -1761,42 +1755,54 @@
     }
 
     function openInvoiceRequestModal(preSelectedLookupKey = null) {
-      const modal = document.getElementById('invoiceRequestModal');
-      const productSelect = document.getElementById('invoice-product');
-
-      // Populate product dropdown with subscription products only
-      // (excludes legacy one-time invoice products)
-      productSelect.innerHTML = '<option value="">Select a product...</option>';
-      if (membershipProducts && membershipProducts.length > 0) {
-        const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
-        subscriptionProducts.forEach(product => {
-          const price = formatCurrency(product.amount_cents);
-          productSelect.innerHTML += `<option value="${escapeHtml(product.lookup_key)}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
-        });
+      if (!currentOrg) {
+        showToast('Please sign in and select an organization first.', true);
+        return;
       }
 
-      // Pre-select product if specified
-      if (preSelectedLookupKey) {
-        productSelect.value = preSelectedLookupKey;
+      const product = preSelectedLookupKey
+        ? (membershipProducts || []).find(p => p.lookup_key === preSelectedLookupKey)
+        : null;
+
+      if (!product) {
+        showToast('Select a membership tier before requesting an invoice.', true);
+        return;
       }
 
-      // Pre-fill company name from org if available
-      const companyInput = document.getElementById('invoice-company');
-      if (currentOrg && currentOrg.name && !companyInput.value) {
-        companyInput.value = currentOrg.name;
+      document.getElementById('invoice-lookup-key').value = product.lookup_key;
+      document.getElementById('invoice-org-name').textContent = currentOrg.name || '(your organization)';
+      document.getElementById('invoice-product-summary').textContent =
+        `${product.display_name} — ${formatCurrency(product.amount_cents)}/year`;
+      const userEmail = (window.__APP_CONFIG__ && window.__APP_CONFIG__.user && window.__APP_CONFIG__.user.email) || '';
+      document.getElementById('invoice-recipient-summary').textContent =
+        userEmail ? `Invoice will be sent to ${userEmail}` : 'Invoice will be sent to your account email';
+
+      if (currentOrg.billing_address) {
+        const a = currentOrg.billing_address;
+        if (a.line1) document.getElementById('invoice-address1').value = a.line1;
+        if (a.line2) document.getElementById('invoice-address2').value = a.line2;
+        if (a.city) document.getElementById('invoice-city').value = a.city;
+        if (a.state) document.getElementById('invoice-state').value = a.state;
+        if (a.postal_code) document.getElementById('invoice-postal').value = a.postal_code;
+        if (a.country) document.getElementById('invoice-country').value = a.country;
       }
 
-      modal.style.display = 'flex';
-      document.getElementById('invoice-company').focus();
+      const agreementCheckbox = document.getElementById('invoice-agreement-checkbox');
+      const submitBtn = document.getElementById('invoiceSubmitBtn');
+      agreementCheckbox.checked = false;
+      submitBtn.disabled = true;
+      agreementCheckbox.onchange = () => { submitBtn.disabled = !agreementCheckbox.checked; };
+
+      document.getElementById('invoiceRequestModal').style.display = 'flex';
+      document.getElementById('invoice-address1').focus();
     }
 
     function closeInvoiceRequestModal() {
       document.getElementById('invoiceRequestModal').style.display = 'none';
       document.getElementById('invoiceFormError').style.display = 'none';
-      // Reset form and button state
       document.getElementById('invoiceRequestForm').reset();
       const submitBtn = document.getElementById('invoiceSubmitBtn');
-      submitBtn.disabled = false;
+      submitBtn.disabled = true;
       submitBtn.textContent = 'Send Invoice';
     }
 
@@ -1806,6 +1812,13 @@
       const form = event.target;
       const submitBtn = document.getElementById('invoiceSubmitBtn');
       const errorDiv = document.getElementById('invoiceFormError');
+      const agreementCheckbox = document.getElementById('invoice-agreement-checkbox');
+
+      if (!agreementCheckbox.checked) {
+        errorDiv.textContent = 'Please accept the membership agreement to continue.';
+        errorDiv.style.display = 'block';
+        return;
+      }
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Sending...';
@@ -1814,9 +1827,7 @@
       const formData = new FormData(form);
 
       const requestData = {
-        companyName: formData.get('companyName'),
-        contactName: formData.get('contactName'),
-        contactEmail: formData.get('contactEmail'),
+        orgId: currentOrg.id,
         lookupKey: formData.get('lookupKey'),
         billingAddress: {
           line1: formData.get('line1'),
@@ -1826,7 +1837,12 @@
           postal_code: formData.get('postal_code'),
           country: formData.get('country'),
         },
+        agreement_version: loadedAgreementVersion || undefined,
       };
+      const storedReferralCode = localStorage.getItem('aao_referral_code');
+      if (storedReferralCode) {
+        requestData.referral_code = storedReferralCode;
+      }
 
       try {
         const response = await fetch('/api/invoice-request', {
@@ -1842,7 +1858,6 @@
           throw new Error(result.message || 'Failed to send invoice');
         }
 
-        // Show success state
         const modalBody = form.querySelector('div:first-child');
         const modalFooter = form.querySelector('div:last-child');
 
@@ -1850,7 +1865,7 @@
           <div style="text-align: center; padding: 24px;">
             <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
             <h3 style="color: var(--color-success-600); margin-bottom: 8px;">Invoice Sent!</h3>
-            <p style="color: var(--color-text-secondary); margin-bottom: 16px;">We've sent an invoice to <strong>${escapeHtml(requestData.contactEmail)}</strong>. Please check your email for payment instructions.</p>
+            <p style="color: var(--color-text-secondary); margin-bottom: 16px;">We've sent an invoice to your account email. Please check your inbox for payment instructions.</p>
             <p style="font-size: 14px; color: var(--color-text-muted);">The invoice is due within 30 days. You can pay online via the link in the email.</p>
           </div>
         `;
