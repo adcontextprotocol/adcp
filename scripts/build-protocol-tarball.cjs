@@ -129,7 +129,7 @@ ${quickstart}
 ## Validate an agent
 
 \`\`\`bash
-npx @adcp/client storyboard run https://my-agent.example.com
+npx @adcp/client@latest storyboard run https://my-agent.example.com
 \`\`\`
 
 The CLI uses the same \`compliance/\` tree bundled here. For offline runs, point it at

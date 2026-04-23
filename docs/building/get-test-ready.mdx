@@ -5,7 +5,7 @@ description: "What a sales agent operator must have in place before running stor
 "og:title": "AdCP — Get Test-Ready"
 ---
 
-Storyboards are the versioned buyer-simulation suite that decides whether your agent is published as **conformant**. Buyer agents filter on that status — overclaiming or failing storyboards is a public, permanent signal, not a CI warning. This page is the checklist between "I built an agent" and "I can run `npx @adcp/client storyboard run`."
+Storyboards are the versioned buyer-simulation suite that decides whether your agent is published as **conformant**. Buyer agents filter on that status — overclaiming or failing storyboards is a public, permanent signal, not a CI warning. This page is the checklist between "I built an agent" and "I can run `npx @adcp/client@latest storyboard run`."
 
 ## The three surfaces the runner needs
 
@@ -159,8 +159,8 @@ For custom MCP wrappers — AsyncLocalStorage for per-request auth, transport-le
 Once the three surfaces are in place, the runner takes over:
 
 ```bash
-npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
-npx @adcp/client storyboard run my-agent
+npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client@latest storyboard run my-agent
 ```
 
 The runner discovers your capabilities, obtains a sandbox account, seeds fixtures via the controller, and walks each matching storyboard. See [Validate Your Agent](/docs/building/validate-your-agent) for the full CLI, debug flags, and Addie workflows.

@@ -151,15 +151,15 @@ Once the agent is running, validate it against the matching storyboard:
 ```bash
 # JS/TS agent
 npx tsx agent.ts &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Python agent
 python agent.py &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Go agent
 go run main.go &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 ```
 
 Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
@@ -183,7 +183,7 @@ media_buy_seller (9 steps)
 </Warning>
 
 <Tip>
-Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client storyboard list` to see all available storyboards.
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client@latest storyboard list` to see all available storyboards.
 </Tip>
 
 See **[Validate Your Agent](/docs/building/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
