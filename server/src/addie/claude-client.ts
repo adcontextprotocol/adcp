@@ -18,6 +18,7 @@ import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } 
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
 import { notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
+import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -233,6 +234,16 @@ export interface ProcessMessageOptions {
   userDisplayName?: string;
   /** Thread ID — used for error notification links to admin view */
   threadId?: string;
+  /**
+   * User identity + tier for the per-user Anthropic cost cap (#2790).
+   * Both are required together for the cap to apply; if either is
+   * omitted the request runs uncapped (router / system paths).
+   * Callers that want the cap enforced should always populate both.
+   */
+  costScope?: {
+    userId: string;
+    tier: 'anonymous' | 'member_free' | 'member_paid';
+  };
 }
 
 /**
@@ -474,6 +485,38 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
+    // #2790: per-user Anthropic cost cap. Check at entry; when the
+    // user has exhausted their daily budget, return a friendly
+    // "try again later" response instead of firing another
+    // (billable) Claude call. The caller's ProcessMessageOptions
+    // carries both `userId` and `tier` so we don't have to resolve
+    // the subscription tier here.
+    if (options?.costScope) {
+      const capResult = await checkCostCap(
+        options.costScope.userId,
+        options.costScope.tier,
+      );
+      if (!capResult.ok) {
+        const message = formatCapExceededMessage(capResult);
+        logger.warn(
+          {
+            userId: options.costScope.userId,
+            tier: options.costScope.tier,
+            spentCents: capResult.spentCents,
+            retryAfterMs: capResult.retryAfterMs,
+          },
+          'Addie cost cap exceeded — refusing Claude call',
+        );
+        return {
+          text: message,
+          tools_used: [],
+          tool_executions: [],
+          flagged: true,
+          flag_reason: 'cost_cap_exceeded',
+        };
+      }
+    }
+
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
@@ -704,6 +747,24 @@ export class AddieClaudeClient {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
+        const finalUsage = {
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
+          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+        };
+        // Record the call against the user's daily budget (#2790).
+        // Runs after the response is built so a successful charge
+        // counts even if a downstream flag/logging failure occurs.
+        // recordCost no-ops for missing userId / system users.
+        if (options?.costScope) {
+          await recordCost(
+            options.costScope.userId,
+            options?.modelOverride ?? AddieModelConfig.chat,
+            finalUsage,
+          );
+        }
+
         return {
           text,
           tools_used: toolsUsed,
@@ -718,12 +779,7 @@ export class AddieClaudeClient {
             total_tool_execution_ms: totalToolExecutionMs,
             iterations: iteration,
           },
-          usage: {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-          },
+          usage: finalUsage,
         };
       }
 
@@ -964,6 +1020,22 @@ export class AddieClaudeClient {
 
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+    const maxIterationsUsage = {
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
+      ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+      ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+    };
+    // Still charge the user for tokens actually consumed on the way
+    // to hitting max-iterations — those bytes DID go to Anthropic
+    // and DID cost money, regardless of whether the session converged.
+    if (options?.costScope) {
+      await recordCost(
+        options.costScope.userId,
+        options?.modelOverride ?? AddieModelConfig.chat,
+        maxIterationsUsage,
+      );
+    }
     return {
       text: "I'm having trouble completing that request. Could you try rephrasing?",
       tools_used: toolsUsed,
@@ -978,12 +1050,7 @@ export class AddieClaudeClient {
         total_tool_execution_ms: totalToolExecutionMs,
         iterations: maxIterations,
       },
-      usage: {
-        input_tokens: totalInputTokens,
-        output_tokens: totalOutputTokens,
-        ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-        ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-      },
+      usage: maxIterationsUsage,
     };
   }
 
@@ -1004,6 +1071,40 @@ export class AddieClaudeClient {
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
+    // #2790: per-user Anthropic cost cap (streaming path). Same
+    // contract as `processMessage` — yield a `done` event with the
+    // friendly cap-exceeded text and return early instead of firing
+    // another billable Claude call.
+    if (options?.costScope) {
+      const capResult = await checkCostCap(
+        options.costScope.userId,
+        options.costScope.tier,
+      );
+      if (!capResult.ok) {
+        const message = formatCapExceededMessage(capResult);
+        logger.warn(
+          {
+            userId: options.costScope.userId,
+            tier: options.costScope.tier,
+            spentCents: capResult.spentCents,
+            retryAfterMs: capResult.retryAfterMs,
+          },
+          'Addie cost cap exceeded — refusing Claude stream',
+        );
+        yield {
+          type: 'done',
+          response: {
+            text: message,
+            tools_used: [],
+            tool_executions: [],
+            flagged: true,
+            flag_reason: 'cost_cap_exceeded',
+          },
+        };
+        return;
+      }
+    }
+
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
@@ -1239,6 +1340,27 @@ export class AddieClaudeClient {
           outputTokens: currentResponse.usage?.output_tokens,
         }, 'Addie Stream: Claude response received');
 
+        // Build the final usage block + charge the user's cost
+        // budget (#2790). Both stream terminal paths (end_turn and
+        // no-tool-blocks) share this; kept inline as a local const
+        // rather than hoisted to instance scope because it closes
+        // over the accumulators in this method.
+        const buildStreamUsage = () => ({
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
+          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+        });
+        const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
+          if (options?.costScope) {
+            await recordCost(
+              options.costScope.userId,
+              options?.modelOverride ?? AddieModelConfig.chat,
+              usage,
+            );
+          }
+        };
+
         // Done - no tool use
         if (currentResponse.stop_reason === 'end_turn') {
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
@@ -1249,6 +1371,8 @@ export class AddieClaudeClient {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
 
+          const streamUsage = buildStreamUsage();
+          await chargeStreamCost(streamUsage);
           yield {
             type: 'done',
             response: {
@@ -1265,12 +1389,7 @@ export class AddieClaudeClient {
                 total_tool_execution_ms: totalToolExecutionMs,
                 iterations: iteration,
               },
-              usage: {
-                input_tokens: totalInputTokens,
-                output_tokens: totalOutputTokens,
-                ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-                ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-              },
+              usage: streamUsage,
             },
           };
           return;
@@ -1283,6 +1402,8 @@ export class AddieClaudeClient {
           if (toolUseBlocks.length === 0) {
             // No tools to execute, return current text
             totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+            const streamUsage = buildStreamUsage();
+            await chargeStreamCost(streamUsage);
             yield {
               type: 'done',
               response: {
@@ -1298,12 +1419,7 @@ export class AddieClaudeClient {
                   total_tool_execution_ms: totalToolExecutionMs,
                   iterations: iteration,
                 },
-                usage: {
-                  input_tokens: totalInputTokens,
-                  output_tokens: totalOutputTokens,
-                  ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-                  ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-                },
+                usage: streamUsage,
               },
             };
             return;
@@ -1455,6 +1571,21 @@ export class AddieClaudeClient {
       // Max iterations reached
       logger.warn('Addie Stream: Hit max tool iterations');
       totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+      const maxIterUsage = {
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+        ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+      };
+      // Charge the tokens consumed up to the max-iteration wall —
+      // the API calls happened regardless of whether we converged.
+      if (options?.costScope) {
+        await recordCost(
+          options.costScope.userId,
+          options?.modelOverride ?? AddieModelConfig.chat,
+          maxIterUsage,
+        );
+      }
       yield {
         type: 'done',
         response: {
@@ -1471,12 +1602,7 @@ export class AddieClaudeClient {
             total_tool_execution_ms: totalToolExecutionMs,
             iterations: maxIterations,
           },
-          usage: {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-          },
+          usage: maxIterUsage,
         },
       };
     } catch (error) {

@@ -1,0 +1,91 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  recordCost,
+  __setCostTrackerStore,
+  __createInMemoryCostStore,
+} from '../../src/addie/claude-cost-tracker.js';
+import { AddieClaudeClient } from '../../src/addie/claude-client.js';
+
+/**
+ * End-to-end gate test (#2790). When a user has exhausted their
+ * 24-hour cost budget, `processMessage` / `processMessageStream`
+ * must return a `cost_cap_exceeded` flag WITHOUT making a Claude API
+ * call. That path runs entirely before any Anthropic SDK usage, so
+ * the test doesn't need a mocked SDK — an unreachable apiKey is
+ * enough to prove we never hit the network.
+ *
+ * This complements the tracker-level unit tests by pinning the
+ * instrumentation in claude-client.ts that the per-caller `costScope`
+ * option actually routes through `checkCostCap` + formats the
+ * response correctly.
+ */
+
+// Spy that would throw if the Anthropic SDK got invoked. This is the
+// integration assertion — no SDK call means the gate fired at entry.
+const anthropicCreate = vi.fn(() => {
+  throw new Error('SDK should not be reached when cap is exhausted');
+});
+vi.mock('@anthropic-ai/sdk', () => {
+  return {
+    default: class {
+      messages = { create: anthropicCreate };
+    },
+  };
+});
+
+beforeEach(() => {
+  __setCostTrackerStore(__createInMemoryCostStore());
+  anthropicCreate.mockClear();
+});
+
+describe('claude-client entry-gate behavior (#2790)', () => {
+  it('processMessage short-circuits with cost_cap_exceeded when the user is over budget', async () => {
+    // Burn the anonymous cap for `user-x`.
+    await recordCost('user-x', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { costScope: { userId: 'user-x', tier: 'anonymous' } },
+    );
+
+    expect(response.flagged).toBe(true);
+    expect(response.flag_reason).toBe('cost_cap_exceeded');
+    expect(response.text).toMatch(/usage cap/);
+    // No token usage because no Claude call fired.
+    expect(response.usage).toBeUndefined();
+    expect(anthropicCreate).not.toHaveBeenCalled();
+  });
+
+  it('processMessageStream yields a single cost_cap_exceeded done event when over budget', async () => {
+    await recordCost('user-y', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: Array<{ type: string; response?: { flagged: boolean; flag_reason?: string } }> = [];
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { costScope: { userId: 'user-y', tier: 'anonymous' } },
+    )) {
+      events.push(event as { type: string; response?: { flagged: boolean; flag_reason?: string } });
+    }
+
+    // A single `done` event carrying the cap-exceeded flag.
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('done');
+    expect(events[0].response?.flagged).toBe(true);
+    expect(events[0].response?.flag_reason).toBe('cost_cap_exceeded');
+    expect(anthropicCreate).not.toHaveBeenCalled();
+  });
+
+  // A third case — "no costScope → runs uncapped, SDK IS reached" —
+  // would need to mount the full claude-client lifecycle (config
+  // version, rules loader, DB init). The two gate-hit tests above
+  // prove the short-circuit happens at the right point; the
+  // no-costScope path is exercised implicitly by every other
+  // Addie test that doesn't pass `costScope`.
+});

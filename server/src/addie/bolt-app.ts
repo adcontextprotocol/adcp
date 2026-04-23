@@ -1522,6 +1522,11 @@ async function handleUserMessage({
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  // Resolve the cost-cap identity. Prefer the mapped WorkOS user ID
+  // (consistent with tool-rate-limiter's scope keys); fall back to a
+  // `slack:${userId}` namespace when no mapping exists so the cap
+  // still bounds an individual Slack user's Addie spend (#2790).
+  const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
@@ -1529,6 +1534,12 @@ async function handleUserMessage({
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     slackUserId: userId,
     threadId: thread.thread_id,
+    // Conservative tier resolution: member_free for all authenticated
+    // Slack users. Upgrading to member_paid for real subscribers is
+    // filed as a follow-up — the active-subscription lookup isn't
+    // already threaded here. AAO admins should never hit the cap in
+    // legitimate use; if they do, the follow-up covers elevating them.
+    costScope: { userId: costScopeUserId, tier: 'member_free' },
   };
 
   // Process with Claude using streaming
