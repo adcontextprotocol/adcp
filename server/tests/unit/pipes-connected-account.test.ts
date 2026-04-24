@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockGet = vi.fn();
+const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
-// vi.mock is hoisted before imports, so when pipes.ts lazily calls
-// import('../auth/workos-client.js') at runtime it gets this mock via
-// the module registry. Must remain a top-level vi.mock (not vi.doMock)
-// to preserve hoisting.
 vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: { get: mockGet },
+  getWorkos: () => ({ get: mockGet }),
 }));
 
 const { getGitHubConnectedAccount } = await import('../../src/services/pipes.js');
