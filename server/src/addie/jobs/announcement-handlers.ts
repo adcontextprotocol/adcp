@@ -38,7 +38,11 @@
 
 import { createLogger } from '../../logger.js';
 import { query, getPool } from '../../db/client.js';
-import { sendChannelMessage, deleteChannelMessage } from '../../slack/client.js';
+import {
+  sendChannelMessage,
+  deleteChannelMessage,
+  updateChannelMessage,
+} from '../../slack/client.js';
 import { getAnnouncementChannel } from '../../db/system-settings-db.js';
 import { sanitizeDraftForSlack } from './announcement-trigger.js';
 import { isSafeVisualUrl } from '../../services/announcement-visual.js';
@@ -874,6 +878,49 @@ export async function markLinkedInPosted(
       },
     };
   });
+}
+
+/**
+ * Refresh the editorial review card in Slack to reflect a state change
+ * that happened outside of Slack (admin-UI click, background job).
+ *
+ * Bolt handlers already update the card via `client.chat.update` because
+ * they have the clicked message's channel + ts in the action body. The
+ * HTTP path has neither, so it loads them from the `announcement_draft_posted`
+ * activity metadata written by the Stage 1 trigger job. If the draft row
+ * or its review ts is missing (legacy pre-Stage-2 row, manual cleanup,
+ * etc.) the refresh is a silent no-op — the web UI already reflects the
+ * new state.
+ *
+ * Fire-and-forget from the caller's perspective: we log failures but
+ * don't surface them, because the authoritative state is already in the
+ * DB and the next Slack click will repaint from it.
+ */
+export async function refreshReviewCardForOrg(orgId: string): Promise<void> {
+  let loaded;
+  try {
+    loaded = await loadDraftAndState(orgId);
+  } catch (err) {
+    logger.warn({ err, orgId }, 'refreshReviewCardForOrg: loadDraftAndState failed');
+    return;
+  }
+  if (!loaded) return;
+  const { draft, state } = loaded;
+  const channel = draft.review_channel_id;
+  const ts = draft.review_message_ts;
+  if (!channel || !ts) return;
+  const rendered = renderReviewCard({ orgId, draft, state });
+  try {
+    const out = await updateChannelMessage(channel, ts, rendered);
+    if (!out.ok) {
+      logger.warn(
+        { orgId, channel, ts, error: out.error },
+        'refreshReviewCardForOrg: Slack chat.update failed',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, orgId, channel, ts }, 'refreshReviewCardForOrg: threw');
+  }
 }
 
 /**

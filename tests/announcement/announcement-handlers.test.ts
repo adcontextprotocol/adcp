@@ -4,12 +4,14 @@ const {
   mockQuery,
   mockSendChannelMessage,
   mockDeleteChannelMessage,
+  mockUpdateChannelMessage,
   mockGetAnnouncementChannel,
   mockIsSlackUserAAOAdmin,
 } = vi.hoisted(() => ({
   mockQuery: vi.fn<any>(),
   mockSendChannelMessage: vi.fn<any>(),
   mockDeleteChannelMessage: vi.fn<any>(),
+  mockUpdateChannelMessage: vi.fn<any>(),
   mockGetAnnouncementChannel: vi.fn<any>(),
   mockIsSlackUserAAOAdmin: vi.fn<any>(),
 }));
@@ -37,6 +39,7 @@ vi.mock('../../server/src/db/client.js', () => {
 vi.mock('../../server/src/slack/client.js', () => ({
   sendChannelMessage: (...args: unknown[]) => mockSendChannelMessage(...args),
   deleteChannelMessage: (...args: unknown[]) => mockDeleteChannelMessage(...args),
+  updateChannelMessage: (...args: unknown[]) => mockUpdateChannelMessage(...args),
 }));
 
 vi.mock('../../server/src/db/system-settings-db.js', () => ({
@@ -145,6 +148,7 @@ beforeEach(() => {
   });
   mockSendChannelMessage.mockResolvedValue({ ok: true, ts: POSTED_TS });
   mockDeleteChannelMessage.mockResolvedValue({ ok: true });
+  mockUpdateChannelMessage.mockResolvedValue({ ok: true });
 });
 
 describe('renderReviewCard', () => {
@@ -560,6 +564,138 @@ describe('handleAnnouncementApproveSlack', () => {
     expect(client.chat.postEphemeral).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringMatching(/channel_not_found/) }),
     );
+  });
+});
+
+describe('legacy-row back-compat (Stage 2 rows without _via)', () => {
+  it('legacy approver_user_id renders as Slack mention in review card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: {
+            channel: 'slack',
+            slack_ts: POSTED_TS,
+            approver_user_id: 'U0LEGACYAPP',
+          },
+        },
+      ],
+    });
+    const { loadDraftAndState, renderReviewCard } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    expect(loaded).not.toBeNull();
+    const { blocks } = renderReviewCard({
+      orgId: ORG_ID,
+      draft: loaded!.draft,
+      state: loaded!.state,
+    });
+    const statusBlock = blocks.find(
+      (b) => b.type === 'context' && b.elements?.[0]?.text?.includes('✓ Slack posted'),
+    );
+    expect(statusBlock?.elements?.[0]?.text).toContain('<@U0LEGACYAPP>');
+  });
+
+  it('legacy skipper_user_id renders as Slack mention in review card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_skipped',
+          activity_date: new Date(),
+          metadata: { skipper_user_id: 'U0LEGACYSKIP' },
+        },
+      ],
+    });
+    const { loadDraftAndState, renderReviewCard } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    const { blocks } = renderReviewCard({
+      orgId: ORG_ID,
+      draft: loaded!.draft,
+      state: loaded!.state,
+    });
+    const statusBlock = blocks.find(
+      (b) => b.type === 'context' && b.elements?.[0]?.text?.includes('⊘'),
+    );
+    expect(statusBlock?.elements?.[0]?.text).toContain('<@U0LEGACYSKIP>');
+  });
+
+  it('invariant: marked_via=admin + marked_by_user_id does NOT populate slackUserId', async () => {
+    // The `source !== 'admin'` guard in actorFromMetadata must take
+    // precedence so a future row that happens to carry both fields is
+    // interpreted as admin-sourced, not Slack-sourced.
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: {
+            channel: 'linkedin',
+            marked_via: 'admin',
+            marked_by_workos_user_id: 'user_wk_01HZ',
+            // Legacy shape accidentally present:
+            marked_by_user_id: 'U0NOTSLACK',
+          },
+        },
+      ],
+    });
+    const { loadDraftAndState } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    expect(loaded!.state.linkedinMarker.source).toBe('admin');
+    expect(loaded!.state.linkedinMarker.slackUserId).toBeNull();
+    expect(loaded!.state.linkedinMarker.workosUserId).toBe('user_wk_01HZ');
+  });
+});
+
+describe('refreshReviewCardForOrg', () => {
+  it('loads draft + state then calls chat.update with the rebuilt card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'slack', slack_ts: POSTED_TS, approver_slack_user_id: 'U0SL', approver_via: 'slack' },
+        },
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'linkedin', marked_via: 'admin', marked_by_workos_user_id: 'user_wk_42' },
+        },
+      ],
+    });
+
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+
+    expect(mockUpdateChannelMessage).toHaveBeenCalledTimes(1);
+    const [channel, ts, message] = mockUpdateChannelMessage.mock.calls[0];
+    expect(channel).toBe(REVIEW_CHANNEL);
+    expect(ts).toBe(REVIEW_TS);
+    // Both channels are done — no actions block in the terminal state.
+    const actions = message.blocks?.find((b: any) => b.type === 'actions');
+    expect(actions).toBeUndefined();
+  });
+
+  it('no-ops silently when no draft row exists', async () => {
+    queueDbReads({ draft: null });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+    expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it('no-ops silently when the stored review_message_ts is missing', async () => {
+    queueDbReads({
+      draft: { ...DRAFT_METADATA, review_message_ts: null as unknown as string },
+    });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+    expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it('swallows chat.update errors — caller does not need to worry about them', async () => {
+    queueDbReads({});
+    mockUpdateChannelMessage.mockResolvedValueOnce({ ok: false, error: 'message_not_found' });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await expect(refreshReviewCardForOrg(ORG_ID)).resolves.toBeUndefined();
   });
 });
 

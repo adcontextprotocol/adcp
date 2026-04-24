@@ -1865,40 +1865,81 @@
       // shared advisory-lock path.
       const canMarkLinkedin = a.slack_posted && !a.linkedin_posted && !a.skipped;
       const button = canMarkLinkedin
-        ? `<button class="btn btn-primary btn-sm" id="markLinkedInBtn" onclick="markAnnouncementLinkedIn()" style="margin-top: var(--space-3);">Mark posted to LinkedIn</button>`
+        ? `<button class="btn btn-primary btn-sm" id="markLinkedInBtn" onclick="markAnnouncementLinkedIn()" aria-busy="false" style="margin-top: var(--space-3);">Mark posted to LinkedIn</button>`
         : '';
 
       content.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm);">
+        <div aria-live="polite" style="display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm);">
           ${rows.join('')}
         </div>
         ${button}
+        <div id="announcementMessage" role="status" style="display: none; margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--text-sm);"></div>
       `;
+    }
+
+    function showAnnouncementMessage(text, kind) {
+      const box = document.getElementById('announcementMessage');
+      if (!box) return;
+      // `kind` is 'error' | 'info'. Inline messages (vs alert) keep the
+      // context next to the action so an admin can read the server's
+      // 409 `refused` reason without the modal stealing focus.
+      const colors = kind === 'error'
+        ? { bg: 'var(--color-red-50, #fef2f2)', fg: 'var(--color-red-700, #b91c1c)' }
+        : { bg: 'var(--color-gray-100)', fg: 'var(--color-text-secondary)' };
+      box.style.background = colors.bg;
+      box.style.color = colors.fg;
+      box.style.display = '';
+      box.textContent = text;
     }
 
     async function markAnnouncementLinkedIn() {
       const btn = document.getElementById('markLinkedInBtn');
       if (!btn) return;
       btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
       btn.textContent = 'Marking…';
       try {
         const response = await manageFetch(`/api/admin/accounts/${accountId}/announcement/linkedin`, {
           method: 'POST',
         });
+        const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          alert(body.message || body.error || `Failed (${response.status})`);
+          // Log to console so an admin on a support call can screenshot
+          // DevTools with status + body rather than an ephemeral alert.
+          console.error('markAnnouncementLinkedIn failed', response.status, body);
+          showAnnouncementMessage(
+            body.message || body.error || `Failed (${response.status})`,
+            'error',
+          );
           btn.disabled = false;
+          btn.setAttribute('aria-busy', 'false');
           btn.textContent = 'Mark posted to LinkedIn';
           return;
         }
-        // Re-fetch the account so the announcement section reflects the
-        // new state (and hides the button).
-        await loadAccount();
+        // Optimistic patch so the status line flips immediately. The
+        // subsequent loadAccount() reconciles with the server.
+        if (accountData.announcement) {
+          accountData.announcement.linkedin_posted = true;
+          accountData.announcement.linkedin_marked_at = new Date().toISOString();
+          accountData.announcement.linkedin_marker_label = 'an AAO admin';
+        }
+        renderAnnouncement();
+        if (body.already_done) {
+          showAnnouncementMessage(
+            body.message || 'Already recorded — no duplicate row created.',
+            'info',
+          );
+        }
+        // Background reconcile — no await; the optimistic render already
+        // updated the visible state.
+        loadAccount().catch((err) => {
+          console.error('Account refetch after markAnnouncementLinkedIn failed', err);
+        });
       } catch (err) {
         console.error('markAnnouncementLinkedIn failed', err);
-        alert('Failed to mark LinkedIn posted. Please retry.');
+        showAnnouncementMessage('Network error — please retry.', 'error');
         btn.disabled = false;
+        btn.setAttribute('aria-busy', 'false');
         btn.textContent = 'Mark posted to LinkedIn';
       }
     }

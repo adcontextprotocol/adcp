@@ -32,6 +32,7 @@ import { createProspect, updateProspect } from "../../services/prospect.js";
 import {
   loadDraftAndState,
   markLinkedInPosted,
+  refreshReviewCardForOrg,
 } from "../../addie/jobs/announcement-handlers.js";
 import { WorkOS } from "@workos-inc/node";
 import {
@@ -1720,6 +1721,10 @@ export function setupAccountRoutes(
           workosUserId,
         });
 
+        // Uniform response shape across all success branches makes the
+        // admin-UI handler branch on `already_done` without checking for
+        // missing fields. `message` is absent on a fresh record because
+        // there's no "something was already true" to report.
         switch (outcome.kind) {
           case "no_draft":
             return res.status(404).json({
@@ -1733,13 +1738,25 @@ export function setupAccountRoutes(
               message: outcome.notice,
             });
           case "already_done":
+            // State already at the target — refresh the editorial Slack
+            // card anyway so it doesn't linger on a stale state.
+            void refreshReviewCardForOrg(orgId);
             return res.status(200).json({
               success: true,
               already_done: true,
               message: outcome.notice,
             });
           case "recorded":
-            return res.status(200).json({ success: true });
+            // Fire-and-forget Slack refresh so the in-Slack review card
+            // shows the new state. We don't await — the HTTP response
+            // should complete fast, and any refresh failure is already
+            // logged; the DB is the authoritative source.
+            void refreshReviewCardForOrg(orgId);
+            return res.status(200).json({
+              success: true,
+              already_done: false,
+              message: "LinkedIn post recorded.",
+            });
         }
       } catch (error) {
         logger.error(
