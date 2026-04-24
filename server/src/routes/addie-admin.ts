@@ -43,6 +43,7 @@ import {
   listSuggestions,
   getSuggestion,
   recordDecision,
+  releaseDecision,
   getSuggestionStats,
   type SuggestionConfidence,
 } from "../db/escalation-triage-db.js";
@@ -1875,8 +1876,14 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
             });
           }
 
-          // File the issue first; if that fails, keep the escalation open
-          // rather than resolve on a ghost issue. Admin can retry.
+          // Reserve the suggestion atomically before calling GitHub, so
+          // two concurrent clicks can't both file an issue. If GitHub
+          // fails, release the reservation so a retry can claim it.
+          const claimed = await recordDecision(id, 'accepted', reviewer, req.body?.notes);
+          if (!claimed) {
+            return res.status(409).json({ error: "Already reviewed" });
+          }
+
           const filed = await fileGitHubIssue({
             title: draft.title,
             body: draft.body,
@@ -1884,25 +1891,30 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
             labels: draft.labels,
           });
           if (!filed) {
+            await releaseDecision(id, reviewer);
             return res.status(502).json({
               error: "GitHub API",
               message: "Failed to file issue — escalation left open. Retry later.",
             });
           }
 
-          await setEscalationGithubIssue(suggestion.escalation_id, filed.url, filed.number, filed.repo);
+          const updatedEsc = await setEscalationGithubIssue(
+            suggestion.escalation_id,
+            filed.url,
+            filed.number,
+            filed.repo,
+          );
           const notes = `Filed as ${filed.url} via triage suggestion #${id}.`;
-          const updatedEsc = await updateEscalationStatus(
+          const resolvedEsc = await updateEscalationStatus(
             suggestion.escalation_id,
             'resolved',
             reviewer,
             notes,
           );
-          const updatedSug = await recordDecision(id, 'accepted', reviewer, req.body?.notes);
           return res.json({
             success: true,
-            suggestion: updatedSug,
-            escalation: updatedEsc,
+            suggestion: claimed,
+            escalation: resolvedEsc ?? updatedEsc,
             issue: filed,
           });
         }

@@ -129,6 +129,14 @@ export async function getPendingSuggestionForEscalation(
   return result.rows[0] ?? null;
 }
 
+/**
+ * Atomically reserve-and-record a decision on a suggestion. Returns the
+ * updated row on success, or null when the suggestion is already decided
+ * (meaning a concurrent caller got there first). The `AND decision IS NULL`
+ * clause makes this safe against two admins clicking accept simultaneously
+ * — important for `file_as_issue`, where a duplicate would file a second
+ * GitHub issue as a side effect.
+ */
 export async function recordDecision(
   id: number,
   decision: SuggestionDecision,
@@ -141,11 +149,34 @@ export async function recordDecision(
          reviewed_by = $3,
          reviewed_at = NOW(),
          decision_notes = $4
-     WHERE id = $1
+     WHERE id = $1 AND decision IS NULL
      RETURNING *`,
     [id, decision, reviewedBy, notes ?? null],
   );
   return result.rows[0] ?? null;
+}
+
+/**
+ * Release a decision that was set by `recordDecision`. Used as the
+ * compensating write when the follow-up external call (GitHub issue
+ * filing) fails, so another retry can claim the suggestion.
+ *
+ * Scoped to the reviewer who made the reservation to avoid clobbering
+ * a legitimate decision by a different admin.
+ */
+export async function releaseDecision(
+  id: number,
+  reviewedBy: string,
+): Promise<void> {
+  await query(
+    `UPDATE escalation_triage_suggestions
+     SET decision = NULL,
+         reviewed_by = NULL,
+         reviewed_at = NULL,
+         decision_notes = NULL
+     WHERE id = $1 AND reviewed_by = $2`,
+    [id, reviewedBy],
+  );
 }
 
 export async function getSuggestionStats(): Promise<{

@@ -1,10 +1,8 @@
 /**
- * GitHub issue filer for escalation triage.
+ * GitHub issue filer.
  *
- * Thin wrapper around the GitHub REST API used by the "file as issue"
- * accept flow. Same pattern as knowledge-gap-closer's inline filer —
- * factored out so callers across Addie jobs can share one path and so
- * tests can mock a single seam.
+ * Thin wrapper around the GitHub REST API. Exposes a single seam so
+ * callers can share one path and tests can mock cleanly.
  */
 
 import { createLogger } from '../../logger.js';
@@ -39,9 +37,13 @@ export async function fileGitHubIssue(input: FileIssueInput): Promise<FiledIssue
 
   const repo = input.repo ?? process.env.GITHUB_REPO ?? 'adcontextprotocol/adcp';
 
+  // Bound the fetch so a GitHub outage can't hang the admin request.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const resp = await fetch(`https://api.github.com/repos/${repo}/issues`, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -66,5 +68,7 @@ export async function fileGitHubIssue(input: FileIssueInput): Promise<FiledIssue
   } catch (err) {
     logger.error({ err, repo }, 'GitHub issue create threw');
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }

@@ -186,7 +186,7 @@ describe('Escalation triage endpoints', () => {
     expect(mocks.fileGitHubIssue).toHaveBeenCalledTimes(1);
   });
 
-  it('502s on GitHub API failure and leaves the escalation untouched', async () => {
+  it('502s on GitHub API failure and leaves the escalation + suggestion open for retry', async () => {
     mocks.fileGitHubIssue.mockResolvedValue(null);
     const eid = await seedOpenEscalation('Bug: /some-page 404s');
     const sid = await seedSuggestion(eid, 'file_as_issue');
@@ -202,6 +202,35 @@ describe('Escalation triage endpoints', () => {
     );
     expect(esc.rows[0].status).toBe('open');
     expect(esc.rows[0].github_issue_url).toBeNull();
+
+    // Reservation is released so a retry can claim it.
+    const sug = await query<{ decision: string | null }>(
+      `SELECT decision FROM escalation_triage_suggestions WHERE id = $1`,
+      [sid],
+    );
+    expect(sug.rows[0].decision).toBeNull();
+  });
+
+  it('concurrent accepts on a file_as_issue suggestion file exactly one GitHub issue', async () => {
+    // Simulate two admins hitting accept at nearly the same moment.
+    // The atomic reservation on recordDecision should serialise them
+    // so only one call reaches fileGitHubIssue.
+    mocks.fileGitHubIssue.mockResolvedValue({
+      url: 'https://github.com/adcontextprotocol/adcp/issues/9001',
+      number: 9001,
+      repo: 'adcontextprotocol/adcp',
+    });
+    const eid = await seedOpenEscalation('Bug: /race 404s');
+    const sid = await seedSuggestion(eid, 'file_as_issue');
+
+    const [a, b] = await Promise.all([
+      request(app as never).post(`/api/admin/addie/escalations/suggestions/${sid}/accept`).send({}),
+      request(app as never).post(`/api/admin/addie/escalations/suggestions/${sid}/accept`).send({}),
+    ]);
+
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(mocks.fileGitHubIssue).toHaveBeenCalledTimes(1);
   });
 
   it('GET /escalations/suggestions matches the literal path and does not shadow into the :id handler', async () => {

@@ -210,6 +210,23 @@ describe('classifyEscalation', () => {
     expect(v).toBeNull();
   });
 
+  it('sanitises @mentions and image tags that could inject into the filed issue', async () => {
+    const draft = buildGithubIssueDraft(
+      {
+        ...esc({
+          summary: 'Bug: @adcontextprotocol/core please fix this.',
+          addie_context: 'User pasted ![tracking](https://evil.example/pixel.gif) inline.',
+        }),
+      } as Parameters<typeof buildGithubIssueDraft>[0],
+      [],
+    );
+
+    expect(draft.body).not.toMatch(/(^|\s)@adcontextprotocol\/core/);
+    expect(draft.body).toContain('`@adcontextprotocol`');
+    expect(draft.body).not.toContain('![tracking]');
+    expect(draft.body).toContain('[tracking](');
+  });
+
   it('omits user PII from the proposed issue body', async () => {
     // PII lives in dedicated columns (user_email, user_slack_handle,
     // user_display_name) and in original_request, which we skip entirely.

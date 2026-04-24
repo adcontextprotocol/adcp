@@ -52,11 +52,28 @@ export interface TriageJobResult {
 type ClassificationVerdict = Omit<TriageSuggestionInput, 'escalation_id'> | null;
 
 /**
+ * Neutralise GitHub markdown constructs that could surprise readers of
+ * the filed issue. `@mentions` would ping real users when the draft is
+ * pasted; markdown images pull remote content that could track IPs.
+ * We break the syntax without destroying the readable text.
+ */
+function sanitiseForGithubBody(text: string): string {
+  return text
+    .replace(/(^|\s)@([A-Za-z0-9][A-Za-z0-9-]{0,38})/g, '$1`@$2`')
+    .replace(/!\[/g, '[');
+}
+
+/**
  * Build a GitHub issue draft from an escalation. PII is excluded on
  * purpose: the dedicated contact columns (`user_email`, `user_slack_handle`,
  * `user_display_name`) never enter the body, and `original_request` is
  * skipped because it tends to quote the user's raw message. The summary
- * is Addie's own scrubbed rewrite, so it's safe to include.
+ * is Addie's own scrubbed rewrite, and we additionally neutralise any
+ * `@mentions` or image tags she may have carried through.
+ *
+ * NOTE: callers writing into `addie_escalations.summary` or `.addie_context`
+ * are expected to keep them PII-free — a future intake that pipes raw user
+ * text into those columns would silently ship PII onto a public issue.
  */
 export function buildGithubIssueDraft(
   escalation: Escalation,
@@ -64,18 +81,18 @@ export function buildGithubIssueDraft(
 ): ProposedGithubIssue {
   const titleBase = (escalation.summary ?? 'Untitled escalation').trim();
   const title = titleBase.length > 80
-    ? `${titleBase.slice(0, 77).replace(/\s+\S*$/, '')}…`
+    ? `${titleBase.slice(0, 77).replace(/\s+\S*$/, '')}...`
     : titleBase;
 
   const lines: string[] = [];
   lines.push('Filed from an AAO member escalation via Addie triage.');
   lines.push('');
   lines.push('## Summary');
-  lines.push(escalation.summary ?? '');
+  lines.push(sanitiseForGithubBody(escalation.summary ?? ''));
   if (escalation.addie_context) {
     lines.push('');
     lines.push('## Context');
-    lines.push(escalation.addie_context);
+    lines.push(sanitiseForGithubBody(escalation.addie_context));
   }
   if (brokenUrls.length > 0) {
     lines.push('');
@@ -84,7 +101,11 @@ export function buildGithubIssueDraft(
   }
   lines.push('');
   lines.push(`---`);
-  lines.push(`Escalation #${escalation.id} · ${new Date(escalation.created_at).toISOString().slice(0, 10)}`);
+  const createdIso = (() => {
+    const t = escalation.created_at ? new Date(escalation.created_at).getTime() : NaN;
+    return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : 'unknown';
+  })();
+  lines.push(`Escalation #${escalation.id} · ${createdIso}`);
 
   return {
     title,
