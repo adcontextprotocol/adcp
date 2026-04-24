@@ -18,7 +18,7 @@
  */
 
 import { createLogger } from '../../logger.js';
-import { query } from '../../db/client.js';
+import { query, getPool } from '../../db/client.js';
 import { sendChannelMessage, deleteChannelMessage } from '../../slack/client.js';
 import { draftAnnouncement } from '../../services/announcement-drafter.js';
 import {
@@ -30,6 +30,17 @@ import type { SlackBlock, SlackElement } from '../../slack/types.js';
 const logger = createLogger('announcement-trigger');
 
 const MAX_DRAFTS_PER_RUN = 5;
+
+/**
+ * Hard ceiling on one backfill invocation. The default --limit is 15;
+ * --force can push past this up to BACKFILL_ABSOLUTE_MAX. This exists
+ * to stop a fat-fingered `--limit 9999` from flooding the editorial
+ * channel, billing thousands of Anthropic tokens, and eating Slack rate
+ * limits.
+ */
+export const BACKFILL_SOFT_CAP = 50;
+export const BACKFILL_ABSOLUTE_MAX = 200;
+
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 export interface TriggerResult {
@@ -447,13 +458,49 @@ export interface BackfillOptions {
   limit?: number;
   /** When true, print what would happen without posting or writing. */
   dryRun?: boolean;
+  /**
+   * Bypass the `BACKFILL_SOFT_CAP` ceiling. An operator who really
+   * wants to post more than 50 drafts in one run sets this explicitly
+   * and accepts the blast-radius implications. Still hard-capped by
+   * `BACKFILL_ABSOLUTE_MAX`.
+   */
+  force?: boolean;
 }
+
+export type BackfillPreviewRow = {
+  workos_organization_id: string;
+  org_name: string;
+  membership_tier: string | null;
+  primary_brand_domain: string | null;
+  last_published_at: Date | null;
+};
 
 export interface BackfillResult extends TriggerResult {
   dryRun: boolean;
-  /** When dryRun, the orgs that would have been drafted. */
-  wouldDraft?: Array<{ workos_organization_id: string; org_name: string }>;
+  /** Cap that was actually applied this run. Useful for log output. */
+  effectiveLimit: number;
+  /**
+   * Rows that would have been drafted (dryRun) or that actually were
+   * drafted on the live path. Callers use this to print a per-org
+   * summary to stdout and/or to Slack.
+   */
+  wouldDraft?: BackfillPreviewRow[];
+  /** Orgs the live run successfully drafted. Populated only when not dryRun. */
+  drafted_orgs?: BackfillPreviewRow[];
+  /**
+   * Set when another process holds the backfill advisory lock. Caller
+   * should surface this to the operator rather than silently skipping.
+   */
+  lockedOut?: boolean;
 }
+
+/**
+ * Postgres advisory lock key for the backfill critical section.
+ * `pg_try_advisory_lock(bigint)` returns false when another session
+ * holds the lock — we refuse to run rather than race. The constant is
+ * a stable 64-bit value derived from the string "aao:announcement-backfill".
+ */
+const BACKFILL_LOCK_ID = 4829347509283745837n;
 
 /**
  * One-shot retroactive announcement wave (Workflow B Stage 4 spec).
@@ -465,10 +512,49 @@ export interface BackfillResult extends TriggerResult {
  * header tag. Editorial team spaces them out via the normal approval
  * flow.
  */
+function previewRow(c: AnnounceCandidate): BackfillPreviewRow {
+  return {
+    workos_organization_id: c.workos_organization_id,
+    org_name: c.org_name,
+    membership_tier: c.membership_tier,
+    primary_brand_domain: c.primary_brand_domain,
+    last_published_at: c.last_published_at,
+  };
+}
+
+/**
+ * Resolve `options.limit` + `options.force` into an effective cap.
+ * Clamps to [1, BACKFILL_ABSOLUTE_MAX] regardless; without `force`,
+ * also clamps to BACKFILL_SOFT_CAP. Returns whether the caller's
+ * requested limit was shrunk so the CLI can warn the operator.
+ */
+function resolveBackfillLimit(options: BackfillOptions): {
+  effective: number;
+  shrunkByCap: boolean;
+  shrunkByAbsoluteMax: boolean;
+} {
+  const requested = Math.max(1, options.limit ?? 15);
+  const afterAbsolute = Math.min(requested, BACKFILL_ABSOLUTE_MAX);
+  const shrunkByAbsoluteMax = afterAbsolute < requested;
+  if (options.force) {
+    return {
+      effective: afterAbsolute,
+      shrunkByCap: false,
+      shrunkByAbsoluteMax,
+    };
+  }
+  const afterSoftCap = Math.min(afterAbsolute, BACKFILL_SOFT_CAP);
+  return {
+    effective: afterSoftCap,
+    shrunkByCap: afterSoftCap < requested,
+    shrunkByAbsoluteMax,
+  };
+}
+
 export async function runBackfillAnnouncements(
   options: BackfillOptions,
 ): Promise<BackfillResult> {
-  const limit = Math.max(1, options.limit ?? 15);
+  const { effective: limit } = resolveBackfillLimit(options);
   const dryRun = options.dryRun ?? false;
 
   const result: BackfillResult = {
@@ -476,43 +562,93 @@ export async function runBackfillAnnouncements(
     drafted: 0,
     failed: 0,
     dryRun,
+    effectiveLimit: limit,
   };
 
-  let candidates: AnnounceCandidate[];
+  // Advisory lock: refuse to run if another backfill is already
+  // running. Same org set is otherwise visible to both callers, neither
+  // holds a lock across the INSERT, and they race. Dry-run also takes
+  // the lock so two operators don't both "preview" and then re-run
+  // simultaneously.
+  const pool = getPool();
+  const client = await pool.connect();
+  let haveLock = false;
   try {
-    candidates = await findAnnounceCandidates({ requireProfilePublished: false });
-  } catch (err) {
-    logger.error({ err }, 'backfill: failed to load announce candidates');
-    return result;
-  }
+    const lockRes = await client.query<{ pg_try_advisory_lock: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
+      [BACKFILL_LOCK_ID.toString()],
+    );
+    haveLock = lockRes.rows[0]?.pg_try_advisory_lock === true;
+    if (!haveLock) {
+      logger.warn('backfill: another run is already holding the advisory lock — refusing');
+      result.lockedOut = true;
+      return result;
+    }
 
-  result.candidates = candidates.length;
-  const picked = candidates.slice(0, limit);
+    let candidates: AnnounceCandidate[];
+    try {
+      candidates = await findAnnounceCandidates({ requireProfilePublished: false });
+    } catch (err) {
+      logger.error({ err }, 'backfill: failed to load announce candidates');
+      return result;
+    }
 
-  if (dryRun) {
-    result.wouldDraft = picked.map((c) => ({
-      workos_organization_id: c.workos_organization_id,
-      org_name: c.org_name,
-    }));
+    result.candidates = candidates.length;
+    const picked = candidates.slice(0, limit);
+
+    if (dryRun) {
+      result.wouldDraft = picked.map(previewRow);
+      logger.info(
+        { totalEligible: candidates.length, limit, wouldDraft: result.wouldDraft.length },
+        'backfill dry-run: no posts, no activity writes',
+      );
+      return result;
+    }
+
+    const drafted: BackfillPreviewRow[] = [];
+    for (const candidate of picked) {
+      const ok = await processAnnounceCandidate(candidate, {
+        reviewChannel: options.reviewChannel,
+        backfill: true,
+      });
+      if (ok) {
+        result.drafted++;
+        drafted.push(previewRow(candidate));
+      } else {
+        result.failed++;
+      }
+    }
+    result.drafted_orgs = drafted;
+
+    // One summary line in the editorial channel so the reviewers know a
+    // retroactive wave just landed. Non-critical — if it fails we log
+    // and move on; the cards themselves are the real signal.
+    if (result.drafted > 0) {
+      try {
+        const summary = `📦 Backfill wave posted — ${result.drafted} retroactive draft${result.drafted === 1 ? '' : 's'}${result.failed > 0 ? ` · ${result.failed} failed` : ''} (${candidates.length} eligible, cap ${limit}).`;
+        await sendChannelMessage(
+          options.reviewChannel,
+          { text: summary, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: summary } }] },
+          { requirePrivate: true },
+        );
+      } catch (err) {
+        logger.warn({ err }, 'backfill: failed to post summary message to editorial channel');
+      }
+    }
+
     logger.info(
-      { totalEligible: candidates.length, limit, wouldDraft: result.wouldDraft.length },
-      'backfill dry-run: no posts, no activity writes',
+      { drafted: result.drafted, failed: result.failed, totalEligible: candidates.length, limit },
+      'backfill complete',
     );
     return result;
+  } finally {
+    if (haveLock) {
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [BACKFILL_LOCK_ID.toString()]);
+      } catch (err) {
+        logger.warn({ err }, 'backfill: failed to release advisory lock (client will release it)');
+      }
+    }
+    client.release();
   }
-
-  for (const candidate of picked) {
-    const ok = await processAnnounceCandidate(candidate, {
-      reviewChannel: options.reviewChannel,
-      backfill: true,
-    });
-    if (ok) result.drafted++;
-    else result.failed++;
-  }
-
-  logger.info(
-    { drafted: result.drafted, failed: result.failed, totalEligible: candidates.length, limit },
-    'backfill complete',
-  );
-  return result;
 }

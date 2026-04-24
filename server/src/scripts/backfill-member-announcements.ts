@@ -9,37 +9,62 @@
  * `[BACKFILL]` so editorial can tell them apart from the live flow.
  * Approval uses the same Slack buttons; no separate surface.
  *
- * Usage:
- *   npx tsx server/src/scripts/backfill-member-announcements.ts
- *     [--limit 10] [--dry-run]
+ * ## Ops pre-flight
  *
- * Env:
+ *   1. Run with `--dry-run` first — eyeball the candidate list.
+ *   2. Start small: `--limit 3`, verify the three review cards, then
+ *      go wider.
+ *   3. Safe to Ctrl-C mid-run; the existing idempotency filter picks
+ *      the resumption point automatically.
+ *   4. Only one backfill can run at a time (Postgres advisory lock).
+ *      If the script refuses with "another run holds the lock", pg
+ *      itself will release on connection close — usually just retry.
+ *   5. Hard ceiling: without `--force`, max is 50. With `--force`,
+ *      absolute max is 200 — chosen to bound Slack rate + Anthropic
+ *      spend per invocation.
+ *
+ * ## Usage
+ *
+ *   npx tsx server/src/scripts/backfill-member-announcements.ts
+ *     [--limit N] [--dry-run] [--force]
+ *
+ * ## Env
+ *
  *   DATABASE_URL                     required
  *   SLACK_EDITORIAL_REVIEW_CHANNEL   required unless --dry-run
  *   APP_URL                          optional, used in profile links
  *   ADDIE_BOT_TOKEN                  required for non-dry-run posts
  *   ANTHROPIC_API_KEY                required for the drafter
  *
- * Safe-to-retry: idempotency on `announcement_draft_posted` means
- * re-running the script will not re-draft orgs that landed last run.
+ * Prod-admin-only: whoever can run this has shell access, the Addie
+ * bot token, and Anthropic billing. No finer-grained authz in-band.
  */
 
 import { initializeDatabase, closeDatabase } from '../db/client.js';
 import { getDatabaseConfig } from '../config.js';
-import { runBackfillAnnouncements } from '../addie/jobs/announcement-trigger.js';
+import {
+  runBackfillAnnouncements,
+  BACKFILL_SOFT_CAP,
+  BACKFILL_ABSOLUTE_MAX,
+  type BackfillPreviewRow,
+} from '../addie/jobs/announcement-trigger.js';
 
 interface CliArgs {
   limit: number;
   dryRun: boolean;
+  force: boolean;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
   let limit = 15;
   let dryRun = false;
+  let force = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') {
       dryRun = true;
+    } else if (a === '--force') {
+      force = true;
     } else if (a === '--limit') {
       const next = argv[i + 1];
       const parsed = Number.parseInt(next, 10);
@@ -64,15 +89,18 @@ export function parseArgs(argv: string[]): CliArgs {
       throw new Error(`Unknown argument: ${a}`);
     }
   }
-  return { limit, dryRun };
+  return { limit, dryRun, force };
 }
 
 const USAGE = `
 Usage: npx tsx server/src/scripts/backfill-member-announcements.ts [options]
 
-  --limit <N>   Cap on drafts posted in this run (default 15)
+  --limit <N>   Cap on drafts posted in this run (default 15, max ${BACKFILL_SOFT_CAP}
+                without --force; ${BACKFILL_ABSOLUTE_MAX} absolute max with --force)
   --dry-run     Query candidates and print what would be drafted;
                 don't post to Slack or write activity rows
+  --force       Allow --limit above ${BACKFILL_SOFT_CAP} (still capped at ${BACKFILL_ABSOLUTE_MAX}). Use
+                this when you've done a dry-run and accept the blast radius.
 
 Env:
   DATABASE_URL (required)
@@ -80,6 +108,15 @@ Env:
   ADDIE_BOT_TOKEN (required unless --dry-run)
   ANTHROPIC_API_KEY (required unless --dry-run)
 `;
+
+function formatPreviewRow(r: BackfillPreviewRow): string {
+  const tier = r.membership_tier ?? 'no-tier';
+  const domain = r.primary_brand_domain ?? 'no-domain';
+  const when = r.last_published_at
+    ? new Date(r.last_published_at).toISOString().slice(0, 10)
+    : 'no-event';
+  return `    - ${r.workos_organization_id}  ${r.org_name}  [${tier}·${domain}·${when}]`;
+}
 
 async function main(): Promise<void> {
   let args: CliArgs;
@@ -108,6 +145,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  if (args.limit > BACKFILL_SOFT_CAP && !args.force) {
+    console.error(
+      `--limit ${args.limit} exceeds the soft cap of ${BACKFILL_SOFT_CAP}. Pass --force to override (max ${BACKFILL_ABSOLUTE_MAX}).`,
+    );
+    process.exit(2);
+  }
+
   initializeDatabase(dbConfig);
 
   try {
@@ -115,20 +159,39 @@ async function main(): Promise<void> {
       reviewChannel,
       limit: args.limit,
       dryRun: args.dryRun,
+      force: args.force,
     });
+
+    if (result.lockedOut) {
+      console.error(
+        '\nAnother backfill run is already in progress (advisory lock held). Wait for it to finish, or check for a stuck session, and retry.',
+      );
+      process.exit(3);
+    }
 
     if (result.dryRun) {
       console.log(`\nBackfill dry-run:`);
       console.log(`  Eligible candidates: ${result.candidates}`);
-      console.log(`  Would draft:         ${result.wouldDraft?.length ?? 0} (cap ${args.limit})`);
+      console.log(
+        `  Would draft:         ${result.wouldDraft?.length ?? 0} (effective cap ${result.effectiveLimit})`,
+      );
       for (const c of result.wouldDraft ?? []) {
-        console.log(`    - ${c.workos_organization_id}  ${c.org_name}`);
+        console.log(formatPreviewRow(c));
       }
+      console.log(
+        `\nNext step: re-run without --dry-run; start with --limit 3 to verify cards land correctly.`,
+      );
     } else {
       console.log(`\nBackfill complete:`);
       console.log(`  Eligible candidates: ${result.candidates}`);
       console.log(`  Drafted:             ${result.drafted}`);
       console.log(`  Failed:              ${result.failed}`);
+      if (result.drafted_orgs?.length) {
+        console.log(`  Cards posted for:`);
+        for (const c of result.drafted_orgs) {
+          console.log(formatPreviewRow(c));
+        }
+      }
     }
   } finally {
     await closeDatabase();
