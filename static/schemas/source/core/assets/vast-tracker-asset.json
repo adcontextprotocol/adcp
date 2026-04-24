@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/vast-tracker-asset.json",
+  "title": "VAST Tracker Asset",
+  "description": "A single tracker URL bound to a VAST `<TrackingEvents>` event. Emitted by the creative agent as a decomposed VAST-event URL; the sales agent assembles these into the VAST `<TrackingEvents>` block at serve time. IMPORTANT: this asset type is for `<TrackingEvents>` URLs only (start, quartiles, complete, pause, mute, etc.). The `<Impression>` URL MUST be modeled as a `url` asset with `url_type: \"tracker_pixel\"`, not as a vast_tracker with `vast_event: \"impression\"`. Decomposed trackers let format requirements bind specific measurement events (e.g., MRC viewable) without forcing the buyer to construct a full VAST tag.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "vast_tracker",
+      "description": "Discriminator identifying this as a VAST tracker asset. See /schemas/creative/asset-types for the registry."
+    },
+    "vast_event": {
+      "$ref": "/schemas/enums/vast-tracking-event.json",
+      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `<Tracking event=\"...\">` attribute. MUST NOT be `impression` — use a `url` asset with `url_type: \"tracker_pixel\"` for impression trackers (they belong in `<Impression>`, not `<TrackingEvents>`)."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Tracker URL that fires when `vast_event` occurs. May carry AdCP universal macros (e.g., `{SKU}`, `{MEDIA_BUY_ID}`); the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+    },
+    "offset": {
+      "type": "string",
+      "description": "VAST `offset` attribute for `vast_event: \"progress\"`. Format matches VAST: `HH:MM:SS[.mmm]` for absolute time, or an integer percentage suffixed with `%`. Ignored for other events.",
+      "pattern": "^(\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?|\\d{1,3}%)$"
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type",
+    "vast_event",
+    "url"
+  ],
+  "additionalProperties": true
+}

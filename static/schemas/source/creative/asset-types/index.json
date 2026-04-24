@@ -31,6 +31,16 @@
       "schema": "/schemas/core/assets/daast-asset.json",
       "typical_use": "Third-party served audio ads with DAAST 1.0-1.1"
     },
+    "vast_tracker": {
+      "description": "A single URL bound to a VAST `<TrackingEvents>` event (start, quartile, complete, etc.). Assembled into the VAST `<TrackingEvents>` block by the sales agent. For `<Impression>` URLs, use `url` asset with `url_type: \"tracker_pixel\"` instead.",
+      "schema": "/schemas/core/assets/vast-tracker-asset.json",
+      "typical_use": "Decomposed VAST event trackers on CTV/video formats where the creative agent emits per-event URLs rather than a complete VAST tag"
+    },
+    "daast_tracker": {
+      "description": "Audio-side analogue of vast_tracker: a single URL bound to a DAAST `<TrackingEvents>` event.",
+      "schema": "/schemas/core/assets/daast-tracker-asset.json",
+      "typical_use": "Decomposed DAAST event trackers on audio formats"
+    },
     "text": {
       "description": "Plain text content asset",
       "schema": "/schemas/core/assets/text-asset.json",
