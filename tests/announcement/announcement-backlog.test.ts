@@ -140,6 +140,53 @@ describe('loadAnnouncementBacklog', () => {
     expect(sql).toMatch(/LEFT JOIN organizations o/);
   });
 
+  it('exposes org_created_at so the UI can render signup-age', async () => {
+    const orgCreated = new Date('2024-06-15T10:00:00Z');
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          organization_id: 'org_AAA',
+          org_name: 'Alpha Co',
+          membership_tier: 'builder',
+          profile_slug: 'alpha',
+          org_created_at: orgCreated,
+          draft_posted_at: new Date(),
+          visual_source: 'brand_logo',
+          is_backfill: false,
+          slack_posted_at: null,
+          linkedin_marked_at: null,
+          skipped_at: null,
+        },
+      ],
+    });
+    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
+    const rows = await loadAnnouncementBacklog();
+    expect(rows[0].org_created_at).toEqual(orgCreated);
+  });
+
+  it('org_created_at is null when the org row was deleted (orphan draft)', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          organization_id: 'org_GONE',
+          org_name: null,
+          membership_tier: null,
+          profile_slug: null,
+          org_created_at: null,
+          draft_posted_at: new Date(),
+          visual_source: null,
+          is_backfill: false,
+          slack_posted_at: null,
+          linkedin_marked_at: null,
+          skipped_at: null,
+        },
+      ],
+    });
+    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
+    const rows = await loadAnnouncementBacklog();
+    expect(rows[0].org_created_at).toBeNull();
+  });
+
   it('falls back to organization_id when the joined org row is null', async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -148,6 +195,7 @@ describe('loadAnnouncementBacklog', () => {
           org_name: null, // LEFT JOIN returned no org row
           membership_tier: null,
           profile_slug: null,
+          org_created_at: null,
           draft_posted_at: new Date(),
           visual_source: null,
           is_backfill: false,

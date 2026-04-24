@@ -99,6 +99,7 @@
       line-height: 1.4;
     }
     .badge-tier { background: var(--color-gray-100); color: var(--color-text-secondary); }
+    .signup-cell { color: var(--color-text-secondary); font-size: var(--text-xs); white-space: nowrap; }
     .badge-backfill { background: #fef3c7; color: #92400e; margin-left: var(--space-2); }
     .status-cell {
       display: inline-flex;
@@ -297,7 +298,7 @@
           return new Date(b.draft_posted_at) - new Date(a.draft_posted_at);
         });
       if (filtered.length === 0) {
-        wrap.innerHTML = `<div class="empty">No announcements in state &ldquo;${escapeHtml(STATE_LABELS[activeState])}&rdquo;.</div>`;
+        wrap.innerHTML = `<div class="empty">${emptyStateFor(activeState)}</div>`;
         return;
       }
       const bodyHtml = filtered.map(renderRow).join('');
@@ -307,6 +308,7 @@
             <tr>
               <th>Org</th>
               <th>Tier</th>
+              <th>Signed up</th>
               <th>Draft posted</th>
               <th>Slack</th>
               <th>LinkedIn</th>
@@ -318,6 +320,22 @@
       `;
     }
 
+    function emptyStateFor(state) {
+      // Informational vs actionable:
+      //   - The two "live" tabs (pending_review, li_pending) are what
+      //     editorial checks daily. An empty state there means "nothing
+      //     to do right now" — tell them the flow keeps running without
+      //     them needing to refresh.
+      //   - all/done/skipped: informational; the plain label is fine.
+      if (state === 'pending_review') {
+        return 'Nothing to review. New drafts are posted hourly by the trigger job.';
+      }
+      if (state === 'li_pending') {
+        return 'Nothing waiting on LinkedIn right now.';
+      }
+      return `No announcements in state &ldquo;${escapeHtml(STATE_LABELS[state])}&rdquo;.`;
+    }
+
     function renderRow(r) {
       const profileHref = `/admin/accounts/${encodeURIComponent(r.organization_id)}`;
       const tier = r.membership_tier ?? '—';
@@ -327,6 +345,12 @@
       const stuckLabel = stuck
         ? ` <span class="stuck-warn" aria-label="Draft stuck ${daysPending} days">· stuck ${daysPending}d</span>`
         : '';
+      // Signup-age answers "is this still timely?" without a click.
+      // Org row can be null (orphan draft) so the column falls back
+      // to em-dash.
+      const signupCell = r.org_created_at
+        ? `<span title="${escapeHtml(fmtDate(r.org_created_at))}">${signupRelative(r.org_created_at)}</span>`
+        : '—';
       // Inline Mark-LI button shows only when Slack is posted and
       // LinkedIn isn't. Uses the same POST endpoint as the account
       // detail page surface from PR #2981; idempotent server-side.
@@ -343,6 +367,7 @@
             ${r.is_backfill ? '<span class="badge badge-backfill" title="Posted via the retroactive backfill script">BACKFILL</span>' : ''}
           </td>
           <td><span class="badge badge-tier">${escapeHtml(tier)}</span></td>
+          <td class="signup-cell">${signupCell}</td>
           <td>${draftWhen}${stuckLabel}</td>
           <td>${r.slack_posted
               ? `<span class="status-cell status-done">✓ ${fmtDate(r.slack_posted_at)}</span>`
@@ -423,6 +448,20 @@
       } catch { return 0; }
     }
 
+    function signupRelative(iso) {
+      // Relative age — "3d ago", "2mo ago", "1y ago" — so an editorial
+      // scan of the table reads "this member joined recently" vs
+      // "this is a stale backfill" without mental math on a date.
+      if (!iso) return '—';
+      const days = daysAgo(iso);
+      if (days < 1) return 'today';
+      if (days < 30) return `${days}d ago`;
+      const months = Math.floor(days / 30);
+      if (months < 12) return `${months}mo ago`;
+      const years = Math.floor(days / 365);
+      return `${years}y ago`;
+    }
+
     function escapeHtml(text) {
       if (text === null || text === undefined) return '';
       const div = document.createElement('div');
@@ -430,7 +469,31 @@
       return div.innerHTML;
     }
 
+    // Arrow-key nav across the filter tabs. Follows the WAI-ARIA
+    // "tabs" pattern: Left/Right cycle, Home/End jump to ends.
+    // Keeps focus+selection in sync.
+    function installTabKeyboard() {
+      const tabs = Array.from(document.querySelectorAll('.filter-tabs .tab'));
+      const tablist = document.querySelector('.filter-tabs');
+      if (!tablist) return;
+      tablist.addEventListener('keydown', (e) => {
+        const idx = tabs.indexOf(document.activeElement);
+        if (idx < 0) return;
+        let next = idx;
+        if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else return;
+        e.preventDefault();
+        tabs[next].focus();
+        const state = tabs[next].dataset.state;
+        if (state) setFilter(state);
+      });
+    }
+
     loadBacklog();
+    installTabKeyboard();
   </script>
 </body>
 </html>
