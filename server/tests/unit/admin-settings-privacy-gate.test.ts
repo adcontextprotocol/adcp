@@ -27,6 +27,7 @@ const {
   mockSetAnnouncementChannel,
   mockGetBillingChannel,
   mockGetAnnouncementChannel,
+  mockGetSlackChannels,
 } = vi.hoisted(() => ({
   mockVerifyPrivacy: vi.fn<any>(),
   mockIsSlackConfigured: vi.fn<any>(),
@@ -34,12 +35,13 @@ const {
   mockSetAnnouncementChannel: vi.fn<any>(),
   mockGetBillingChannel: vi.fn<any>(),
   mockGetAnnouncementChannel: vi.fn<any>(),
+  mockGetSlackChannels: vi.fn<any>(),
 }));
 
 vi.mock('../../src/slack/client.js', () => ({
   isSlackConfigured: (...args: unknown[]) => mockIsSlackConfigured(...args),
   verifyChannelPrivacyForWrite: (...args: unknown[]) => mockVerifyPrivacy(...args),
-  getSlackChannels: vi.fn(),
+  getSlackChannels: (...args: unknown[]) => mockGetSlackChannels(...args),
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -115,7 +117,7 @@ describe('PUT /api/admin/settings/billing-channel — privacy gate (#3003)', () 
       .send({ channel_id: 'C1234567', channel_name: 'billing' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Could not verify channel');
-    expect(res.body.message).toMatch(/Invite Addie/i);
+    expect(res.body.message).toMatch(/Invite @Addie/i);
     expect(mockSetBillingChannel).not.toHaveBeenCalled();
   });
 
@@ -192,5 +194,72 @@ describe('PUT /api/admin/settings/announcement-channel — privacy gate (#3003)'
     expect(res.body.error).toBe('Invalid channel');
     expect(res.body.message).toMatch(/must be public/i);
     expect(mockSetAnnouncementChannel).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/admin/settings/slack-channels — is_member pre-filter', () => {
+  // Without this filter, the public-channel picker (used by the
+  // announcement setting) would list every public channel in the
+  // workspace — including ones the bot isn't a member of — and a
+  // "valid" pick would then hit cannot_verify at save time. Shifting
+  // the filter to the read side keeps the dropdown honest.
+  it('drops channels where is_member is false', async () => {
+    mockGetSlackChannels.mockResolvedValueOnce([
+      { id: 'C_IN', name: 'all-agentic-ads', is_private: false, is_member: true, num_members: 42 },
+      { id: 'C_OUT', name: 'random-public', is_private: false, is_member: false, num_members: 99 },
+    ]);
+    const app = await buildApp();
+    const res = await request(app).get('/api/admin/settings/slack-channels?visibility=public');
+    expect(res.status).toBe(200);
+    expect(res.body.channels).toEqual([
+      expect.objectContaining({ id: 'C_IN', name: 'all-agentic-ads' }),
+    ]);
+    expect(res.body.channels).not.toContainEqual(expect.objectContaining({ id: 'C_OUT' }));
+  });
+
+  it('treats missing is_member as still-a-member (conservative default)', async () => {
+    // Private-channel listings don't return is_member at all because
+    // conversations.list only surfaces private channels the bot is
+    // already in. Don't filter those out based on an absent field.
+    mockGetSlackChannels.mockResolvedValueOnce([
+      { id: 'C_PRIV', name: 'admin-editorial-review', is_private: true },
+    ]);
+    const app = await buildApp();
+    const res = await request(app).get('/api/admin/settings/slack-channels');
+    expect(res.body.channels).toEqual([
+      expect.objectContaining({ id: 'C_PRIV' }),
+    ]);
+  });
+});
+
+/**
+ * Invariant lint: every PUT handler on admin/settings.ts that accepts
+ * a `channel_id` MUST go through `requireChannelPrivacy`. A new
+ * channel-setting endpoint that forgets the gate would be a silent
+ * regression of #3003 — adding per-endpoint supertest coverage for
+ * all seven routes is low-signal duplication, but pinning the
+ * invariant in one grep-style test catches a future omission.
+ */
+describe('invariant: channel-setting PUT handlers call requireChannelPrivacy', () => {
+  it('every PUT handler that reads channel_id also goes through the privacy gate', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(
+      new URL('../../src/routes/admin/settings.ts', import.meta.url),
+      'utf8',
+    );
+    // Split on `router.put(` — each section is one handler body. The
+    // prospect-triage-enabled handler also uses `router.put` but
+    // doesn't take a channel_id; we detect channel handlers by a
+    // `{ channel_id, channel_name }` destructure and require that
+    // `requireChannelPrivacy` appears in the same block.
+    const handlers = source.split(/router\.put\(/).slice(1);
+    const channelHandlers = handlers.filter((h) =>
+      h.slice(0, 2000).includes('{ channel_id, channel_name }'),
+    );
+    expect(channelHandlers.length).toBe(7);
+    for (const body of channelHandlers) {
+      // Expected shape: `const privacyErr = await requireChannelPrivacy(...)`
+      expect(body.slice(0, 2000)).toMatch(/requireChannelPrivacy\(/);
+    }
   });
 });

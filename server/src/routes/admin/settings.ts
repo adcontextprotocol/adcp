@@ -64,7 +64,7 @@ async function requireChannelPrivacy(
   if (check.reason === 'cannot_verify') {
     return res.status(400).json({
       error: 'Could not verify channel',
-      message: `Could not verify the channel's privacy for ${contextNoun}. Invite Addie to the channel (and confirm the bot has channels:read scope) and try again.`,
+      message: `Could not verify the channel for ${contextNoun}. Invite @Addie to the channel in Slack and save again. If that doesn't work, an AAO engineer may need to re-grant the bot's channel permissions.`,
     });
   }
   // wrong_privacy
@@ -135,8 +135,18 @@ export function createAdminSettingsRouter(): Router {
         exclude_archived: true,
       });
 
+      // Pre-filter to channels the bot is actually a member of. For
+      // private types Slack already only returns bot-member channels,
+      // so this matters mostly for public — without it the announcement
+      // picker would list every public channel in the workspace and
+      // picking a non-member would hit `verifyChannelPrivacyForWrite`
+      // cannot_verify at save time. Match the write-side gate at the
+      // read-side so the only save-time errors are genuine drift, not
+      // "you picked something you shouldn't have been offered."
+      const memberOnly = channels.filter((c) => c.is_member !== false);
+
       // Sort by name and return minimal info
-      const sorted = channels
+      const sorted = memberOnly
         .map(c => ({
           id: c.id,
           name: c.name,
