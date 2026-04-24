@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
+import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
@@ -106,5 +106,20 @@ describe('buildUnavailableSetsHint', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
     const contentSection = hint.match(/- \*\*content\*\*:[^\n]*/)?.[0] ?? '';
     expect(contentSection).not.toMatch(/github issue/i);
+  });
+
+  it('never advertises tools that are not actually in ALWAYS_AVAILABLE_TOOLS (drift guard)', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    // Extract tool names from the "Always Available" section: lines of the
+    // form `- <tool_name> — blurb`.
+    const section = hint.split('## Capabilities That ARE Always Available')[1] ?? '';
+    const advertised = [...section.matchAll(/^- (\w+) — /gm)].map((m) => m[1]);
+    expect(advertised.length).toBeGreaterThan(0);
+    for (const tool of advertised) {
+      expect(
+        ALWAYS_AVAILABLE_TOOLS,
+        `Hint advertised "${tool}" as always-available but it is not in ALWAYS_AVAILABLE_TOOLS`,
+      ).toContain(tool);
+    }
   });
 });
