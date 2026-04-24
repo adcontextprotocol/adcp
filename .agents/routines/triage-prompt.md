@@ -385,13 +385,64 @@ usually unnecessary — the PR itself is the artifact.
 
 Apply `claude-triaged` + any matching bucket labels.
 
-### Milestone assignment
+### Milestone + release-branch routing
 
-Apply the milestone line **only** when there's explicit signal:
-issue names a target version, a linked PR is already in a milestone,
-or a version-shaped label (`v3.1`, `3.1-patch`) is present. Otherwise
-omit the milestone line entirely. Never infer a milestone from vibes.
-Never create new milestones. On RFC / epic / deferred: always omit.
+Every PR you open MUST resolve both a milestone (where the change is
+released) and a base branch (where the PR targets). The mapping is
+driven by the changeset bump level, not by vibes.
+
+**Step 1 — Decide the bump level.**
+
+- **Protocol repo (adcp) only:** the changeset file front-matter
+  names the bump level: `patch`, `minor`, or `major`. Non-protocol
+  changes (server, docs-only typos, infra) use `--empty` with no
+  bump — these get no milestone and target `main`.
+- **Sibling SDK repos (adcp-client, adcp-client-python, adcp-go):**
+  changeset/release-please drives versioning repo-by-repo; follow
+  each repo's local PR constraints.
+
+**Step 2 — Fetch live release signal.**
+
+```
+gh api repos/<owner>/<repo>/milestones --jq \
+  '.[] | select(.state == "open" and (.title | test("^\\d+\\.\\d+(\\.\\d+)?$"))) |
+  {title, number, due: .due_on}'
+gh api "repos/<owner>/<repo>/branches?per_page=100" --paginate --jq \
+  '.[] | select(.name | test("^\\d+\\.\\d+\\.x$")) | .name'
+```
+
+The repo publishes:
+- An open `X.Y.0` milestone = the next minor release
+- (Sometimes) an open `X.Y+1.0` milestone = the next major after that
+- Potentially an `X.Y.x` branch = the current patch line for the
+  last shipped minor
+- A `4.0` / `X.0` open milestone = the next major
+
+**Step 3 — Apply the routing matrix.**
+
+| Bump level | Milestone | Base branch | Notes |
+|---|---|---|---|
+| `major` | Next open `X.0` milestone (e.g., `4.0`) | `main` | If no next-major milestone is open, flag-for-human — don't invent one. |
+| `minor` | Next open `X.Y.0` milestone (e.g., `3.1.0`) | `main` | If no next-minor milestone is open, flag-for-human. |
+| `patch` | Next open `X.Y.Z` milestone if one exists; otherwise the active `X.Y.0` milestone | Active `X.Y.x` branch if it exists; otherwise **flag-for-human with "no patch branch open — needs @bokelley to cut one"** | Patches ship on the patch line, not `main`. |
+| `--empty` (no bump) | none | `main` | Server / docs typo / infra. |
+
+**Never create milestones.** If the expected milestone doesn't
+exist, surface the gap in the run summary and flag the PR for human
+review instead of inventing one.
+
+**Apply the milestone in the PR workflow:**
+
+```
+gh pr edit <PR#> --milestone "<title from gh api>"
+```
+
+Include the `Milestone:` line in the triage comment when you draft
+the PR so the reader sees the routing decision.
+
+**On RFC / epic / deferred issues:** omit the milestone line
+entirely — those don't ship as a single PR, they ship as whatever
+PR-shaped work emerges from the discussion.
 
 ## Non-breaking vs. breaking — the central question for Execute
 
