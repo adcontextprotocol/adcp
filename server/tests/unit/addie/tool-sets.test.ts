@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS } from '../../../src/addie/tool-sets.js';
+import { getToolsForSets, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
@@ -61,5 +61,50 @@ describe('getToolsForSets', () => {
       const tools = getToolsForSets(['knowledge'], false, true);
       expect(tools).toContain('search_docs');
     });
+  });
+
+  describe('github issue tools always available', () => {
+    it('includes draft_github_issue regardless of routed sets', () => {
+      const tools = getToolsForSets(['knowledge'], false, false);
+      expect(tools).toContain('draft_github_issue');
+    });
+
+    it('includes create_github_issue regardless of routed sets', () => {
+      const tools = getToolsForSets(['knowledge'], false, false);
+      expect(tools).toContain('create_github_issue');
+    });
+
+    it('includes github issue tools in public channels', () => {
+      const tools = getToolsForSets([], false, true);
+      expect(tools).toContain('draft_github_issue');
+      expect(tools).toContain('create_github_issue');
+    });
+  });
+
+  describe('content set description does not claim ownership of github issuing', () => {
+    it('omits "draft GitHub issues" from the description', () => {
+      expect(TOOL_SETS.content.description).not.toMatch(/github issue/i);
+    });
+  });
+});
+
+describe('buildUnavailableSetsHint', () => {
+  it('returns empty when all sets are selected', () => {
+    const allSets = Object.keys(TOOL_SETS);
+    expect(buildUnavailableSetsHint(allSets, true)).toBe('');
+  });
+
+  it('lists an always-available escape-hatch section when sets are unavailable', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    expect(hint).toContain('Always Available');
+    expect(hint).toContain('draft_github_issue');
+    expect(hint).toContain('create_github_issue');
+    expect(hint).toContain('escalate_to_admin');
+  });
+
+  it('never describes the content set as owning GitHub issue filing', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    const contentSection = hint.match(/- \*\*content\*\*:[^\n]*/)?.[0] ?? '';
+    expect(contentSection).not.toMatch(/github issue/i);
   });
 });

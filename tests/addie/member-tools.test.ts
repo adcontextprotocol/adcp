@@ -281,6 +281,36 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('too long for a pre-filled URL');
       expect(result).toContain('create the issue manually');
     });
+
+    it('accepts adcp-client as a valid repo', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        repo: 'adcp-client',
+      });
+
+      expect(result).toContain('github.com/adcontextprotocol/adcp-client/issues/new');
+    });
+
+    it('rejects invented repo names and names the allowed list', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        repo: 'creative-agent',
+      });
+
+      expect(result).toContain('creative-agent');
+      expect(result).toContain('not a recognized AdCP repository');
+      expect(result).toContain('adcp');
+      expect(result).toContain('adcp-client');
+      expect(result).toContain('adcp-go');
+    });
   });
 
   describe('create_github_issue handler', () => {
