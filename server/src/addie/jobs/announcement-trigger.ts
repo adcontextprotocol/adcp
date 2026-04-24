@@ -418,15 +418,15 @@ async function processAnnounceCandidate(
 }
 
 /**
- * Resolve the editorial review channel. Prefers the admin-UI DB setting
- * (`editorial_slack_channel`), falls back to the legacy
- * `SLACK_EDITORIAL_REVIEW_CHANNEL` env var for safe rollout. Both null
- * returns `null`; callers should skip the run and log.
+ * Resolve the editorial review channel from the admin-UI DB setting
+ * (`editorial_slack_channel`). Returns `null` when the setting is
+ * unset or when the DB read fails; callers skip the run and log.
  *
- * Logs at error level when the DB read fails — the env fallback keeps
- * the job running for transient blips, but a persistent outage where
- * the admin's DB value is stale (or wrong) needs SRE attention, not a
- * buried warn.
+ * The `SLACK_EDITORIAL_REVIEW_CHANNEL` env var used to be a fallback
+ * path for the safe-rollout window after the env→DB migration landed
+ * (PR #3000). Prod now has the DB value set, so the env fallback is
+ * dropped — a stale env var in a future deploy would otherwise mask
+ * a misconfigured DB value rather than failing loudly.
  */
 export async function resolveEditorialChannel(): Promise<string | null> {
   try {
@@ -435,10 +435,9 @@ export async function resolveEditorialChannel(): Promise<string | null> {
       return setting.channel_id.trim();
     }
   } catch (err) {
-    logger.error({ err }, 'resolveEditorialChannel: DB read failed, falling back to env');
+    logger.error({ err }, 'resolveEditorialChannel: DB read failed — editorial channel unavailable');
   }
-  const env = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
-  return env && env.trim() ? env.trim() : null;
+  return null;
 }
 
 export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
@@ -447,7 +446,7 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
   const reviewChannel = await resolveEditorialChannel();
   if (!reviewChannel) {
     logger.warn(
-      'Editorial channel not configured — set it at /admin/settings (or SLACK_EDITORIAL_REVIEW_CHANNEL env) — skipping run',
+      'Editorial channel not configured — set it at /admin/settings — skipping run',
     );
     return result;
   }

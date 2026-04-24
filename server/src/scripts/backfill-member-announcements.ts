@@ -31,10 +31,13 @@
  * ## Env
  *
  *   DATABASE_URL                     required
- *   SLACK_EDITORIAL_REVIEW_CHANNEL   required unless --dry-run
  *   APP_URL                          optional, used in profile links
  *   ADDIE_BOT_TOKEN                  required for non-dry-run posts
  *   ANTHROPIC_API_KEY                required for the drafter
+ *
+ * The editorial review channel is read from the `editorial_slack_channel`
+ * system setting (set via /admin/settings). A non-dry-run exits with
+ * an error if that setting is unconfigured.
  *
  * Prod-admin-only: whoever can run this has shell access, the Addie
  * bot token, and Anthropic billing. No finer-grained authz in-band.
@@ -105,9 +108,11 @@ Usage: npx tsx server/src/scripts/backfill-member-announcements.ts [options]
 
 Env:
   DATABASE_URL (required)
-  SLACK_EDITORIAL_REVIEW_CHANNEL (required unless --dry-run)
   ADDIE_BOT_TOKEN (required unless --dry-run)
   ANTHROPIC_API_KEY (required unless --dry-run)
+
+The editorial review channel is read from the editorial_slack_channel
+system setting. Configure it at /admin/settings.
 `;
 
 function formatPreviewRow(r: BackfillPreviewRow): string {
@@ -149,12 +154,13 @@ async function main(): Promise<void> {
 
   initializeDatabase(dbConfig);
 
-  // DB first (admin UI), env fallback. Only required on live runs —
-  // dry-run just wants to enumerate candidates.
+  // Resolve from the admin-UI `editorial_slack_channel` setting.
+  // Dry-run doesn't post anywhere, so it tolerates an unconfigured
+  // channel and just enumerates candidates.
   const reviewChannel = (await resolveEditorialChannel()) ?? '';
   if (!args.dryRun && !reviewChannel) {
     console.error(
-      'Editorial channel not configured. Set it at /admin/settings (or SLACK_EDITORIAL_REVIEW_CHANNEL env).',
+      'Editorial channel not configured. Set it at /admin/settings.',
     );
     await closeDatabase();
     process.exit(1);

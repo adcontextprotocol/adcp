@@ -903,11 +903,6 @@ loadAuditHistory();
     }
 
     // Update the current editorial channel display.
-    // NB: we don't claim the feature is "disabled" when unset — the
-    // server can still fall back to SLACK_EDITORIAL_REVIEW_CHANNEL env
-    // var, and we don't know from the client whether that's set. "Not
-    // configured" is the honest label; the admin can reason about
-    // what that means for their deployment.
     function updateCurrentEditorialChannelDisplay() {
       const el = document.getElementById('currentEditorialChannel');
       const channel = currentSettings?.editorial_channel;
