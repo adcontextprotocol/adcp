@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { AddieModelConfig, ModelConfig, getModelBetas } from '../config/models.js';
+import { AddieModelConfig, getModelBetas } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { loadRules, invalidateRulesCache } from './rules/index.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
