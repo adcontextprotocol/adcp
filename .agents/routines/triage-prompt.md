@@ -296,8 +296,10 @@ Post a comment when:
 MEMBER/COLLABORATOR/OWNER. They don't need a "your issue is deferred"
 note. Just apply `claude-triaged` + labels.
 
-Comment format (≤1500 chars total, prose ≤4 sentences). For
-`FIRST_TIME_CONTRIBUTOR`: open with "Thanks for filing!" before the
+Comment format: default cap **≤1500 chars total, prose ≤4 sentences**,
+**lifted when option examples are required** (see below — a few fenced
+code blocks beat a short prose description the reader can't act on).
+For `FIRST_TIME_CONTRIBUTOR`: open with "Thanks for filing!" before the
 block.
 
 ```
@@ -320,10 +322,66 @@ block.
 <If drafting-pr: one-line summary of the PR about to open.>
 <If security-sensitive on adcp-go: "ready-for-human, security-sensitive
  — details withheld." Do not describe the vector.>
+<If ready-for-human with option paths: **show each option as a JSON /
+ wire-format snippet** — see "Show options as wire examples" below.>
 
 ---
 Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}
 ```
+
+#### Show options as wire examples — required when asking for a decision
+
+When the comment presents the human with two or more paths (Option A
+vs Option B, or "3.x cleanup vs 4.0 redesign"), each option **must**
+include a concrete wire-format snippet showing what the change looks
+like in practice. The reader should be able to pick without opening
+the spec.
+
+Rules:
+
+1. **One fenced code block per option.** Use `json`, `yaml`, `http`,
+   or `diff` as the fence language. Favor `diff` when showing a
+   migration: `+` for the new shape, `-` for the old.
+2. **Show the minimum that disambiguates** — 5–15 lines. Elide
+   unrelated fields with `// ...` or `"other_fields": "..."`. Don't
+   paste whole schemas.
+3. **Label each block** with a one-line caption above it so a skim-
+   reader gets the gist from captions alone.
+4. **Quote, don't invent.** If the existing shape is already in
+   `static/schemas/source/**` or an existing example, copy the real
+   field names and types. Don't hallucinate fields.
+5. **Keep prose tight around the blocks** — the blocks do the work.
+   A sentence of setup + the block + a sentence of consequence is
+   plenty.
+
+Example structure (spec-change flag):
+
+```
+**Option A — 3.x docs/enum cleanup, no wire change:**
+```json
+// asset manifest entry — format lookup disambiguates kind
+{
+  "asset_id": "clickthrough_url",
+  "url": "https://..."
+}
+```
+Existing consumers unaffected. Docs reconciled; enum unchanged.
+
+**Option B — 4.0 explicit discriminator on asset:**
+```json
+{
+  "asset_id": "clickthrough_url",
+  "url_type": "clickthrough",
+  "url": "https://..."
+}
+```
+Breaks optional→required. Widens enum from 3 to 6 values.
+```
+
+This pattern applies to **spec / protocol**, **registry /
+discovery**, and **addie** (for prompt/copy options) buckets. For
+**web / site / docs** and typo-level issues, inline examples are
+usually unnecessary — the PR itself is the artifact.
 
 Apply `claude-triaged` + any matching bucket labels.
 
