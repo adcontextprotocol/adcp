@@ -57,7 +57,20 @@ jobs:
         PUPPETEER_SKIP_DOWNLOAD: 'true'
 
     - name: Check for broken links in docs
-      run: npx --no-install mintlify broken-links
+      # `.changeset/` holds release-note markdown that is not MDX; Mintlify's
+      # MDX parser errors on raw `<N` / `<tag`-like sequences in changeset
+      # bodies. Move it aside for the scan, then restore. Matches the local
+      # `.husky/pre-push` shuffle pattern.
+      run: |
+        if [ -d .changeset ]; then
+          mv .changeset /tmp/.ci-changeset-backup
+        fi
+        npx --no-install mintlify broken-links
+        EXIT=$?
+        if [ -d /tmp/.ci-changeset-backup ]; then
+          mv /tmp/.ci-changeset-backup .changeset
+        fi
+        exit $EXIT
 
     - name: Check browser-facing Agentic Advertising links
       run: npm run check:owned-links
