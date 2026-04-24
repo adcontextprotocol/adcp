@@ -486,6 +486,18 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 
 // ── Main handler ──────────────────────────────────────────────────
 
+// Sanitizer note: the framework path registers this tool via `customTools`,
+// which bypasses the SDK dispatcher's `finalize()` + `sanitizeAdcpErrorEnvelope`
+// applied to spec tools. Today this handler never emits an `adcp_error`
+// envelope (its only error shape is the scenario-level `{ success: false,
+// error: '<code>' }` shape handleTestControllerRequest owns, plus the
+// hand-rolled `{ success: false, error: 'FORBIDDEN' }` below), so the missing
+// sanitizer is not a live leak. If a future edit ever returns `{ adcp_error:
+// { code: 'IDEMPOTENCY_CONFLICT', recovery, ... } }` (or any code with a
+// restricted ADCP_ERROR_FIELD_ALLOWLIST entry), route it through
+// `@adcp/client/server`'s `adcpError()` builder — the builder filters at
+// construction time and gives the dispatcher's invariant the same guarantee
+// spec tools get for free.
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const rawArgs = args as Record<string, unknown>;
 
