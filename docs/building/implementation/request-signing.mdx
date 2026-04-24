@@ -201,6 +201,8 @@ This avoids sending signatures to agents that don't expect them and caches capab
 
 ### Express middleware
 
+For raw Express routes, mount `createExpressVerifier` after a raw-body middleware. Use `mcpToolNameResolver` for the `resolveOperation` callback — it parses the JSON-RPC envelope and returns the MCP tool name:
+
 ```typescript
 import {
   createExpressVerifier,
@@ -208,6 +210,7 @@ import {
   InMemoryReplayStore,
   InMemoryRevocationStore,
 } from '@adcp/client/signing';
+import { mcpToolNameResolver } from '@adcp/client/server';
 
 app.post(
   '/mcp',
@@ -221,7 +224,7 @@ app.post(
     jwks: new StaticJwksResolver(buyerPublicKeys),
     replayStore: new InMemoryReplayStore(),
     revocationStore: new InMemoryRevocationStore(),
-    resolveOperation: req => req.body?.method ?? 'unknown',
+    resolveOperation: mcpToolNameResolver,
   }),
   handler
 );
@@ -229,38 +232,38 @@ app.post(
 // On reject: 401 with WWW-Authenticate: Signature error="<code>".
 ```
 
-### Composing with bearer auth
+### Composing signature + bearer auth with `requireAuthenticatedOrSigned`
 
-`requireSignatureWhenPresent` prevents bypass attacks where an invalid signature falls through to weaker authentication. When signature headers are present, only signature auth runs. When absent, the fallback (bearer/API key) runs as normal:
+`requireAuthenticatedOrSigned` bundles the full composition: presence-gated routing (signature auth when headers present, fallback otherwise) plus `requiredFor` enforcement — unauthenticated requests for signing-required operations get `401 request_signature_required` even when no credentials at all are supplied.
 
 ```typescript
-import { verifySignatureAsAuthenticator, verifyApiKey, requireSignatureWhenPresent } from '@adcp/client/server';
+import {
+  serve,
+  verifyApiKey,
+  verifySignatureAsAuthenticator,
+  requireAuthenticatedOrSigned,
+  mcpToolNameResolver,
+  MUTATING_TASKS,
+} from '@adcp/client/server';
 import { BrandJsonJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing/server';
 
-const signatureAuth = verifySignatureAsAuthenticator({
-  capability: {
-    supported: true,
-    required_for: ['create_media_buy', 'update_media_buy'],
-    covers_content_digest: 'either',
-  },
-  jwks: new BrandJsonJwksResolver(),
-  replayStore: new InMemoryReplayStore(),
-  revocationStore: new InMemoryRevocationStore(),
-  resolveOperation: req => {
-    try {
-      const body = JSON.parse(req.rawBody ?? '');
-      if (body.method === 'tools/call') return body.params?.name;
-    } catch {}
-    return undefined;
-  },
-});
-
-const bearerAuth = verifyApiKey({ keys: { 'sk_live_abc': { principal: 'acct_42' } } });
-
 serve(createAgent, {
-  authenticate: requireSignatureWhenPresent(signatureAuth, bearerAuth),
+  authenticate: requireAuthenticatedOrSigned({
+    signature: verifySignatureAsAuthenticator({
+      capability: { supported: true, required_for: ['create_media_buy'], covers_content_digest: 'either' },
+      jwks: new BrandJsonJwksResolver(),
+      replayStore: new InMemoryReplayStore(),
+      revocationStore: new InMemoryRevocationStore(),
+      resolveOperation: mcpToolNameResolver,
+    }),
+    fallback: verifyApiKey({ keys: { 'sk_live_abc': { principal: 'acct_42' } } }),
+    requiredFor: [...MUTATING_TASKS],
+    resolveOperation: mcpToolNameResolver,
+  }),
 });
 ```
+
+`MUTATING_TASKS` is the full list of spend-committing and state-changing operations exported from `@adcp/client/server` — use it rather than maintaining your own list.
 
 ### JWKS resolver options
 
@@ -353,10 +356,10 @@ For emergency rotation (key compromise), add the old `kid` to `revoked_kids` in 
 
 ### Conformance vectors
 
-The spec ships test vectors at `compliance/cache/3.0.0/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`):
+The spec ships **39 test vectors** at `compliance/cache/3.0.0/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`):
 
-- **Positive vectors**: valid signed requests your verifier must accept (non-4xx)
-- **Negative vectors**: invalid requests your verifier must reject with `401` and the correct error code
+- **12 positive vectors**: valid signed requests your verifier must accept (non-4xx)
+- **27 negative vectors**: invalid requests your verifier must reject with `401` and the correct error code
 
 ```bash
 # Debug a single vector

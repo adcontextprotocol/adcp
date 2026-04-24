@@ -190,33 +190,32 @@ See **[Validate Your Agent](/docs/building/validate-your-agent)** for the full t
 
 ## Request signing
 
-If your seller agent receives signed requests from buyers, use `requireSignatureWhenPresent` to compose signature verification with your existing bearer or API key authentication. When signature headers are present, only signature auth runs; when absent, the fallback runs. This prevents bypass attacks where an invalid signature falls through to weaker auth.
+If your seller agent receives signed requests from buyers, use `requireAuthenticatedOrSigned` to compose signature verification with existing bearer or API key auth. It handles the full matrix: signature-only when headers are present, fallback-only when absent, and `request_signature_required` 401 for unsigned requests on operations listed in `requiredFor`.
 
 ```typescript
 import { createAdcpServer, serve } from '@adcp/client';
-import { verifySignatureAsAuthenticator, verifyApiKey, requireSignatureWhenPresent } from '@adcp/client/server';
+import {
+  verifyApiKey,
+  verifySignatureAsAuthenticator,
+  requireAuthenticatedOrSigned,
+  mcpToolNameResolver,
+  MUTATING_TASKS,
+} from '@adcp/client/server';
 import { BrandJsonJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing/server';
 
-const signatureAuth = verifySignatureAsAuthenticator({
-  capability: {
-    supported: true,
-    required_for: ['create_media_buy', 'update_media_buy'],
-    covers_content_digest: 'either',
-  },
-  jwks: new BrandJsonJwksResolver(),
-  replayStore: new InMemoryReplayStore(),
-  revocationStore: new InMemoryRevocationStore(),
-  resolveOperation: req => {
-    try {
-      const body = JSON.parse(req.rawBody ?? '');
-      if (body.method === 'tools/call') return body.params?.name;
-    } catch {}
-    return undefined;
-  },
-});
-
 serve(() => createAdcpServer({ name: 'My Seller', version: '1.0.0', mediaBuy: { /* ... */ } }), {
-  authenticate: requireSignatureWhenPresent(signatureAuth, verifyApiKey({ keys: { /* ... */ } })),
+  authenticate: requireAuthenticatedOrSigned({
+    signature: verifySignatureAsAuthenticator({
+      capability: { supported: true, required_for: ['create_media_buy'], covers_content_digest: 'either' },
+      jwks: new BrandJsonJwksResolver(),
+      replayStore: new InMemoryReplayStore(),
+      revocationStore: new InMemoryRevocationStore(),
+      resolveOperation: mcpToolNameResolver,
+    }),
+    fallback: verifyApiKey({ keys: { /* ... */ } }),
+    requiredFor: [...MUTATING_TASKS],
+    resolveOperation: mcpToolNameResolver,
+  }),
 });
 ```
 
