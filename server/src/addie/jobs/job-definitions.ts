@@ -45,7 +45,10 @@ import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
 import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
-import { runAnnouncementTriggerJob } from './announcement-trigger.js';
+import {
+  runAnnouncementTriggerJob,
+  runAnnouncementReminderJob,
+} from './announcement-trigger.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
@@ -580,6 +583,20 @@ export function registerAllJobs(): void {
     runner: runAnnouncementTriggerJob,
     businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
     shouldLogResult: (r) => r.drafted > 0 || r.failed > 0,
+  });
+
+  // Announcement LI reminder - threaded nudge on the original review
+  // card when Slack is posted but LinkedIn is still pending >7 days
+  // later. Rate-limited: at most one reminder per org per week, max
+  // three over the draft's lifetime.
+  jobScheduler.register({
+    name: 'announcement-li-reminder',
+    description: 'Nudge editorial on LinkedIn posts that are stuck >7 days',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 22, unit: 'minutes' },
+    runner: runAnnouncementReminderJob,
+    businessHours: { startHour: 10, endHour: 11, skipWeekends: true },
+    shouldLogResult: (r) => r.reminded > 0 || r.failed > 0,
   });
 
   // Weekly spec insight post - Addie posts a thought-provoking spec question to Slack

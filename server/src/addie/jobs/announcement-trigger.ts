@@ -679,3 +679,252 @@ export async function runBackfillAnnouncements(
     client.release();
   }
 }
+
+// --- Stale LinkedIn-pending reminders --------------------------------
+
+/** Days since Slack post before the first reminder fires. */
+export const REMINDER_STALE_DAYS = 7;
+/** Minimum days between successive reminders to the same org. */
+export const REMINDER_INTERVAL_DAYS = 7;
+/** Hard cap so a stuck draft doesn't generate reminders forever. */
+export const MAX_REMINDERS_PER_ORG = 3;
+
+export interface ReminderResult {
+  candidates: number;
+  reminded: number;
+  failed: number;
+}
+
+export interface ReminderCandidate {
+  workos_organization_id: string;
+  org_name: string;
+  review_channel_id: string;
+  review_message_ts: string;
+  slack_posted_at: Date;
+  days_since_slack: number;
+  reminder_count: number;
+  last_reminder_at: Date | null;
+}
+
+/**
+ * Orgs eligible for a "still waiting on LinkedIn" reminder:
+ *   - Has an `announcement_draft_posted` row (need the Slack review
+ *     channel + ts to thread into).
+ *   - Has an `announcement_published` (channel=slack) row more than
+ *     {@link REMINDER_STALE_DAYS} ago.
+ *   - Has NO `announcement_published` (channel=linkedin) row.
+ *   - Has NO `announcement_skipped` row.
+ *   - No prior `announcement_li_reminder_sent` in the last
+ *     {@link REMINDER_INTERVAL_DAYS} days.
+ *   - Fewer than {@link MAX_REMINDERS_PER_ORG} reminders recorded.
+ *   - Draft row carries a review_channel_id + review_message_ts.
+ *
+ * Ordered oldest-Slack-post first so the longest-stuck drafts nudge
+ * first when rate-limited.
+ */
+export async function findStaleLiCandidates(): Promise<ReminderCandidate[]> {
+  const result = await query<{
+    workos_organization_id: string;
+    org_name: string | null;
+    review_channel_id: string;
+    review_message_ts: string;
+    slack_posted_at: Date;
+    days_since_slack: string;
+    reminder_count: string;
+    last_reminder_at: Date | null;
+  }>(
+    `WITH drafts AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         metadata->>'review_channel_id' AS review_channel_id,
+         metadata->>'review_message_ts' AS review_message_ts
+       FROM org_activities
+       WHERE activity_type = 'announcement_draft_posted'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     slack_posts AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS slack_posted_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'slack'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     li_posts AS (
+       SELECT DISTINCT organization_id FROM org_activities
+       WHERE activity_type = 'announcement_published' AND metadata->>'channel' = 'linkedin'
+     ),
+     skipped_orgs AS (
+       SELECT DISTINCT organization_id FROM org_activities
+       WHERE activity_type = 'announcement_skipped'
+     ),
+     reminders AS (
+       SELECT organization_id,
+              COUNT(*)::int AS reminder_count,
+              MAX(activity_date) AS last_reminder_at
+         FROM org_activities
+        WHERE activity_type = 'announcement_li_reminder_sent'
+        GROUP BY organization_id
+     )
+     SELECT
+       d.organization_id AS workos_organization_id,
+       o.name AS org_name,
+       d.review_channel_id,
+       d.review_message_ts,
+       sp.slack_posted_at,
+       EXTRACT(EPOCH FROM (NOW() - sp.slack_posted_at)) / 86400 AS days_since_slack,
+       COALESCE(r.reminder_count, 0) AS reminder_count,
+       r.last_reminder_at
+     FROM drafts d
+     JOIN slack_posts sp ON sp.organization_id = d.organization_id
+     LEFT JOIN organizations o ON o.workos_organization_id = d.organization_id
+     LEFT JOIN li_posts li ON li.organization_id = d.organization_id
+     LEFT JOIN skipped_orgs sk ON sk.organization_id = d.organization_id
+     LEFT JOIN reminders r ON r.organization_id = d.organization_id
+     WHERE li.organization_id IS NULL
+       AND sk.organization_id IS NULL
+       AND sp.slack_posted_at < NOW() - ($1::text || ' days')::interval
+       AND (r.last_reminder_at IS NULL OR r.last_reminder_at < NOW() - ($2::text || ' days')::interval)
+       AND COALESCE(r.reminder_count, 0) < $3
+       AND d.review_channel_id IS NOT NULL
+       AND d.review_message_ts IS NOT NULL
+     ORDER BY sp.slack_posted_at ASC`,
+    [
+      String(REMINDER_STALE_DAYS),
+      String(REMINDER_INTERVAL_DAYS),
+      MAX_REMINDERS_PER_ORG,
+    ],
+  );
+
+  return result.rows.map((r) => ({
+    workos_organization_id: r.workos_organization_id,
+    // Fallback for orphan-org drafts — same convention as the backlog view.
+    org_name: r.org_name ?? r.workos_organization_id,
+    review_channel_id: r.review_channel_id,
+    review_message_ts: r.review_message_ts,
+    slack_posted_at: r.slack_posted_at,
+    days_since_slack: Math.floor(Number(r.days_since_slack)),
+    reminder_count: Number(r.reminder_count),
+    last_reminder_at: r.last_reminder_at,
+  }));
+}
+
+export function buildReminderText(args: {
+  orgName: string;
+  daysSinceSlack: number;
+  reminderNumber: number;
+  max: number;
+}): string {
+  return (
+    `⏳ Still waiting on LinkedIn for *${args.orgName}* — ` +
+    `${args.daysSinceSlack} days since the Slack post. ` +
+    `Use the *Mark posted to LinkedIn* button above, or ` +
+    `<${APP_URL}/admin/announcements|the admin backlog>. ` +
+    `(Reminder ${args.reminderNumber} of ${args.max}.)`
+  );
+}
+
+/**
+ * Post a threaded reminder on each stale `li_pending` org's original
+ * review card and record an `announcement_li_reminder_sent` activity.
+ *
+ * Threaded replies preserve context — editorial sees the nudge right
+ * next to the "Mark posted" button they'd need to click. Rate-limited
+ * per-org via `last_reminder_at` + `reminder_count` so a stuck draft
+ * generates at most {@link MAX_REMINDERS_PER_ORG} pings over its
+ * lifetime.
+ */
+export async function runAnnouncementReminderJob(): Promise<ReminderResult> {
+  const result: ReminderResult = { candidates: 0, reminded: 0, failed: 0 };
+
+  let candidates: ReminderCandidate[];
+  try {
+    candidates = await findStaleLiCandidates();
+  } catch (err) {
+    logger.error({ err }, 'Failed to load stale LinkedIn reminder candidates');
+    return result;
+  }
+
+  result.candidates = candidates.length;
+
+  for (const candidate of candidates) {
+    try {
+      const reminderNumber = candidate.reminder_count + 1;
+      const text = buildReminderText({
+        orgName: candidate.org_name,
+        daysSinceSlack: candidate.days_since_slack,
+        reminderNumber,
+        max: MAX_REMINDERS_PER_ORG,
+      });
+
+      const post = await sendChannelMessage(
+        candidate.review_channel_id,
+        {
+          text,
+          blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+          thread_ts: candidate.review_message_ts,
+        },
+        { requirePrivate: true },
+      );
+
+      if (!post.ok) {
+        logger.error(
+          {
+            orgId: candidate.workos_organization_id,
+            error: post.error,
+            skipped: post.skipped,
+          },
+          'Failed to post LI reminder — will retry next run',
+        );
+        result.failed++;
+        continue;
+      }
+
+      try {
+        await query(
+          `INSERT INTO org_activities (
+              organization_id, activity_type, description, metadata, activity_date
+           ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
+          [
+            candidate.workos_organization_id,
+            `Reminder ${reminderNumber}/${MAX_REMINDERS_PER_ORG}: LinkedIn post still pending ${candidate.days_since_slack} days after Slack`,
+            JSON.stringify({
+              reminder_number: reminderNumber,
+              days_stale: candidate.days_since_slack,
+              reply_ts: post.ts,
+            }),
+          ],
+        );
+      } catch (recordErr) {
+        // Reminder landed but activity write failed. Next run will
+        // see no reminder row and ping again — an extra nudge every
+        // 7 days is better than a missed one, and the threaded reply
+        // would be hard to undo cleanly. Just log.
+        logger.error(
+          { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+          'LI reminder posted but activity write failed — next run may re-ping',
+        );
+      }
+
+      result.reminded++;
+      logger.info(
+        {
+          orgId: candidate.workos_organization_id,
+          reviewTs: candidate.review_message_ts,
+          replyTs: post.ts,
+          reminderNumber,
+        },
+        'Posted LI reminder',
+      );
+    } catch (err) {
+      logger.error(
+        { err, orgId: candidate.workos_organization_id },
+        'Failed to draft/post LI reminder — will retry next run',
+      );
+      result.failed++;
+    }
+  }
+
+  return result;
+}
