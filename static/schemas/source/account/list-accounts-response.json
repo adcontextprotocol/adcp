@@ -7,9 +7,20 @@
   "properties": {
     "accounts": {
       "type": "array",
-      "description": "Array of accounts accessible to the authenticated agent",
+      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus an optional `authorization` object describing what the calling agent is permitted to do on that account.",
       "items": {
-        "$ref": "/schemas/core/account.json"
+        "allOf": [
+          { "$ref": "/schemas/core/account.json" },
+          {
+            "type": "object",
+            "properties": {
+              "authorization": {
+                "$ref": "/schemas/core/account-authorization.json",
+                "description": "Optional. The caller's scope grant against this account. Sellers that support scope introspection SHOULD populate this so callers can preempt SCOPE_INSUFFICIENT / FIELD_NOT_PERMITTED errors rather than discovering scope by trial and error. Sellers claiming the `attestation_verifier` standard scope MUST populate it. Absence means the seller does not advertise introspectable scope for this account — callers MUST NOT infer access from absence, and fall back to error-driven discovery via the RBAC error codes."
+              }
+            }
+          }
+        ]
       }
     },
     "errors": {

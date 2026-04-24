@@ -9,13 +9,14 @@ The Accounts Protocol defines the commercial layer beneath all AdCP vendor proto
 
 ## The commercial model
 
-Six questions underlie every AdCP transaction:
+Seven questions underlie every AdCP transaction:
 
 | Question | Answered by | Mechanism |
 |----------|-------------|-----------|
 | Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
 | Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
 | How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines the account model: `true` means explicit accounts (operator credentials required, discover via `list_accounts`), `false` means implicit accounts (agent trusted, declare via `sync_accounts`) |
+| What am I allowed to do on this account? | Caller scope | The `authorization` object on each per-account entry in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses describes `allowed_tasks`, `field_scopes`, `scope_name`, and `read_only` for the calling agent. See [Caller authorization](#caller-authorization) below. |
 | Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator`, `agent`, or `advertiser`. Seller accepts or rejects. |
 | What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
 
@@ -93,6 +94,80 @@ Account status acts as a gate on which tasks are permitted. Read-only operations
 - `payment_required` blocks new spend (`create_media_buy`) but allows managing existing buys and resolving setup. Sellers SHOULD also reject `new_packages` within `update_media_buy` when the account is in `payment_required`, since adding packages is functionally equivalent to new spend.
 - `suspended` allows read-only access to existing data but blocks all mutations
 - Sellers MUST return `ACCOUNT_SUSPENDED` for blocked operations on suspended accounts and `ACCOUNT_PAYMENT_REQUIRED` for blocked operations on payment-required accounts
+
+## Caller authorization
+
+Not every caller with access to an account has the same grant. A seller may issue one agent a full media-buy scope and another agent a narrow read-plus-webhook-attach scope (e.g., an AAO compliance engine for Tier-2 Production Verified conformance). Authentication confirms the caller is who they claim to be; authorization answers "what is this caller allowed to do on this account?"
+
+**Schema**: [`/schemas/v3/core/account-authorization.json`](https://adcontextprotocol.org/schemas/v3/core/account-authorization.json)
+
+Sellers that support scope introspection attach an `authorization` object to each per-account entry in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses:
+
+```json
+{
+  "account_id": "acc_acme_compliance",
+  "name": "Acme c/o AAO Compliance",
+  "status": "active",
+  "billing": "operator",
+  "authorization": {
+    "allowed_tasks": [
+      "get_adcp_capabilities",
+      "get_products",
+      "get_media_buys",
+      "get_media_buy_delivery",
+      "list_creatives",
+      "update_media_buy"
+    ],
+    "field_scopes": {
+      "update_media_buy": ["reporting_webhook"]
+    },
+    "scope_name": "attestation_verifier",
+    "read_only": false
+  }
+}
+```
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `allowed_tasks` | Canonical snake_case task names the caller may invoke against this account. Absence of a task MUST be read as "not permitted" — invoking an absent task returns `SCOPE_INSUFFICIENT`. |
+| `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields (`account`, `media_buy_id`, `package_id`, `creative_id`, `revision`, `idempotency_key`, `buyer_ref`, `po_number`, `dry_run`, `context`, `ext`, `adcp_major_version`, `push_notification_config`) are always permitted and do not need to appear in the allowlist. |
+| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized; seller-defined names MUST use the `seller:` prefix so typos of the standard value fail schema validation rather than pass through. |
+| `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
+
+### Semantics of presence and absence
+
+- **Present**: the seller asserts the shape reflects its enforcement for this caller on this account at this moment. Stale-by-seconds is fine; systematically-divergent is non-conformant.
+- **Absent on a single account**: the seller is not telling the caller their scope for that account. Caller falls back to error-driven discovery (try the task, handle the RBAC error codes).
+- **Absent on all accounts**: the seller does not implement scope introspection. Callers MUST NOT infer access from absence — the seller may still enforce scope locally and return `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED` on any task call.
+- **`authorization` is optional for 3.x**. Sellers that want to avoid a breaking change can defer populating it. Populating is strictly additive — it lets callers preempt errors they would otherwise discover by trying.
+
+Sellers claiming the `attestation_verifier` standard scope **MUST** populate `authorization` — the Tier-2 attestation flow depends on verifying the advertised scope matches enforcement.
+
+### Standard named scope: `attestation_verifier`
+
+Sellers advertising Tier-2 Production Verified conformance readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
+
+- `allowed_tasks` (at minimum — sellers MAY include additional read-only tasks):
+  - `get_adcp_capabilities`
+  - `get_products`
+  - `get_media_buys`
+  - `get_media_buy_delivery`
+  - `list_creatives`
+  - `update_media_buy`
+- `field_scopes.update_media_buy`: `["reporting_webhook"]`
+- `read_only`: `false`
+
+The scope deliberately omits `create_media_buy`, `sync_creatives`, and all spend-committing or targeting-modifying fields on `update_media_buy`. It is narrowly designed for continuous-observability verification — the compliance engine can discover live campaigns, read inventory and creative state, attach a verification reporting webhook, and read delivery, but cannot book inventory, modify budgets, change flight dates, upload creatives, or cancel anything.
+
+`get_products` and `list_creatives` are included because Tier-2 observability requires sanity-reading the seller's declared inventory and the creative pipeline state on active buys.
+
+Other scope names are **not** standardized — taxonomies vary too much across sellers. Sellers MAY define custom scopes using the `seller:` prefix (e.g., `seller:governance_viewer`); buyers MUST NOT assume any semantics from a seller-prefixed scope name.
+
+### Prior art
+
+The introspection model — "the caller asks the authorization-enforcing party what the grant is" — is structurally analogous to [RFC 7662 OAuth 2.0 Token Introspection](https://www.rfc-editor.org/rfc/rfc7662), specialized for AdCP's task-and-field authorization model. Embedding the response in sync/list rather than splitting it into a separate task reflects that account discovery and scope introspection are the same natural question ("what are my accounts, and what can I do with them?") — the two are returned together.
 
 ## Transaction lifecycle
 

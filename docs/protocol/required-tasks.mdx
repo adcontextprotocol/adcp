@@ -21,6 +21,8 @@ Every AdCP agent, regardless of protocol, implements:
 |------|------------|-----------|
 | `get_adcp_capabilities` | Required | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
 
+Caller-scope RBAC introspection is not a standalone task. Sellers that support scope introspection return a per-account `authorization` object on `sync_accounts` and `list_accounts` responses. See [Accounts Protocol — Caller authorization](/docs/accounts/overview#caller-authorization).
+
 ## Media Buy Protocol
 
 ### Sales agent (seller)
