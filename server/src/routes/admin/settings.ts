@@ -29,9 +29,53 @@ import {
   setAnnouncementChannel,
   getSettingAuditHistory,
 } from '../../db/system-settings-db.js';
-import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
+import {
+  getSlackChannels,
+  isSlackConfigured,
+  verifyChannelPrivacyForWrite,
+  type ChannelPrivacyCheckResult,
+} from '../../slack/client.js';
 
 const logger = createLogger('admin-settings');
+
+/**
+ * Write-time privacy check wrapper for the admin-settings PUT routes.
+ * Centralizes the "fail-closed on cannot_verify, emit a distinct
+ * message vs wrong_privacy" shape so each endpoint can stay one line.
+ *
+ * Skips the check entirely when Slack isn't configured (local dev
+ * without ADDIE_BOT_TOKEN) — matches the prior behavior.
+ *
+ * Returns `null` to mean "proceed with the write"; returns the Response
+ * directly (and sends it) when the check fails. Caller just returns.
+ */
+async function requireChannelPrivacy(
+  res: Response,
+  channelId: string,
+  expected: 'private' | 'public',
+  contextNoun: string,
+): Promise<Response | null> {
+  if (!isSlackConfigured()) return null;
+  const check: ChannelPrivacyCheckResult = await verifyChannelPrivacyForWrite(
+    channelId,
+    expected,
+  );
+  if (check.ok) return null;
+  if (check.reason === 'cannot_verify') {
+    return res.status(400).json({
+      error: 'Could not verify channel',
+      message: `Could not verify the channel's privacy for ${contextNoun}. Invite Addie to the channel (and confirm the bot has channels:read scope) and try again.`,
+    });
+  }
+  // wrong_privacy
+  return res.status(400).json({
+    error: 'Invalid channel',
+    message:
+      expected === 'private'
+        ? `Only private channels are allowed for ${contextNoun}`
+        : `Announcement channel must be public — announcements are meant for broad visibility`,
+  });
+}
 
 export function createAdminSettingsRouter(): Router {
   const router = Router();
@@ -126,17 +170,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        // Verify the channel is private (billing info should not go to public channels)
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for billing notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'billing notifications');
+        if (privacyErr) return;
       }
 
       // Validate channel name if provided
@@ -184,17 +219,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        // Verify the channel is private (escalation info may contain sensitive user data)
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for escalation notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'escalation notifications');
+        if (privacyErr) return;
       }
 
       // Validate channel name if provided
@@ -240,16 +266,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for admin notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'admin notifications');
+        if (privacyErr) return;
       }
 
       if (channel_name !== null && channel_name !== undefined) {
@@ -291,16 +309,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for prospect notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'prospect notifications');
+        if (privacyErr) return;
       }
 
       if (channel_name !== null && channel_name !== undefined) {
@@ -342,16 +352,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for error notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'error notifications');
+        if (privacyErr) return;
       }
 
       if (channel_name !== null && channel_name !== undefined) {
@@ -393,16 +395,8 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && !channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Only private channels are allowed for editorial notifications',
-            });
-            return;
-          }
-        }
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'private', 'editorial notifications');
+        if (privacyErr) return;
       }
 
       if (channel_name !== null && channel_name !== undefined) {
@@ -444,21 +438,10 @@ export function createAdminSettingsRouter(): Router {
           return;
         }
 
-        // The announcement channel is intentionally public — a private channel
-        // here would defeat the point of the welcome post. Reject private so
-        // nobody configures `#admin-editorial-review` as the announcement
-        // destination by mistake and floods a reviewer-only channel with
-        // member-facing posts.
-        if (isSlackConfigured()) {
-          const channelInfo = await getChannelInfo(channel_id);
-          if (channelInfo && channelInfo.is_private) {
-            res.status(400).json({
-              error: 'Invalid channel',
-              message: 'Announcement channel must be public — announcements are meant for broad visibility',
-            });
-            return;
-          }
-        }
+        // The announcement channel is intentionally public — a private
+        // channel here would defeat the point of the welcome post.
+        const privacyErr = await requireChannelPrivacy(res, channel_id, 'public', 'announcements');
+        if (privacyErr) return;
       }
 
       if (channel_name !== null && channel_name !== undefined) {

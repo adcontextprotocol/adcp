@@ -22,6 +22,11 @@ vi.mock('../../server/src/db/client.js', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mockQuery.mockReset();
+  // Safer default — without this a `mockResolvedValueOnce` consumed
+  // by a prior test's overlap would leave a subsequent call returning
+  // `undefined` (→ TypeError or timeout). Tests that care always
+  // stack their own mockResolvedValueOnce on top.
+  mockQuery.mockResolvedValue({ rows: [] });
 });
 
 describe('loadAnnouncementBacklog', () => {

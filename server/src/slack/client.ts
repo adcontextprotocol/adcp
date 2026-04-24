@@ -454,6 +454,62 @@ export async function verifyChannelStillPrivate(
 }
 
 /**
+ * Result of `verifyChannelPrivacyForWrite` — the write-time gate that
+ * admin settings endpoints use before persisting a channel id.
+ *
+ *  - `{ ok: true }` — channel exists, privacy matches expectation.
+ *  - `{ ok: false, reason: 'wrong_privacy', actual, expected }` —
+ *    channel confirmed to be the wrong kind (private when public was
+ *    required, or vice versa). Admin should pick a different channel.
+ *  - `{ ok: false, reason: 'cannot_verify' }` — Slack returned nothing
+ *    for this id (bot not a member, missing scope, transient 5xx,
+ *    archived, or genuinely not found). The write is refused rather
+ *    than accepting an unverifiable channel; admin should invite the
+ *    bot to the channel and retry.
+ */
+export type ChannelPrivacyCheckResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'wrong_privacy';
+      actual: 'private' | 'public';
+      expected: 'private' | 'public';
+    }
+  | { ok: false; reason: 'cannot_verify' };
+
+/**
+ * Verify a Slack channel's privacy matches `expected` *at write time*.
+ * Fail-closed on a null `getChannelInfo` so the write is refused with
+ * a "cannot verify" reason instead of silently accepting a channel id
+ * that Slack can't describe. Admin-settings PUT endpoints call this
+ * before persisting.
+ *
+ * Distinct from `verifyChannelStillPrivate`, which is the runtime
+ * pre-send check and logs a `channel_privacy_drift` event when a
+ * previously-private channel turns public (because drift is the
+ * interesting thing at send time; at write time it's not drift, it's
+ * an admin picking the wrong channel).
+ */
+export async function verifyChannelPrivacyForWrite(
+  channelId: string,
+  expected: 'private' | 'public',
+): Promise<ChannelPrivacyCheckResult> {
+  const info = await getChannelInfo(channelId);
+  if (!info) {
+    logger.warn(
+      { channelId, expected, event: 'channel_privacy_verify_write_null' },
+      'Could not verify Slack channel privacy at write time — refusing with cannot_verify',
+    );
+    return { ok: false, reason: 'cannot_verify' };
+  }
+  const actual: 'private' | 'public' = info.is_private === true ? 'private' : 'public';
+  if (actual !== expected) {
+    return { ok: false, reason: 'wrong_privacy', actual, expected };
+  }
+  return { ok: true };
+}
+
+/**
  * Reasons a `sendChannelMessage` call may refuse to post. Left as a
  * discriminated union so future skip reasons (archived, bot kicked,
  * missing scope, etc.) don't widen the public return type in a
