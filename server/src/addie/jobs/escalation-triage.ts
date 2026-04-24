@@ -18,6 +18,7 @@ import {
 import {
   insertSuggestionIfNew,
   getPendingSuggestionForEscalation,
+  type ProposedGithubIssue,
   type TriageSuggestionInput,
 } from '../../db/escalation-triage-db.js';
 import {
@@ -49,6 +50,49 @@ export interface TriageJobResult {
 }
 
 type ClassificationVerdict = Omit<TriageSuggestionInput, 'escalation_id'> | null;
+
+/**
+ * Build a GitHub issue draft from an escalation. PII is excluded on
+ * purpose: the dedicated contact columns (`user_email`, `user_slack_handle`,
+ * `user_display_name`) never enter the body, and `original_request` is
+ * skipped because it tends to quote the user's raw message. The summary
+ * is Addie's own scrubbed rewrite, so it's safe to include.
+ */
+export function buildGithubIssueDraft(
+  escalation: Escalation,
+  brokenUrls: string[],
+): ProposedGithubIssue {
+  const titleBase = (escalation.summary ?? 'Untitled escalation').trim();
+  const title = titleBase.length > 80
+    ? `${titleBase.slice(0, 77).replace(/\s+\S*$/, '')}…`
+    : titleBase;
+
+  const lines: string[] = [];
+  lines.push('Filed from an AAO member escalation via Addie triage.');
+  lines.push('');
+  lines.push('## Summary');
+  lines.push(escalation.summary ?? '');
+  if (escalation.addie_context) {
+    lines.push('');
+    lines.push('## Context');
+    lines.push(escalation.addie_context);
+  }
+  if (brokenUrls.length > 0) {
+    lines.push('');
+    lines.push('## Repro');
+    for (const u of brokenUrls) lines.push(`- ${u}`);
+  }
+  lines.push('');
+  lines.push(`---`);
+  lines.push(`Escalation #${escalation.id} · ${new Date(escalation.created_at).toISOString().slice(0, 10)}`);
+
+  return {
+    title,
+    body: lines.join('\n'),
+    repo: process.env.GITHUB_REPO ?? 'adcontextprotocol/adcp',
+    labels: ['from-escalation', 'needs-triage'],
+  };
+}
 
 /**
  * Decide a verdict for one escalation. Pure-ish — pulls related
@@ -83,25 +127,33 @@ export async function classifyEscalation(
   }
 
   // Rule 2 — URL probe for bug-shaped escalations.
-  // If the summary cites an AAO URL, hit it. 404/410 → still broken, keep open.
-  // 200/301/302 → likely fixed, suggest resolve with MEDIUM confidence.
-  // If every probe returns null (network error) → treat as "no signal"
-  // rather than falsely passing into the stale-ops rule.
+  //   404/410 → bug still repros; suggest filing a GitHub issue.
+  //   200/301/302 → likely fixed; suggest resolve at MEDIUM confidence.
+  //   all-null (network error) → no signal; don't fall through.
   const urls = extractAaoUrls(summary);
   if (urls.length > 0) {
     const sliced = urls.slice(0, 3);
-    // Probes run concurrently per-escalation so worst-case is one timeout
-    // window, not N timeouts multiplied.
     const probes = await Promise.all(
       sliced.map(async url => ({ url, status: await probeUrlStatus(url) })),
     );
     const probeEvidence = probes.map(p => `probe ${p.url} → ${p.status ?? 'err'}`);
 
-    if (probes.some(p => p.status === 404 || p.status === 410)) {
-      return null; // still broken; keep open
+    const brokenUrls = probes.filter(p => p.status === 404 || p.status === 410).map(p => p.url);
+    if (brokenUrls.length > 0 && bucket === 'bug' && !escalation.github_issue_url) {
+      return {
+        suggested_status: 'file_as_issue',
+        confidence: 'medium',
+        bucket,
+        reasoning: 'Bug still repros (URL returns 404/410). Propose filing as a GitHub issue so it lands in engineering triage.',
+        evidence: [...evidence, ...probeEvidence],
+        proposed_github_issue: buildGithubIssueDraft(escalation, brokenUrls),
+      };
+    }
+    if (brokenUrls.length > 0) {
+      return null; // still broken but already linked or not bug-shaped — leave for human
     }
     if (probes.every(p => p.status === null)) {
-      return null; // all probes failed — don't fall through to other rules
+      return null;
     }
     const allGood = probes.every(p => p.status != null && p.status >= 200 && p.status < 400);
     if (allGood && bucket === 'bug') {

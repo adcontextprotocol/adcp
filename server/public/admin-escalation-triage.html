@@ -27,6 +27,18 @@
     .tag-medium { background: #fef3c7; color: #92400e; }
     .tag-low { background: #dbeafe; color: #1e40af; }
     .tag-bucket { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
+    .tag-issue { background: #ede9fe; color: #5b21b6; }
+    .draft {
+      margin-top: var(--space-2);
+      background: var(--color-bg-subtle);
+      border-left: 3px solid #7c3aed;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .draft .draft-title { font-weight: 700; color: var(--color-text-primary); font-family: var(--font-mono); }
+    .draft .draft-body { white-space: pre-wrap; color: var(--color-text-secondary); margin-top: var(--space-1); }
+    .draft-repo { font-family: var(--font-mono); color: var(--color-text-secondary); }
     .actions { display: flex; gap: var(--space-2); }
     button { border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-accept { background: #16a34a; color: white; }
@@ -107,6 +119,21 @@
       tbody.innerHTML = suggestions.map(s => {
         const e = s.escalation || {};
         const evidence = (s.evidence || []).map(esc).join(' · ');
+        const isFile = s.suggested_status === 'file_as_issue';
+        const statusTag = isFile
+          ? `<span class="tag tag-issue">file_as_issue</span>`
+          : `<span class="tag tag-${esc(s.confidence)}">${esc(s.suggested_status)}</span>`;
+        const acceptLabel = isFile ? 'File as issue' : 'Accept';
+        const draft = s.proposed_github_issue;
+        const draftBlock = isFile && draft
+          ? `<div class="draft">
+              <div><span class="draft-repo">${esc(draft.repo)}</span> — <span class="draft-title">${esc(draft.title)}</span></div>
+              <div class="draft-body">${esc((draft.body || '').slice(0, 500))}</div>
+            </div>`
+          : '';
+        const linkBlock = e.github_issue_url
+          ? `<div class="reasoning">Filed: <a href="${esc(e.github_issue_url)}" target="_blank" rel="noopener">${esc(e.github_issue_url)}</a></div>`
+          : '';
         return `
           <tr data-id="${s.id}">
             <td>${e.id ?? '?'}</td>
@@ -114,12 +141,14 @@
               <div class="title">${esc(e.summary?.slice(0, 180) ?? '')}</div>
               <div class="reasoning">${esc(s.reasoning)}</div>
               <div class="evidence">${evidence}</div>
+              ${draftBlock}
+              ${linkBlock}
             </td>
-            <td><span class="tag tag-${esc(s.confidence)}">${esc(s.suggested_status)}</span></td>
+            <td>${statusTag}</td>
             <td><span class="tag tag-${esc(s.confidence)}">${esc(s.confidence)}</span></td>
             <td><span class="tag tag-bucket">${esc(s.bucket ?? '—')}</span></td>
             <td class="actions">
-              <button class="btn-accept" data-action="accept" data-id="${s.id}">Accept</button>
+              <button class="btn-accept" data-action="accept" data-id="${s.id}">${acceptLabel}</button>
               <button class="btn-reject" data-action="reject" data-id="${s.id}">Reject</button>
             </td>
           </tr>

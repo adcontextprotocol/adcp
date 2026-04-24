@@ -13,6 +13,15 @@ import { runMigrations } from '../../src/db/migrate.js';
  * plus the 409 double-apply guard that unit tests can't exercise
  * without a real table.
  */
+// Mock the GitHub filer so we don't actually hit api.github.com in tests.
+// A single hoisted spy lets each test drive the success / failure path.
+const mocks = vi.hoisted(() => ({
+  fileGitHubIssue: vi.fn(),
+}));
+vi.mock('../../src/addie/jobs/github-filer.js', () => ({
+  fileGitHubIssue: mocks.fileGitHubIssue,
+}));
+
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     (req as { user: unknown }).user = {
@@ -59,6 +68,7 @@ describe('Escalation triage endpoints', () => {
   beforeEach(async () => {
     await query('DELETE FROM escalation_triage_suggestions WHERE TRUE');
     await query("DELETE FROM addie_escalations WHERE user_email = 'triage-test@example.com'");
+    mocks.fileGitHubIssue.mockReset();
   });
 
   async function seedOpenEscalation(summary: string): Promise<number> {
@@ -71,13 +81,16 @@ describe('Escalation triage endpoints', () => {
     return res.rows[0].id;
   }
 
-  async function seedSuggestion(escalationId: number, status: 'resolved' | 'keep_open') {
+  async function seedSuggestion(escalationId: number, status: 'resolved' | 'keep_open' | 'file_as_issue') {
+    const draft = status === 'file_as_issue'
+      ? { title: 'Bug: /page is broken', body: 'draft body', repo: 'adcontextprotocol/adcp', labels: ['from-escalation'] }
+      : null;
     const res = await query<{ id: number }>(
       `INSERT INTO escalation_triage_suggestions
-         (escalation_id, suggested_status, confidence, bucket, reasoning, evidence)
-       VALUES ($1, $2, 'medium', 'bug', 'test reasoning', '[]'::jsonb)
+         (escalation_id, suggested_status, confidence, bucket, reasoning, evidence, proposed_github_issue)
+       VALUES ($1, $2, 'medium', 'bug', 'test reasoning', '[]'::jsonb, $3::jsonb)
        RETURNING id`,
-      [escalationId, status],
+      [escalationId, status, draft ? JSON.stringify(draft) : null],
     );
     return res.rows[0].id;
   }
@@ -149,6 +162,46 @@ describe('Escalation triage endpoints', () => {
       [eid],
     );
     expect(esc.rows[0].status).toBe('open');
+  });
+
+  it('accept on file_as_issue files the issue, records it on the escalation, and resolves', async () => {
+    mocks.fileGitHubIssue.mockResolvedValue({
+      url: 'https://github.com/adcontextprotocol/adcp/issues/4242',
+      number: 4242,
+      repo: 'adcontextprotocol/adcp',
+    });
+    const eid = await seedOpenEscalation('Bug: /some-page 404s');
+    const sid = await seedSuggestion(eid, 'file_as_issue');
+
+    const res = await request(app as never)
+      .post(`/api/admin/addie/escalations/suggestions/${sid}/accept`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.issue?.url).toBe('https://github.com/adcontextprotocol/adcp/issues/4242');
+    expect(res.body.escalation.status).toBe('resolved');
+    expect(res.body.escalation.github_issue_url).toBe('https://github.com/adcontextprotocol/adcp/issues/4242');
+    expect(res.body.escalation.github_issue_number).toBe(4242);
+    expect(res.body.escalation.resolution_notes).toMatch(/Filed as https:\/\/github.com\/adcontextprotocol\/adcp\/issues\/4242/);
+    expect(mocks.fileGitHubIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it('502s on GitHub API failure and leaves the escalation untouched', async () => {
+    mocks.fileGitHubIssue.mockResolvedValue(null);
+    const eid = await seedOpenEscalation('Bug: /some-page 404s');
+    const sid = await seedSuggestion(eid, 'file_as_issue');
+
+    const res = await request(app as never)
+      .post(`/api/admin/addie/escalations/suggestions/${sid}/accept`)
+      .send({});
+
+    expect(res.status).toBe(502);
+    const esc = await query<{ status: string; github_issue_url: string | null }>(
+      `SELECT status, github_issue_url FROM addie_escalations WHERE id = $1`,
+      [eid],
+    );
+    expect(esc.rows[0].status).toBe('open');
+    expect(esc.rows[0].github_issue_url).toBeNull();
   });
 
   it('GET /escalations/suggestions matches the literal path and does not shadow into the :id handler', async () => {

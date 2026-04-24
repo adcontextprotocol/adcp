@@ -6,9 +6,16 @@
 
 import { query } from './client.js';
 
-export type SuggestedStatus = 'resolved' | 'wont_do' | 'keep_open';
+export type SuggestedStatus = 'resolved' | 'wont_do' | 'keep_open' | 'file_as_issue';
 export type SuggestionConfidence = 'high' | 'medium' | 'low';
 export type SuggestionDecision = 'accepted' | 'rejected' | 'superseded';
+
+export interface ProposedGithubIssue {
+  title: string;
+  body: string;
+  repo: string;
+  labels: string[];
+}
 
 export interface TriageSuggestion {
   id: number;
@@ -19,6 +26,7 @@ export interface TriageSuggestion {
   bucket: string | null;
   reasoning: string;
   evidence: string[];
+  proposed_github_issue: ProposedGithubIssue | null;
   reviewed_at: Date | null;
   reviewed_by: string | null;
   decision: SuggestionDecision | null;
@@ -32,6 +40,7 @@ export interface TriageSuggestionInput {
   bucket?: string | null;
   reasoning: string;
   evidence: string[];
+  proposed_github_issue?: ProposedGithubIssue | null;
 }
 
 /**
@@ -44,8 +53,8 @@ export async function insertSuggestionIfNew(
 ): Promise<TriageSuggestion | null> {
   const result = await query<TriageSuggestion>(
     `INSERT INTO escalation_triage_suggestions
-      (escalation_id, suggested_status, confidence, bucket, reasoning, evidence)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      (escalation_id, suggested_status, confidence, bucket, reasoning, evidence, proposed_github_issue)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
      ON CONFLICT DO NOTHING
      RETURNING *`,
     [
@@ -55,6 +64,7 @@ export async function insertSuggestionIfNew(
       input.bucket ?? null,
       input.reasoning,
       JSON.stringify(input.evidence ?? []),
+      input.proposed_github_issue ? JSON.stringify(input.proposed_github_issue) : null,
     ],
   );
   return result.rows[0] ?? null;
