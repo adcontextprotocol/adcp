@@ -6,9 +6,16 @@
 
 import { query } from './client.js';
 
-export type SuggestedStatus = 'resolved' | 'wont_do' | 'keep_open';
+export type SuggestedStatus = 'resolved' | 'wont_do' | 'keep_open' | 'file_as_issue';
 export type SuggestionConfidence = 'high' | 'medium' | 'low';
 export type SuggestionDecision = 'accepted' | 'rejected' | 'superseded';
+
+export interface ProposedGithubIssue {
+  title: string;
+  body: string;
+  repo: string;
+  labels: string[];
+}
 
 export interface TriageSuggestion {
   id: number;
@@ -19,6 +26,7 @@ export interface TriageSuggestion {
   bucket: string | null;
   reasoning: string;
   evidence: string[];
+  proposed_github_issue: ProposedGithubIssue | null;
   reviewed_at: Date | null;
   reviewed_by: string | null;
   decision: SuggestionDecision | null;
@@ -32,6 +40,7 @@ export interface TriageSuggestionInput {
   bucket?: string | null;
   reasoning: string;
   evidence: string[];
+  proposed_github_issue?: ProposedGithubIssue | null;
 }
 
 /**
@@ -44,8 +53,8 @@ export async function insertSuggestionIfNew(
 ): Promise<TriageSuggestion | null> {
   const result = await query<TriageSuggestion>(
     `INSERT INTO escalation_triage_suggestions
-      (escalation_id, suggested_status, confidence, bucket, reasoning, evidence)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      (escalation_id, suggested_status, confidence, bucket, reasoning, evidence, proposed_github_issue)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
      ON CONFLICT DO NOTHING
      RETURNING *`,
     [
@@ -55,6 +64,7 @@ export async function insertSuggestionIfNew(
       input.bucket ?? null,
       input.reasoning,
       JSON.stringify(input.evidence ?? []),
+      input.proposed_github_issue ? JSON.stringify(input.proposed_github_issue) : null,
     ],
   );
   return result.rows[0] ?? null;
@@ -119,6 +129,14 @@ export async function getPendingSuggestionForEscalation(
   return result.rows[0] ?? null;
 }
 
+/**
+ * Atomically reserve-and-record a decision on a suggestion. Returns the
+ * updated row on success, or null when the suggestion is already decided
+ * (meaning a concurrent caller got there first). The `AND decision IS NULL`
+ * clause makes this safe against two admins clicking accept simultaneously
+ * — important for `file_as_issue`, where a duplicate would file a second
+ * GitHub issue as a side effect.
+ */
 export async function recordDecision(
   id: number,
   decision: SuggestionDecision,
@@ -131,11 +149,34 @@ export async function recordDecision(
          reviewed_by = $3,
          reviewed_at = NOW(),
          decision_notes = $4
-     WHERE id = $1
+     WHERE id = $1 AND decision IS NULL
      RETURNING *`,
     [id, decision, reviewedBy, notes ?? null],
   );
   return result.rows[0] ?? null;
+}
+
+/**
+ * Release a decision that was set by `recordDecision`. Used as the
+ * compensating write when the follow-up external call (GitHub issue
+ * filing) fails, so another retry can claim the suggestion.
+ *
+ * Scoped to the reviewer who made the reservation to avoid clobbering
+ * a legitimate decision by a different admin.
+ */
+export async function releaseDecision(
+  id: number,
+  reviewedBy: string,
+): Promise<void> {
+  await query(
+    `UPDATE escalation_triage_suggestions
+     SET decision = NULL,
+         reviewed_by = NULL,
+         reviewed_at = NULL,
+         decision_notes = NULL
+     WHERE id = $1 AND reviewed_by = $2`,
+    [id, reviewedBy],
+  );
 }
 
 export async function getSuggestionStats(): Promise<{

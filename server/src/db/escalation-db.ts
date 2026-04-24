@@ -53,6 +53,10 @@ export interface Escalation {
   perspective_id: string | null;
   /** Optional: denormalized slug for easy admin display without a join. */
   perspective_slug: string | null;
+  /** Set when a triage suggestion filed a GitHub issue for this escalation. */
+  github_issue_url: string | null;
+  github_issue_number: number | null;
+  github_issue_repo: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -287,6 +291,30 @@ export async function updateEscalationStatus(
     [id, status, resolvedBy || null, isResolved, notes || null]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Record a filed GitHub issue on an escalation. Called from the
+ * accept-as-file-issue flow in addie-admin so admins see the link
+ * on the escalations dashboard and later triage runs know to skip.
+ */
+export async function setEscalationGithubIssue(
+  id: number,
+  url: string,
+  number: number,
+  repo: string,
+): Promise<Escalation | null> {
+  const result = await query<Escalation>(
+    `UPDATE addie_escalations
+     SET github_issue_url = $2,
+         github_issue_number = $3,
+         github_issue_repo = $4,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, url, number, repo],
+  );
+  return result.rows[0] ?? null;
 }
 
 /**

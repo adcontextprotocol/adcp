@@ -22,7 +22,7 @@ vi.mock('../../src/addie/jobs/escalation-triage-signals.js', async (importOrigin
   return { ...actual, probeUrlStatus: mocks.probeUrlStatus };
 });
 
-import { classifyEscalation } from '../../src/addie/jobs/escalation-triage.js';
+import { buildGithubIssueDraft, classifyEscalation } from '../../src/addie/jobs/escalation-triage.js';
 
 describe('escalation-triage signals', () => {
   it('extracts agenticadvertising.org URLs from free text and strips trailing punctuation', () => {
@@ -139,10 +139,26 @@ describe('classifyEscalation', () => {
     expect(v).toBeNull();
   });
 
-  it('keeps bug-shaped escalation open when the referenced URL still 404s', async () => {
+  it('suggests file_as_issue when the referenced URL still 404s and bucket is bug', async () => {
     mocks.probeUrlStatus.mockResolvedValue(404);
     const v = await classifyEscalation(
       esc({ summary: 'Bug: https://agenticadvertising.org/terms returns 404' }),
+      21,
+    );
+    expect(v?.suggested_status).toBe('file_as_issue');
+    expect(v?.confidence).toBe('medium');
+    expect(v?.proposed_github_issue).toBeDefined();
+    expect(v?.proposed_github_issue?.repo).toContain('/');
+    expect(v?.proposed_github_issue?.labels).toEqual(expect.arrayContaining(['from-escalation', 'needs-triage']));
+  });
+
+  it('does not re-propose file_as_issue when the escalation already has a github_issue_url', async () => {
+    mocks.probeUrlStatus.mockResolvedValue(404);
+    const v = await classifyEscalation(
+      esc({
+        summary: 'Bug: https://agenticadvertising.org/terms returns 404',
+        github_issue_url: 'https://github.com/adcontextprotocol/adcp/issues/9999',
+      }),
       21,
     );
     expect(v).toBeNull();
@@ -192,6 +208,49 @@ describe('classifyEscalation', () => {
     // getEscalation should never be called for self-ref — test fails if mock returned resolved.
     expect(mocks.getEscalation).not.toHaveBeenCalledWith(97);
     expect(v).toBeNull();
+  });
+
+  it('sanitises @mentions and image tags that could inject into the filed issue', async () => {
+    const draft = buildGithubIssueDraft(
+      {
+        ...esc({
+          summary: 'Bug: @adcontextprotocol/core please fix this.',
+          addie_context: 'User pasted ![tracking](https://evil.example/pixel.gif) inline.',
+        }),
+      } as Parameters<typeof buildGithubIssueDraft>[0],
+      [],
+    );
+
+    expect(draft.body).not.toMatch(/(^|\s)@adcontextprotocol\/core/);
+    expect(draft.body).toContain('`@adcontextprotocol`');
+    expect(draft.body).not.toContain('![tracking]');
+    expect(draft.body).toContain('[tracking](');
+  });
+
+  it('omits user PII from the proposed issue body', async () => {
+    // PII lives in dedicated columns (user_email, user_slack_handle,
+    // user_display_name) and in original_request, which we skip entirely.
+    // The body must only carry Addie-authored text (summary + addie_context).
+    const draft = buildGithubIssueDraft(
+      {
+        ...esc({
+          summary: 'Bug: /some-page is broken when users visit it',
+          user_email: 'pii@example.com',
+          user_slack_handle: 'pii-slack',
+          user_display_name: 'Jane Doe',
+          original_request: 'Hi team, I am jane.doe@example.com and my page broke',
+          addie_context: 'User confirmed the issue; capturing for platform review.',
+        }),
+      } as Parameters<typeof buildGithubIssueDraft>[0],
+      ['https://agenticadvertising.org/some-page'],
+    );
+
+    expect(draft.body).not.toContain('pii@example.com');
+    expect(draft.body).not.toContain('pii-slack');
+    expect(draft.body).not.toContain('Jane Doe');
+    expect(draft.body).not.toContain('jane.doe@example.com');
+    expect(draft.body).toContain('## Summary');
+    expect(draft.body).toContain('Bug: /some-page is broken');
   });
 
   it('returns null (no signal) when every URL probe fails, even for stale ops-bucket content', async () => {
