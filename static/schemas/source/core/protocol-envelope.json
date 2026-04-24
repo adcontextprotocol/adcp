@@ -16,7 +16,8 @@
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",
-      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. Managed by the protocol layer."
+      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. Managed by the protocol layer.",
+      "x-adcp-conformance": "Agents MUST NOT emit legacy status fields (task_status, response_status, or any alias) alongside this field. The status field is the single authoritative task state."
     },
     "message": {
       "type": "string",
