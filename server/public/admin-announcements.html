@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Admin — Announcements — AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container {
+      max-width: var(--container-xl);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-6);
+    }
+    /* Filter tabs */
+    .filter-tabs {
+      display: flex;
+      gap: var(--space-2);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      margin-bottom: var(--space-5);
+    }
+    .tab {
+      background: none;
+      border: none;
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .tab:hover { color: var(--color-text-heading); }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+      font-weight: var(--font-medium);
+    }
+    .tab .count {
+      display: inline-block;
+      min-width: 22px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      text-align: center;
+    }
+    .tab.active .count {
+      background: var(--color-brand);
+      color: white;
+    }
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+    th, td {
+      text-align: left;
+      padding: var(--space-3) var(--space-2_5);
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      vertical-align: top;
+    }
+    th {
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    tr:hover td { background: var(--color-gray-50); }
+    td a { color: var(--color-brand); text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .badge-tier { background: var(--color-gray-100); color: var(--color-text-secondary); }
+    .badge-backfill { background: #fef3c7; color: #92400e; margin-left: var(--space-2); }
+    .status-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+    }
+    .status-done { color: var(--color-success-700); }
+    .status-pending { color: var(--color-text-secondary); }
+    .status-skipped { color: var(--color-gray-500); }
+    .empty {
+      text-align: center;
+      padding: var(--space-10) var(--space-4);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .stuck-warn { color: #b91c1c; font-weight: var(--font-medium); }
+    .btn {
+      padding: var(--space-1) var(--space-3);
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-mark-li {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-mark-li:hover { background: var(--color-primary-700); }
+    .btn-mark-li:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .stuck-count {
+      margin-left: var(--space-1);
+    }
+    .legend {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-5);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-gray-100);
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
+    Loading announcements…
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <h1>Announcements</h1>
+        <p class="subtitle">
+          Workflow B backlog. Every member whose announcement draft has been posted to the editorial
+          channel shows up here until both Slack and LinkedIn are marked — or the draft is skipped.
+          Click a row to open the account and act (Mark posted to LinkedIn lives there).
+        </p>
+
+        <div class="filter-tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="false" data-state="pending_review" onclick="setFilter('pending_review')">
+            Pending review
+            <span class="count" id="count-pending_review">—</span>
+            <span class="count stuck-count" id="stuck-pending_review" style="display: none; background: #fee2e2; color: #b91c1c;"></span>
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-state="li_pending" onclick="setFilter('li_pending')">
+            LinkedIn pending
+            <span class="count" id="count-li_pending">—</span>
+            <span class="count stuck-count" id="stuck-li_pending" style="display: none; background: #fee2e2; color: #b91c1c;"></span>
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-state="done" onclick="setFilter('done')">
+            Done
+            <span class="count" id="count-done">—</span>
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-state="skipped" onclick="setFilter('skipped')">
+            Skipped
+            <span class="count" id="count-skipped">—</span>
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-state="all" onclick="setFilter('all')">
+            All
+            <span class="count" id="count-all">—</span>
+          </button>
+        </div>
+
+        <div id="tableWrap">
+          <div class="empty">Loading…</div>
+        </div>
+
+        <div class="legend">
+          <strong>Pending review</strong> — draft posted, awaiting Slack approval.<br>
+          <strong>LinkedIn pending</strong> — Slack posted; admin still needs to post on LinkedIn
+          and click <em>Mark posted to LinkedIn</em> (in Slack or on the account page).<br>
+          <strong>Done</strong> — both Slack and LinkedIn landed.<br>
+          <strong>Skipped</strong> — draft was explicitly skipped; no public post.<br>
+          <strong>Stuck</strong> — drafts that have been pending for more than 7 days are flagged.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STATE_LABELS = {
+      pending_review: 'Pending review',
+      li_pending: 'LinkedIn pending',
+      done: 'Done',
+      skipped: 'Skipped',
+      all: 'All',
+    };
+    const STUCK_DAYS = 7;
+
+    let rows = [];
+    // Default tab is set after the fetch resolves: prefer `li_pending`
+    // (work the editorial operator can act on *right now* via the
+    // inline Mark-LI button), fall back to `pending_review`, then
+    // `all`. The initial tab state is "nothing selected" until then.
+    let activeState = null;
+
+    async function loadBacklog() {
+      try {
+        const res = await fetch('/api/admin/announcements');
+        if (!res.ok) {
+          if (res.status === 401) {
+            window.AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('HTTP ' + res.status);
+        }
+        const data = await res.json();
+        rows = data.rows ?? [];
+        updateCounts(data.counts ?? {});
+        activeState = pickInitialTab(data.counts ?? {});
+        setFilter(activeState);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (err) {
+        console.error('Failed to load announcements:', err);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load announcements. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    function pickInitialTab(counts) {
+      if ((counts.li_pending ?? 0) > 0) return 'li_pending';
+      if ((counts.pending_review ?? 0) > 0) return 'pending_review';
+      return 'all';
+    }
+
+    function updateCounts(counts) {
+      for (const k of ['all', 'pending_review', 'li_pending', 'done', 'skipped']) {
+        const el = document.getElementById('count-' + k);
+        if (el) el.textContent = counts[k] ?? 0;
+      }
+      // Stuck badges show on the two actionable tabs only.
+      for (const k of ['pending_review', 'li_pending']) {
+        const stuckEl = document.getElementById('stuck-' + k);
+        if (!stuckEl) continue;
+        const n = rows.filter((r) => r.state === k && isStuck(r)).length;
+        if (n > 0) {
+          stuckEl.textContent = n + ' stuck';
+          stuckEl.style.display = '';
+        } else {
+          stuckEl.style.display = 'none';
+        }
+      }
+    }
+
+    function setFilter(state) {
+      activeState = state;
+      for (const tab of document.querySelectorAll('.tab')) {
+        const match = tab.dataset.state === state;
+        tab.classList.toggle('active', match);
+        tab.setAttribute('aria-selected', match ? 'true' : 'false');
+      }
+      render();
+    }
+
+    function isStuck(r) {
+      if (r.skipped) return false;
+      if (r.slack_posted && r.linkedin_posted) return false;
+      return daysAgo(r.draft_posted_at) >= STUCK_DAYS;
+    }
+
+    function render() {
+      const wrap = document.getElementById('tableWrap');
+      const filtered = (activeState === 'all' ? rows : rows.filter((r) => r.state === activeState))
+        .slice()
+        // Stuck rows float to the top within a tab. This surfaces the
+        // "I should look at this right now" rows above the latest-
+        // drafted ones without forcing the operator to sort.
+        .sort((a, b) => {
+          const stuckA = isStuck(a) ? 1 : 0;
+          const stuckB = isStuck(b) ? 1 : 0;
+          if (stuckA !== stuckB) return stuckB - stuckA;
+          return new Date(b.draft_posted_at) - new Date(a.draft_posted_at);
+        });
+      if (filtered.length === 0) {
+        wrap.innerHTML = `<div class="empty">No announcements in state &ldquo;${escapeHtml(STATE_LABELS[activeState])}&rdquo;.</div>`;
+        return;
+      }
+      const bodyHtml = filtered.map(renderRow).join('');
+      wrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Org</th>
+              <th>Tier</th>
+              <th>Draft posted</th>
+              <th>Slack</th>
+              <th>LinkedIn</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${bodyHtml}</tbody>
+        </table>
+      `;
+    }
+
+    function renderRow(r) {
+      const profileHref = `/admin/accounts/${encodeURIComponent(r.organization_id)}`;
+      const tier = r.membership_tier ?? '—';
+      const draftWhen = fmtDate(r.draft_posted_at);
+      const daysPending = daysAgo(r.draft_posted_at);
+      const stuck = isStuck(r);
+      const stuckLabel = stuck
+        ? ` <span class="stuck-warn" aria-label="Draft stuck ${daysPending} days">· stuck ${daysPending}d</span>`
+        : '';
+      // Inline Mark-LI button shows only when Slack is posted and
+      // LinkedIn isn't. Uses the same POST endpoint as the account
+      // detail page surface from PR #2981; idempotent server-side.
+      const liCellInner = r.linkedin_posted
+        ? `<span class="status-cell status-done">✓ ${fmtDate(r.linkedin_marked_at)}</span>`
+        : r.state === 'li_pending'
+          ? `<button class="btn btn-mark-li" data-org="${escapeHtml(r.organization_id)}" onclick="markLinkedIn(this)">Mark posted</button>`
+          : '<span class="status-cell status-pending">— pending</span>';
+
+      return `
+        <tr data-org="${escapeHtml(r.organization_id)}">
+          <td>
+            <a href="${escapeHtml(profileHref)}">${escapeHtml(r.org_name)}</a>
+            ${r.is_backfill ? '<span class="badge badge-backfill" title="Posted via the retroactive backfill script">BACKFILL</span>' : ''}
+          </td>
+          <td><span class="badge badge-tier">${escapeHtml(tier)}</span></td>
+          <td>${draftWhen}${stuckLabel}</td>
+          <td>${r.slack_posted
+              ? `<span class="status-cell status-done">✓ ${fmtDate(r.slack_posted_at)}</span>`
+              : '<span class="status-cell status-pending">— pending</span>'}</td>
+          <td>${liCellInner}</td>
+          <td>${renderStateBadge(r)}</td>
+        </tr>
+      `;
+    }
+
+    async function markLinkedIn(btn) {
+      const orgId = btn.dataset.org;
+      if (!orgId) return;
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.textContent = 'Marking…';
+      try {
+        const res = await fetch(`/api/admin/accounts/${encodeURIComponent(orgId)}/announcement/linkedin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error('markLinkedIn failed', res.status, body);
+          btn.disabled = false;
+          btn.setAttribute('aria-busy', 'false');
+          btn.textContent = 'Retry';
+          btn.title = body.message || body.error || `Failed (${res.status})`;
+          return;
+        }
+        // Optimistic patch: flip this row's state locally, refresh
+        // counts, re-render. Background re-fetch reconciles against
+        // the server (covers the rare case where another admin marked
+        // something concurrently).
+        const row = rows.find((r) => r.organization_id === orgId);
+        if (row) {
+          row.linkedin_posted = true;
+          row.linkedin_marked_at = new Date().toISOString();
+          row.state = row.slack_posted ? 'done' : 'li_pending';
+        }
+        updateCounts(recomputeCounts());
+        render();
+        loadBacklog().catch((e) => console.error('Post-mark refresh failed', e));
+      } catch (err) {
+        console.error('markLinkedIn threw', err);
+        btn.disabled = false;
+        btn.setAttribute('aria-busy', 'false');
+        btn.textContent = 'Retry';
+      }
+    }
+
+    function recomputeCounts() {
+      const c = { all: rows.length, pending_review: 0, li_pending: 0, done: 0, skipped: 0 };
+      for (const r of rows) c[r.state] = (c[r.state] ?? 0) + 1;
+      return c;
+    }
+
+    function renderStateBadge(r) {
+      if (r.skipped) return '<span class="status-cell status-skipped">⊘ skipped</span>';
+      if (r.slack_posted && r.linkedin_posted) return '<span class="status-cell status-done">✓ done</span>';
+      if (r.slack_posted) return '<span class="status-cell status-pending">⏳ LI pending</span>';
+      return '<span class="status-cell status-pending">⏳ pending review</span>';
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      // ISO 8601 date (YYYY-MM-DD) is unambiguous for an ops table
+      // where viewers may be in different locales. Locale-formatted
+      // dates render differently for US vs EU admins.
+      try { return new Date(iso).toISOString().slice(0, 10); } catch { return '—'; }
+    }
+
+    function daysAgo(iso) {
+      if (!iso) return 0;
+      try {
+        const delta = Date.now() - new Date(iso).getTime();
+        return Math.max(0, Math.floor(delta / (24 * 60 * 60 * 1000)));
+      } catch { return 0; }
+    }
+
+    function escapeHtml(text) {
+      if (text === null || text === undefined) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
+    loadBacklog();
+  </script>
+</body>
+</html>
