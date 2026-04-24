@@ -2,7 +2,11 @@ import type Stripe from 'stripe';
 import type { WorkOS, User as WorkOSUser } from '@workos-inc/node';
 import type { Logger } from 'pino';
 
-export type ResolveSource = 'subscription_metadata' | 'customer_metadata' | 'email_lookup';
+export type ResolveSource =
+  | 'pending_agreement_user'
+  | 'subscription_metadata'
+  | 'customer_metadata'
+  | 'email_lookup';
 
 export interface ResolvedWorkosUser {
   user: WorkOSUser;
@@ -13,6 +17,7 @@ export interface ResolveArgs {
   subscription: Stripe.Subscription;
   customer: Stripe.Customer;
   organizationId: string;
+  pendingAgreementUserId?: string | null;
   workos: WorkOS;
   logger: Logger;
 }
@@ -23,9 +28,11 @@ export interface ResolveArgs {
  * to the correct person.
  *
  * Resolution order:
- *   1. `subscription.metadata.workos_user_id` — set by our checkout-session flow.
- *   2. Stripe customer `metadata.workos_user_id` — for customers we already stamped.
- *   3. Email lookup against WorkOS — for legacy customers created before the
+ *   1. `pendingAgreementUserId` — the WorkOS user who clicked the agreement
+ *      checkbox (stored on the org row at checkbox time). Most reliable.
+ *   2. `subscription.metadata.workos_user_id` — set by our checkout-session flow.
+ *   3. Stripe customer `metadata.workos_user_id` — for customers we already stamped.
+ *   4. Email lookup against WorkOS — for legacy customers created before the
  *      metadata-first path shipped. Only useful when the Stripe-customer email
  *      matches the WorkOS-user email (brittle: this is the mode that caused the
  *      original silent-failure bug).
@@ -43,10 +50,21 @@ export interface ResolveArgs {
 export async function resolveWorkosUserForSubscription(
   args: ResolveArgs,
 ): Promise<ResolvedWorkosUser | null> {
-  const { subscription, customer, organizationId, workos, logger } = args;
+  const { subscription, customer, organizationId, pendingAgreementUserId, workos, logger } = args;
+
+  const tried = new Set<string>();
+
+  if (pendingAgreementUserId) {
+    tried.add(pendingAgreementUserId);
+    const user = await tryGetUser(workos, pendingAgreementUserId, logger, 'pending_agreement_user');
+    if (user && await isOrgMember(workos, user.id, organizationId, logger, 'pending_agreement_user')) {
+      return { user, source: 'pending_agreement_user' };
+    }
+  }
 
   const subUserId = subscription.metadata?.workos_user_id;
-  if (subUserId) {
+  if (subUserId && !tried.has(subUserId)) {
+    tried.add(subUserId);
     const user = await tryGetUser(workos, subUserId, logger, 'subscription_metadata');
     if (user && await isOrgMember(workos, user.id, organizationId, logger, 'subscription_metadata')) {
       return { user, source: 'subscription_metadata' };
@@ -54,7 +72,8 @@ export async function resolveWorkosUserForSubscription(
   }
 
   const custUserId = customer.metadata?.workos_user_id;
-  if (custUserId && custUserId !== subUserId) {
+  if (custUserId && !tried.has(custUserId)) {
+    tried.add(custUserId);
     const user = await tryGetUser(workos, custUserId, logger, 'customer_metadata');
     if (user && await isOrgMember(workos, user.id, organizationId, logger, 'customer_metadata')) {
       return { user, source: 'customer_metadata' };

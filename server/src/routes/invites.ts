@@ -204,6 +204,7 @@ export function createInvitesRouter(): Router {
       await orgDb.updateOrganization(org.workos_organization_id, {
         pending_agreement_version: currentAgreement.version,
         pending_agreement_accepted_at: new Date(),
+        pending_agreement_user_id: user.id,
         billing_address: sanitizedAddress,
       });
 
