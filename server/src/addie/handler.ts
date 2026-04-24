@@ -7,7 +7,7 @@
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
-import { resolveUserTierForScopeKey } from './claude-cost-tracker.js';
+import { resolveUserTierFromDb } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -603,7 +603,7 @@ export async function handleAssistantMessage(
     // daily Addie spend budget. Mapped WorkOS users resolve to
     // member_paid if they have an active subscription (#2945 f/u).
     const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${event.user}`;
-    const costScopeTier = await resolveUserTierForScopeKey(costScopeUserId);
+    const costScopeTier = await resolveUserTierFromDb(costScopeUserId);
     const processOptions: import('./claude-client.js').ProcessMessageOptions = {
       requestContext,
       ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
@@ -779,7 +779,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // tier resolved from subscription status; fall back to a
     // namespaced Slack ID at member_free.
     const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${event.user}`;
-    const costScopeTier = await resolveUserTierForScopeKey(costScopeUserId);
+    const costScopeTier = await resolveUserTierFromDb(costScopeUserId);
     const processOptions: import('./claude-client.js').ProcessMessageOptions = {
       requestContext,
       ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),

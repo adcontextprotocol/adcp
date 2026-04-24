@@ -17,7 +17,7 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
-import { resolveUserTierForScopeKey } from "../addie/claude-cost-tracker.js";
+import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   sanitizeInput,
   validateOutput,
@@ -782,16 +782,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Cost-cap scope (#2790). Authenticated callers key off the
-      // WorkOS user ID and resolve their tier from subscription
-      // status — paying members land on member_paid ($25/day),
-      // free accounts on member_free ($5/day). Anonymous callers key
-      // off a hashed IP; the client-generated `externalId` alone was
-      // a bypass vector (an attacker could rotate it to get a fresh
-      // budget per request). The per-IP 50 msg/day limiter above
-      // bounds rotation within a single host.
-      const authedTier = req.user?.id
-        ? await resolveUserTierForScopeKey(req.user.id)
+      // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
+      // off the WorkOS user ID and resolve their tier from
+      // subscription status — paying members land on member_paid
+      // ($25/day), free accounts on member_free ($5). Anonymous
+      // callers key off a hashed IP; the client-generated
+      // `externalId` alone was a bypass vector (an attacker could
+      // rotate it to get a fresh budget per request). The per-IP 50
+      // msg/day limiter above bounds rotation within a single host.
+      const authedScope = req.user?.id
+        ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
 
       // Process with Claude
@@ -802,9 +802,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           requestContext,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
-          ...(req.user?.id && authedTier
-            ? { costScope: { userId: req.user.id, tier: authedTier } }
-            : { costScope: { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const } }),
+          costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
         // Provide user-friendly error message based on error type
@@ -1053,8 +1051,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const toolsUsed: string[] = [];
 
       // Cost cap — see matching block in the non-streaming path.
-      const streamAuthedTier = req.user?.id
-        ? await resolveUserTierForScopeKey(req.user.id)
+      const streamAuthedScope = req.user?.id
+        ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
 
       for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
@@ -1062,8 +1060,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         requestContext,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
-        ...(req.user?.id && streamAuthedTier
-          ? { costScope: { userId: req.user.id, tier: streamAuthedTier } }
+        ...(streamAuthedScope
+          ? { costScope: streamAuthedScope }
           : externalId
             ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
             : {}),

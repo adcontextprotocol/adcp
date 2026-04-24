@@ -272,12 +272,19 @@ export function resolveUserTier(opts: {
  * fall back to `member_free` so a transient outage doesn't accidentally
  * grant the $25/day ceiling to unverified callers.
  *
- * This is the async counterpart to the pure `resolveUserTier` above —
- * call this one when the caller only knows a scope-key userId and
- * needs the DB to tell it whether the user has an active subscription.
+ * The SQL predicate here (`subscription_status = 'active' AND
+ * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
+ * `db/org-filters.ts` — the two must stay in sync so admin views and
+ * the cap agree on who counts as a paying member. Trialing / past_due /
+ * comped-$0 states all correctly fall through to `member_free`; if
+ * future policy promotes any of those, update `MEMBER_FILTER` first.
+ *
+ * This is the async, DB-touching counterpart to the pure
+ * `resolveUserTier` above — the `FromDb` suffix is deliberate so a
+ * call site can tell at a glance that this one awaits the database.
  */
-export async function resolveUserTierForScopeKey(userId: string): Promise<UserTier> {
-  if (!userId.startsWith('user_')) return 'member_free';
+export async function resolveUserTierFromDb(userId: string | null | undefined): Promise<UserTier> {
+  if (!userId || !userId.startsWith('user_')) return 'member_free';
   try {
     const { rows } = await query<{ exists: 1 }>(
       `SELECT 1 AS exists
