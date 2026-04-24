@@ -264,7 +264,7 @@ export async function handleSubscriptionCreated(
     customerEmail: userEmail,
     productName: productInfo.productName,
     amount: productInfo.amount,
-    currency: subscription.currency ?? undefined,
+    currency: subscription.currency,
     interval: productInfo.interval,
   }).catch((err) => logger.error({ err }, 'Failed to send Slack notification'));
 
@@ -285,8 +285,8 @@ async function fetchProductInfo(
 
   if (firstItem.price.product) {
     try {
-      const product = await stripe.products.retrieve(firstItem.price.product as string);
-      if ('name' in product) productName = product.name;
+      const product = (await stripe.products.retrieve(firstItem.price.product as string)) as Stripe.Product;
+      productName = product.name;
     } catch (err) {
       logger.debug({ err }, 'Failed to retrieve Stripe product metadata (non-critical)');
     }

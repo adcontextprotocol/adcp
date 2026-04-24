@@ -1,22 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type Stripe from 'stripe';
-import { handleSubscriptionCreated } from '../../src/billing/handle-subscription-created.js';
-
-// Silence logger to keep test output clean. The handler's observable
-// side effects are DB / Stripe / notifier calls — not log lines — so
-// logger assertions are out of scope here.
-vi.mock('../../src/logger.js', () => {
-  const l = {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    trace: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-  };
-  return { logger: l, createLogger: () => l };
-});
+import type { WorkOS } from '@workos-inc/node';
+import type { Pool } from 'pg';
+import type { Logger } from 'pino';
+import {
+  handleSubscriptionCreated,
+  type HandleSubscriptionCreatedArgs,
+} from '../../src/billing/handle-subscription-created.js';
+import type { OrganizationDatabase, Organization } from '../../src/db/organization-db.js';
 
 const ORG_ID = 'org_test_456';
 const CUSTOMER_ID = 'cus_test_123';
@@ -24,7 +15,7 @@ const SUB_ID = 'sub_test_789';
 const USER_ID = 'user_test_abc';
 const USER_EMAIL = 'signer@example.com';
 
-function makeLogger() {
+function makeLogger(): Logger {
   return {
     info: vi.fn(),
     warn: vi.fn(),
@@ -33,10 +24,10 @@ function makeLogger() {
     trace: vi.fn(),
     fatal: vi.fn(),
     child: vi.fn().mockReturnThis(),
-  } as any;
+  } as unknown as Logger;
 }
 
-function makeOrg(overrides: Record<string, any> = {}) {
+function makeOrg(overrides: Partial<Organization> = {}): Organization {
   return {
     workos_organization_id: ORG_ID,
     name: 'Test Org',
@@ -48,10 +39,10 @@ function makeOrg(overrides: Record<string, any> = {}) {
     agreement_signed_at: null,
     agreement_version: null,
     ...overrides,
-  } as any;
+  } as Organization;
 }
 
-function makeSubscription(overrides: Record<string, any> = {}): Stripe.Subscription {
+function makeSubscription(overrides: Partial<Stripe.Subscription> = {}): Stripe.Subscription {
   return {
     id: SUB_ID,
     customer: CUSTOMER_ID,
@@ -66,22 +57,22 @@ function makeSubscription(overrides: Record<string, any> = {}): Stripe.Subscript
           product: 'prod_mem_standard',
         },
       }],
-    },
+    } as Stripe.ApiList<Stripe.SubscriptionItem>,
     ...overrides,
-  } as any;
+  } as Stripe.Subscription;
 }
 
-function makeCustomer(overrides: Record<string, any> = {}): Stripe.Customer {
+function makeCustomer(overrides: Partial<Stripe.Customer> = {}): Stripe.Customer {
   return {
     id: CUSTOMER_ID,
     email: USER_EMAIL,
     metadata: {},
     deleted: false,
     ...overrides,
-  } as any;
+  } as Stripe.Customer;
 }
 
-function makeUser(overrides: Record<string, any> = {}) {
+function makeUser(overrides: Record<string, unknown> = {}) {
   return {
     id: USER_ID,
     email: USER_EMAIL,
@@ -90,47 +81,87 @@ function makeUser(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeDeps(overrides: Record<string, any> = {}) {
-  const logger = makeLogger();
-  const orgDb = {
-    getCurrentAgreementByType: vi.fn().mockResolvedValue({ version: '1.0' }),
-    updateOrganization: vi.fn().mockResolvedValue(undefined),
-    recordUserAgreementAcceptance: vi.fn().mockResolvedValue(undefined),
-    recordAuditLog: vi.fn().mockResolvedValue(undefined),
+interface MockedDeps {
+  stripe: {
+    customers: { retrieve: ReturnType<typeof vi.fn> };
+    products: { retrieve: ReturnType<typeof vi.fn> };
+    subscriptions: { update: ReturnType<typeof vi.fn> };
   };
-  const stripe = {
-    customers: { retrieve: vi.fn().mockResolvedValue(makeCustomer()) },
-    products: { retrieve: vi.fn().mockResolvedValue({ name: 'Member Standard' }) },
-    subscriptions: { update: vi.fn().mockResolvedValue(undefined) },
-  };
-  const workos = {
+  workos: {
     userManagement: {
-      getUser: vi.fn().mockResolvedValue(makeUser()),
-      listUsers: vi.fn().mockResolvedValue({ data: [] }),
-      listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [{ id: 'om_1' }] }),
-    },
+      getUser: ReturnType<typeof vi.fn>;
+      listUsers: ReturnType<typeof vi.fn>;
+      listOrganizationMemberships: ReturnType<typeof vi.fn>;
+    };
   };
-  const pool = { query: vi.fn().mockResolvedValue({ rowCount: 1 }) };
-  const notifySystemError = vi.fn();
-  const notifyNewSubscription = vi.fn().mockResolvedValue(true);
-  return { logger, orgDb, stripe, workos, pool, notifySystemError, notifyNewSubscription, ...overrides };
+  orgDb: {
+    getCurrentAgreementByType: ReturnType<typeof vi.fn>;
+    updateOrganization: ReturnType<typeof vi.fn>;
+    recordUserAgreementAcceptance: ReturnType<typeof vi.fn>;
+    recordAuditLog: ReturnType<typeof vi.fn>;
+  };
+  pool: { query: ReturnType<typeof vi.fn> };
+  notifySystemError: ReturnType<typeof vi.fn>;
+  notifyNewSubscription: ReturnType<typeof vi.fn>;
+  logger: Logger;
+}
+
+function makeMockDeps(): MockedDeps {
+  return {
+    stripe: {
+      customers: { retrieve: vi.fn().mockResolvedValue(makeCustomer()) },
+      products: { retrieve: vi.fn().mockResolvedValue({ name: 'Member Standard' }) },
+      subscriptions: { update: vi.fn().mockResolvedValue(undefined) },
+    },
+    workos: {
+      userManagement: {
+        getUser: vi.fn().mockResolvedValue(makeUser()),
+        listUsers: vi.fn().mockResolvedValue({ data: [] }),
+        listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [{ id: 'om_1' }] }),
+      },
+    },
+    orgDb: {
+      getCurrentAgreementByType: vi.fn().mockResolvedValue({ version: '1.0' }),
+      updateOrganization: vi.fn().mockResolvedValue(undefined),
+      recordUserAgreementAcceptance: vi.fn().mockResolvedValue(undefined),
+      recordAuditLog: vi.fn().mockResolvedValue(undefined),
+    },
+    pool: { query: vi.fn().mockResolvedValue({ rowCount: 1 }) },
+    notifySystemError: vi.fn(),
+    notifyNewSubscription: vi.fn().mockResolvedValue(true),
+    logger: makeLogger(),
+  };
+}
+
+function makeArgs(
+  deps: MockedDeps,
+  overrides: Partial<HandleSubscriptionCreatedArgs> = {},
+): HandleSubscriptionCreatedArgs {
+  return {
+    subscription: makeSubscription(),
+    customerId: CUSTOMER_ID,
+    org: makeOrg(),
+    stripe: deps.stripe as unknown as Stripe,
+    workos: deps.workos as unknown as WorkOS,
+    orgDb: deps.orgDb as unknown as OrganizationDatabase,
+    pool: deps.pool as unknown as Pool,
+    logger: deps.logger,
+    notifySystemError: deps.notifySystemError,
+    notifyNewSubscription: deps.notifyNewSubscription,
+    ...overrides,
+  };
 }
 
 describe('handleSubscriptionCreated', () => {
-  let deps: ReturnType<typeof makeDeps>;
+  let deps: MockedDeps;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    deps = makeDeps();
+    deps = makeMockDeps();
   });
 
   it('happy path: records org agreement, user attestation, audit log, activity row, and returns admin context', async () => {
-    const result = await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
-      org: makeOrg(),
-      ...(deps as any),
-    });
+    const result = await handleSubscriptionCreated(makeArgs(deps));
 
     // User-level attestation inserted with the expected keys
     expect(deps.orgDb.recordUserAgreementAcceptance).toHaveBeenCalledWith({
@@ -173,7 +204,6 @@ describe('handleSubscriptionCreated', () => {
       }),
     });
 
-    // Failure path must not fire
     expect(deps.notifySystemError).not.toHaveBeenCalled();
 
     expect(result).toEqual({
@@ -185,14 +215,9 @@ describe('handleSubscriptionCreated', () => {
   });
 
   it('deleted customer short-circuits: notifies, records nothing, returns undefined', async () => {
-    deps.stripe.customers.retrieve.mockResolvedValue({ id: CUSTOMER_ID, deleted: true } as any);
+    deps.stripe.customers.retrieve.mockResolvedValue({ id: CUSTOMER_ID, deleted: true });
 
-    const result = await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
-      org: makeOrg(),
-      ...(deps as any),
-    });
+    const result = await handleSubscriptionCreated(makeArgs(deps));
 
     expect(result).toBeUndefined();
     expect(deps.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
@@ -207,30 +232,23 @@ describe('handleSubscriptionCreated', () => {
   it('user not resolvable: records org agreement, alerts loudly, does NOT clear pending (so Stripe retry can reuse it)', async () => {
     // Force resolver to fail: no pending id, no metadata, no matching email
     deps.workos.userManagement.listOrganizationMemberships.mockResolvedValue({ data: [] });
-    const result = await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
+    const result = await handleSubscriptionCreated(makeArgs(deps, {
       org: makeOrg({ pending_agreement_user_id: null }),
-      ...(deps as any),
-    });
+    }));
 
-    // Org-level agreement still recorded (one update, not two — pending not cleared)
     expect(deps.orgDb.updateOrganization).toHaveBeenCalledTimes(1);
     expect(deps.orgDb.updateOrganization).toHaveBeenCalledWith(ORG_ID, expect.objectContaining({
       agreement_version: '1.0',
     }));
 
-    // No user-level attestation, no audit log, no activity row
     expect(deps.orgDb.recordUserAgreementAcceptance).not.toHaveBeenCalled();
     expect(deps.orgDb.recordAuditLog).not.toHaveBeenCalled();
     expect(deps.pool.query).not.toHaveBeenCalled();
 
-    // Loud alert
     expect(deps.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
       errorMessage: expect.stringContaining('no WorkOS user resolvable'),
     }));
 
-    // Slack + metadata stamp still fire (org-level recording happened)
     expect(deps.notifyNewSubscription).toHaveBeenCalled();
     expect(deps.stripe.subscriptions.update).toHaveBeenCalled();
 
@@ -240,12 +258,7 @@ describe('handleSubscriptionCreated', () => {
   it('recordUserAgreementAcceptance throws: alerts, no throw, pending NOT cleared, handler continues', async () => {
     deps.orgDb.recordUserAgreementAcceptance.mockRejectedValue(new Error('unique violation'));
 
-    const result = await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
-      org: makeOrg(),
-      ...(deps as any),
-    });
+    const result = await handleSubscriptionCreated(makeArgs(deps));
 
     expect(deps.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
       errorMessage: expect.stringContaining('insert failed'),
@@ -254,71 +267,79 @@ describe('handleSubscriptionCreated', () => {
     // Only the org-level update fired; pending-clear did NOT run
     expect(deps.orgDb.updateOrganization).toHaveBeenCalledTimes(1);
 
-    // Audit log + activity row skipped since user record didn't land
     expect(deps.orgDb.recordAuditLog).not.toHaveBeenCalled();
     expect(deps.pool.query).not.toHaveBeenCalled();
 
-    // Rest of the webhook still runs
     expect(deps.notifyNewSubscription).toHaveBeenCalled();
 
     expect(result).toBeUndefined();
   });
 
-  it('pending_agreement_user_id is the highest-priority source, beating subscription and customer metadata', async () => {
-    const subscription = makeSubscription({
-      metadata: { workos_user_id: 'user_metadata_loser' },
-    });
-    const customer = makeCustomer({
-      metadata: { workos_user_id: 'user_metadata_loser_2' },
-    });
-    deps.stripe.customers.retrieve.mockResolvedValue(customer);
-    deps.workos.userManagement.getUser.mockResolvedValue(makeUser({ id: USER_ID }));
-
-    await handleSubscriptionCreated({
-      subscription,
-      customerId: CUSTOMER_ID,
-      org: makeOrg({ pending_agreement_user_id: USER_ID }),
-      ...(deps as any),
+  it('attributes the user-level record to pending_agreement_user_id even when subscription metadata names a different user', async () => {
+    // Positive assertion only: the record lands with the PENDING user id,
+    // not the metadata user id. The resolver's own unit test covers
+    // which sources get queried in what order.
+    const subscription = makeSubscription({ metadata: { workos_user_id: 'user_metadata_different' } });
+    deps.workos.userManagement.getUser.mockImplementation(async (id: string) => {
+      if (id === USER_ID) return makeUser({ id: USER_ID });
+      return makeUser({ id });
     });
 
-    expect(deps.workos.userManagement.getUser).toHaveBeenCalledWith(USER_ID);
-    // Metadata-sourced ids should never have been looked up
-    expect(deps.workos.userManagement.getUser).not.toHaveBeenCalledWith('user_metadata_loser');
-    expect(deps.workos.userManagement.getUser).not.toHaveBeenCalledWith('user_metadata_loser_2');
+    await handleSubscriptionCreated(makeArgs(deps, { subscription }));
+
+    expect(deps.orgDb.recordUserAgreementAcceptance).toHaveBeenCalledWith(expect.objectContaining({
+      workos_user_id: USER_ID,
+    }));
   });
 
   it('no pending_agreement_version: falls back to current published version via orgDb lookup', async () => {
     deps.orgDb.getCurrentAgreementByType.mockResolvedValue({ version: '2.0' });
 
-    await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
+    await handleSubscriptionCreated(makeArgs(deps, {
       org: makeOrg({
         pending_agreement_version: null,
         pending_agreement_accepted_at: null,
         pending_agreement_user_id: USER_ID,
       }),
-      ...(deps as any),
-    });
+    }));
 
     expect(deps.orgDb.recordUserAgreementAcceptance).toHaveBeenCalledWith(
       expect.objectContaining({ agreement_version: '2.0' }),
     );
   });
 
+  it('pending_agreement_version present but pending_agreement_accepted_at missing: uses now() for the timestamp', async () => {
+    const before = Date.now();
+    await handleSubscriptionCreated(makeArgs(deps, {
+      org: makeOrg({
+        pending_agreement_version: '1.0',
+        pending_agreement_accepted_at: null,
+      }),
+    }));
+    const after = Date.now();
+
+    const firstUpdate = deps.orgDb.updateOrganization.mock.calls[0];
+    const signedAt = firstUpdate[1].agreement_signed_at as Date;
+    expect(signedAt).toBeInstanceOf(Date);
+    expect(signedAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(signedAt.getTime()).toBeLessThanOrEqual(after);
+  });
+
   it('Stripe metadata stamp failure is logged but does NOT fail the handler', async () => {
     deps.stripe.subscriptions.update.mockRejectedValue(new Error('stripe 500'));
 
-    const result = await handleSubscriptionCreated({
-      subscription: makeSubscription(),
-      customerId: CUSTOMER_ID,
-      org: makeOrg(),
-      ...(deps as any),
-    });
+    const result = await handleSubscriptionCreated(makeArgs(deps));
 
-    // Happy path result still returned — metadata stamp is fire-and-forget
     expect(result).toEqual(expect.objectContaining({ workosUserId: USER_ID }));
-    // User-level record still landed
+    expect(deps.orgDb.recordUserAgreementAcceptance).toHaveBeenCalled();
+  });
+
+  it('notifyNewSubscription rejection is logged but does NOT fail the handler', async () => {
+    deps.notifyNewSubscription.mockRejectedValue(new Error('slack 503'));
+
+    const result = await handleSubscriptionCreated(makeArgs(deps));
+
+    expect(result).toEqual(expect.objectContaining({ workosUserId: USER_ID }));
     expect(deps.orgDb.recordUserAgreementAcceptance).toHaveBeenCalled();
   });
 });
