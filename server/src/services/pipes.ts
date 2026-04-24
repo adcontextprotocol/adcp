@@ -55,7 +55,12 @@ export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: stri
   return data.url;
 }
 
-export async function getGitHubConnectedAccount(workosUserId: string): Promise<{ login?: string } | null> {
+export type ConnectedAccountResult =
+  | { status: 'connected'; login: string | undefined }
+  | { status: 'not_connected' }
+  | { status: 'unavailable'; reason: string };
+
+export async function getGitHubConnectedAccount(workosUserId: string): Promise<ConnectedAccountResult> {
   const workos = await getWorkos();
   try {
     const response = await workos.get(
@@ -68,11 +73,12 @@ export async function getGitHubConnectedAccount(workosUserId: string): Promise<{
       : typeof data?.external_handle === 'string'
         ? data.external_handle
         : undefined;
-    return { login: handle };
+    return { status: 'connected', login: handle };
   } catch (error) {
     const status = (error as { status?: number; code?: number })?.status ?? (error as { code?: number })?.code;
-    if (status === 404) return null;
+    if (status === 404) return { status: 'not_connected' };
+    const message = error instanceof Error ? error.message : String(error);
     logger.warn({ err: error, workosUserId }, 'Failed to look up Pipes connected account');
-    return null;
+    return { status: 'unavailable', reason: message };
   }
 }
