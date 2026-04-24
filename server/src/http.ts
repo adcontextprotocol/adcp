@@ -7016,7 +7016,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       try {
         const account = await getGitHubConnectedAccount(req.user!.id);
         if (account.status === 'unavailable') {
-          return res.status(503).json({ connected: false, unavailable: true, reason: account.reason });
+          return res.status(503).json({ connected: false, unavailable: true });
         }
         if (account.status === 'not_connected') {
           return res.json({ connected: false });

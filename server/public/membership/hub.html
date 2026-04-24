@@ -2074,14 +2074,14 @@
     // -------------------------------------------------------------------------
 
     function renderConnections(connections) {
-      const github = connections?.github || { connected: false };
+      const github = connections?.github ?? { connected: false };
       const header = `
         <div class="hub-card-header">
           <span class="hub-card-title">Connections</span>
         </div>`;
       const rowStyle = 'display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;';
       const copyStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary);';
-      const statusStyle = 'font-size:var(--text-sm); color:#059669; font-weight:600;';
+      const statusStyle = 'font-size:var(--text-sm); color:var(--color-success-600); font-weight:600;';
       const warnStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary); font-style:italic;';
       let githubRow;
       if (github.connected) {
