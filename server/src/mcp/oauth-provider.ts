@@ -19,6 +19,7 @@ import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.
 import { decodeJwt } from 'jose';
 import { createLogger } from '../logger.js';
 import { verifyWorkOSJWT } from '../auth/workos-jwt.js';
+import { getAuthorizationUrl, refreshTokenRaw, authenticateWithCodeForTokens } from '../auth/workos-client.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
 import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
 
@@ -129,7 +130,6 @@ class MCPOAuthProvider implements OAuthServerProvider {
     });
 
     // Redirect to AuthKit via WorkOS SDK (reuses existing WORKOS_REDIRECT_URI)
-    const { getAuthorizationUrl } = await import('../auth/workos-client.js');
     const workosState = JSON.stringify({ mcp_pending_id: pendingId });
     const authUrl = getAuthorizationUrl(workosState);
 
@@ -188,7 +188,6 @@ class MCPOAuthProvider implements OAuthServerProvider {
     _scopes?: string[],
     _resource?: URL,
   ): Promise<OAuthTokens> {
-    const { refreshTokenRaw } = await import('../auth/workos-client.js');
     const result = await refreshTokenRaw(refreshTokenValue);
     return {
       access_token: result.accessToken,
@@ -241,9 +240,8 @@ export async function handleMCPOAuthCallback(
   }
 
   // Exchange WorkOS code for tokens
-  let authResult: Awaited<ReturnType<typeof import('../auth/workos-client.js').authenticateWithCodeForTokens>>;
+  let authResult: Awaited<ReturnType<typeof authenticateWithCodeForTokens>>;
   try {
-    const { authenticateWithCodeForTokens } = await import('../auth/workos-client.js');
     authResult = await authenticateWithCodeForTokens(workosCode);
   } catch (err) {
     logger.error({ err, mcpPendingId }, 'MCP OAuth: Failed to exchange WorkOS code');

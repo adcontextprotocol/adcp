@@ -281,6 +281,36 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('too long for a pre-filled URL');
       expect(result).toContain('create the issue manually');
     });
+
+    it('accepts adcp-client as a valid repo', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        repo: 'adcp-client',
+      });
+
+      expect(result).toContain('github.com/adcontextprotocol/adcp-client/issues/new');
+    });
+
+    it('routes invented repo names to adcp with a subproject note in the body', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'Original body',
+        repo: 'creative-agent',
+      });
+
+      expect(result).toContain('github.com/adcontextprotocol/adcp/issues/new');
+      expect(result).not.toContain('github.com/adcontextprotocol/creative-agent');
+      expect(result).toContain('Subproject');
+      expect(result).toContain('creative-agent');
+      expect(result).toContain('Original body');
+    });
   });
 
   describe('create_github_issue handler', () => {
@@ -323,7 +353,7 @@ describe('createMemberToolHandlers', () => {
       expect(getTokenMock).not.toHaveBeenCalled();
     });
 
-    it("returns Connect URL when user hasn't connected GitHub", async () => {
+    it("leads with the Connect offer when user hasn't connected GitHub", async () => {
       getTokenMock.mockResolvedValue({ status: 'not_connected' });
       getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/abc');
 
@@ -334,13 +364,15 @@ describe('createMemberToolHandlers', () => {
 
       expect(getTokenMock).toHaveBeenCalledWith('user_abc');
       expect(getAuthorizeUrlMock).toHaveBeenCalledWith('user_abc', expect.stringContaining('/member-hub'));
-      expect(result).toContain('haven\'t connected GitHub');
       expect(result).toContain('[Connect GitHub](https://workos.example/pipes/authorize/abc)');
       expect(result).toContain('draft_github_issue');
+      // Lead line should be the offer, not the failure reason.
+      const firstLine = result.split('\n')[0];
+      expect(firstLine).toContain('Connect GitHub');
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('returns Connect URL when connection needs reauthorization', async () => {
+    it('returns Reconnect URL when connection needs reauthorization', async () => {
       getTokenMock.mockResolvedValue({ status: 'needs_reauthorization', missingScopes: ['public_repo'] });
       getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/xyz');
 
@@ -349,8 +381,8 @@ describe('createMemberToolHandlers', () => {
 
       const result = await handler({ title: 'T', body: 'B' });
 
-      expect(result).toContain('needs to be re-authorized');
-      expect(result).toContain('https://workos.example/pipes/authorize/xyz');
+      expect(result).toContain('re-authorization');
+      expect(result).toContain('[Reconnect GitHub](https://workos.example/pipes/authorize/xyz)');
       expect(fetchMock).not.toHaveBeenCalled();
     });
 

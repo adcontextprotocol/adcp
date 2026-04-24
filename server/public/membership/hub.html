@@ -1393,7 +1393,9 @@
             return;
           }
           if (engRes.status === 404) {
-            const github = githubRes.ok ? await githubRes.json() : { connected: false };
+            const github = githubRes.status === 503
+              ? { connected: false, unavailable: true }
+              : githubRes.ok ? await githubRes.json() : { connected: false };
             document.getElementById('hub-loading').innerHTML =
               '<div class="hub-empty-panel">' +
               '<div class="hub-kicker">My hub</div>' +
@@ -1417,7 +1419,9 @@
         const contentData = contentRes.ok ? await contentRes.json() : null;
         const perspectivesData = perspectivesRes.ok ? await perspectivesRes.json() : null;
         const journeyData = journeyRes.ok ? await journeyRes.json() : null;
-        const githubConnection = githubRes.ok ? await githubRes.json() : { connected: false };
+        const githubConnection = githubRes.status === 503
+          ? { connected: false, unavailable: true }
+          : githubRes.ok ? await githubRes.json() : { connected: false };
 
         renderHub({
           engagement: data,
@@ -2070,24 +2074,35 @@
     // -------------------------------------------------------------------------
 
     function renderConnections(connections) {
-      const github = connections?.github || { connected: false };
+      const github = connections?.github ?? { connected: false };
       const header = `
         <div class="hub-card-header">
           <span class="hub-card-title">Connections</span>
         </div>`;
       const rowStyle = 'display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;';
       const copyStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary);';
-      const statusStyle = 'font-size:var(--text-sm); color:#059669; font-weight:600;';
-      const githubRow = github.connected
-        ? `
+      const statusStyle = 'font-size:var(--text-sm); color:var(--color-success-600); font-weight:600;';
+      const warnStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary); font-style:italic;';
+      let githubRow;
+      if (github.connected) {
+        githubRow = `
           <div style="${rowStyle}">
             <div>
               <strong>GitHub</strong>
               <div style="${copyStyle}">Connected${github.login ? ` as <code>@${escapeHtml(github.login)}</code>` : ''}. Addie can file issues as you on <code>adcontextprotocol/adcp</code>.</div>
             </div>
             <span style="${statusStyle}">✓ Connected</span>
-          </div>`
-        : `
+          </div>`;
+      } else if (github.unavailable) {
+        githubRow = `
+          <div style="${rowStyle}">
+            <div>
+              <strong>GitHub</strong>
+              <div style="${warnStyle}">GitHub connection status is temporarily unavailable. Try again in a moment.</div>
+            </div>
+          </div>`;
+      } else {
+        githubRow = `
           <div style="${rowStyle}">
             <div>
               <strong>GitHub</strong>
@@ -2095,6 +2110,7 @@
             </div>
             <button type="button" class="btn btn-secondary" onclick="connectGitHub(this)">Connect GitHub</button>
           </div>`;
+      }
       return `${header}${githubRow}`;
     }
 

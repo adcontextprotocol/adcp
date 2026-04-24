@@ -1,113 +1,121 @@
-name: Claude Issue Triage Bridge
+name: Claude Issue Triage
 
-# Bridges GitHub events to a Claude Code routine's /fire endpoint.
-# Two entry points:
-#   1. `issues.opened` / `issues.reopened` — automatic triage on new issues.
-#   2. `issue_comment.created` with `@claude-triage` in the body — manual
-#      nudge from a repo member, useful when you want the routine to
-#      (re-)look at a specific issue on demand.
+# Fires the Claude Code triage routine's /fire endpoint when a new issue
+# opens OR when a repo member invokes `/triage` via comment (dispatched by
+# `.github/workflows/slash-command-dispatch.yml`).
 #
-# The issue body is passed as *data* (fenced, size-capped) — the routine's
-# prompt treats anything inside the fence as untrusted content.
+# The issue body is fetched fresh and passed as *data* (fenced, size-capped) —
+# the routine's prompt treats anything inside the fence as untrusted content.
 #
 # Required repo secrets:
 #   CLAUDE_ROUTINE_TRIAGE_URL    — full /fire URL including routine ID
-#   CLAUDE_ROUTINE_TRIAGE_TOKEN  — bearer token for that routine (shown once in web UI)
+#   CLAUDE_ROUTINE_TRIAGE_TOKEN  — bearer token for that routine
+#   TRIAGE_DISPATCH_PAT          — PAT for reaction on the /triage-triggering
+#                                  comment (same secret as slash-command-dispatch.yml)
 #
 # Token last rotated: 2026-04-23 — rotate every 90 days.
 
 on:
   issues:
     types: [opened, reopened]
-  issue_comment:
-    types: [created]
+  repository_dispatch:
+    types: [triage-command]
 
 permissions:
   contents: read
 
 concurrency:
-  group: claude-triage-${{ github.event.issue.number }}
+  group: claude-triage-${{ github.event.issue.number || github.event.client_payload.github.payload.issue.number }}
   cancel-in-progress: false
 
 jobs:
   fire-routine:
     name: Fire triage routine
     runs-on: ubuntu-latest
-    timeout-minutes: 2
-    # Skip bots always. For comment events: only repo members can nudge,
-    # and the comment body must contain `@claude-triage`.
+    timeout-minutes: 3
+    # Skip bot-opened issues. Manual path already gated by slash-dispatch
+    # permission check.
     if: >-
-      github.event.issue.user.type != 'Bot' &&
-      !endsWith(github.event.issue.user.login, '[bot]') &&
-      github.event.sender.type != 'Bot' &&
+      github.event_name != 'issues' ||
       (
-        github.event_name == 'issues' ||
-        (
-          github.event_name == 'issue_comment' &&
-          contains(github.event.comment.body, '@claude-triage') &&
-          (
-            github.event.comment.author_association == 'OWNER' ||
-            github.event.comment.author_association == 'MEMBER' ||
-            github.event.comment.author_association == 'COLLABORATOR'
-          )
-        )
+        github.event.issue.user.type != 'Bot' &&
+        !endsWith(github.event.issue.user.login, '[bot]') &&
+        github.event.sender.type != 'Bot'
       )
     defaults:
       run:
         shell: bash
     steps:
+      - name: Resolve issue number + event kind
+        id: ctx
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "kind=auto" >> "$GITHUB_OUTPUT"
+            echo "action=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+            echo "commenter=" >> "$GITHUB_OUTPUT"
+            echo "args=" >> "$GITHUB_OUTPUT"
+            echo "comment_id=" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ github.event.client_payload.github.payload.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "kind=manual" >> "$GITHUB_OUTPUT"
+            echo "action=triage" >> "$GITHUB_OUTPUT"
+            echo "commenter=${{ github.event.client_payload.github.payload.comment.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "args=${{ github.event.client_payload.slash_command.args.all }}" >> "$GITHUB_OUTPUT"
+            echo "comment_id=${{ github.event.client_payload.github.payload.comment.id }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: POST to routine /fire
+        id: fire
         env:
+          GH_TOKEN: ${{ github.token }}
           ROUTINE_URL: ${{ secrets.CLAUDE_ROUTINE_TRIAGE_URL }}
           ROUTINE_TOKEN: ${{ secrets.CLAUDE_ROUTINE_TRIAGE_TOKEN }}
-          EVENT_NAME: ${{ github.event_name }}
-          ACTION: ${{ github.event.action }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
-          ISSUE_AUTHOR_ASSOC: ${{ github.event.issue.author_association }}
-          ISSUE_BODY: ${{ github.event.issue.body || '' }}
-          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
-          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
-          COMMENT_BODY: ${{ github.event.comment.body || '' }}
           REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.ctx.outputs.number }}
+          EVENT_KIND: ${{ steps.ctx.outputs.kind }}
+          ACTION: ${{ steps.ctx.outputs.action }}
+          COMMENTER: ${{ steps.ctx.outputs.commenter }}
+          ARGS: ${{ steps.ctx.outputs.args }}
         run: |
           set -euo pipefail
 
           if [ -z "${ROUTINE_URL:-}" ] || [ -z "${ROUTINE_TOKEN:-}" ]; then
-            echo "::warning::CLAUDE_ROUTINE_TRIAGE_URL or CLAUDE_ROUTINE_TRIAGE_TOKEN not set — skipping."
+            echo "::warning::CLAUDE_ROUTINE_TRIAGE_URL or _TOKEN not set — skipping."
             exit 0
           fi
 
-          # Strip NUL bytes and cap body sizes to reduce prompt-injection surface and cost.
-          ISSUE_BODY_SAFE=$(printf '%s' "${ISSUE_BODY}" | tr -d '\000' | head -c 8192)
-          COMMENT_BODY_SAFE=$(printf '%s' "${COMMENT_BODY}" | tr -d '\000' | head -c 2048)
+          # Fetch the issue fresh so both event paths use the same source of truth.
+          issue=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER")
+          title=$(echo   "$issue" | jq -r '.title')
+          body=$(echo    "$issue" | jq -r '.body // ""')
+          author=$(echo  "$issue" | jq -r '.user.login')
+          assoc=$(echo   "$issue" | jq -r '.author_association // "NONE"')
+          labels=$(echo  "$issue" | jq -c '[.labels[].name]')
+          html_url=$(echo "$issue" | jq -r '.html_url')
 
-          # For manual nudges, build a trusted signal line (outside the fence)
-          # telling the routine a repo member explicitly asked for triage.
-          # The already-engaged check should pass this through; the nudge IS
-          # the explicit request.
-          if [ "$EVENT_NAME" = "issue_comment" ]; then
-            nudge_note="MANUAL NUDGE: @${COMMENT_AUTHOR} requested triage via @claude-triage. Comment body (trimmed): \"${COMMENT_BODY_SAFE}\". Treat this as an explicit request; do NOT silent-defer on already-engaged signals — the nudge overrides."
-          else
-            nudge_note=""
+          body_safe=$(printf '%s' "$body" | tr -d '\000' | head -c 8192)
+
+          nudge_note=""
+          if [ "$EVENT_KIND" = "manual" ]; then
+            nudge_note="MANUAL NUDGE: @${COMMENTER} requested triage via /triage ${ARGS}. Treat as an explicit request; skip already-engaged check. Honor any modifier (execute / clarify / defer) in the args."
           fi
 
           payload=$(jq -n \
             --arg repo "$REPO" \
             --arg num "$ISSUE_NUMBER" \
-            --arg title "$ISSUE_TITLE" \
-            --arg url "$ISSUE_URL" \
-            --arg author "$ISSUE_AUTHOR" \
-            --arg assoc "$ISSUE_AUTHOR_ASSOC" \
+            --arg title "$title" \
+            --arg url "$html_url" \
+            --arg author "$author" \
+            --arg assoc "$assoc" \
+            --arg kind "$EVENT_KIND" \
             --arg action "$ACTION" \
-            --arg event "$EVENT_NAME" \
-            --argjson labels "$ISSUE_LABELS" \
-            --arg body "$ISSUE_BODY_SAFE" \
+            --argjson labels "$labels" \
+            --arg body "$body_safe" \
             --arg nudge "$nudge_note" \
             '{text: (
-              "Event: " + $event + "." + $action + "\n" +
+              "Event: " + $kind + "." + $action + "\n" +
               "Repo: " + $repo + "\n" +
               "Issue: #" + $num + " \"" + $title + "\"\n" +
               "URL: " + $url + "\n" +
@@ -145,4 +153,22 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::Fired triage routine for #${ISSUE_NUMBER} (event=${EVENT_NAME}, author=@${ISSUE_AUTHOR}/${ISSUE_AUTHOR_ASSOC})"
+          echo "::notice::Fired triage routine for #${ISSUE_NUMBER} (kind=${EVENT_KIND}, author=@${author}/${assoc})"
+
+      - name: React +1 on manual-nudge comment (success)
+        if: steps.ctx.outputs.kind == 'manual' && success() && steps.ctx.outputs.comment_id != ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
+          comment-id: ${{ steps.ctx.outputs.comment_id }}
+          reactions: "+1"
+
+      - name: React -1 on manual-nudge comment (failure)
+        if: steps.ctx.outputs.kind == 'manual' && failure() && steps.ctx.outputs.comment_id != ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
+          comment-id: ${{ steps.ctx.outputs.comment_id }}
+          reactions: "-1"

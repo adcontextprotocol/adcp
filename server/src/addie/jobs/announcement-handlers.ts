@@ -38,7 +38,11 @@
 
 import { createLogger } from '../../logger.js';
 import { query, getPool } from '../../db/client.js';
-import { sendChannelMessage, deleteChannelMessage } from '../../slack/client.js';
+import {
+  sendChannelMessage,
+  deleteChannelMessage,
+  updateChannelMessage,
+} from '../../slack/client.js';
 import { getAnnouncementChannel } from '../../db/system-settings-db.js';
 import { sanitizeDraftForSlack } from './announcement-trigger.js';
 import { isSafeVisualUrl } from '../../services/announcement-visual.js';
@@ -78,14 +82,106 @@ export interface DraftMetadata {
   profile_slug?: string;
 }
 
+/**
+ * Identifier shape for an actor who marked an announcement step. Stage 2
+ * (Slack button) carries a Slack user id; Stage 3 (admin HTTP) carries a
+ * WorkOS user id. We keep a tagged string rather than a plain id so
+ * downstream renderers can format it correctly (Slack `<@U…>` mention
+ * vs. plain WorkOS user id text).
+ */
+export type ActionActor =
+  | { source: 'slack'; slackUserId: string }
+  | { source: 'admin'; workosUserId: string };
+
+/** Actor as loaded from stored metadata (either channel may be null). */
+export interface StoredActor {
+  slackUserId: string | null;
+  workosUserId: string | null;
+  source: 'slack' | 'admin' | null;
+}
+
 export interface AnnouncementState {
   slackTs: string | null;
-  slackApproverUserId: string | null;
+  slackApprover: StoredActor;
   slackAnnouncementChannelId: string | null;
-  linkedinMarkerUserId: string | null;
+  linkedinMarker: StoredActor;
   linkedinMarkedAt: Date | null;
-  skipperUserId: string | null;
+  skipper: StoredActor;
   skippedAt: Date | null;
+}
+
+function emptyActor(): StoredActor {
+  return { slackUserId: null, workosUserId: null, source: null };
+}
+
+/** Coerce a loaded metadata row into a `StoredActor`. */
+function actorFromMetadata(m: Record<string, unknown>): StoredActor {
+  const source: 'slack' | 'admin' | null =
+    m.marked_via === 'slack' || m.marked_via === 'admin'
+      ? (m.marked_via as 'slack' | 'admin')
+      : null;
+  const slackUserId =
+    typeof m.marked_by_slack_user_id === 'string'
+      ? m.marked_by_slack_user_id
+      : typeof m.marked_by_user_id === 'string' && source !== 'admin'
+        ? m.marked_by_user_id
+        : null;
+  const workosUserId =
+    typeof m.marked_by_workos_user_id === 'string' ? m.marked_by_workos_user_id : null;
+  return { slackUserId, workosUserId, source };
+}
+
+/** Same pattern for the approver (Stage 2 metadata uses `approver_user_id`). */
+function approverFromMetadata(m: Record<string, unknown>): StoredActor {
+  const source: 'slack' | 'admin' | null =
+    m.approver_via === 'slack' || m.approver_via === 'admin'
+      ? (m.approver_via as 'slack' | 'admin')
+      : null;
+  const slackUserId =
+    typeof m.approver_slack_user_id === 'string'
+      ? m.approver_slack_user_id
+      : typeof m.approver_user_id === 'string' && source !== 'admin'
+        ? m.approver_user_id
+        : null;
+  const workosUserId =
+    typeof m.approver_workos_user_id === 'string' ? m.approver_workos_user_id : null;
+  return { slackUserId, workosUserId, source };
+}
+
+/**
+ * Render an actor as a mention suitable for the Slack review card. Slack
+ * users render as clickable `<@U…>` mentions; WorkOS-only actors
+ * (admin-UI click) render as plain text since Slack can't resolve them.
+ * Returns an empty string when no id is available.
+ */
+export function renderActorMention(actor: StoredActor): string {
+  if (actor.slackUserId) return `<@${actor.slackUserId}>`;
+  if (actor.workosUserId) return 'an AAO admin';
+  return '';
+}
+
+function actorToState(actor: ActionActor): StoredActor {
+  if (actor.source === 'slack') {
+    return { slackUserId: actor.slackUserId, workosUserId: null, source: 'slack' };
+  }
+  return { slackUserId: null, workosUserId: actor.workosUserId, source: 'admin' };
+}
+
+/** Skipper variant — same shape, different metadata key. */
+function skipperFromMetadata(m: Record<string, unknown>): StoredActor {
+  const source: 'slack' | 'admin' | null =
+    m.skipper_via === 'slack' || m.skipper_via === 'admin'
+      ? (m.skipper_via as 'slack' | 'admin')
+      : null;
+  const slackUserId =
+    typeof m.skipper_slack_user_id === 'string'
+      ? m.skipper_slack_user_id
+      : typeof m.skipper_user_id === 'string' && source !== 'admin'
+        ? m.skipper_user_id
+        : null;
+  const workosUserId =
+    typeof m.skipper_workos_user_id === 'string' ? m.skipper_workos_user_id : null;
+  return { slackUserId, workosUserId, source };
 }
 
 interface LoadedDraft {
@@ -136,11 +232,11 @@ async function loadDraftAndStateWith(
 
   const state: AnnouncementState = {
     slackTs: null,
-    slackApproverUserId: null,
+    slackApprover: emptyActor(),
     slackAnnouncementChannelId: null,
-    linkedinMarkerUserId: null,
+    linkedinMarker: emptyActor(),
     linkedinMarkedAt: null,
-    skipperUserId: null,
+    skipper: emptyActor(),
     skippedAt: null,
   };
 
@@ -149,22 +245,17 @@ async function loadDraftAndStateWith(
       const channel = typeof row.metadata?.channel === 'string' ? row.metadata.channel : null;
       if (channel === 'slack') {
         state.slackTs = typeof row.metadata.slack_ts === 'string' ? row.metadata.slack_ts : null;
-        state.slackApproverUserId =
-          typeof row.metadata.approver_user_id === 'string' ? row.metadata.approver_user_id : null;
+        state.slackApprover = approverFromMetadata(row.metadata);
         state.slackAnnouncementChannelId =
           typeof row.metadata.announcement_channel_id === 'string'
             ? row.metadata.announcement_channel_id
             : null;
       } else if (channel === 'linkedin') {
-        state.linkedinMarkerUserId =
-          typeof row.metadata.marked_by_user_id === 'string'
-            ? row.metadata.marked_by_user_id
-            : null;
+        state.linkedinMarker = actorFromMetadata(row.metadata);
         state.linkedinMarkedAt = row.activity_date;
       }
     } else if (row.activity_type === 'announcement_skipped') {
-      state.skipperUserId =
-        typeof row.metadata?.skipper_user_id === 'string' ? row.metadata.skipper_user_id : null;
+      state.skipper = skipperFromMetadata(row.metadata);
       state.skippedAt = row.activity_date;
     }
   }
@@ -183,6 +274,130 @@ export async function loadDraftAndState(orgId: string): Promise<LoadedDraft | nu
     const r = await query(sql, params ?? []);
     return { rows: r.rows };
   }, orgId);
+}
+
+/**
+ * One row per org that has ever had an announcement draft posted.
+ * Used by `/admin/announcements` to show the editorial team what's
+ * waiting on them, what landed, and what got skipped.
+ *
+ * State flags derive from sibling `announcement_published` /
+ * `announcement_skipped` rows. The "is_backfill" flag is pulled
+ * from the draft metadata so the backlog UI can tell retroactive
+ * drafts apart from live-flow ones.
+ *
+ * A single `announcement_draft_posted` row per org is the invariant
+ * (enforced by the NOT EXISTS guard in `findAnnounceCandidates`), but
+ * this query takes the MOST RECENT to be safe if something ever
+ * re-inserts (e.g., manual DB repair).
+ */
+export interface BacklogRow {
+  organization_id: string;
+  org_name: string;
+  membership_tier: string | null;
+  profile_slug: string | null;
+  draft_posted_at: Date;
+  visual_source: string | null;
+  is_backfill: boolean;
+  slack_posted: boolean;
+  slack_posted_at: Date | null;
+  linkedin_posted: boolean;
+  linkedin_marked_at: Date | null;
+  skipped: boolean;
+  skipped_at: Date | null;
+}
+
+export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
+  const result = await query<{
+    organization_id: string;
+    org_name: string | null;
+    membership_tier: string | null;
+    profile_slug: string | null;
+    draft_posted_at: Date;
+    visual_source: string | null;
+    is_backfill: boolean;
+    slack_posted_at: Date | null;
+    linkedin_marked_at: Date | null;
+    skipped_at: Date | null;
+  }>(
+    // organizations is LEFT JOIN'd so a draft whose org was later
+    // deleted (WorkOS-side delete, cleanup run, manual purge) still
+    // surfaces in the backlog. Without this, editorial loses
+    // visibility of an orphan draft — they can't act on it from
+    // Slack (the buttons still work on the Slack-side message) but
+    // at least they know it exists.
+    `WITH latest_draft AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS draft_posted_at,
+         metadata
+       FROM org_activities
+       WHERE activity_type = 'announcement_draft_posted'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     slack_pub AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS slack_posted_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'slack'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     li_pub AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS linkedin_marked_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'linkedin'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     skipped AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS skipped_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_skipped'
+       ORDER BY organization_id, activity_date DESC
+     )
+     SELECT
+       ld.organization_id,
+       o.name AS org_name,
+       o.membership_tier,
+       mp.slug AS profile_slug,
+       ld.draft_posted_at,
+       ld.metadata->>'visual_source' AS visual_source,
+       COALESCE((ld.metadata->>'backfill')::boolean, false) AS is_backfill,
+       sp.slack_posted_at,
+       li.linkedin_marked_at,
+       sk.skipped_at
+     FROM latest_draft ld
+     LEFT JOIN organizations o ON o.workos_organization_id = ld.organization_id
+     LEFT JOIN member_profiles mp ON mp.workos_organization_id = ld.organization_id
+     LEFT JOIN slack_pub sp ON sp.organization_id = ld.organization_id
+     LEFT JOIN li_pub li ON li.organization_id = ld.organization_id
+     LEFT JOIN skipped sk ON sk.organization_id = ld.organization_id
+     ORDER BY ld.draft_posted_at DESC`,
+  );
+
+  return result.rows.map((r) => ({
+    organization_id: r.organization_id,
+    // Fall back to the opaque WorkOS id when the org row was deleted;
+    // editorial still sees the draft in the backlog with a raw id.
+    org_name: r.org_name ?? r.organization_id,
+    membership_tier: r.membership_tier,
+    profile_slug: r.profile_slug,
+    draft_posted_at: r.draft_posted_at,
+    visual_source: r.visual_source,
+    is_backfill: r.is_backfill === true,
+    slack_posted: r.slack_posted_at !== null,
+    slack_posted_at: r.slack_posted_at,
+    linkedin_posted: r.linkedin_marked_at !== null,
+    linkedin_marked_at: r.linkedin_marked_at,
+    skipped: r.skipped_at !== null,
+    skipped_at: r.skipped_at,
+  }));
 }
 
 /**
@@ -231,19 +446,29 @@ export function renderReviewCard(args: {
     },
   ];
 
+  const skipped = Boolean(
+    state.skipper.slackUserId || state.skipper.workosUserId,
+  );
+  const linkedinDone = Boolean(
+    state.linkedinMarker.slackUserId || state.linkedinMarker.workosUserId,
+  );
+
   // Status line derived from state.
   const statusParts: string[] = [];
-  if (state.skipperUserId) {
-    statusParts.push(`⊘ Skipped by <@${state.skipperUserId}>`);
+  if (skipped) {
+    const mention = renderActorMention(state.skipper);
+    statusParts.push(`⊘ Skipped${mention ? ` by ${mention}` : ''}`);
   } else {
+    const approverMention = renderActorMention(state.slackApprover);
     statusParts.push(
       state.slackTs
-        ? `✓ Slack posted${state.slackApproverUserId ? ` by <@${state.slackApproverUserId}>` : ''}`
+        ? `✓ Slack posted${approverMention ? ` by ${approverMention}` : ''}`
         : '⏳ Slack pending',
     );
+    const markerMention = renderActorMention(state.linkedinMarker);
     statusParts.push(
-      state.linkedinMarkerUserId
-        ? `✓ LinkedIn posted by <@${state.linkedinMarkerUserId}>`
+      linkedinDone
+        ? `✓ LinkedIn posted${markerMention ? ` by ${markerMention}` : ''}`
         : '⏳ LinkedIn pending',
     );
   }
@@ -256,7 +481,7 @@ export function renderReviewCard(args: {
 
   // Actions derived from state. Terminal states (skipped, or both
   // channels posted) have no actions.
-  if (!state.skipperUserId && !(state.slackTs && state.linkedinMarkerUserId)) {
+  if (!skipped && !(state.slackTs && linkedinDone)) {
     const actionElements: SlackElement[] = [];
     if (!state.slackTs) {
       actionElements.push({
@@ -267,7 +492,7 @@ export function renderReviewCard(args: {
         style: 'primary',
       });
     }
-    if (!state.linkedinMarkerUserId) {
+    if (!linkedinDone) {
       actionElements.push({
         type: 'button',
         text: { type: 'plain_text', text: 'Mark posted to LinkedIn' },
@@ -275,7 +500,7 @@ export function renderReviewCard(args: {
         value: orgId,
       });
     }
-    if (!state.slackTs && !state.linkedinMarkerUserId) {
+    if (!state.slackTs && !linkedinDone) {
       actionElements.push({
         type: 'button',
         text: { type: 'plain_text', text: 'Skip' },
@@ -544,7 +769,7 @@ export async function handleAnnouncementApproveSlack(args: HandlerArgs): Promise
       const { draft } = loaded;
       const { state } = loaded;
 
-      if (state.skipperUserId) {
+      if (state.skipper.slackUserId || state.skipper.workosUserId) {
         return { kind: 'terminal', draft, state, notice: 'This announcement was already skipped.' };
       }
       if (state.slackTs) {
@@ -585,7 +810,8 @@ export async function handleAnnouncementApproveSlack(args: HandlerArgs): Promise
               announcement_channel_id: channelSetting.channel_id,
               announcement_channel_name: channelSetting.channel_name,
               slack_ts: post.ts,
-              approver_user_id: userId,
+              approver_slack_user_id: userId,
+              approver_via: 'slack',
             }),
           ],
         );
@@ -624,7 +850,7 @@ export async function handleAnnouncementApproveSlack(args: HandlerArgs): Promise
         state: {
           ...state,
           slackTs: post.ts,
-          slackApproverUserId: userId,
+          slackApprover: actorToState({ source: 'slack', slackUserId: userId }),
           slackAnnouncementChannelId: channelSetting.channel_id,
         },
       };
@@ -706,11 +932,123 @@ type SimpleOutcome =
   | { kind: 'recorded'; draft: DraftMetadata; state: AnnouncementState };
 
 /**
- * `Mark posted to LinkedIn`
+ * Record that the LinkedIn post for this org has been made externally.
+ * Shared by the Slack Bolt button handler (Stage 2) and the admin-UI
+ * HTTP route (Stage 3).
  *
- * Record that an admin has manually posted the draft to LinkedIn.
- * LinkedIn posting is external to AAO — this click closes the loop so
- * the admin backlog view can compute "fully announced".
+ * The critical section — load state, guard against skipped-or-already-
+ * marked, INSERT the `announcement_published` row — runs inside a
+ * transaction holding a Postgres advisory lock keyed on (orgId,
+ * 'mark_linkedin'). Concurrent calls (two rapid clicks, Slack 3s-ack
+ * retries, admin double-click) serialize on the lock and resolve
+ * deterministically to a single INSERT.
+ *
+ * Actor identity is recorded with `marked_via: 'slack' | 'admin'` plus
+ * the id shape appropriate to the path (`marked_by_slack_user_id` or
+ * `marked_by_workos_user_id`). This lets the read path render Slack
+ * mentions for Slack-originated marks and plain-text admins for admin
+ * UI marks without a cross-directory lookup.
+ */
+export async function markLinkedInPosted(
+  orgId: string,
+  actor: ActionActor,
+): Promise<SimpleOutcome> {
+  return withOrgActionLock<SimpleOutcome>(orgId, 'mark_linkedin', async (q) => {
+    const loaded = await loadDraftAndStateWith(q, orgId);
+    if (!loaded) return { kind: 'no_draft' };
+    const { draft, state } = loaded;
+
+    if (state.skipper.slackUserId || state.skipper.workosUserId) {
+      return {
+        kind: 'refuse',
+        draft,
+        state,
+        notice: 'This announcement was already skipped.',
+      };
+    }
+    if (state.linkedinMarker.slackUserId || state.linkedinMarker.workosUserId) {
+      return {
+        kind: 'already_done',
+        draft,
+        state,
+        notice: 'LinkedIn post was already marked.',
+      };
+    }
+
+    const metadata: Record<string, unknown> = {
+      channel: 'linkedin',
+      marked_via: actor.source,
+    };
+    if (actor.source === 'slack') {
+      metadata.marked_by_slack_user_id = actor.slackUserId;
+    } else {
+      metadata.marked_by_workos_user_id = actor.workosUserId;
+    }
+
+    await q(
+      `INSERT INTO org_activities (
+          organization_id, activity_type, description, metadata, activity_date
+       ) VALUES ($1, 'announcement_published', $2, $3::jsonb, NOW())`,
+      [orgId, 'Announcement marked as posted to LinkedIn', JSON.stringify(metadata)],
+    );
+
+    return {
+      kind: 'recorded',
+      draft,
+      state: {
+        ...state,
+        linkedinMarker: actorToState(actor),
+        linkedinMarkedAt: new Date(),
+      },
+    };
+  });
+}
+
+/**
+ * Refresh the editorial review card in Slack to reflect a state change
+ * that happened outside of Slack (admin-UI click, background job).
+ *
+ * Bolt handlers already update the card via `client.chat.update` because
+ * they have the clicked message's channel + ts in the action body. The
+ * HTTP path has neither, so it loads them from the `announcement_draft_posted`
+ * activity metadata written by the Stage 1 trigger job. If the draft row
+ * or its review ts is missing (legacy pre-Stage-2 row, manual cleanup,
+ * etc.) the refresh is a silent no-op — the web UI already reflects the
+ * new state.
+ *
+ * Fire-and-forget from the caller's perspective: we log failures but
+ * don't surface them, because the authoritative state is already in the
+ * DB and the next Slack click will repaint from it.
+ */
+export async function refreshReviewCardForOrg(orgId: string): Promise<void> {
+  let loaded;
+  try {
+    loaded = await loadDraftAndState(orgId);
+  } catch (err) {
+    logger.warn({ err, orgId }, 'refreshReviewCardForOrg: loadDraftAndState failed');
+    return;
+  }
+  if (!loaded) return;
+  const { draft, state } = loaded;
+  const channel = draft.review_channel_id;
+  const ts = draft.review_message_ts;
+  if (!channel || !ts) return;
+  const rendered = renderReviewCard({ orgId, draft, state });
+  try {
+    const out = await updateChannelMessage(channel, ts, rendered);
+    if (!out.ok) {
+      logger.warn(
+        { orgId, channel, ts, error: out.error },
+        'refreshReviewCardForOrg: Slack chat.update failed',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, orgId, channel, ts }, 'refreshReviewCardForOrg: threw');
+  }
+}
+
+/**
+ * `Mark posted to LinkedIn` — Slack Bolt handler.
  */
 export async function handleAnnouncementMarkLinkedIn(args: HandlerArgs): Promise<void> {
   const { ack, body, client } = args;
@@ -727,48 +1065,7 @@ export async function handleAnnouncementMarkLinkedIn(args: HandlerArgs): Promise
 
   let outcome: SimpleOutcome;
   try {
-    outcome = await withOrgActionLock<SimpleOutcome>(orgId, 'mark_linkedin', async (q) => {
-      const loaded = await loadDraftAndStateWith(q, orgId);
-      if (!loaded) return { kind: 'no_draft' };
-      const { draft, state } = loaded;
-
-      if (state.skipperUserId) {
-        return {
-          kind: 'refuse',
-          draft,
-          state,
-          notice: 'This announcement was already skipped.',
-        };
-      }
-      if (state.linkedinMarkerUserId) {
-        return {
-          kind: 'already_done',
-          draft,
-          state,
-          notice: 'LinkedIn post was already marked.',
-        };
-      }
-
-      await q(
-        `INSERT INTO org_activities (
-            organization_id, activity_type, description, metadata, activity_date
-         ) VALUES ($1, 'announcement_published', $2, $3::jsonb, NOW())`,
-        [
-          orgId,
-          'Announcement marked as posted to LinkedIn',
-          JSON.stringify({
-            channel: 'linkedin',
-            marked_by_user_id: userId,
-          }),
-        ],
-      );
-
-      return {
-        kind: 'recorded',
-        draft,
-        state: { ...state, linkedinMarkerUserId: userId, linkedinMarkedAt: new Date() },
-      };
-    });
+    outcome = await markLinkedInPosted(orgId, { source: 'slack', slackUserId: userId });
   } catch (err) {
     logger.error({ err, orgId, userId }, 'mark_linkedin critical section threw');
     await tellUser(client, channelId, userId, 'Failed to record the LinkedIn post. Please retry.');
@@ -824,7 +1121,7 @@ export async function handleAnnouncementSkip(args: HandlerArgs): Promise<void> {
       if (!loaded) return { kind: 'no_draft' };
       const { draft, state } = loaded;
 
-      if (state.skipperUserId) {
+      if (state.skipper.slackUserId || state.skipper.workosUserId) {
         return {
           kind: 'already_done',
           draft,
@@ -832,7 +1129,11 @@ export async function handleAnnouncementSkip(args: HandlerArgs): Promise<void> {
           notice: 'This announcement was already skipped.',
         };
       }
-      if (state.slackTs || state.linkedinMarkerUserId) {
+      if (
+        state.slackTs ||
+        state.linkedinMarker.slackUserId ||
+        state.linkedinMarker.workosUserId
+      ) {
         return {
           kind: 'refuse',
           draft,
@@ -846,13 +1147,21 @@ export async function handleAnnouncementSkip(args: HandlerArgs): Promise<void> {
         `INSERT INTO org_activities (
             organization_id, activity_type, description, metadata, activity_date
          ) VALUES ($1, 'announcement_skipped', $2, $3::jsonb, NOW())`,
-        [orgId, 'Announcement skipped', JSON.stringify({ skipper_user_id: userId })],
+        [
+          orgId,
+          'Announcement skipped',
+          JSON.stringify({ skipper_slack_user_id: userId, skipper_via: 'slack' }),
+        ],
       );
 
       return {
         kind: 'recorded',
         draft,
-        state: { ...state, skipperUserId: userId, skippedAt: new Date() },
+        state: {
+          ...state,
+          skipper: actorToState({ source: 'slack', slackUserId: userId }),
+          skippedAt: new Date(),
+        },
       };
     });
   } catch (err) {

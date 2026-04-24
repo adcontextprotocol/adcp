@@ -90,18 +90,18 @@ summary. This is the dedup lock — it costs one API call per issue.
 
 If the event context (the text the routine receives) contains a
 `MANUAL NUDGE:` line, a repo member explicitly requested triage via
-a `@claude-triage` comment. **Skip the already-engaged check.** The
+a `/triage` comment. **Skip the already-engaged check.** The
 nudge *is* the explicit request for help — proceed with full triage
 regardless of assignees, open PRs, or recent comments.
 
-If the comment text includes a modifier after `@claude-triage`, use
+If the comment text includes a modifier after `/triage`, use
 it to bias the decision:
 
-- `@claude-triage execute` — lean toward Execute on borderline
+- `/triage execute` — lean toward Execute on borderline
   non-breaking changes
-- `@claude-triage clarify` — force a clarifying-question comment
+- `/triage clarify` — force a clarifying-question comment
   even if you'd otherwise act
-- `@claude-triage defer` — force defer and stop
+- `/triage defer` — force defer and stop
 
 Without a modifier, use standard four-outcome logic.
 
@@ -396,6 +396,71 @@ change is clear and non-breaking. **Scope is NOT a gate.** A
 **When in doubt: Execute.** A draft PR is reversible. An unshipped
 good change rarely gets revisited.
 
+## Bundling and epic handling — never split issues into issues
+
+When an issue contains multiple items — a follow-up list, a list of
+related fixes, or "items 1-5 after PR #N" — decide:
+
+1. **Ready items + deferred items** → open **one PR** covering all
+   the ready items as a cohesive change (name it after the umbrella
+   work, e.g., `test+docs: post-#261 A2A follow-ups (items 3, 5)`).
+   Leave the parent issue open. Comment on the parent with what
+   shipped and what remains: `items 3, 5 → #<PR>; item 4 deferred
+   pending upstream; items 1, 2 are cross-repo policy, flagged for
+   @bokelley.` Do **not** split the parent into child issues.
+
+2. **Parent is truly epic-shaped** — multi-week, cross-cutting,
+   needs its own tracking structure → flag-for-review with
+   `Status: ready-for-human`, recommend "convert #N to an epic with
+   a task list of child issues owned by a human." The human decides
+   the shape; you never create peer issues.
+
+3. **Never create peer issues autonomously.** Issues fan out into
+   more issues only when a human decides the parent is an epic.
+   Until then: bundle the ready work into one PR and leave the
+   remaining work on the parent.
+
+A single cohesive PR of 200 non-breaking lines is easier to review
+than three PRs of 60 lines with dependencies and cross-links. The
+bot's job is to reduce maintainer clicks, not multiply them.
+
+## Pre-PR expert review — mandatory before `gh pr create`
+
+After the branch is pushed but **before** opening the PR, run a
+second expert pass on the actual diff. The Step 4 synthesis
+reviewed the plan; this step reviews the code. They catch
+different things — protocol drift, broken tests, overlong files,
+wrong PR target, typos — before a human reviewer sees anything.
+
+1. Capture the diff: `git diff main...HEAD`.
+2. Spawn 2 experts **in parallel** via Task:
+   - `code-reviewer` — always
+   - The domain expert matching the bucket (same one from
+     Step 4; for cross-cutting diffs, pick the bucket the diff
+     primarily touches)
+3. Pass each expert: the diff + 2–3 sentences of intent ("Issue
+   #N asks for X; this PR does Y by touching Z"). Ask them to
+   classify each finding as **blocker**, **nit**, or **out of
+   scope**.
+4. **Fix blockers.** Re-run only the experts that flagged
+   blockers on the updated diff. Cap at **2 review→fix
+   iterations.** If blockers persist after two passes, abandon
+   the PR and Flag for human review instead.
+5. Surface nits in the PR body; don't fix them.
+6. If experts disagree on a blocker, do **not** resolve it
+   yourself — Flag for human review with both positions.
+7. Record both sign-offs in the PR body:
+
+   ```
+   **Pre-PR review:**
+   - code-reviewer: approved (1 nit noted)
+   - ad-tech-protocol-expert: approved — non-breaking per spec
+   ```
+
+**Never skip this step**, not even for one-line typo fixes.
+Cost is ~90 seconds of Task calls; benefit is two perspectives
+have read the diff before a human reviewer does.
+
 ## PR constraints
 
 - Branch: `claude/issue-<N>-<short-slug>`
@@ -408,11 +473,10 @@ good change rarely gets revisited.
   - **Non-breaking justification:** one line naming why the change
     is non-breaking per the definition above (e.g., "adds optional
     field X; existing clients unaffected")
-  - Expert consensus note: "ad-tech-protocol-expert and
-    code-reviewer reviewed; both approved."
+  - **Pre-PR review** block (from the step above) with both
+    experts' one-line sign-off
   - `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`
 - Include a changeset file
-- Run code-reviewer **on your own diff** before pushing; fix blockers
 - Run any relevant repo checks (tests for MDX if MDX touched, schema
   validation if JSON schemas touched)
 - **Never edit:** `.github/**`, `.agents/**`, `.claude/**`,

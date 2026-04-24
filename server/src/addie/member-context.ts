@@ -14,7 +14,7 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getThreadService } from './thread-service.js';
-import { workos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { getPool, query } from '../db/client.js';
@@ -370,7 +370,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
     // Step 3: Get WorkOS user info
     let workosUser;
     try {
-      workosUser = await workos.userManagement.getUser(slackMapping.workos_user_id);
+      workosUser = await getWorkos().userManagement.getUser(slackMapping.workos_user_id);
       context.workos_user = {
         workos_user_id: workosUser.id,
         email: workosUser.email,
@@ -387,7 +387,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
     let userRole: string = 'member';
     let userJoinedAt: Date | null = null;
     try {
-      const memberships = await workos.userManagement.listOrganizationMemberships({
+      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
         userId: slackMapping.workos_user_id,
       });
 
@@ -413,7 +413,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
     // Step 4b: Get org member count from WorkOS
     let memberCount = 0;
     try {
-      const orgMemberships = await workos.userManagement.listOrganizationMemberships({
+      const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;
@@ -902,7 +902,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     // Step 1: Get WorkOS user info
     let workosUser;
     try {
-      workosUser = await workos.userManagement.getUser(workosUserId);
+      workosUser = await getWorkos().userManagement.getUser(workosUserId);
       context.workos_user = {
         workos_user_id: workosUser.id,
         email: workosUser.email,
@@ -948,7 +948,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     let userRole: string = 'member';
     let userJoinedAt: Date | null = null;
     try {
-      const memberships = await workos.userManagement.listOrganizationMemberships({
+      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
         userId: workosUserId,
       });
 
@@ -973,7 +973,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     // Step 4: Get org member count from WorkOS
     let memberCount = 0;
     try {
-      const orgMemberships = await workos.userManagement.listOrganizationMemberships({
+      const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;

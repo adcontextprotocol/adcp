@@ -74,11 +74,22 @@ Every media buy request involves three entities:
 
 ### Identifiers
 
-- **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy.
+- **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.
 
 - **`idempotency_key`**: Client-generated unique key for safe retries. Sales agents that receive a duplicate key for the same account MUST return the original response rather than re-executing.
+
+### Account Ownership vs. Creation Surface
+
+AdCP is a protocol onto the seller's ad operations, not a shadow ledger beside them. Account-scoped tasks (`get_media_buys`, `get_media_buy_delivery`, `update_media_buy`, creative sync where applicable) are scoped by **account ownership**, not by the surface through which a resource was created. A sales agent MUST NOT partition its own inventory into "AdCP-managed" and "non-AdCP" subsets for the purpose of these tasks.
+
+Concretely:
+
+- `get_media_buys` MUST return every media buy owned by the authenticated account — whether created via `create_media_buy`, via the seller's native APIs or UI, via manual trafficking, or via legacy/third-party systems — subject only to the declared `status_filter` and pagination.
+- Any `media_buy_id` returned by `get_media_buys` MUST be a valid argument to `get_media_buy_delivery` and to `update_media_buy` for every action listed in its `valid_actions`.
+- A sales agent MUST NOT mark a buy read-only, hide it, or return `MEDIA_BUY_NOT_FOUND` on the basis that it was not originally booked through AdCP.
+- When a specific action is unavailable for business reasons (contractual obligations, platform constraints, policy), the sales agent expresses that by omitting the action from `valid_actions`, not by refusing the buy from account-scoped listings.
 
 ### Asynchronous Operations
 
@@ -258,6 +269,7 @@ Modify an existing media buy's budget, targeting, or settings.
 
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
+- Sales agents MUST accept any `media_buy_id` returned by `get_media_buys` for the authenticated account and MUST NOT refuse updates on the basis that the buy was originally created outside AdCP. Business constraints on specific operations are expressed by omitting them from `valid_actions`. See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
 - When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
 - All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
@@ -310,6 +322,7 @@ Retrieve operational media buy state, including package status, creative approva
 **Requirements:**
 - Orchestrators MAY filter by `account_id`, `media_buy_ids`, and `status_filter`
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
+- Sales agents MUST return every media buy owned by the authenticated account that matches the declared filter set, regardless of how the buy was created (AdCP, seller's native APIs/UI, manual trafficking, legacy systems). See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
 - Sales agents SHOULD include `valid_actions` for each media buy, listing the actions the buyer can perform in the current state. This eliminates the need for agents to internalize the state machine. Expected mapping:
 
@@ -341,6 +354,7 @@ Track performance metrics and campaign delivery.
 
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
+- Sales agents MUST accept any `media_buy_id` returned by `get_media_buys` for the authenticated account, regardless of creation surface. See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST return delivery metrics at the package level
 - Sales agents SHOULD include dimensional breakdowns when requested
 - Sales agents MUST include `as_of` timestamp indicating data freshness

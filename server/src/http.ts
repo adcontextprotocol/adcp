@@ -7049,7 +7049,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.get('/api/me/connected-accounts/github', requireAuth, async (req, res) => {
       try {
         const account = await getGitHubConnectedAccount(req.user!.id);
-        if (!account) {
+        if (account.status === 'unavailable') {
+          return res.status(503).json({ connected: false, unavailable: true });
+        }
+        if (account.status === 'not_connected') {
           return res.json({ connected: false });
         }
         return res.json({ connected: true, login: account.login ?? null });

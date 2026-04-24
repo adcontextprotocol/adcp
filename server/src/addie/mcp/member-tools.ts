@@ -4574,12 +4574,26 @@ export function createMemberToolHandlers(
   // ============================================
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
-    const body = input.body as string;
-    const repo = (input.repo as string) || 'adcp';
+    let body = input.body as string;
     const labels = (input.labels as string[]) || [];
 
     // GitHub organization
     const org = 'adcontextprotocol';
+
+    // Only accept repos that actually exist under the adcontextprotocol org.
+    // Without this guard Addie will happily invent repo names from conversation
+    // context (e.g. "creative-agent") and produce 404 links.
+    const ALLOWED_REPOS = new Set(['adcp', 'adcp-client', 'adcp-client-python', 'adcp-go']);
+    const requestedRepo = (input.repo as string) || 'adcp';
+    let repo = requestedRepo;
+    if (!ALLOWED_REPOS.has(requestedRepo)) {
+      // Don't reject — file against `adcp` and prepend a subproject note to the
+      // body so the maintainer can re-route if needed. The handler's string
+      // return would otherwise land verbatim in Addie's reply ("not a
+      // recognized repo") which looks like a 404 to the user.
+      body = `> **Subproject:** \`${requestedRepo}\` (routed to adcp by default — maintainer can move if needed)\n\n${body}`;
+      repo = 'adcp';
+    }
 
     // Build the pre-filled GitHub issue URL
     // GitHub supports: title, body, labels (comma-separated)
@@ -4640,34 +4654,40 @@ export function createMemberToolHandlers(
     const org = 'adcontextprotocol';
     const repo = 'adcp';
 
+    const baseUrl = (process.env.BASE_URL || 'https://agenticadvertising.org').replace(/\/$/, '');
+    const manageConnectionsUrl = `${baseUrl}/member-hub`;
+
     let tokenResult: Awaited<ReturnType<typeof getGitHubAccessToken>>;
     try {
       tokenResult = await getGitHubAccessToken(workosUserId);
     } catch (error) {
       logger.error({ err: error }, 'create_github_issue: Pipes getAccessToken failed');
-      return 'GitHub connection is unavailable right now. Use `draft_github_issue` to generate a pre-filled link you can submit yourself.';
+      return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
     }
 
     if (tokenResult.status !== 'ok') {
-      const baseUrl = (process.env.BASE_URL || 'https://agenticadvertising.org').replace(/\/$/, '');
       const returnTo = `${baseUrl}/member-hub?connected=github`;
       let authorizeUrl: string;
       try {
         authorizeUrl = await getGitHubAuthorizeUrl(workosUserId, returnTo);
       } catch (error) {
         logger.error({ err: error }, 'create_github_issue: Failed to build Pipes authorize URL');
-        return 'GitHub connection is unavailable right now. Use `draft_github_issue` to generate a pre-filled link you can submit yourself.';
+        return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
       }
 
-      const reason = tokenResult.status === 'needs_reauthorization'
-        ? "Your GitHub connection needs to be re-authorized (the scopes we need changed)."
-        : "You haven't connected GitHub yet, so I can't file this as you directly.";
+      if (tokenResult.status === 'needs_reauthorization') {
+        return [
+          `Your GitHub connection needs a quick re-authorization (the scopes we need changed).`,
+          '',
+          `**[Reconnect GitHub](${authorizeUrl})** — takes under a minute. Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link to submit yourself.`,
+          '',
+          `Manage connections any time at ${manageConnectionsUrl}.`,
+        ].join('\n');
+      }
       return [
-        reason,
+        `**[Connect GitHub](${authorizeUrl})** — one click and I'll file this under your GitHub account.`,
         '',
-        `**Two options:**`,
-        `1. **[Connect GitHub](${authorizeUrl})** — takes ~10 seconds, then I'll file the issue authored by your GitHub account.`,
-        `2. Ask me to use \`draft_github_issue\` instead and I'll give you a pre-filled link you submit yourself.`,
+        `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
       ].join('\n');
     }
 
