@@ -133,7 +133,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
 | `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for implicit accounts. |
-| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results. Sellers that support scope introspection SHOULD populate this; sellers claiming the `attestation_verifier` standard scope MUST populate it. Absence means the seller does not advertise introspectable scope; callers MUST NOT infer access from absence. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape. |
+| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape. |
 
 ### Account status
 

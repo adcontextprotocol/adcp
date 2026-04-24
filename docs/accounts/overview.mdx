@@ -97,11 +97,15 @@ Account status acts as a gate on which tasks are permitted. Read-only operations
 
 ## Caller authorization
 
-Not every caller with access to an account has the same grant. A seller may issue one agent a full media-buy scope and another agent a narrow read-plus-webhook-attach scope (e.g., an AAO compliance engine for Tier-2 Production Verified conformance). Authentication confirms the caller is who they claim to be; authorization answers "what is this caller allowed to do on this account?"
+Not every caller with access to an account has the same grant. A vendor agent may issue one calling agent a full scope and another agent a narrow read-plus-update scope. Authentication confirms the caller is who they claim to be; authorization answers "what is this caller allowed to do on this account?"
+
+<Note>
+**Applies to every vendor protocol.** The authorization mechanism described here is part of the shared Accounts Protocol — it applies to every agent that implements `sync_accounts` / `list_accounts`: media-buy sales agents, signals agents, governance agents, creative agents, brand agents. Signals agents scope activation vs. catalog access; governance agents scope audit read vs. plan management; creative agents scope library read vs. upload. Only the standard named scope `attestation_verifier` is Media Buy Protocol-specific (it binds to Tier-2 conformance); the rest of the machinery — `allowed_tasks`, `field_scopes`, `read_only`, `custom:`-prefixed scopes — is protocol-neutral.
+</Note>
 
 **Schema**: [`/schemas/v3/core/account-authorization.json`](https://adcontextprotocol.org/schemas/v3/core/account-authorization.json)
 
-Sellers that support scope introspection attach an `authorization` object to each per-account entry in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses:
+Vendor agents that support scope introspection attach an `authorization` object to each per-account entry in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses:
 
 ```json
 {
@@ -133,40 +137,40 @@ Sellers that support scope introspection attach an `authorization` object to eac
 |-------|-------------|
 | `allowed_tasks` | Canonical snake_case task names the caller may invoke against this account. Absence of a task MUST be read as "not permitted" — invoking an absent task returns `SCOPE_INSUFFICIENT`. |
 | `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields (`account`, `media_buy_id`, `package_id`, `creative_id`, `revision`, `idempotency_key`, `buyer_ref`, `po_number`, `dry_run`, `context`, `ext`, `adcp_major_version`, `push_notification_config`) are always permitted and do not need to appear in the allowlist. |
-| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized; seller-defined names MUST use the `seller:` prefix so typos of the standard value fail schema validation rather than pass through. |
+| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to Tier-2 conformance); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
 | `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
 
 ### Semantics of presence and absence
 
-- **Present**: the seller asserts the shape reflects its enforcement for this caller on this account at this moment. Stale-by-seconds is fine; systematically-divergent is non-conformant.
-- **Absent on a single account**: the seller is not telling the caller their scope for that account. Caller falls back to error-driven discovery (try the task, handle the RBAC error codes).
-- **Absent on all accounts**: the seller does not implement scope introspection. Callers MUST NOT infer access from absence — the seller may still enforce scope locally and return `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED` on any task call.
-- **`authorization` is optional for 3.x**. Sellers that want to avoid a breaking change can defer populating it. Populating is strictly additive — it lets callers preempt errors they would otherwise discover by trying.
+- **Present**: the vendor agent asserts the shape reflects its enforcement for this caller on this account at this moment. Stale-by-seconds is fine; systematically-divergent is non-conformant.
+- **Absent on a single account**: the vendor agent is not telling the caller their scope for that account. Caller falls back to error-driven discovery (try the task, handle the RBAC error codes).
+- **Absent on all accounts**: the vendor agent does not implement scope introspection. Callers MUST NOT infer access from absence — the vendor agent may still enforce scope locally and return `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED` on any task call.
+- **`authorization` is optional for 3.x**. Vendor agents that want to avoid a breaking change can defer populating it. Populating is strictly additive — it lets callers preempt errors they would otherwise discover by trying.
 
-Sellers claiming the `attestation_verifier` standard scope **MUST** populate `authorization` — the Tier-2 attestation flow depends on verifying the advertised scope matches enforcement.
+Vendor agents claiming the `attestation_verifier` standard scope (Media Buy Protocol-specific) **MUST** populate `authorization` — the Tier-2 attestation flow depends on verifying the advertised scope matches enforcement.
 
 ### Identity binding, refresh cadence, and consistency
 
-The `authorization` object is **implicitly scoped to the `(caller identity, account_id)` tuple** at read time. The same account returned to a different authenticated caller MAY return a different `authorization` object — that's the point of the RBAC model. Sellers MUST resolve caller identity from the authenticated request (not from any client-supplied field) and MUST bind the returned `authorization` to that resolved identity.
+The `authorization` object is **implicitly scoped to the `(caller identity, account_id)` tuple** at read time. The same account returned to a different authenticated caller MAY return a different `authorization` object — that's the point of the RBAC model. Vendor agents MUST resolve caller identity from the authenticated request (not from any client-supplied field) and MUST bind the returned `authorization` to that resolved identity.
 
 **Refresh cadence.**
 
 - Callers SHOULD re-read `authorization` at least every **300 seconds** of active use against an account, via `sync_accounts` or `list_accounts` (filtered by the held `account`).
-- Sellers MUST reflect operator-initiated scope changes in `sync_accounts` / `list_accounts` responses **within 300 seconds** of the change being made. A compliant caller polling every 300s sees operator changes within at most one refresh cycle.
-- Sellers MAY cache the `authorization` object briefly but MUST NOT cache past 300 seconds without revalidation.
-- The 300s figure is a floor, not a target — sellers whose scope changes more frequently SHOULD surface them faster, and callers running Tier-2 attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
+- Vendor agents MUST reflect operator-initiated scope changes in `sync_accounts` / `list_accounts` responses **within 300 seconds** of the change being made. A compliant caller polling every 300s sees operator changes within at most one refresh cycle.
+- Vendor agents MAY cache the `authorization` object briefly but MUST NOT cache past 300 seconds without revalidation.
+- The 300s figure is a floor, not a target — vendor agents whose scope changes more frequently SHOULD surface them faster, and callers running Tier-2 attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
 
 **Consistency.**
 
-For a given `(caller identity, account_id)` tuple, sequential reads within the refresh window MUST return identical `authorization` objects, modulo operator-initiated scope changes. Flicker from load-balanced or eventually-consistent backends — two reads 10 seconds apart returning different `allowed_tasks` because they hit different replicas — is non-conformant. Compliance engines and coding agents rely on scope stability for state tracking; a seller that cannot guarantee it MUST omit `authorization` rather than populate it inconsistently.
+For a given `(caller identity, account_id)` tuple, sequential reads within the refresh window MUST return identical `authorization` objects, modulo operator-initiated scope changes. Flicker from load-balanced or eventually-consistent backends — two reads 10 seconds apart returning different `allowed_tasks` because they hit different replicas — is non-conformant. Compliance engines and coding agents rely on scope stability for state tracking; a vendor agent that cannot guarantee it MUST omit `authorization` rather than populate it inconsistently.
 
 This is the concrete form of the "systematically-divergent is non-conformant" guarantee from the presence semantics above — it's verifiable: a conformance check can read the same account twice from the same identity inside the refresh window and diff the results.
 
 ### Standard named scope: `attestation_verifier`
 
-Sellers advertising Tier-2 Production Verified conformance readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
+Media-buy sales agents advertising Tier-2 Production Verified conformance readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
 
-- `allowed_tasks` (at minimum — sellers MAY include additional read-only tasks):
+- `allowed_tasks` (at minimum — vendor agents MAY include additional read-only tasks):
   - `get_adcp_capabilities`
   - `get_products`
   - `get_media_buys`
@@ -180,7 +184,20 @@ The scope deliberately omits `create_media_buy`, `sync_creatives`, and all spend
 
 `get_products` and `list_creatives` are included because Tier-2 observability requires sanity-reading the seller's declared inventory and the creative pipeline state on active buys.
 
-Other scope names are **not** standardized — taxonomies vary too much across sellers. Sellers MAY define custom scopes using the `seller:` prefix (e.g., `seller:governance_viewer`); buyers MUST NOT assume any semantics from a seller-prefixed scope name.
+`attestation_verifier` is Media Buy Protocol-specific — it binds to Tier-2 conformance, which is a media-buy flow. Equivalent observability tiers for signals, governance, creative, or brand agents are not yet standardized; until they are, those agents use `custom:` scopes.
+
+### Custom scopes for other vendor protocols
+
+Any vendor agent MAY define custom scopes using the `custom:` prefix. Buyers MUST NOT assume any semantics from a custom-prefixed scope name — the names are agent-defined and learned out-of-band (docs, onboarding).
+
+Illustrative examples (not standardized — each agent names its own):
+
+- **Signals agent**: `custom:activation_only` — `allowed_tasks: [get_signals, activate_signal, get_adcp_capabilities]`, no catalog management, no cross-account metadata.
+- **Governance agent**: `custom:audit_viewer` — `allowed_tasks: [get_plan_audit_logs, get_adcp_capabilities]`, `read_only: true`. Useful for regulators or external auditors granted read access to governance trails.
+- **Creative agent**: `custom:library_reader` — `allowed_tasks: [list_creatives, list_creative_formats]`, `read_only: true`. Lets a non-uploading buyer (e.g., a measurement partner) discover what's in the library without mutating it.
+- **Brand agent (rights)**: `custom:rights_viewer` — `allowed_tasks: [get_rights, get_brand_identity]`, `read_only: true`. Discovery without clearance privilege.
+
+The presence/absence semantics, identity binding, refresh cadence, and consistency requirements above apply uniformly across all vendor protocols — a signals agent populating `custom:activation_only` takes on the same 300s refresh obligation a media-buy seller does populating `attestation_verifier`.
 
 ### Prior art
 
