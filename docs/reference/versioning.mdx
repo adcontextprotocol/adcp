@@ -74,6 +74,26 @@ Every release with schema changes is called out in the changelog, release notes,
 
 [Experimental surfaces](/docs/reference/experimental-status) operate under a separate, faster notice window of 6 weeks. The deprecation policy above applies only to stable surfaces.
 
+### Spec changes vs. conformance-suite changes
+
+The release-vs-patch rules above apply to **spec-level artifacts** — JSON Schemas under `static/schemas/source/`, normative prose in `docs/`, and protocol task definitions. These are what an agent implements on the wire and what buyers depend on for interop.
+
+The **conformance suite** — storyboards, specialism taxonomy, scenario classifications, runner mechanics — versions independently and is **patch-level by default**. The conformance suite is a verification artifact AAO maintains; it is not the spec and it is not the docs. Adding, removing, renaming, or reclassifying preview-status specialisms; relocating storyboards between universal/protocol/specialism directories; refactoring scenario coverage; and adjusting runner behavior to match an unchanged spec are all patch changes.
+
+A conformance-suite change escalates to minor or major only when it would alter what an agent must do on the wire — i.e., when it tightens implicit spec validation, requires sellers to advertise a new capability that didn't exist, or removes a stable specialism that agents are actively claiming (which is breaking, since agents currently advertising it become non-conformant).
+
+| Change | Tier |
+|--------|------|
+| Add a new universal storyboard for an existing capability | Patch |
+| Move a storyboard between directories (`specialisms/{id}/` → `universal/`, etc.) | Patch |
+| Reclassify a preview-status specialism (no graded users) | Patch |
+| Add scenarios within an existing storyboard | Patch |
+| Add a new stable specialism to the enum | Minor (new claim agents can make) |
+| Remove a stable specialism from the enum | Major (breaks agents currently claiming it) |
+| Add a new error code or new optional field to a request/response schema | Minor |
+
+This separation lets the verification machinery evolve quickly without dragging spec-level versioning along with it.
+
 ---
 
 ## 3.x stability guarantees

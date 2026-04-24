@@ -2,28 +2,48 @@ id: signed_requests
 version: "1.0.0"
 title: "Signed requests — RFC 9421 transport-layer verification"
 protocol: media-buy
-status: preview
+status: deprecated
 category: signed_requests
-summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the transport-layer profile. Graded against conformance vectors covering every checklist step and canonicalization-edge rule."
+summary: "DEPRECATED — being reclassified from per-protocol specialism to a universal capability-gated storyboard. Agents that currently advertise `request_signing.supported: true` SHOULD NOT add `signed-requests` to their `specialisms` array; the universal storyboard at `/compliance/{version}/universal/signed-requests.yaml` (when published) covers the same conformance bar regardless of `supported_protocols`. See https://github.com/adcontextprotocol/adcp/issues/3075."
 track: security_transport
 required_tools:
   - get_adcp_capabilities
   # Additional tool families are exercised transport-layer only — the runner signs
   # requests targeting any mutating AdCP operation (create_media_buy, update_media_buy,
-  # acquire_*, activate_signal, sync_creatives) and grades the verifier's response. The
-  # specialism is preview status pending runner implementation at adcontextprotocol/adcp#2331;
-  # when the runner ships, required_tools will expand to the concrete list of operations
-  # exercised.
+  # acquire_*, activate_signal, sync_creatives) and grades the verifier's response.
+  # See deprecation note in narrative below — this specialism is being reclassified as
+  # a universal capability-gated storyboard and will be removed from the specialism
+  # taxonomy in 4.0. Runner implementation tracked at adcontextprotocol/adcp#2331.
 
 narrative: |
+  **DEPRECATED** — this specialism is being reclassified as a universal capability-gated
+  storyboard. The signed-requests claim is a transport-layer concern that applies to every
+  AdCP agent regardless of `supported_protocols` — there is nothing media-buy-specific about
+  it. Classifying it as a media-buy specialism was a taxonomy error. The conformance bar
+  itself is unchanged; only the location moves. Tracked at
+  [#3075](https://github.com/adcontextprotocol/adcp/issues/3075).
+
+  **For agents:** do not add `signed-requests` to your `get_adcp_capabilities.specialisms`
+  array. Advertise `request_signing.supported: true` in the `request_signing` capability
+  block instead — that is the on-wire claim. Once the universal storyboard ships at
+  `/compliance/{version}/universal/signed-requests.yaml`, every agent advertising
+  `request_signing.supported: true` runs it automatically (same gating model as
+  `compliance_testing.supported`).
+
+  ---
+
+  *Original specialism description follows for historical reference; the conformance
+  content (vectors, contracts, runner harness) is unchanged and will move verbatim to
+  the universal storyboard location:*
+
   The signed-requests specialism certifies that an agent correctly implements the AdCP
   RFC 9421 request-signing verifier per `docs/building/implementation/security.mdx#signed-requests-transport-layer`.
 
   This is a transport-layer claim, not a protocol-specific one. A signed request can target
   any mutating operation — most commonly `create_media_buy`, `update_media_buy`, `acquire_*`,
-  `activate_signal`, and `sync_creatives`. The claim is scoped to `media-buy` because that
-  is where the financial stake is highest, but the verifier behavior is the same across all
-  mutating operations.
+  `activate_signal`, and `sync_creatives`. The claim is scoped to `media-buy` in this
+  preview specialism (a classification error fixed in #3075) — the verifier behavior is
+  the same across all mutating operations regardless of which protocols the agent supports.
 
   The claim is certifiable only when the agent advertises `request_signing.supported: true`
   in `get_adcp_capabilities`. An agent that does not advertise support is not tested against
