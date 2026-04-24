@@ -54,6 +54,7 @@ export function setupAnnouncementsRoutes(
           org_name: r.org_name,
           membership_tier: r.membership_tier,
           profile_slug: r.profile_slug,
+          org_created_at: r.org_created_at?.toISOString() ?? null,
           draft_posted_at: r.draft_posted_at.toISOString(),
           slack_posted_at: r.slack_posted_at?.toISOString() ?? null,
           linkedin_marked_at: r.linkedin_marked_at?.toISOString() ?? null,

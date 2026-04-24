@@ -120,11 +120,13 @@ describe('GET /api/admin/announcements', () => {
 
   it('returns ISO-format date strings, not Date objects', async () => {
     const when = new Date('2026-04-01T12:00:00Z');
+    const orgCreated = new Date('2024-06-15T10:00:00Z');
     mockLoadAnnouncementBacklog.mockResolvedValueOnce([
       {
         ...base,
         organization_id: 'org_A',
         org_name: 'A',
+        org_created_at: orgCreated,
         draft_posted_at: when,
         slack_posted_at: when,
         linkedin_marked_at: null,
@@ -140,6 +142,30 @@ describe('GET /api/admin/announcements', () => {
     expect(res.body.rows[0].draft_posted_at).toBe('2026-04-01T12:00:00.000Z');
     expect(res.body.rows[0].slack_posted_at).toBe('2026-04-01T12:00:00.000Z');
     expect(res.body.rows[0].linkedin_marked_at).toBeNull();
+    // Signup-age column reads org_created_at. Null safe when the org
+    // row was deleted (orphan draft).
+    expect(res.body.rows[0].org_created_at).toBe('2024-06-15T10:00:00.000Z');
+  });
+
+  it('org_created_at is null when backlog row lacks it', async () => {
+    mockLoadAnnouncementBacklog.mockResolvedValueOnce([
+      {
+        ...base,
+        organization_id: 'org_ORPHAN',
+        org_name: 'org_ORPHAN',
+        org_created_at: null,
+        draft_posted_at: new Date(),
+        slack_posted_at: null,
+        linkedin_marked_at: null,
+        skipped_at: null,
+        slack_posted: false,
+        linkedin_posted: false,
+        skipped: false,
+      },
+    ]);
+    const app = await buildApp();
+    const res = await request(app).get('/api/admin/announcements');
+    expect(res.body.rows[0].org_created_at).toBeNull();
   });
 
   it('500 on backend failure', async () => {

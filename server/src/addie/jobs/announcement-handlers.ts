@@ -296,6 +296,9 @@ export interface BacklogRow {
   org_name: string;
   membership_tier: string | null;
   profile_slug: string | null;
+  /** When the org was created in WorkOS / organizations row.
+   * `null` when the org row was deleted (orphan draft). */
+  org_created_at: Date | null;
   draft_posted_at: Date;
   visual_source: string | null;
   is_backfill: boolean;
@@ -313,6 +316,7 @@ export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
     org_name: string | null;
     membership_tier: string | null;
     profile_slug: string | null;
+    org_created_at: Date | null;
     draft_posted_at: Date;
     visual_source: string | null;
     is_backfill: boolean;
@@ -365,6 +369,7 @@ export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
        ld.organization_id,
        o.name AS org_name,
        o.membership_tier,
+       o.created_at AS org_created_at,
        mp.slug AS profile_slug,
        ld.draft_posted_at,
        ld.metadata->>'visual_source' AS visual_source,
@@ -388,6 +393,7 @@ export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
     org_name: r.org_name ?? r.organization_id,
     membership_tier: r.membership_tier,
     profile_slug: r.profile_slug,
+    org_created_at: r.org_created_at,
     draft_posted_at: r.draft_posted_at,
     visual_source: r.visual_source,
     is_backfill: r.is_backfill === true,
