@@ -4,12 +4,14 @@ const {
   mockQuery,
   mockSendChannelMessage,
   mockDeleteChannelMessage,
+  mockUpdateChannelMessage,
   mockGetAnnouncementChannel,
   mockIsSlackUserAAOAdmin,
 } = vi.hoisted(() => ({
   mockQuery: vi.fn<any>(),
   mockSendChannelMessage: vi.fn<any>(),
   mockDeleteChannelMessage: vi.fn<any>(),
+  mockUpdateChannelMessage: vi.fn<any>(),
   mockGetAnnouncementChannel: vi.fn<any>(),
   mockIsSlackUserAAOAdmin: vi.fn<any>(),
 }));
@@ -37,6 +39,7 @@ vi.mock('../../server/src/db/client.js', () => {
 vi.mock('../../server/src/slack/client.js', () => ({
   sendChannelMessage: (...args: unknown[]) => mockSendChannelMessage(...args),
   deleteChannelMessage: (...args: unknown[]) => mockDeleteChannelMessage(...args),
+  updateChannelMessage: (...args: unknown[]) => mockUpdateChannelMessage(...args),
 }));
 
 vi.mock('../../server/src/db/system-settings-db.js', () => ({
@@ -88,6 +91,30 @@ function buildClient() {
   };
 }
 
+function emptyActor() {
+  return { slackUserId: null, workosUserId: null, source: null };
+}
+
+function slackActor(slackUserId: string) {
+  return { slackUserId, workosUserId: null, source: 'slack' as const };
+}
+
+function adminActor(workosUserId: string) {
+  return { slackUserId: null, workosUserId, source: 'admin' as const };
+}
+
+function blankState() {
+  return {
+    slackTs: null,
+    slackApprover: emptyActor(),
+    slackAnnouncementChannelId: null,
+    linkedinMarker: emptyActor(),
+    linkedinMarkedAt: null,
+    skipper: emptyActor(),
+    skippedAt: null,
+  };
+}
+
 /**
  * Queue up `mockQuery` results in the order the handler reads them:
  *   1) draft row  2) published/skipped activity rows  3) any writes
@@ -110,6 +137,10 @@ function queueDbReads(opts: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset mockQuery specifically so the `mockResolvedValueOnce` queue
+  // from a previous test doesn't carry over. `clearAllMocks` clears
+  // call history but not queued implementations.
+  mockQuery.mockReset();
   mockIsSlackUserAAOAdmin.mockResolvedValue(true);
   mockGetAnnouncementChannel.mockResolvedValue({
     channel_id: ANNOUNCE_CHANNEL,
@@ -117,6 +148,7 @@ beforeEach(() => {
   });
   mockSendChannelMessage.mockResolvedValue({ ok: true, ts: POSTED_TS });
   mockDeleteChannelMessage.mockResolvedValue({ ok: true });
+  mockUpdateChannelMessage.mockResolvedValue({ ok: true });
 });
 
 describe('renderReviewCard', () => {
@@ -125,15 +157,7 @@ describe('renderReviewCard', () => {
     const { blocks, text } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
-      state: {
-        slackTs: null,
-        slackApproverUserId: null,
-        slackAnnouncementChannelId: null,
-        linkedinMarkerUserId: null,
-        linkedinMarkedAt: null,
-        skipperUserId: null,
-        skippedAt: null,
-      },
+      state: blankState(),
     });
     expect(text).toContain('Acme Ad Tech');
     const status = blocks.find((b) => b.type === 'context' && b.elements?.[0]?.text?.includes('pending'));
@@ -154,13 +178,10 @@ describe('renderReviewCard', () => {
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
       state: {
+        ...blankState(),
         slackTs: POSTED_TS,
-        slackApproverUserId: ADMIN_USER,
+        slackApprover: slackActor(ADMIN_USER),
         slackAnnouncementChannelId: ANNOUNCE_CHANNEL,
-        linkedinMarkerUserId: null,
-        linkedinMarkedAt: null,
-        skipperUserId: null,
-        skippedAt: null,
       },
     });
     const statusBlock = blocks.find(
@@ -179,13 +200,12 @@ describe('renderReviewCard', () => {
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
       state: {
+        ...blankState(),
         slackTs: POSTED_TS,
-        slackApproverUserId: ADMIN_USER,
+        slackApprover: slackActor(ADMIN_USER),
         slackAnnouncementChannelId: ANNOUNCE_CHANNEL,
-        linkedinMarkerUserId: 'U0LIPOSTER',
+        linkedinMarker: slackActor('U0LIPOSTER'),
         linkedinMarkedAt: new Date(),
-        skipperUserId: null,
-        skippedAt: null,
       },
     });
     expect(blocks.find((b) => b.type === 'actions')).toBeUndefined();
@@ -195,18 +215,37 @@ describe('renderReviewCard', () => {
     expect(statusBlock?.elements?.[0]?.text).toContain('✓ LinkedIn posted by <@U0LIPOSTER>');
   });
 
+  it('admin-source actor renders as plain "an AAO admin" text, not a slack mention', async () => {
+    const { renderReviewCard } = await loadModule();
+    const { blocks } = renderReviewCard({
+      orgId: ORG_ID,
+      draft: DRAFT_METADATA,
+      state: {
+        ...blankState(),
+        slackTs: POSTED_TS,
+        slackApprover: slackActor(ADMIN_USER),
+        slackAnnouncementChannelId: ANNOUNCE_CHANNEL,
+        linkedinMarker: adminActor('user_workos_123'),
+        linkedinMarkedAt: new Date(),
+      },
+    });
+    const statusBlock = blocks.find(
+      (b) => b.type === 'context' && b.elements?.[0]?.text?.includes('✓ Slack posted'),
+    );
+    expect(statusBlock?.elements?.[0]?.text).toContain('✓ LinkedIn posted by an AAO admin');
+    // Must NOT mention the workos id directly — Slack can't resolve it
+    // and we don't want to leak internal ids into a shared channel.
+    expect(statusBlock?.elements?.[0]?.text).not.toContain('user_workos_123');
+  });
+
   it('skipped: shows skipper, no actions', async () => {
     const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
       state: {
-        slackTs: null,
-        slackApproverUserId: null,
-        slackAnnouncementChannelId: null,
-        linkedinMarkerUserId: null,
-        linkedinMarkedAt: null,
-        skipperUserId: ADMIN_USER,
+        ...blankState(),
+        skipper: slackActor(ADMIN_USER),
         skippedAt: new Date(),
       },
     });
@@ -226,15 +265,7 @@ describe('renderReviewCard', () => {
         slack_text: 'ping <!channel> and <@U123>',
         linkedin_text: 'shell `rm -rf` #AAO',
       },
-      state: {
-        slackTs: null,
-        slackApproverUserId: null,
-        slackAnnouncementChannelId: null,
-        linkedinMarkerUserId: null,
-        linkedinMarkedAt: null,
-        skipperUserId: null,
-        skippedAt: null,
-      },
+      state: blankState(),
     });
     const slackBlock = blocks.find((b) => b.type === 'section' && b.text?.text?.includes('Slack draft'));
     expect(slackBlock?.text?.text).not.toMatch(/<!channel>/);
@@ -331,7 +362,8 @@ describe('handleAnnouncementApproveSlack', () => {
     const metadata = JSON.parse(insertCall![1][2]);
     expect(metadata.channel).toBe('slack');
     expect(metadata.slack_ts).toBe(POSTED_TS);
-    expect(metadata.approver_user_id).toBe(ADMIN_USER);
+    expect(metadata.approver_slack_user_id).toBe(ADMIN_USER);
+    expect(metadata.approver_via).toBe('slack');
     expect(client.chat.update).toHaveBeenCalledTimes(1);
   });
 
@@ -535,6 +567,266 @@ describe('handleAnnouncementApproveSlack', () => {
   });
 });
 
+describe('legacy-row back-compat (Stage 2 rows without _via)', () => {
+  it('legacy approver_user_id renders as Slack mention in review card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: {
+            channel: 'slack',
+            slack_ts: POSTED_TS,
+            approver_user_id: 'U0LEGACYAPP',
+          },
+        },
+      ],
+    });
+    const { loadDraftAndState, renderReviewCard } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    expect(loaded).not.toBeNull();
+    const { blocks } = renderReviewCard({
+      orgId: ORG_ID,
+      draft: loaded!.draft,
+      state: loaded!.state,
+    });
+    const statusBlock = blocks.find(
+      (b) => b.type === 'context' && b.elements?.[0]?.text?.includes('✓ Slack posted'),
+    );
+    expect(statusBlock?.elements?.[0]?.text).toContain('<@U0LEGACYAPP>');
+  });
+
+  it('legacy skipper_user_id renders as Slack mention in review card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_skipped',
+          activity_date: new Date(),
+          metadata: { skipper_user_id: 'U0LEGACYSKIP' },
+        },
+      ],
+    });
+    const { loadDraftAndState, renderReviewCard } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    const { blocks } = renderReviewCard({
+      orgId: ORG_ID,
+      draft: loaded!.draft,
+      state: loaded!.state,
+    });
+    const statusBlock = blocks.find(
+      (b) => b.type === 'context' && b.elements?.[0]?.text?.includes('⊘'),
+    );
+    expect(statusBlock?.elements?.[0]?.text).toContain('<@U0LEGACYSKIP>');
+  });
+
+  it('invariant: marked_via=admin + marked_by_user_id does NOT populate slackUserId', async () => {
+    // The `source !== 'admin'` guard in actorFromMetadata must take
+    // precedence so a future row that happens to carry both fields is
+    // interpreted as admin-sourced, not Slack-sourced.
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: {
+            channel: 'linkedin',
+            marked_via: 'admin',
+            marked_by_workos_user_id: 'user_wk_01HZ',
+            // Legacy shape accidentally present:
+            marked_by_user_id: 'U0NOTSLACK',
+          },
+        },
+      ],
+    });
+    const { loadDraftAndState } = await loadModule();
+    const loaded = await loadDraftAndState(ORG_ID);
+    expect(loaded!.state.linkedinMarker.source).toBe('admin');
+    expect(loaded!.state.linkedinMarker.slackUserId).toBeNull();
+    expect(loaded!.state.linkedinMarker.workosUserId).toBe('user_wk_01HZ');
+  });
+});
+
+describe('refreshReviewCardForOrg', () => {
+  it('loads draft + state then calls chat.update with the rebuilt card', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'slack', slack_ts: POSTED_TS, approver_slack_user_id: 'U0SL', approver_via: 'slack' },
+        },
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'linkedin', marked_via: 'admin', marked_by_workos_user_id: 'user_wk_42' },
+        },
+      ],
+    });
+
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+
+    expect(mockUpdateChannelMessage).toHaveBeenCalledTimes(1);
+    const [channel, ts, message] = mockUpdateChannelMessage.mock.calls[0];
+    expect(channel).toBe(REVIEW_CHANNEL);
+    expect(ts).toBe(REVIEW_TS);
+    // Both channels are done — no actions block in the terminal state.
+    const actions = message.blocks?.find((b: any) => b.type === 'actions');
+    expect(actions).toBeUndefined();
+  });
+
+  it('no-ops silently when no draft row exists', async () => {
+    queueDbReads({ draft: null });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+    expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it('no-ops silently when the stored review_message_ts is missing', async () => {
+    queueDbReads({
+      draft: { ...DRAFT_METADATA, review_message_ts: null as unknown as string },
+    });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await refreshReviewCardForOrg(ORG_ID);
+    expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it('swallows chat.update errors — caller does not need to worry about them', async () => {
+    queueDbReads({});
+    mockUpdateChannelMessage.mockResolvedValueOnce({ ok: false, error: 'message_not_found' });
+    const { refreshReviewCardForOrg } = await loadModule();
+    await expect(refreshReviewCardForOrg(ORG_ID)).resolves.toBeUndefined();
+  });
+});
+
+describe('markLinkedInPosted (shared)', () => {
+  const WORKOS_USER = 'user_wk_01HZ';
+
+  test('admin actor: writes marked_by_workos_user_id + marked_via=admin', async () => {
+    queueDbReads({});
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'admin',
+      workosUserId: WORKOS_USER,
+    });
+
+    expect(outcome.kind).toBe('recorded');
+    const insertCall = mockQuery.mock.calls.find(
+      ([sql]: any) => typeof sql === 'string' && sql.startsWith('INSERT INTO org_activities'),
+    );
+    const metadata = JSON.parse(insertCall![1][2]);
+    expect(metadata.channel).toBe('linkedin');
+    expect(metadata.marked_via).toBe('admin');
+    expect(metadata.marked_by_workos_user_id).toBe(WORKOS_USER);
+    expect(metadata.marked_by_slack_user_id).toBeUndefined();
+  });
+
+  test('slack actor: writes marked_by_slack_user_id + marked_via=slack', async () => {
+    queueDbReads({});
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'slack',
+      slackUserId: ADMIN_USER,
+    });
+
+    expect(outcome.kind).toBe('recorded');
+    const insertCall = mockQuery.mock.calls.find(
+      ([sql]: any) => typeof sql === 'string' && sql.startsWith('INSERT INTO org_activities'),
+    );
+    const metadata = JSON.parse(insertCall![1][2]);
+    expect(metadata.marked_via).toBe('slack');
+    expect(metadata.marked_by_slack_user_id).toBe(ADMIN_USER);
+    expect(metadata.marked_by_workos_user_id).toBeUndefined();
+  });
+
+  test('no draft → kind=no_draft, no INSERT', async () => {
+    queueDbReads({ draft: null });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'admin',
+      workosUserId: WORKOS_USER,
+    });
+
+    expect(outcome.kind).toBe('no_draft');
+    const insertCall = mockQuery.mock.calls.find(
+      ([sql]: any) => typeof sql === 'string' && sql.startsWith('INSERT'),
+    );
+    expect(insertCall).toBeUndefined();
+  });
+
+  test('already skipped → kind=refuse, no INSERT', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_skipped',
+          activity_date: new Date(),
+          metadata: { skipper_slack_user_id: 'U0OTHERA', skipper_via: 'slack' },
+        },
+      ],
+    });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'admin',
+      workosUserId: WORKOS_USER,
+    });
+
+    expect(outcome.kind).toBe('refuse');
+    const insertCall = mockQuery.mock.calls.find(
+      ([sql]: any) => typeof sql === 'string' && sql.startsWith('INSERT'),
+    );
+    expect(insertCall).toBeUndefined();
+  });
+
+  test('already marked → kind=already_done, no INSERT', async () => {
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'linkedin', marked_by_slack_user_id: 'U0PRIOR', marked_via: 'slack' },
+        },
+      ],
+    });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'admin',
+      workosUserId: WORKOS_USER,
+    });
+
+    expect(outcome.kind).toBe('already_done');
+  });
+
+  test('legacy row with marked_by_user_id (no marked_via) is treated as already-done', async () => {
+    // Stage 2 rows written before the Stage 3 migration used `marked_by_user_id`
+    // without a `marked_via`. The loader must recognize those so an admin
+    // re-clicking after the fact doesn't double-insert.
+    queueDbReads({
+      activityRows: [
+        {
+          activity_type: 'announcement_published',
+          activity_date: new Date(),
+          metadata: { channel: 'linkedin', marked_by_user_id: 'U0LEGACY' },
+        },
+      ],
+    });
+
+    const { markLinkedInPosted } = await loadModule();
+    const outcome = await markLinkedInPosted(ORG_ID, {
+      source: 'admin',
+      workosUserId: WORKOS_USER,
+    });
+
+    expect(outcome.kind).toBe('already_done');
+  });
+});
+
 describe('handleAnnouncementMarkLinkedIn', () => {
   test('happy path: inserts linkedin row + refreshes card', async () => {
     queueDbReads({});
@@ -554,7 +846,8 @@ describe('handleAnnouncementMarkLinkedIn', () => {
     expect(insertCall).toBeDefined();
     const metadata = JSON.parse(insertCall![1][2]);
     expect(metadata.channel).toBe('linkedin');
-    expect(metadata.marked_by_user_id).toBe(ADMIN_USER);
+    expect(metadata.marked_by_slack_user_id).toBe(ADMIN_USER);
+    expect(metadata.marked_via).toBe('slack');
     expect(client.chat.update).toHaveBeenCalled();
   });
 
@@ -661,7 +954,8 @@ describe('handleAnnouncementSkip', () => {
     );
     expect(insertCall).toBeDefined();
     const metadata = JSON.parse(insertCall![1][2]);
-    expect(metadata.skipper_user_id).toBe(ADMIN_USER);
+    expect(metadata.skipper_slack_user_id).toBe(ADMIN_USER);
+    expect(metadata.skipper_via).toBe('slack');
     expect(client.chat.update).toHaveBeenCalled();
   });
 
