@@ -1,4 +1,4 @@
-# Current Context
+## Current Context
 
 Snapshot of what's active in the AdCP ecosystem. Refreshed weekly by the
 context-refresh routine. Human edits welcome between refreshes.

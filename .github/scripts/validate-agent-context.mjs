@@ -82,7 +82,27 @@ if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content)) {
   errors.push('Control characters present. Strip them.');
 }
 
-// -- Boundary checks (warnings) ----------------------------------------
+// -- Boundary checks ---------------------------------------------------
+
+// Hard fail: boundary framing inside a **bold** span — bullet labels
+// and section emphasis are the load-bearing signal. "Compliance
+// storyboard gaps" as a bullet label reads like internal framing;
+// "filter-behaviour gap [#2902]" mid-sentence is describing a linked
+// issue and is fine.
+// "tier-N" and "editorial" are deliberately omitted — AdCP has
+// legitimate product concepts using both (e.g. "Tier-2 Production
+// Verified", "Member editorial workflow"). They stay as
+// BOUNDARY_PATTERNS warnings for subtler cases.
+const LABEL_BAN = /\*\*[^*\n]*\b(?:gap|risk|concern|narrative|stakeholder)s?\b[^*\n]*\*\*/i;
+const labelMatch = content.match(LABEL_BAN);
+if (labelMatch) {
+  errors.push(
+    `Boundary framing inside a bold span: "${labelMatch[0]}". Bullet ` +
+    `labels and section emphasis should be factual nouns. Reword ` +
+    `(e.g. "gaps" → "remediation") or move the entry to ` +
+    `\`.agents/internal-context.md\`.`
+  );
+}
 
 const BOUNDARY_PATTERNS = [
   [/\btier[- ][0-9]\b/i, 'priority tier ("tier-1")'],
