@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
-import { workos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 
 const logger = createLogger('account-linking');
@@ -278,7 +278,7 @@ export function createAccountLinkingRouter(): Router {
       // If WorkOS rejects the update the outer catch handles the error;
       // the DB change is already committed, and the user.updated webhook
       // will re-sync on the next WorkOS event if needed.
-      await workos.userManagement.updateUser({ userId, email: aliasEmail });
+      await getWorkos().userManagement.updateUser({ userId, email: aliasEmail });
 
       logger.info(
         { userId, oldPrimary, newPrimary: aliasEmail },
@@ -410,7 +410,7 @@ export function handleEmailLinkVerification(app: {
             tokenRecord.primary_workos_user_id,
             tokenRecord.target_workos_user_id,
             tokenRecord.primary_workos_user_id,
-            workos
+            getWorkos()
           );
         }
 

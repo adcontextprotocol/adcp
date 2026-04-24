@@ -22,6 +22,7 @@ import { ModelConfig } from "../config/models.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
+import { getWorkos } from "../auth/workos-client.js";
 import {
   resolveSlackUserDisplayName,
   resolveSlackUserDisplayNames,
@@ -1423,7 +1424,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         targetUserId = slack_user_id as string;
       } else {
         // Look up WorkOS user by ID or email
-        const { workos } = await import("../auth/workos-client.js");
+        const workos = getWorkos();
 
         let workosUserId: string;
 
@@ -1431,7 +1432,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
           workosUserId = user_id as string;
         } else if (email) {
           // Look up user by email
-          const users = await workos!.userManagement.listUsers({
+          const users = await workos.userManagement.listUsers({
             email: email as string,
           });
 

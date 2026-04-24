@@ -78,7 +78,7 @@ import {
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
-import { workos } from '../../auth/workos-client.js';
+import { getWorkos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
 import {
@@ -4896,6 +4896,7 @@ Use add_committee_leader to assign a leader.`;
 
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {
+    const workos = getWorkos();
 
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
@@ -5244,7 +5245,10 @@ Use add_committee_leader to assign a leader.`;
       return '❌ organization_id is required. Use lookup_organization to find the org ID first.';
     }
 
-    if (!workos) {
+    let workos: ReturnType<typeof getWorkos>;
+    try {
+      workos = getWorkos();
+    } catch {
       return '❌ WorkOS is not configured. Domain management requires WorkOS to be set up.';
     }
 
@@ -5539,7 +5543,10 @@ Use add_committee_leader to assign a leader.`;
       return '❌ role must be "member", "admin", or "owner".';
     }
 
-    if (!workos) {
+    let workos: ReturnType<typeof getWorkos>;
+    try {
+      workos = getWorkos();
+    } catch {
       return '❌ WorkOS is not configured.';
     }
 

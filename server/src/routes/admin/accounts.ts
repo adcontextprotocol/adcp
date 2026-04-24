@@ -35,6 +35,7 @@ import {
   refreshReviewCardForOrg,
 } from "../../addie/jobs/announcement-handlers.js";
 import { WorkOS } from "@workos-inc/node";
+import { getWorkos } from "../../auth/workos-client.js";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
@@ -2157,15 +2158,7 @@ export function setupAccountRoutes(
           });
         }
 
-        // Dynamic import of WorkOS client since it may not be available in all environments
-        const { workos } = await import("../../auth/workos-client.js");
-
-        if (!workos) {
-          return res.status(503).json({
-            error: "Service unavailable",
-            message: "WorkOS client not configured",
-          });
-        }
+        const workos = getWorkos();
 
         const results: {
           user_id: string;
@@ -2327,10 +2320,7 @@ export function setupAccountRoutes(
 
         // If membership ID is missing locally, look it up from WorkOS and backfill
         if (!membership.workos_membership_id) {
-          const { workos: workosClient } = await import("../../auth/workos-client.js");
-          if (!workosClient) {
-            return res.status(500).json({ error: "WorkOS client not configured" });
-          }
+          const workosClient = getWorkos();
           try {
             const memberships = await workosClient.userManagement.listOrganizationMemberships({
               userId,
@@ -2389,10 +2379,7 @@ export function setupAccountRoutes(
         }
 
         // Update role via WorkOS API
-        const { workos } = await import("../../auth/workos-client.js");
-        if (!workos) {
-          return res.status(500).json({ error: "WorkOS client not configured" });
-        }
+        const workos = getWorkos();
 
         // Verify membership belongs to the specified organization via WorkOS
         let existingMembership;

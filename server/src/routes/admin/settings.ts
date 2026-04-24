@@ -27,6 +27,7 @@ import {
   setEditorialChannel,
   getAnnouncementChannel,
   setAnnouncementChannel,
+  getSettingAuditHistory,
 } from '../../db/system-settings-db.js';
 import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
 
@@ -482,6 +483,17 @@ export function createAdminSettingsRouter(): Router {
       res.status(500).json({
         error: 'Failed to update announcement channel',
       });
+    }
+  });
+
+  // GET /api/admin/settings/audit - Recent system settings changes
+  router.get('/audit', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const entries = await getSettingAuditHistory(50);
+      res.json({ entries });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to get settings audit history');
+      res.status(500).json({ error: 'Failed to get audit history' });
     }
   });
 
