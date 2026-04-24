@@ -1,0 +1,4 @@
+---
+---
+
+Fix silent-failure bug in Stripe `customer.subscription.created` webhook that left paid members with no `user_agreement_acceptances` row. The old path resolved the WorkOS user solely via Stripe customer email; when emails didn't match (different from WorkOS, alias domain, case drift), the lookup returned empty, the `if (workosUser)` block was skipped, a single error was logged, and the webhook returned 200 — dashboard showed missing agreement despite active subscription. New path resolves via `subscription.metadata.workos_user_id` → customer `metadata.workos_user_id` → email (fallback), propagates `workos_user_id` through checkout-session `subscription_data.metadata`, and records the org-level agreement regardless of user resolution. When no source resolves, the webhook now calls `notifySystemError` and logs `needs_manual_reconciliation: true` instead of failing silently. Adds `resolveWorkosUserForSubscription` helper + unit tests.
