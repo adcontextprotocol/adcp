@@ -277,6 +277,130 @@ export async function loadDraftAndState(orgId: string): Promise<LoadedDraft | nu
 }
 
 /**
+ * One row per org that has ever had an announcement draft posted.
+ * Used by `/admin/announcements` to show the editorial team what's
+ * waiting on them, what landed, and what got skipped.
+ *
+ * State flags derive from sibling `announcement_published` /
+ * `announcement_skipped` rows. The "is_backfill" flag is pulled
+ * from the draft metadata so the backlog UI can tell retroactive
+ * drafts apart from live-flow ones.
+ *
+ * A single `announcement_draft_posted` row per org is the invariant
+ * (enforced by the NOT EXISTS guard in `findAnnounceCandidates`), but
+ * this query takes the MOST RECENT to be safe if something ever
+ * re-inserts (e.g., manual DB repair).
+ */
+export interface BacklogRow {
+  organization_id: string;
+  org_name: string;
+  membership_tier: string | null;
+  profile_slug: string | null;
+  draft_posted_at: Date;
+  review_channel_id: string | null;
+  review_message_ts: string | null;
+  visual_source: string | null;
+  is_backfill: boolean;
+  slack_posted: boolean;
+  slack_posted_at: Date | null;
+  linkedin_posted: boolean;
+  linkedin_marked_at: Date | null;
+  skipped: boolean;
+  skipped_at: Date | null;
+}
+
+export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
+  const result = await query<{
+    organization_id: string;
+    org_name: string;
+    membership_tier: string | null;
+    profile_slug: string | null;
+    draft_posted_at: Date;
+    review_channel_id: string | null;
+    review_message_ts: string | null;
+    visual_source: string | null;
+    is_backfill: boolean;
+    slack_posted_at: Date | null;
+    linkedin_marked_at: Date | null;
+    skipped_at: Date | null;
+  }>(
+    `WITH latest_draft AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS draft_posted_at,
+         metadata
+       FROM org_activities
+       WHERE activity_type = 'announcement_draft_posted'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     slack_pub AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS slack_posted_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'slack'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     li_pub AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS linkedin_marked_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'linkedin'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     skipped AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS skipped_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_skipped'
+       ORDER BY organization_id, activity_date DESC
+     )
+     SELECT
+       ld.organization_id,
+       o.name AS org_name,
+       o.membership_tier,
+       mp.slug AS profile_slug,
+       ld.draft_posted_at,
+       ld.metadata->>'review_channel_id' AS review_channel_id,
+       ld.metadata->>'review_message_ts' AS review_message_ts,
+       ld.metadata->>'visual_source' AS visual_source,
+       COALESCE((ld.metadata->>'backfill')::boolean, false) AS is_backfill,
+       sp.slack_posted_at,
+       li.linkedin_marked_at,
+       sk.skipped_at
+     FROM latest_draft ld
+     JOIN organizations o ON o.workos_organization_id = ld.organization_id
+     LEFT JOIN member_profiles mp ON mp.workos_organization_id = ld.organization_id
+     LEFT JOIN slack_pub sp ON sp.organization_id = ld.organization_id
+     LEFT JOIN li_pub li ON li.organization_id = ld.organization_id
+     LEFT JOIN skipped sk ON sk.organization_id = ld.organization_id
+     ORDER BY ld.draft_posted_at DESC`,
+  );
+
+  return result.rows.map((r) => ({
+    organization_id: r.organization_id,
+    org_name: r.org_name,
+    membership_tier: r.membership_tier,
+    profile_slug: r.profile_slug,
+    draft_posted_at: r.draft_posted_at,
+    review_channel_id: r.review_channel_id,
+    review_message_ts: r.review_message_ts,
+    visual_source: r.visual_source,
+    is_backfill: r.is_backfill === true,
+    slack_posted: r.slack_posted_at !== null,
+    slack_posted_at: r.slack_posted_at,
+    linkedin_posted: r.linkedin_marked_at !== null,
+    linkedin_marked_at: r.linkedin_marked_at,
+    skipped: r.skipped_at !== null,
+    skipped_at: r.skipped_at,
+  }));
+}
+
+/**
  * Build the review card blocks from scratch given the draft and current
  * state. Re-rendering the full card on every click keeps the handlers
  * stateless: we never mutate the existing `body.message.blocks`; the DB
