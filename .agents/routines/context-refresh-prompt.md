@@ -70,6 +70,13 @@ routine's context.
 - Link every entry (`#1234`, `PR adcp-client#456`)
 - Status values: `active`, `blocked`, `review`, `shipped`, `deferred`
 - Drop stale entries — staleness is a feature
+- **Bullet labels must be factual nouns.** Not "**X gaps**",
+  "**X risks**", "**X concerns**", "**Tier-N X**", or
+  "**Stakeholder X**". Say what the work *is*, not how it's
+  framed. Example: "**Compliance storyboard remediation**", not
+  "**Compliance storyboard gaps**". The lint flags these, and
+  any gap/risk/concern/tier framing belongs in
+  `internal-context.md` instead.
 
 ## Open a PR
 

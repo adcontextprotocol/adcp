@@ -424,9 +424,35 @@ A single cohesive PR of 200 non-breaking lines is easier to review
 than three PRs of 60 lines with dependencies and cross-links. The
 bot's job is to reduce maintainer clicks, not multiply them.
 
+## Pre-PR build + test gate — mandatory before expert review
+
+The expert review is expensive; don't run it on broken code. Before
+spawning experts, make sure the diff actually compiles and the
+unit tests pass.
+
+1. Run the repo's build + fast test tier:
+   - `npm run precommit` — prefer this (bundled build + typecheck +
+     unit tests); falls back to `npm run build && npm test` if not
+     defined
+   - If the diff touches only `docs/**` or `static/**`, skip build
+     and run the relevant doc check instead (e.g., `npm run
+     docs:check` or `mintlify broken-links`)
+2. **If build or tests fail:** read the errors, fix the code,
+   re-run. Cap at **2 build→fix iterations.** If still failing,
+   abandon the PR and Flag for human review with the build log
+   in the comment.
+3. Do **not** skip tests locally because "CI will run them." The
+   point of this gate is to not ship known-broken code even as a
+   draft, because (a) review noise, (b) a human reviewer may
+   admin-merge a draft that looks fine, (c) a green CI on push
+   is the baseline for the auto-fix loop — a red PR at push time
+   is indistinguishable from drift after the fact.
+4. Only once build + tests pass on the final diff: proceed to
+   pre-PR expert review.
+
 ## Pre-PR expert review — mandatory before `gh pr create`
 
-After the branch is pushed but **before** opening the PR, run a
+After build + tests are green but **before** opening the PR, run a
 second expert pass on the actual diff. The Step 4 synthesis
 reviewed the plan; this step reviews the code. They catch
 different things — protocol drift, broken tests, overlong files,
