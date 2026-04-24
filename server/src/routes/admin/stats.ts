@@ -272,18 +272,28 @@ export function setupStatsRoutes(apiRouter: Router): void {
           FROM addie_threads
         `),
 
-        // Gemini illustration generation — rolling 24h window matches
-        // the enforced workspace cap in tool-rate-limiter's
-        // WORKSPACE_CAPS. Counting `perspective_illustrations` directly
-        // (not the rate-limiter's scope_key events) because the
-        // illustrations table is the source of truth for what actually
-        // got persisted; tool-rate-limit events fire on *attempts*
-        // including rejected-by-cap ones. (#2796 ops metric)
+        // Gemini illustration generation — rolling 24h window aligned
+        // with the enforced workspace cap in tool-rate-limiter's
+        // WORKSPACE_CAPS. Counts persisted rows (one Gemini call = one
+        // row) excluding `status='pending'`, which represents a
+        // pre-call placeholder insert without a paid generation.
+        // `rejected` rows are included because rejection happens after
+        // the paid generation — the dollars were spent.
+        //
+        // NOTE: this is an ops approximation of the enforcement
+        // counter, not the counter itself. The rate-limiter counts
+        // attempts (including cap-rejected ones) in
+        // `addie_tool_rate_limit_events`, while we count persists in
+        // `perspective_illustrations`. Bursts of cap-rejected attempts
+        // in the enforcement window won't show up here. Good enough
+        // for "what did we spend today" but not for "how close is the
+        // next generation to being blocked." (#2796)
         pool.query(`
           SELECT
             COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as generated_24h,
             COUNT(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 END)  as generated_7d
           FROM perspective_illustrations
+          WHERE status != 'pending'
         `),
       ]);
 
@@ -356,10 +366,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
         addie_positive_ratings: parseInt(ratings.positive_ratings) || 0,
         addie_negative_ratings: parseInt(ratings.negative_ratings) || 0,
 
-        // Gemini illustration cap observability (#2796).
+        // Gemini illustration cap observability (#2796). The `_daily`
+        // suffix on `cap_daily` marks it as a scalar ceiling (not a
+        // count over 24h, which would parallel the `_24h` suffixes
+        // above).
         illustrations_generated_24h: illustrationsGenerated24h,
         illustrations_generated_7d: parseInt(illustrations.generated_7d) || 0,
-        illustrations_cap_24h: illustrationCap,
+        illustrations_cap_daily: illustrationCap,
         illustrations_cap_remaining: illustrationsCapRemaining,
 
         // User stats (community points tiers)
