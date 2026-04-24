@@ -333,7 +333,7 @@
       if (state === 'li_pending') {
         return 'Nothing waiting on LinkedIn right now.';
       }
-      return `No announcements in state &ldquo;${escapeHtml(STATE_LABELS[state])}&rdquo;.`;
+      return `No announcements in state &ldquo;${escapeHtml(STATE_LABELS[state] ?? state)}&rdquo;.`;
     }
 
     function renderRow(r) {

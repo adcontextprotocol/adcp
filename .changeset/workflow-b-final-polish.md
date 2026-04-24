@@ -25,7 +25,7 @@ the #3003 review.
 
 **Ops runbook:**
 
-- New `docs/ops/channel-rotation.md` — quick reference for rotating a
+- New `ops/channel-rotation.md` — quick reference for rotating a
   Slack channel wired into an admin setting (all seven — billing,
   escalation, admin, prospect, error, editorial, announcement).
   Covers happy path, write/send-time failure modes, incident scenario

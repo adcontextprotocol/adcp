@@ -73,33 +73,44 @@ This is break-glass only; normal ops should go through the UI so
 audit + verification run.
 
 ```sql
+Run this as one atomic CTE. It mirrors the shape of `setSetting()` in
+`server/src/db/system-settings-db.ts` — capturing the *actual*
+`old_value` (not hardcoded NULL) so post-incident review can see what
+the channel was before the break-glass flip.
+
+```sql
 -- Replace keys as needed:
 -- editorial_slack_channel, billing_slack_channel, escalation_slack_channel,
 -- admin_slack_channel, prospect_slack_channel, error_slack_channel,
 -- announcement_slack_channel.
 
-INSERT INTO system_settings (key, value, updated_at, updated_by)
-VALUES (
-  'editorial_slack_channel',
-  '{"channel_id":"C0NEWREVIEW","channel_name":"admin-editorial-review"}'::jsonb,
-  NOW(),
-  NULL  -- no WorkOS id available in break-glass mode
+WITH old AS (
+  SELECT value AS old_value FROM system_settings
+  WHERE key = 'editorial_slack_channel'
+),
+upserted AS (
+  INSERT INTO system_settings (key, value, updated_at, updated_by)
+  VALUES (
+    'editorial_slack_channel',
+    '{"channel_id":"C0NEWREVIEW","channel_name":"admin-editorial-review"}'::jsonb,
+    NOW(),
+    NULL  -- no WorkOS id available in break-glass mode
+  )
+  ON CONFLICT (key) DO UPDATE
+  SET value = EXCLUDED.value,
+      updated_at = NOW(),
+      updated_by = NULL
+  RETURNING value AS new_value
 )
-ON CONFLICT (key) DO UPDATE
-SET value = EXCLUDED.value,
-    updated_at = NOW(),
-    updated_by = NULL;
-
--- Record the break-glass change in the audit table for after-the-fact
--- review. Keep this row even though the UI write path would have
--- created it automatically — SQL-direct writes bypass setSetting().
 INSERT INTO system_settings_audit (key, old_value, new_value, changed_by, changed_at)
 SELECT
   'editorial_slack_channel',
-  NULL,
-  '{"channel_id":"C0NEWREVIEW","channel_name":"admin-editorial-review"}'::jsonb,
+  old.old_value,
+  upserted.new_value,
   'break-glass:runbook',
-  NOW();
+  NOW()
+FROM upserted
+LEFT JOIN old ON true;
 ```
 
 Notes:
