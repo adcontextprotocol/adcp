@@ -561,9 +561,9 @@
 #             required for "field_value_or_absent" when allowed_values is not provided)
 # allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
 #                        "http_status_in", "error_code", "any_of")
-# For "field_value_or_absent": passes when the field is absent OR present and contained in
-#   `allowed_values` or equal to `value`; fails only when the field is present with a disallowed
-#   value.
+# For "field_value_or_absent": passes when the field is absent OR when it is present and
+#   (equal to `value` or contained in `allowed_values`); fails only when the field is present
+#   with a disallowed value.
 #   Use for envelope-optional fields where silence is spec-compliant but a wrong value is not.
 #   Requires @adcp/client >= 5.16.0 (adcp-client#876).
 # description: string (human-readable description of validation)
