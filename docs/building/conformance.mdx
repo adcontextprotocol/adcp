@@ -22,6 +22,23 @@ Put differently:
 - Verification is a time-bounded third-party attestation that an agent is conformant.
 - Verified ⊆ Conformant. You can be conformant without being verified; you cannot be verified without being conformant.
 
+## Two marks: AdCP Conformant and AAO Verified
+
+The rest of this page describes **AdCP Conformant** — the agent's wire behavior matches the spec, verified against the storyboard suite with seeded test data. Storyboard passing issues AdCP Conformant; storyboard regression revokes it.
+
+AdCP 3.x also defines **AAO Verified** (optional), a stricter mark for agents whose live ad-server integration AAO has directly observed. AAO Verified adds continuous observability of real delivery data against the seller's live endpoint, performed by the AAO compliance engine over a 7–14 day rolling window. It closes the gap storyboards cannot: a seller can pass every storyboard with a broken ad-server integration, because `simulate_delivery` is a parallel code path from the production reporting path. AAO Verified requires that the AdCP surface actually reaches real impressions on real inventory.
+
+AAO Verified is opt-in, requires no new infrastructure (the AAO compliance engine already runs), and produces an auto-expiring mark distinct from AdCP Conformant. See [AAO Verified](/docs/building/aao-verified) for the full spec.
+
+| Mark | What it means | How it's issued |
+|------|---------------|-----------------|
+| **AdCP Conformant** | Wire format, task shape, error semantics, filter behavior match the spec | Storyboards + behavioral assertions against `simulate_delivery` |
+| **AAO Verified** (optional) | The declared capability is implemented on the seller's live production stack | Continuous observability of real delivery, 7–14 day rolling window |
+
+**Containment.** AAO Verified ⊆ AdCP Conformant. A seller cannot hold AAO Verified without AdCP Conformant — a storyboard regression blocks AAO Verified issuance even when live campaigns look fine, because storyboards catch wire-format violations that live data might paper over. You can be Conformant without being Verified (storyboard-passing but no live traffic yet); you cannot be Verified without being Conformant.
+
+**Why two marks, not two tiers.** Earlier drafts used "Tier 1 — Protocol Conformant" and "Tier 2 — Production Verified." That framing muddied the message: a buyer reading "Tier 1 — Protocol Conformant" plausibly infers "verified at the basic level," when all it actually attests is wire-format correctness. *Conformant* and *Verified* are distinct claims, not tiers of the same thing — with *Verified* strictly implying *Conformant*. See [AAO Verified § Why these two marks](/docs/building/aao-verified#why-these-two-marks-not-the-earlier-tier-1--tier-2) for the full reasoning.
+
 ## Storyboards are the truth
 
 Rather than restate every MUST in prose — which would inevitably drift from the executable suite — **the storyboards ARE the conformance specification.** This document is a navigational index to them, grouped by the declaration that obligates the storyboard to run.
@@ -136,6 +153,7 @@ Conformance is per-version; the suite is per-version. A 3.0-conformant agent is 
 
 ## Further reading
 
+- **[AAO Verified](/docs/building/aao-verified)** — Continuous-observability verification of the seller's live ad-server integration
 - **[Compliance Catalog](/docs/building/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
 - **[Validate Your Agent](/docs/building/validate-your-agent)** — How to run the suite
 - **[Security Model](/docs/building/understanding/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce
