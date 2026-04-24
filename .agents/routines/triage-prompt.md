@@ -401,6 +401,29 @@ driven by the changeset bump level, not by vibes.
   changeset/release-please drives versioning repo-by-repo; follow
   each repo's local PR constraints.
 
+**Step 1a — Apply the experimental-surface downgrade.**
+
+Per [Experimental Status](/docs/reference/experimental-status), changes
+to surfaces marked experimental are explicitly allowed to break inside
+the current major. So a change that would be `minor` on a stable
+surface is `patch` on an experimental one; a change that would be
+`major` on stable is `minor` on experimental.
+
+| Stable bump | Experimental bump |
+|---|---|
+| `major` (breaking) | `minor` |
+| `minor` (additive) | `patch` |
+| `patch` (fix / clarification) | `patch` (no further downgrade) |
+
+How to detect "experimental":
+
+1. **Schema marker:** the touched JSON Schema has `"x-status": "experimental"` at the schema root **or** on the specific property being changed. The marker is schema-local — a stable schema that `$ref`s an experimental sub-schema is still stable.
+2. **Path heuristic (fallback for unmarked-but-known surfaces):** treat anything under `static/schemas/source/tmp/**`, `static/schemas/source/sponsored-intelligence/**`, or `static/schemas/source/a2ui/**` as experimental even if the `x-status` marker is missing. Surface "marker missing" in the run summary so a human can backfill.
+3. **Mixed diffs:** if the PR touches BOTH stable and experimental surfaces in a single change, take the **stable** bump level (no downgrade) — the stable touch is what gates the release contract.
+
+The downgrade does not apply to non-protocol changes (`--empty`),
+which never get a bump in the first place.
+
 **Step 2 — Fetch live release signal.**
 
 ```
