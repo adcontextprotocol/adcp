@@ -327,7 +327,7 @@ Package metadata is synced from seller agents to TMP providers at media buy crea
 
 TMP providers cache packages from many seller agents against many publishers. The `seller_agent` field makes that provenance explicit on each cached `AvailablePackage` so providers — which have no access to a media-buy store — can attribute offers, apply per-seller observability, and resolve disputes without out-of-band lookups.
 
-The canonical seller identity in AdCP is the agent URL declared in the property publisher's [adagents.json](/schemas/adagents.json) `authorized_agents[].url` entry. TMP reuses that URL directly rather than introducing a parallel identifier space. The `id` slot on `SellerAgentRef` is reserved for a future registry-assigned opaque identifier and is not used today.
+The canonical seller identity in AdCP is the agent URL declared in the property publisher's [adagents.json](https://adcontextprotocol.org/schemas/v3/adagents.json) `authorized_agents[].url` entry. TMP reuses that URL directly rather than introducing a parallel identifier space. The `id` slot on `SellerAgentRef` is reserved for a future registry-assigned opaque identifier and is not used today.
 
 **Placement rationale.** `seller_agent` lives on the cached `AvailablePackage` (sync time), not on `context_match_request` or `identity_match_request`:
 

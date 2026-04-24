@@ -57,36 +57,7 @@ jobs:
         PUPPETEER_SKIP_DOWNLOAD: 'true'
 
     - name: Check for broken links in docs
-      # `.changeset/` holds release-note markdown that is not MDX; Mintlify's
-      # MDX parser errors on raw `<N` / `<tag`-like sequences in changeset
-      # bodies. Move it aside for the scan, then restore. Matches the local
-      # `.husky/pre-push` shuffle pattern.
-      #
-      # Mintlify's CLI UI crashes on startup with "Invalid hook call" because
-      # its @mintlify/* subpackages pin mixed React versions (18 in common/
-      # scraping/validation, 19 in cli/previewing). The broken-links scan
-      # itself still runs — the crash is in `@mintlify/previewing/dist/
-      # logs.js` rendering, not the scan logic — but the crash drives exit 1.
-      # Tracked in #2983. Until upstream Mintlify aligns React versions, we
-      # capture the output, grep for real scan errors, and only fail when
-      # those appear. Subsequent jobs (`check:owned-links`,
-      # `markdown-link-check`) provide defense in depth.
-      run: |
-        if [ -d .changeset ]; then
-          mv .changeset /tmp/.ci-changeset-backup
-        fi
-        LOG=$(mktemp)
-        npx --no-install mintlify broken-links 2>&1 | tee "$LOG" || true
-        if [ -d /tmp/.ci-changeset-backup ]; then
-          mv /tmp/.ci-changeset-backup .changeset
-        fi
-        # Filter out React/Mintlify crash noise, then look for real failures.
-        if grep -vE "react|Rules of Hooks|@mintlify|react-reconciler|react\.development|copy of React|versions of React|react\.dev|useState|useRef|useSyncExternalStore|GNotificationCenterDelegate|node_modules" "$LOG" \
-             | grep -iE "parsing error|broken link|missing link|could not resolve|^[[:space:]]*404[[:space:]]"; then
-          echo "::error::Real Mintlify broken-links issues found above."
-          exit 1
-        fi
-        echo "::notice::No real broken-link or parse errors emitted (Mintlify React crash is tracked in #2983)."
+      run: npx --no-install mintlify broken-links
 
     - name: Check browser-facing Agentic Advertising links
       run: npm run check:owned-links
