@@ -462,7 +462,7 @@ export const SIGNAL_PROVIDERS: SignalProviderProfile[] = [
         coveragePercentage: 5,
         tags: ['first_party', 'ltv', 'retention'],
         pricingOptions: [
-          { pricingOptionId: 'po_prism_ltv_flat', model: 'flat_fee', amount: 5000, period: 'monthly', currency: 'USD' },
+          { pricingOptionId: 'po_prism_flat_monthly', model: 'flat_fee', amount: 5000, period: 'monthly', currency: 'USD' },
         ],
       },
       {
@@ -474,7 +474,7 @@ export const SIGNAL_PROVIDERS: SignalProviderProfile[] = [
         coveragePercentage: 3,
         tags: ['first_party', 'retargeting', 'commerce'],
         pricingOptions: [
-          { pricingOptionId: 'po_prism_cart_cpm', model: 'cpm', cpm: 8.00, currency: 'USD' },
+          { pricingOptionId: 'po_prism_abandoner_cpm', model: 'cpm', cpm: 8.00, currency: 'USD' },
         ],
       },
       {

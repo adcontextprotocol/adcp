@@ -36,24 +36,22 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 50→52 after bumping @adcp/client to 5.13 (governance denial
-            # recovery invariant relaxed in adcp-client#813) and overlay
-            # targets the SDK-versioned cache dir.
-            # Passing-step asymmetry with framework mode (378 vs 390) is
-            # intentional: the two modes declare different capabilities,
-            # so the storyboard runner skips a different subset of steps
-            # in each (legacy skips 50, framework skips 37). Both modes
-            # pass every step they run.
+            # 378→380 after bumping @adcp/client to 5.15 (5.14 fixture-wins
+            # refactor exposed training-agent catalog gaps; aliased
+            # outdoor_ctv_q2/local_display_dynamic products and renamed
+            # two prism signal pricing ids to match the spec test-kit).
+            # Passing-step asymmetry with framework mode is intentional:
+            # the two modes declare different capabilities, so the
+            # storyboard runner skips a different subset of steps in each.
+            # Both modes pass every step they run.
             min_clean_storyboards: 52
-            min_passing_steps: 378
+            min_passing_steps: 380
           - mode: framework
             flag_value: '1'
-            # 51→52 after dropping the fresh-path replayed assertion
-            # in universal/idempotency.yaml (per envelope spec, fresh
-            # executions MAY omit the field; the replay step already
-            # covers the real regression surface).
+            # 390→393 after bumping @adcp/client to 5.15 + seller catalog
+            # alignment (see legacy-mode comment).
             min_clean_storyboards: 52
-            min_passing_steps: 390
+            min_passing_steps: 393
     steps:
       - uses: actions/checkout@v6
 
