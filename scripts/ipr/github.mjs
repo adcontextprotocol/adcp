@@ -22,10 +22,6 @@ export class GitHubClient {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
       }
     }
-    // lgtm[js/file-access-to-http] -- Host is hard-pinned to api.github.com by
-    // the `/`-prefix check above; query/body come from hardcoded paths and
-    // parsed signatures JSON we own. The token is from env (GITHUB_TOKEN), not
-    // file-controlled. No external input reaches URL construction.
     const res = await fetch(url, {
       method,
       headers: {
