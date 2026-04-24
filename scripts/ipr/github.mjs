@@ -78,10 +78,12 @@ export class GitHubClient {
 
   createStatus(owner, repo, sha, { state, context, description, targetUrl }) {
     return this.request('POST', `/repos/${owner}/${repo}/statuses/${sha}`, {
-      state,
-      context,
-      description: description?.slice(0, 140),
-      target_url: targetUrl,
+      body: {
+        state,
+        context,
+        description: description?.slice(0, 140),
+        target_url: targetUrl,
+      },
     });
   }
 }
