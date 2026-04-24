@@ -133,6 +133,11 @@ import {
   getErrorChannel,
   getAdminChannel,
 } from '../db/system-settings-db.js';
+import {
+  handleAnnouncementApproveSlack,
+  handleAnnouncementMarkLinkedIn,
+  handleAnnouncementSkip,
+} from './jobs/announcement-handlers.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -704,6 +709,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register marketing opt-in action handlers (from Slack join DM)
   boltApp.action('marketing_optin_yes', handleMarketingOptIn);
   boltApp.action('marketing_optin_no', handleMarketingOptIn);
+
+  // Register new-member announcement review-card action handlers (Workflow B Stage 2)
+  boltApp.action('announcement_approve_slack', handleAnnouncementApproveSlack);
+  boltApp.action('announcement_mark_linkedin', handleAnnouncementMarkLinkedIn);
+  boltApp.action('announcement_skip', handleAnnouncementSkip);
 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
