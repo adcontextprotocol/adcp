@@ -344,7 +344,10 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
           slack_text: draft.slackText,
           linkedin_text: draft.linkedinText,
           visual_url: visual.url,
+          visual_alt_text: visual.altText,
           visual_source: visual.source,
+          org_name: candidate.org_name,
+          profile_slug: candidate.slug,
         });
       } catch (recordErr) {
         logger.error(
