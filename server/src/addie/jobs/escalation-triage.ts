@@ -10,9 +10,9 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { query } from '../../db/client.js';
 import {
   getEscalation,
-  listEscalations,
   type Escalation,
 } from '../../db/escalation-db.js';
 import {
@@ -21,6 +21,7 @@ import {
   type TriageSuggestionInput,
 } from '../../db/escalation-triage-db.js';
 import {
+  OPS_BUCKETS,
   ageInDays,
   bucketForSummary,
   extractAaoUrls,
@@ -84,16 +85,23 @@ export async function classifyEscalation(
   // Rule 2 — URL probe for bug-shaped escalations.
   // If the summary cites an AAO URL, hit it. 404/410 → still broken, keep open.
   // 200/301/302 → likely fixed, suggest resolve with MEDIUM confidence.
+  // If every probe returns null (network error) → treat as "no signal"
+  // rather than falsely passing into the stale-ops rule.
   const urls = extractAaoUrls(summary);
   if (urls.length > 0) {
-    const probes: { url: string; status: number | null }[] = [];
-    for (const url of urls.slice(0, 3)) {
-      probes.push({ url, status: await probeUrlStatus(url) });
-    }
+    const sliced = urls.slice(0, 3);
+    // Probes run concurrently per-escalation so worst-case is one timeout
+    // window, not N timeouts multiplied.
+    const probes = await Promise.all(
+      sliced.map(async url => ({ url, status: await probeUrlStatus(url) })),
+    );
     const probeEvidence = probes.map(p => `probe ${p.url} → ${p.status ?? 'err'}`);
 
     if (probes.some(p => p.status === 404 || p.status === 410)) {
       return null; // still broken; keep open
+    }
+    if (probes.every(p => p.status === null)) {
+      return null; // all probes failed — don't fall through to other rules
     }
     const allGood = probes.every(p => p.status != null && p.status >= 200 && p.status < 400);
     if (allGood && bucket === 'bug') {
@@ -109,8 +117,7 @@ export async function classifyEscalation(
 
   // Rule 3 — stale ops backlog. Conservative: only non-bug buckets where
   // same-day ops work has likely been actioned externally.
-  const isOpsBucket = bucket === 'billing' || bucket === 'invite' || bucket === 'content' || bucket === 'ops-other';
-  if (age >= staleOpsDays && isOpsBucket && escalation.category === 'needs_human_action') {
+  if (age >= staleOpsDays && OPS_BUCKETS.has(bucket) && escalation.category === 'needs_human_action') {
     return {
       suggested_status: 'resolved',
       confidence: 'low',
@@ -138,16 +145,24 @@ export async function runEscalationTriageJob(
   const limit = options.limit ?? 25;
   const staleOpsDays = options.staleOpsDays ?? 21;
 
-  let open: Escalation[];
+  // Fetch oldest-first so a queue >limit items doesn't silently skip the
+  // staler (higher-priority) tail — the default list helper sorts newest-first.
+  let candidates: Escalation[];
   try {
-    open = await listEscalations({ status: 'open', limit: 200 });
+    const res = await query<Escalation>(
+      `SELECT * FROM addie_escalations
+       WHERE status = 'open'
+         AND created_at <= NOW() - ($1 || ' days')::INTERVAL
+       ORDER BY created_at ASC
+       LIMIT $2`,
+      [minAgeDays, limit],
+    );
+    candidates = res.rows;
   } catch (err) {
-    logger.error({ err }, 'Failed to list open escalations');
+    logger.error({ err }, 'Failed to list open escalations for triage');
     result.errors++;
     return result;
   }
-
-  const candidates = open.filter(e => ageInDays(e.created_at) >= minAgeDays).slice(0, limit);
 
   for (const escalation of candidates) {
     result.scanned++;

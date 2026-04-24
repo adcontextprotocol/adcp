@@ -54,6 +54,10 @@ describe('escalation-triage signals', () => {
     expect(extractReferencedEscalationIds('See ticket #123 for details')).toEqual([]);
   });
 
+  it('does not match bare "escalation 42" outside a cancel/follow-up prefix', () => {
+    expect(extractReferencedEscalationIds('Also see escalation 42 for background')).toEqual([]);
+  });
+
   it('computes age in whole days', () => {
     const now = new Date('2026-04-24T12:00:00Z');
     expect(ageInDays(new Date('2026-04-24T00:00:00Z'), now)).toBe(0);
@@ -68,6 +72,13 @@ describe('escalation-triage signals', () => {
     expect(bucketForSummary('Wants to publish a blog post')).toBe('content');
     expect(bucketForSummary('Something unclassifiable about organizations')).toBe('ops-other');
     expect(bucketForSummary(null)).toBe('ops-other');
+  });
+
+  it('does NOT classify "returns 200" or "returns 301" as bug (success status ≠ bug)', () => {
+    // Regression: an earlier regex used `returns \w` which inverted verdicts
+    // on success signals. The bug-keyword list must not match these.
+    expect(bucketForSummary('The /terms page now returns 200 after the fix')).not.toBe('bug');
+    expect(bucketForSummary('Page returns 301 redirect as expected')).not.toBe('bug');
   });
 });
 
@@ -166,6 +177,33 @@ describe('classifyEscalation', () => {
       esc({
         summary: 'Please resend the invoice',
         created_at: new Date(Date.now() - 3 * 86_400_000),
+      }),
+      21,
+    );
+    expect(v).toBeNull();
+  });
+
+  it('ignores self-references (N === escalation.id) in cancellation summaries', async () => {
+    // Guards against a bad regex regression that would silently self-resolve.
+    const v = await classifyEscalation(
+      esc({ id: 97, summary: 'Cancel escalation #97 - duplicate filed by mistake' }),
+      21,
+    );
+    // getEscalation should never be called for self-ref — test fails if mock returned resolved.
+    expect(mocks.getEscalation).not.toHaveBeenCalledWith(97);
+    expect(v).toBeNull();
+  });
+
+  it('returns null (no signal) when every URL probe fails, even for stale ops-bucket content', async () => {
+    // Probe returning null for every URL shouldn't silently fall through to
+    // Rule 3 when the summary actually describes a bug — that would flip the
+    // verdict on a genuine network-error day. Default here is bug-bucket via
+    // "Bug:" prefix, so stale-ops must NOT apply.
+    mocks.probeUrlStatus.mockResolvedValue(null);
+    const v = await classifyEscalation(
+      esc({
+        summary: 'Bug: https://agenticadvertising.org/terms returns an error',
+        created_at: new Date(Date.now() - 60 * 86_400_000),
       }),
       21,
     );
