@@ -1,16 +1,9 @@
 import { createLogger } from '../logger.js';
+import { getWorkos } from '../auth/workos-client.js';
 
 const logger = createLogger('pipes');
 
 const GITHUB_PROVIDER = 'github';
-
-// Lazy-load the WorkOS client so importing this module doesn't trip the
-// `WORKOS_API_KEY` check at module-load time (tests transitively import pipes
-// via member-tools.ts and don't all set WorkOS env).
-async function getWorkos() {
-  const mod = await import('../auth/workos-client.js');
-  return mod.workos;
-}
 
 export type PipesTokenResult =
   | { status: 'ok'; accessToken: string; scopes: string[]; missingScopes: string[] }
@@ -18,7 +11,7 @@ export type PipesTokenResult =
   | { status: 'needs_reauthorization'; missingScopes: string[] };
 
 export async function getGitHubAccessToken(workosUserId: string): Promise<PipesTokenResult> {
-  const workos = await getWorkos();
+  const workos = getWorkos();
   const result = await workos.pipes.getAccessToken({
     provider: GITHUB_PROVIDER,
     userId: workosUserId,
@@ -41,7 +34,7 @@ export async function getGitHubAccessToken(workosUserId: string): Promise<PipesT
 }
 
 export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: string): Promise<string> {
-  const workos = await getWorkos();
+  const workos = getWorkos();
   const response = await workos.post<{ user_id: string; return_to: string }>(
     `/data-integrations/${GITHUB_PROVIDER}/authorize`,
     { user_id: workosUserId, return_to: returnTo },
@@ -61,7 +54,7 @@ export type ConnectedAccountResult =
   | { status: 'unavailable'; reason: string };
 
 export async function getGitHubConnectedAccount(workosUserId: string): Promise<ConnectedAccountResult> {
-  const workos = await getWorkos();
+  const workos = getWorkos();
   try {
     const response = await workos.get(
       `/user_management/users/${encodeURIComponent(workosUserId)}/connected_accounts/${GITHUB_PROVIDER}`,
