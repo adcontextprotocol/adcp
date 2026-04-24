@@ -90,3 +90,19 @@ This Policy shall be governed by the laws of the State of Delaware, with exclusi
 **Necessary Claims:** Patent claims necessarily infringed by implementing required elements of a Final Specification.
 
 **Working Group:** A Foundation-designated body, established pursuant to the Foundation's governance documents, that is responsible for developing, reviewing, releasing and maintaining Draft Specifications, Final Specifications and other Collective Works for AdCP.
+
+---
+
+## 8. Signing
+
+Contributors signal agreement with this Policy by posting a comment on a
+Foundation pull request containing the exact phrase:
+
+> I have read the IPR Policy
+
+A single signature, recorded by GitHub user identity, applies to all future
+Contributions from that Contributor across Foundation repositories. The
+canonical ledger of signatures lives at
+[`signatures/ipr-signatures.json`](./signatures/ipr-signatures.json); see
+[`signatures/README.md`](./signatures/README.md) for the mechanics, how to
+sign, and how to operate the ledger.
