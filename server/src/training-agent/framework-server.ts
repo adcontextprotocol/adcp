@@ -16,8 +16,10 @@
  * the five collection-list endpoints) register directly on the returned
  * server via `registerTool` after `createAdcpServer` returns.
  *
- * Opt-in via `TRAINING_AGENT_USE_FRAMEWORK=1`. Defaults to legacy until
- * storyboard parity is verified and a follow-up PR flips the default.
+ * Default dispatch path since both modes hit 52/52 storyboard parity.
+ * Legacy stays reachable via `TRAINING_AGENT_USE_FRAMEWORK=0` for one
+ * release as an escape hatch; a follow-up PR deletes the legacy dispatch
+ * after burn-in.
  */
 
 import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
@@ -163,14 +165,16 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  // wrapEnvelope stamps the AdCP idempotency + context echo envelope.
-  // `replayed: false` signals a fresh execution so storyboards that
-  // assert `replayed: false (or omitted)` grade consistently; a
-  // follow-up wrapper intercepts replays and flips it to true.
-  // wrapEnvelope silently drops non-object `context` per the SDK
-  // `injectContextIntoResponse` contract (SI tools legitimately
-  // override request `context` to a string).
-  const response = wrapEnvelope(inner, { replayed: false, context: callerContext }) as Record<string, unknown>;
+  // wrapEnvelope stamps the AdCP context-echo envelope. `replayed` is
+  // intentionally NOT set here — per protocol-envelope.json and the
+  // SDK's injectReplayed helper, fresh executions MUST omit the field
+  // (the framework stamps `replayed: true` only on idempotency replays).
+  const withEnvelope = wrapEnvelope(inner, {
+    ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
+      ? { context: callerContext }
+      : {}),
+  });
+  const response = withEnvelope as Record<string, unknown>;
   return {
     content: [{ type: 'text', text: JSON.stringify(response) }],
     structuredContent: response,
@@ -657,13 +661,20 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 }
 
 /**
- * Returns true when the framework path should be used. Default is OFF —
- * the legacy hand-rolled dispatch remains authoritative until framework
- * zod parity is verified end-to-end. Set `TRAINING_AGENT_USE_FRAMEWORK=1`
- * to opt in. Default will flip to ON once the framework path passes every
- * storyboard the legacy path passes.
+ * Returns true when the framework path should be used. Default is ON now
+ * that both dispatch modes hit 52/52 storyboard parity. Set
+ * `TRAINING_AGENT_USE_FRAMEWORK=0` (or `=false`) to fall back to legacy
+ * as an escape hatch; the fallback exists for one release so a regression
+ * in the flipped-default config has a clean rollback before legacy is
+ * deleted.
  */
 export function useFrameworkServer(): boolean {
   const v = process.env.TRAINING_AGENT_USE_FRAMEWORK;
-  return v === '1' || v === 'true';
+  // Default ON (framework dispatch). Framework storyboards have been at
+  // 52/52 clean since the envelope + session-fallback work landed;
+  // legacy stays alive as an explicit opt-out escape hatch
+  // (`TRAINING_AGENT_USE_FRAMEWORK=0`) for one release so a regression
+  // shows up on the flipped-default config before legacy deletion.
+  if (v === '0' || v === 'false') return false;
+  return true;
 }
