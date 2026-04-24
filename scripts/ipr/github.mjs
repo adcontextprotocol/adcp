@@ -10,7 +10,13 @@ export class GitHubClient {
   }
 
   async request(method, pathname, { body, query } = {}) {
-    const url = new URL(pathname.startsWith('http') ? pathname : `${API_ROOT}${pathname}`);
+    // pathname must be a `/...` path on api.github.com; the API_ROOT prefix is
+    // enforced here so callers can't redirect requests to an arbitrary host
+    // even if pathname is ever derived from less-trusted input.
+    if (typeof pathname !== 'string' || !pathname.startsWith('/')) {
+      throw new Error(`GitHubClient: pathname must start with '/' (got ${String(pathname)})`);
+    }
+    const url = new URL(`${API_ROOT}${pathname}`);
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));

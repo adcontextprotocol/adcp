@@ -18,7 +18,6 @@
  * PAT with `repo` scope; public repos work with any token.
  */
 
-import fs from 'node:fs';
 import { GitHubClient } from './github.mjs';
 import {
   SIGN_PHRASE,
