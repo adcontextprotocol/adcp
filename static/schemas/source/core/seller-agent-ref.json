@@ -3,6 +3,7 @@
   "$id": "/schemas/core/seller-agent-ref.json",
   "title": "Seller Agent Reference",
   "description": "Structured reference to a seller agent. The canonical identifier is the agent's URL as declared in the property publisher's adagents.json `authorized_agents[].url`. The optional `id` slot is reserved for a future registry-assigned stable identifier; it is not used today. This shape mirrors `format-id` and `ProviderEntry` — URL-first, with an ID slot for forward compatibility.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "agent_url": {

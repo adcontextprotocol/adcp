@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/error.json",
   "title": "TMP Error",
   "description": "Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "type": {

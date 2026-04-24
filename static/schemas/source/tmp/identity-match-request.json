@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/identity-match-request.json",
   "title": "Identity Match Request",
   "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "adcp_major_version": {

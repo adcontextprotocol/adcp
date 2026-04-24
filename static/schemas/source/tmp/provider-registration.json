@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/provider-registration.json",
   "title": "TMP Provider Registration",
   "description": "Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated against SSRF, and dynamic registration endpoints MUST authenticate callers — see docs/trusted-match/specification#provider-registration-security.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "provider_id": {
