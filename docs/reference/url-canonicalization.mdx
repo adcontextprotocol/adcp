@@ -1,0 +1,56 @@
+---
+title: URL Canonicalization
+description: The canonicalization rules AdCP uses anywhere two URLs are compared as identifiers — request signing, authorization matching, and registry lookups.
+"og:title": "AdCP URL Canonicalization"
+---
+
+AdCP compares URLs as identifiers in several places: the request-signing profile's `@target-uri`, `authorized_agents[].url` entries in `adagents.json`, `seller_agent.agent_url` on TMP `AvailablePackage`, `agent_url` in `format-id`, and any other registry where a URL is a primary key. A single canonicalization algorithm governs all of these so two byte-different-but-semantically-equal URLs compare equal regardless of which surface is doing the lookup.
+
+## Algorithm
+
+The canonicalization applies RFC 3986 §6.2.2 (syntax-based normalization) and §6.2.3 (scheme-based normalization), in this order:
+
+1. **Lowercase the scheme** (`HTTPS` → `https`).
+2. **Lowercase the host.** For IDN labels, convert to Punycode A-labels (ACE form) using **UTS-46 Nontransitional processing** with `CheckHyphens=true`, `CheckBidi=true`, `UseSTD3ASCIIRules=true`, `Transitional_Processing=false` (`bücher.example` → `xn--bcher-kva.example`). For IPv6 literals, preserve the `[` and `]` brackets and lowercase the hex digits inside (`[2001:DB8::1]` → `[2001:db8::1]`).
+3. **Strip userinfo.** `user:pass@host` → `host`. An authority with userinfo but no host, or a bare/unclosed IPv6 literal, is malformed and MUST be rejected.
+4. **Strip default ports.** `:443` for https, `:80` for http. All other ports preserved.
+5. **Resolve dot segments** on the path per RFC 3986 §5.2.4, but **preserve consecutive slashes byte-for-byte** (`/a//b` stays `/a//b`). Empty path with an authority becomes `/`.
+6. **Normalize percent-encoding.** Uppercase hex digits (`%2f` → `%2F`). Decode percent-encoded unreserved characters (`ALPHA / DIGIT / "-" / "." / "_" / "~"` per RFC 3986 §2.3, so `%7E` → `~`). Leave reserved characters percent-encoded.
+7. **Preserve the query string byte-for-byte.** Do not reorder parameters, do not re-encode, do not interpret `+` as space. A trailing `?` with empty query is preserved (`https://host/p?` is distinct from `https://host/p`).
+8. **Strip the fragment.** Fragments never participate in identifier comparison.
+
+**IPv6 zone identifiers (RFC 6874) MUST be rejected** — zone-ids are node-local and cannot be interpreted across hosts.
+
+The canonicalized URL is compared **byte-for-byte**. Implementations MUST NOT apply additional transformations (case-folding the path, percent-encoding reserved characters, reordering query parameters, etc.) before comparison.
+
+## Where it applies
+
+| Surface | Comparison |
+|---|---|
+| Request signing | The signer's `@target-uri` canonicalized output MUST byte-for-byte match the verifier's re-canonicalization of the as-received request. See [Signed Requests (Transport Layer)](/docs/building/implementation/security#signed-requests-transport-layer). |
+| TMP seller authorization | A TMP provider validates `seller_agent.agent_url` against the property publisher's `adagents.json` `authorized_agents[].url`. Both values are canonicalized before comparison. See [TMP Sync-Time Validation](/docs/trusted-match/specification#sync-time-validation). |
+| `adagents.json` lookups | Any caller resolving "is this agent authorized for this property?" canonicalizes both the query and the registry entries before matching. |
+| `format-id` resolution | `format-id.agent_url` is compared against the URL an agent publishes for its own formats. Callers canonicalize both sides. |
+| Any registry with a URL primary key | Canonical form is the key; raw input is not. |
+
+## Signing profile extensions
+
+The [request-signing profile](/docs/building/implementation/security#signed-requests-transport-layer) layers transport-specific rules on top of this algorithm:
+
+- `@authority` is derived from the canonicalized authority and compared against the HTTP/2 `:authority` pseudo-header (or the as-received HTTP/1.1 `Host` header) after the same canonicalization.
+- Malformed authorities are rejected with `request_target_uri_malformed`.
+- The `authoritative_location` indirection in `adagents.json` applies the same canonicalization when following the pointer.
+
+Non-signing callers apply steps 1–8 and the byte-equality comparison; they do not participate in the HTTP-header-derivation rules.
+
+## Conformance vectors
+
+The [`canonicalization.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/canonicalization.json) set exercises every rule with fixed `{ input, expected }` pairs, plus malformed-authority rejection cases. SDKs implementing any of the surfaces above SHOULD run this set on every commit — canonicalization divergence is silent until a production interop bug surfaces.
+
+## Common pitfalls
+
+- **ASCII-lowercasing an IDN before ToASCII.** `Bücher.example` lowercased in ASCII → `bücher.example`, but a UTS-46-correct path must process the original bytes. TypeScript `url.domainToASCII`, Go `golang.org/x/net/idna`, and Python's `idna` package (not `str.encode('idna')`, which is IDNA2003) diverge on mode defaults; pin them to UTS-46 Nontransitional.
+- **Collapsing consecutive slashes.** `/admin//foo` and `/admin/foo` are different canonical forms. A signer that collapses them and a server that doesn't (or vice versa) opens a path-confusion attack.
+- **Re-encoding the query.** Query-string normalization looks tempting but is forbidden. `?x=1&y=2` and `?y=2&x=1` are different canonical forms.
+- **Trailing `?` with empty query.** `https://host/p?` and `https://host/p` are different. Preserve whichever the caller sent.
+- **Forgetting the fragment strip.** Fragments never reach the server and never participate in identifier comparison.
