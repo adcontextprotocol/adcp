@@ -97,8 +97,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_recent_news',
       'fetch_url',
       'read_slack_file',
-      // GitHub read tools — issues, PRs, RFCs, epics
-      'get_github_issue',
+      // GitHub read tools — list/search issues, PRs, RFCs, epics.
+      // NOTE: get_github_issue is intentionally NOT listed here — it lives in
+      // ALWAYS_AVAILABLE_TOOLS and is reachable regardless of routing. Keeping
+      // it here caused Sonnet to hallucinate that reading individual issues was
+      // unavailable when `knowledge` wasn't selected. See #2998.
       'list_github_issues',
       // Schema validation tools
       'validate_json',
@@ -110,7 +113,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   member: {
     name: 'member',
-    description: 'Manage member profile, working groups, committees, content proposals, and account settings. Includes listing working group documents.',
+    // NOTE: propose_content, get_my_content, and set_outreach_preference are
+    // intentionally NOT listed here — neither in the description nor the tools
+    // array. They live in ALWAYS_AVAILABLE_TOOLS and are reachable in every
+    // conversation. Duplicating them here caused Sonnet to hallucinate that
+    // content submission/retrieval and outreach preferences were unavailable
+    // when the router didn't pick `member`. See #2998.
+    description: 'Manage member profile, working groups, committees, and account settings. Includes listing working group documents and attaching assets to content.',
     tools: [
       'get_my_profile',
       'update_my_profile',
@@ -126,11 +135,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_my_council_interests',
       'list_perspectives',
       'create_working_group_post',
-      'propose_content',
       'attach_content_asset',
-      'get_my_content',
       'bookmark_resource',
-      'set_outreach_preference',
       'draft_social_posts',
       'list_committee_documents',
     ],
@@ -203,12 +209,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     // intentionally NOT listed here — neither in the description nor the tools
     // array. Duplicating it caused Addie to hallucinate "I can't file GitHub
     // issues" when the router didn't pick `content`.
-    description: 'Manage content workflows - propose news sources, handle content approvals, add or update committee documents (admin actions)',
+    //
+    // NOTE: list_pending_content, approve_content, and reject_content are also
+    // intentionally NOT listed here. They live in ALWAYS_AVAILABLE_TOOLS so
+    // content review is reachable in every conversation. Keeping them here
+    // (and saying "handle content approvals" in the description) caused Sonnet
+    // to hallucinate that approval tools were unavailable when `content` wasn't
+    // selected. See #2998.
+    description: 'Manage content workflows — propose news sources, add or update committee documents (admin actions)',
     tools: [
       'propose_news_source',
-      'list_pending_content',
-      'approve_content',
-      'reject_content',
       'add_committee_document',
       'update_committee_document',
       'delete_committee_document',
@@ -279,6 +289,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   admin: {
     name: 'admin',
+    // NOTE: list_escalations and resolve_escalation are intentionally NOT listed
+    // here — they live in ALWAYS_AVAILABLE_ADMIN_TOOLS and are reachable for
+    // admins regardless of routing. Duplicating them here caused Sonnet to
+    // hallucinate that escalation management was unavailable when `admin` wasn't
+    // selected. See #2998.
     description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
       // Event management (admin)
@@ -317,8 +332,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'check_domain_health',
       'manage_organization_domains',
       'update_org_member_role',
-      'list_escalations',
-      'resolve_escalation',
       'claim_prospect',
       'triage_prospect_domain',
       'suggest_prospects',
@@ -472,6 +485,13 @@ export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boo
     create_github_issue: "filing an issue directly under the member's GitHub account (if connected)",
     get_github_issue: 'reading a GitHub issue or PR by number or URL',
     escalate_to_admin: 'handing the thread to a human admin',
+    get_escalation_status: 'checking the status of an escalation the member filed',
+    propose_content: 'submitting a content draft for publication',
+    get_my_content: 'viewing the member\'s own submitted content and proposals',
+    list_pending_content: 'listing content items awaiting review',
+    approve_content: 'approving a pending content item (admin)',
+    reject_content: 'rejecting a pending content item (admin)',
+    set_outreach_preference: 'opting out of proactive outreach messages',
   };
   const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)
     .filter(([tool]) => ALWAYS_AVAILABLE_TOOLS.includes(tool))
