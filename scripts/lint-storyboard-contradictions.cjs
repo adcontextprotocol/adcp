@@ -454,6 +454,7 @@ function classifyOutcome(step) {
       check === 'response_schema' ||
       check === 'field_present' ||
       check === 'field_value' ||
+      check === 'field_value_or_absent' ||
       check === 'http_status' ||
       check === 'http_status_in'
     );
