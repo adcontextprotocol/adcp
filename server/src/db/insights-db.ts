@@ -1,5 +1,6 @@
 import { query } from './client.js';
 import { logger } from '../logger.js';
+import { isUuid } from '../utils/uuid.js';
 
 // =====================================================
 // TYPES
@@ -372,8 +373,7 @@ export class InsightsDatabase {
    */
   async linkOutreachToThread(outreachId: number, threadId: string): Promise<void> {
     // Validate UUID format for data integrity
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(threadId)) {
+    if (!isUuid(threadId)) {
       throw new Error('Invalid thread ID format');
     }
     await query(

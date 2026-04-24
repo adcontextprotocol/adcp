@@ -243,6 +243,60 @@
           </div>
         </div>
 
+        <!-- Editorial Review Channel -->
+        <div class="setting-section">
+          <h3>Editorial review channel</h3>
+          <p>
+            Private channel where the editorial working group approves new-member
+            announcements, content drafts, and other posts that need human review
+            before they go public.
+          </p>
+
+          <div class="current-value" id="currentEditorialChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="editorialChannel">Select channel</label>
+              <select id="editorialChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only private channels are shown. Invite Addie to your editorial channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveEditorialChannelBtn" onclick="saveEditorialChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Public Announcement Channel -->
+        <div class="setting-section">
+          <h3>Public announcement channel <span class="badge badge-public" style="display: inline-block; margin-left: var(--space-2); padding: 2px 8px; font-size: var(--text-xs); font-weight: 500; background: var(--color-blue-50, #eff6ff); color: var(--color-blue-700, #1d4ed8); border-radius: var(--radius-sm);">public</span></h3>
+          <p>
+            Public channel where approved new-member announcements are posted.
+            This is the only picker here that accepts public channels —
+            announcements are meant for broad visibility.
+          </p>
+
+          <div class="current-value" id="currentAnnouncementChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="announcementChannel">Select channel</label>
+              <select id="announcementChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only <strong>public</strong> channels are shown. Invite Addie to the channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveAnnouncementChannelBtn" onclick="saveAnnouncementChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
         <!-- Prospect Notifications Channel -->
         <div class="setting-section">
           <h3>Prospect notifications channel</h3>
@@ -349,6 +403,8 @@
         updateCurrentAdminChannelDisplay();
         updateCurrentProspectChannelDisplay();
         updateCurrentErrorChannelDisplay();
+        updateCurrentEditorialChannelDisplay();
+        updateCurrentAnnouncementChannelDisplay();
         updateTriageDisplay();
 
         document.getElementById('loading').style.display = 'none';
@@ -363,30 +419,62 @@
       }
     }
 
-    // Load Slack channels for picker
+    // Load Slack channels for all pickers. Private channels fill six
+    // of the seven dropdowns; the announcement dropdown pulls from the
+    // separate `visibility=public` endpoint because an announcement
+    // posted to a private channel would defeat the point.
+    //
+    // The two fetches are independent: if public fails, the five
+    // private pickers must still populate, so the public fetch is
+    // isolated in its own try/catch and degrades to a distinct
+    // error state on the announcement dropdown only.
+    let publicSlackChannels = [];
+    let publicFetchError = null;
     async function loadSlackChannels() {
       const billingSelect = document.getElementById('billingChannel');
       const escalationSelect = document.getElementById('escalationChannel');
       const adminSelect = document.getElementById('adminChannel');
       const prospectSelect = document.getElementById('prospectChannel');
       const errorSelect = document.getElementById('errorChannel');
+      const editorialSelect = document.getElementById('editorialChannel');
+      const announcementSelect = document.getElementById('announcementChannel');
 
       try {
-        const response = await fetch('/api/admin/settings/slack-channels');
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.message || 'Failed to load channels');
+        const [privateRes, publicRes] = await Promise.all([
+          fetch('/api/admin/settings/slack-channels'),
+          fetch('/api/admin/settings/slack-channels?visibility=public'),
+        ]);
+        if (!privateRes.ok) {
+          const data = await privateRes.json();
+          throw new Error(data.message || 'Failed to load private channels');
         }
 
-        const data = await response.json();
-        slackChannels = data.channels;
+        const privateData = await privateRes.json();
+        slackChannels = privateData.channels;
 
-        // Build options for all dropdowns
+        // Public fetch: keep isolated so a failure here doesn't wipe
+        // the private dropdowns. publicFetchError distinguishes
+        // "fetch failed" from "really zero public channels".
+        try {
+          if (!publicRes.ok) {
+            const data = await publicRes.json().catch(() => ({}));
+            throw new Error(data.message || `Public-channel fetch returned ${publicRes.status}`);
+          }
+          publicSlackChannels = (await publicRes.json()).channels ?? [];
+          publicFetchError = null;
+        } catch (pubErr) {
+          publicSlackChannels = [];
+          publicFetchError = pubErr instanceof Error ? pubErr.message : String(pubErr);
+          showStatusMessage('Could not load public channels: ' + publicFetchError, 'error');
+        }
+
+        // Build options for all private-channel dropdowns
         let billingHtml = '<option value="">-- No channel (disabled) --</option>';
         let escalationHtml = '<option value="">-- No channel (disabled) --</option>';
         let adminHtml = '<option value="">-- No channel (disabled) --</option>';
         let prospectHtml = '<option value="">-- No channel (disabled) --</option>';
         let errorHtml = '<option value="">-- No channel (disabled) --</option>';
+        let editorialHtml = '<option value="">-- No channel (disabled) --</option>';
 
         if (slackChannels.length === 0) {
           const emptyOption = '<option value="">No private channels found - invite Addie first</option>';
@@ -395,6 +483,7 @@
           adminSelect.innerHTML = emptyOption;
           prospectSelect.innerHTML = emptyOption;
           errorSelect.innerHTML = emptyOption;
+          editorialSelect.innerHTML = emptyOption;
           showStatusMessage('Addie is not in any private channels. Invite @Addie to your channels and refresh.', 'error');
         } else {
           slackChannels.forEach(ch => {
@@ -403,11 +492,13 @@
             const adminSelected = currentSettings?.admin_channel?.channel_id === ch.id ? 'selected' : '';
             const prospectSelected = currentSettings?.prospect_channel?.channel_id === ch.id ? 'selected' : '';
             const errorSelected = currentSettings?.error_channel?.channel_id === ch.id ? 'selected' : '';
+            const editorialSelected = currentSettings?.editorial_channel?.channel_id === ch.id ? 'selected' : '';
             billingHtml += `<option value="${ch.id}" ${billingSelected}>#${escapeHtml(ch.name)}</option>`;
             escalationHtml += `<option value="${ch.id}" ${escalationSelected}>#${escapeHtml(ch.name)}</option>`;
             adminHtml += `<option value="${ch.id}" ${adminSelected}>#${escapeHtml(ch.name)}</option>`;
             prospectHtml += `<option value="${ch.id}" ${prospectSelected}>#${escapeHtml(ch.name)}</option>`;
             errorHtml += `<option value="${ch.id}" ${errorSelected}>#${escapeHtml(ch.name)}</option>`;
+            editorialHtml += `<option value="${ch.id}" ${editorialSelected}>#${escapeHtml(ch.name)}</option>`;
           });
           billingSelect.innerHTML = billingHtml;
           billingSelect.disabled = false;
@@ -428,6 +519,39 @@
           errorSelect.innerHTML = errorHtml;
           errorSelect.disabled = false;
           document.getElementById('saveErrorChannelBtn').disabled = false;
+
+          editorialSelect.innerHTML = editorialHtml;
+          editorialSelect.disabled = false;
+          document.getElementById('saveEditorialChannelBtn').disabled = false;
+        }
+
+        // Public channels for the announcement picker. Three states:
+        //   - Fetch failed → keep disabled + distinct error label
+        //   - Fetch succeeded but no channels → invite-Addie hint +
+        //     fire a warning (the picker is unusable without one)
+        //   - Fetch succeeded with channels → normal render
+        let announcementHtml = '<option value="">-- No channel (disabled) --</option>';
+        if (publicFetchError) {
+          announcementSelect.innerHTML = `<option value="">Error loading public channels</option>`;
+        } else if (publicSlackChannels.length === 0) {
+          announcementSelect.innerHTML = '<option value="">No public channels found - invite Addie first</option>';
+          // Only warn if the admin needs this picker to work (no
+          // existing setting). If it's already configured, they
+          // don't need to see a scary error on every load.
+          if (!currentSettings?.announcement_channel?.channel_id) {
+            showStatusMessage(
+              'Addie is not in any public channels. Invite @Addie to a public channel and refresh to enable the announcement picker.',
+              'error',
+            );
+          }
+        } else {
+          publicSlackChannels.forEach(ch => {
+            const selected = currentSettings?.announcement_channel?.channel_id === ch.id ? 'selected' : '';
+            announcementHtml += `<option value="${ch.id}" ${selected}>#${escapeHtml(ch.name)}</option>`;
+          });
+          announcementSelect.innerHTML = announcementHtml;
+          announcementSelect.disabled = false;
+          document.getElementById('saveAnnouncementChannelBtn').disabled = false;
         }
       } catch (error) {
         console.error('Error loading Slack channels:', error);
@@ -436,6 +560,8 @@
         adminSelect.innerHTML = '<option value="">Error loading channels</option>';
         prospectSelect.innerHTML = '<option value="">Error loading channels</option>';
         errorSelect.innerHTML = '<option value="">Error loading channels</option>';
+        editorialSelect.innerHTML = '<option value="">Error loading channels</option>';
+        announcementSelect.innerHTML = '<option value="">Error loading channels</option>';
         showStatusMessage('Failed to load Slack channels: ' + error.message, 'error');
       }
     }
@@ -746,6 +872,137 @@
         }, 2000);
       } catch (error) {
         console.error('Error saving error channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Update the current editorial channel display.
+    // NB: we don't claim the feature is "disabled" when unset — the
+    // server can still fall back to SLACK_EDITORIAL_REVIEW_CHANNEL env
+    // var, and we don't know from the client whether that's set. "Not
+    // configured" is the honest label; the admin can reason about
+    // what that means for their deployment.
+    function updateCurrentEditorialChannelDisplay() {
+      const el = document.getElementById('currentEditorialChannel');
+      const channel = currentSettings?.editorial_channel;
+
+      if (channel?.channel_id && channel?.channel_name) {
+        el.className = 'current-value';
+        el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Current:</strong> Not configured';
+      }
+    }
+
+    // Update the current announcement channel display.
+    function updateCurrentAnnouncementChannelDisplay() {
+      const el = document.getElementById('currentAnnouncementChannel');
+      const channel = currentSettings?.announcement_channel;
+
+      if (channel?.channel_id && channel?.channel_name) {
+        el.className = 'current-value';
+        el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Current:</strong> Not configured';
+      }
+    }
+
+    // Save editorial channel
+    async function saveEditorialChannel() {
+      const select = document.getElementById('editorialChannel');
+      const saveBtn = document.getElementById('saveEditorialChannelBtn');
+      const channelId = select.value || null;
+
+      let channelName = null;
+      if (channelId) {
+        const channel = slackChannels.find(c => c.id === channelId);
+        channelName = channel?.name || null;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/editorial-channel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId, channel_name: channelName }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.editorial_channel = data.editorial_channel;
+        updateCurrentEditorialChannelDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage('Editorial channel updated successfully', 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving editorial channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Save announcement channel
+    async function saveAnnouncementChannel() {
+      const select = document.getElementById('announcementChannel');
+      const saveBtn = document.getElementById('saveAnnouncementChannelBtn');
+      const channelId = select.value || null;
+
+      let channelName = null;
+      if (channelId) {
+        // Announcement picker pulls from the public channel list, not the
+        // private one — look up the name there.
+        const channel = publicSlackChannels.find(c => c.id === channelId);
+        channelName = channel?.name || null;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/announcement-channel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId, channel_name: channelName }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.announcement_channel = data.announcement_channel;
+        updateCurrentAnnouncementChannelDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage('Announcement channel updated successfully', 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving announcement channel:', error);
         showStatusMessage('Failed to save: ' + error.message, 'error');
         saveBtn.textContent = 'Save';
         saveBtn.disabled = false;

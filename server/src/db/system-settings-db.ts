@@ -45,6 +45,11 @@ export interface EditorialChannelSetting {
   channel_name: string | null;
 }
 
+export interface AnnouncementChannelSetting {
+  channel_id: string | null;
+  channel_name: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
@@ -55,6 +60,7 @@ export const SETTING_KEYS = {
   PROSPECT_TRIAGE_ENABLED: 'prospect_triage_enabled',
   ERROR_SLACK_CHANNEL: 'error_slack_channel',
   EDITORIAL_SLACK_CHANNEL: 'editorial_slack_channel',
+  ANNOUNCEMENT_SLACK_CHANNEL: 'announcement_slack_channel',
 } as const;
 
 // ============== Generic Operations ==============
@@ -268,6 +274,36 @@ export async function setEditorialChannel(
 ): Promise<void> {
   await setSetting<EditorialChannelSetting>(
     SETTING_KEYS.EDITORIAL_SLACK_CHANNEL,
+    { channel_id: channelId, channel_name: channelName },
+    updatedBy
+  );
+}
+
+// ============== Announcement Channel Operations ==============
+
+/**
+ * Get the configured public announcement Slack channel. Approved member
+ * welcome posts land here (e.g. `#all-agentic-ads`). Unlike the other
+ * channels in this module, this one is intentionally *public* — the whole
+ * point is broad visibility.
+ */
+export async function getAnnouncementChannel(): Promise<AnnouncementChannelSetting> {
+  const result = await getSetting<AnnouncementChannelSetting>(
+    SETTING_KEYS.ANNOUNCEMENT_SLACK_CHANNEL,
+  );
+  return result ?? { channel_id: null, channel_name: null };
+}
+
+/**
+ * Set the public announcement Slack channel.
+ */
+export async function setAnnouncementChannel(
+  channelId: string | null,
+  channelName: string | null,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<AnnouncementChannelSetting>(
+    SETTING_KEYS.ANNOUNCEMENT_SLACK_CHANNEL,
     { channel_id: channelId, channel_name: channelName },
     updatedBy
   );

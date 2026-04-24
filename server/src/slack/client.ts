@@ -518,6 +518,55 @@ export async function sendChannelMessage(
 }
 
 /**
+ * Update (edit in place) a previously posted channel message.
+ * Wraps Slack's `chat.update`. Used when non-Bolt code paths need to
+ * refresh a message whose `ts` we already know — e.g. admin-UI actions
+ * that mirror a Bolt button and need to refresh the original review
+ * card so the in-Slack state doesn't drift from the web state.
+ */
+export async function updateChannelMessage(
+  channelId: string,
+  ts: string,
+  message: SlackBlockMessage,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<Record<string, unknown>>('chat.update', {
+      channel: channelId,
+      ts,
+      text: message.text,
+      blocks: message.blocks,
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error, channelId, ts }, 'Failed to update Slack channel message');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Delete a posted channel message. Used to unwind a post when a
+ * subsequent write (e.g. activity row) fails and would otherwise leave
+ * an orphan message in a review channel with no idempotency record.
+ */
+export async function deleteChannelMessage(
+  channelId: string,
+  ts: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<Record<string, unknown>>('chat.delete', {
+      channel: channelId,
+      ts,
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error, channelId, ts }, 'Failed to delete Slack channel message');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
  * Test-only: clear the channel-info cache. Used by tests that reuse
  * channel IDs across cases — the module-level cache otherwise carries
  * a `is_private` value from case N into case N+1, which can silently

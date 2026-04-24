@@ -10,10 +10,14 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 **Response Time**: Instant to days (status: `completed`, `working` < 120s, or `submitted` for manual review)
 
+## Scope
+
+`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is. When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints), the seller MUST omit that action from `valid_actions` on the buy rather than silently rejecting the corresponding update.
+
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`/schemas/latest/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/update-media-buy-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json)
 
 ## Quick Start
 

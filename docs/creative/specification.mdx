@@ -43,7 +43,7 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [2],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -156,7 +156,7 @@ Sales agents MUST translate universal macros to their ad server's native syntax.
 
 ## Creative Status Lifecycle
 
-**Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)
+**Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)
 
 Creatives in a library progress through a defined set of states. `archived` is the only buyer-initiated state change; all others are seller-initiated (processing, review, approval/rejection).
 
@@ -199,7 +199,7 @@ Pricing is discovered via two surfaces depending on the agent's interaction mode
 - **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use.
 - **`list_creative_formats`** — transformation and generation agents expose `pricing_options[]` on each format. The buyer discovers pricing for the formats the agent can produce, before any creative exists.
 
-Both surfaces use the same `pricing_options[]` array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. Both require `account` and `include_pricing: true` on the request.
+Both surfaces use the same `pricing_options[]` array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Both require `account` and `include_pricing: true` on the request.
 
 An agent MAY expose pricing on both surfaces (e.g., a creative management platform that has both a library and transformation capabilities).
 
@@ -212,7 +212,7 @@ An agent MAY expose pricing on both surfaces (e.g., a creative management platfo
 
 ### Pricing models
 
-Creative agents reuse the vendor pricing models defined in [`vendor-pricing-option.json`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json):
+Creative agents reuse the vendor pricing models defined in [`vendor-pricing-option.json`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json):
 
 | Model | Creative use case |
 |---|---|
@@ -223,7 +223,7 @@ Creative agents reuse the vendor pricing models defined in [`vendor-pricing-opti
 
 ### Consumption details
 
-**Schema**: [`core/creative-consumption.json`](https://adcontextprotocol.org/schemas/latest/core/creative-consumption.json)
+**Schema**: [`core/creative-consumption.json`](https://adcontextprotocol.org/schemas/v3/core/creative-consumption.json)
 
 The `build_creative` response includes a `consumption` object with structured details about what was consumed. Well-known fields: `tokens` (LLM tokens consumed), `images_generated`, `renders` (render passes), `duration_seconds` (processing time). Agents MAY include additional fields.
 
@@ -295,7 +295,7 @@ Generate preview renderings of creative manifests.
 
 ### list_creatives
 
-**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json)
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json)
 
 **Reference**: [`list_creatives` task](/docs/creative/task-reference/list_creatives)
 
@@ -308,7 +308,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
-- When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/latest/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
+- When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
 
 **Account requirements:**
 - Creative agents that charge for their services MUST implement the [Accounts Protocol](/docs/accounts/overview). This applies to any creative agent with pricing — ad servers, generation platforms, and transformation agents that bill for usage.
@@ -320,7 +320,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 
 {/* Using latest because these schemas are not yet released in any version.
      Update to correct version alias after the next release. */}
-**Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) / [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
+**Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json) / [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json)
 
 **Reference**: [`sync_creatives` task](/docs/creative/task-reference/sync_creatives)
 
@@ -466,12 +466,12 @@ Some creative protocol schemas (`build_creative`, `list_creative_formats`, `prev
 
 | Schema | Description |
 |--------|-------------|
-| [`core/format.json`](https://adcontextprotocol.org/schemas/latest/core/format.json) | Format definition |
-| [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json) | Creative manifest |
-| [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/latest/core/creative-asset.json) | Asset definition |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-creative-formats-response.json) | list_creative_formats response |
-| [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request |
-| [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response |
-| [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request |
-| [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json) | sync_creatives response |
+| [`core/format.json`](https://adcontextprotocol.org/schemas/v3/core/format.json) | Format definition |
+| [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json) | Creative manifest |
+| [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v3/core/creative-asset.json) | Asset definition |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) | list_creatives request |
+| [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json) | list_creatives response |
+| [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json) | sync_creatives request |
+| [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json) | sync_creatives response |

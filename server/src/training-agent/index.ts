@@ -248,6 +248,10 @@ const requireTokenStrict = buildRequireToken(strictAuthenticator);
  * `res.write(body) ; res.end()` pair, which this wrapper buffers into one
  * string before rewriting. Streaming/SSE would break this contract, so do
  * not remove `enableJsonResponse: true` from the transport config above.
+ *
+ * Goes away once we bump past adcp-client#866 — @adcp/client 5.14+ has
+ * built-in `sanitizeAdcpErrorEnvelope` in the dispatcher, which makes this
+ * wire-layer redaction redundant.
  */
 function wrapResponseForConflictRedaction(res: Response): void {
   const origWriteHead = res.writeHead.bind(res);
@@ -300,9 +304,6 @@ function wrapResponseForConflictRedaction(res: Response): void {
     const body = Buffer.concat(chunks).toString('utf8');
     const rewritten = redactConflictEnvelopeInBody(body);
     if (pendingHead) {
-      // Hono's node-server path: the transport called `writeHead(status, headers)`
-      // up front. Patch content-length (case-insensitive) to the redacted
-      // length before flushing so the wire byte count matches the body.
       const headers = pendingHead.headers;
       for (const key of Object.keys(headers)) {
         if (key.toLowerCase() === 'content-length') delete headers[key];
@@ -311,15 +312,6 @@ function wrapResponseForConflictRedaction(res: Response): void {
       origWriteHead(pendingHead.status, headers);
       pendingHead = null;
     }
-    // When `pendingHead` is null, either no response was produced (e.g. an
-    // uncaught throw before the transport wrote anything) or Express's own
-    // error-path `.json()` handler flushed via `setHeader`+`end` rather than
-    // `writeHead`. Node's implicit-header emission fires on the first
-    // `origWrite`/`origEnd` in that case, using whatever headers Express
-    // already stacked via `setHeader`. Content-Length may be wrong if the
-    // error path pre-set it, but those responses never carry an
-    // IDEMPOTENCY_CONFLICT body so `rewritten === body` and the length is
-    // unchanged.
     if (rewritten.length > 0) origWrite(rewritten);
     const args: unknown[] = [];
     if (typeof callback === 'function') args.push(callback);
@@ -453,20 +445,17 @@ export function createTrainingAgentRouter(): Router {
           : createTrainingAgentServer(ctx);
 
         // MCP Streamable HTTP transport requires the client Accept header to
-        // list BOTH `application/json` and `text/event-stream` per the 2025-03-26
-        // spec — or it returns 406 Not Acceptable. Storyboard conformance
-        // probes (SDK `rawMcpProbe`) and other strict JSON consumers only
-        // send `application/json`. We satisfy both by (a) adding the missing
-        // SSE content type so the transport's check passes and (b) enabling
-        // JSON response mode so the body is single-shot JSON rather than an
-        // SSE stream the probe can't parse.
-        //
-        // Bearer-authed buyer agents using @adcp/client already send both
-        // content types, so this is additive — no regression on the hot
-        // path. `enableJsonResponse` changes the response format for every
-        // request, not just JSON-only probes; the @adcp/client unwrapper
-        // handles both equivalently (`isMCPResponse` check looks for
-        // structuredContent/content keys, not Content-Type).
+        // list BOTH `application/json` and `text/event-stream` per the
+        // 2025-03-26 spec — or it returns 406 Not Acceptable. Storyboard
+        // conformance probes and other strict JSON consumers only send
+        // `application/json`. We satisfy both by (a) adding the missing SSE
+        // content type so the transport's check passes and (b) enabling JSON
+        // response mode so the body is single-shot JSON rather than an SSE
+        // stream the probe can't parse. `@adcp/client/express-mcp`'s
+        // `mcpAcceptHeaderMiddleware` does the same thing in 5.14+ but
+        // @adcp/client is pinned to 5.13 in this repo (storyboard runner
+        // regressed at 5.14 — adcp-client#866). Once that's resolved, swap
+        // this block for `app.use('/mcp', mcpAcceptHeaderMiddleware())`.
         const acceptHeader = req.headers.accept;
         const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
         const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
@@ -474,9 +463,9 @@ export function createTrainingAgentRouter(): Router {
           const rewritten = `${acceptHeader}, text/event-stream`;
           req.headers.accept = rewritten;
           // @hono/node-server (used internally by StreamableHTTPServerTransport)
-          // reads headers from `rawHeaders` — the alternating [name, value] array
-          // Node's HTTP parser fills in. Mutating `req.headers.accept` alone
-          // doesn't propagate to the transport's Fetch Request wrapper.
+          // reads headers from `rawHeaders` — the alternating [name, value]
+          // array Node's HTTP parser fills in. Mutating `req.headers.accept`
+          // alone doesn't propagate to the transport's Fetch Request wrapper.
           const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
           if (Array.isArray(raw)) {
             for (let i = 0; i < raw.length; i += 2) {
@@ -495,14 +484,18 @@ export function createTrainingAgentRouter(): Router {
         await server.connect(transport);
 
         // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
-        // `@adcp/client/server`'s `adcpError()` builder, which auto-injects
-        // `recovery` on every error. The universal idempotency storyboard's
-        // `conflict_no_payload_leak` invariant allows only a narrow set of
-        // envelope keys on conflict — anything else is flagged as a potential
-        // stolen-key read oracle. Intercept the response bytes before they
-        // leave the process and strip disallowed keys. Legacy dispatch builds
-        // a minimal envelope by hand, so the wrap is a no-op there in
-        // practice (it still runs but finds nothing to redact).
+        // `@adcp/client/server`'s `adcpError()` builder, which in 5.13
+        // auto-injects `recovery` on every error. The universal idempotency
+        // storyboard's `conflict_no_payload_leak` invariant allows only a
+        // narrow set of envelope keys on conflict — anything else is flagged
+        // as a potential stolen-key read oracle. Intercept the response
+        // bytes before they leave the process and strip disallowed keys.
+        // Legacy dispatch builds a minimal envelope by hand, so the wrap is
+        // a no-op there in practice (it still runs but finds nothing to
+        // redact). @adcp/client 5.14 moves this sanitization into the
+        // dispatcher via `sanitizeAdcpErrorEnvelope` — once we bump past
+        // the 5.14 storyboard regression (adcp-client#866), drop this
+        // wrapper and delete conflict-envelope.ts.
         wrapResponseForConflictRedaction(res);
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');

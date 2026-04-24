@@ -30,6 +30,7 @@ import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { buildSlackCostScope } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -132,6 +133,11 @@ import {
   getErrorChannel,
   getAdminChannel,
 } from '../db/system-settings-db.js';
+import {
+  handleAnnouncementApproveSlack,
+  handleAnnouncementMarkLinkedIn,
+  handleAnnouncementSkip,
+} from './jobs/announcement-handlers.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -703,6 +709,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register marketing opt-in action handlers (from Slack join DM)
   boltApp.action('marketing_optin_yes', handleMarketingOptIn);
   boltApp.action('marketing_optin_no', handleMarketingOptIn);
+
+  // Register new-member announcement review-card action handlers (Workflow B Stage 2)
+  boltApp.action('announcement_approve_slack', handleAnnouncementApproveSlack);
+  boltApp.action('announcement_mark_linkedin', handleAnnouncementMarkLinkedIn);
+  boltApp.action('announcement_skip', handleAnnouncementSkip);
 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
@@ -1522,13 +1533,22 @@ async function handleUserMessage({
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
+  // Prefers a mapped WorkOS user ID (member_paid for active subs);
+  // falls back to `slack:${userId}` at member_free when no mapping
+  // exists, bounding an individual Slack user's Addie spend.
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
   };
 
   // Process with Claude using streaming
@@ -1652,20 +1672,32 @@ async function handleUserMessage({
           const fallbackValidation = validateOutput(guarded.text);
           const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
-          await say({
-            text: slackText,
-            blocks: [
-              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
-              ...fallbackImages.slice(0, 3).map(img => ({
-                type: 'image' as const,
-                image_url: img.url,
-                alt_text: img.alt,
-              })),
-              buildFeedbackBlock(),
-            ],
-          });
+          // Slack rejects section blocks with empty mrkdwn text. If streaming
+          // produced nothing (e.g. upstream overload before any deltas), fall
+          // back to a plain apology so the user isn't left silent.
+          if (!slackText.trim()) {
+            const apology = isRetriesExhaustedError(stopError)
+              ? `${stopError.reason}. Please try again in a moment.`
+              : "I'm sorry, I encountered an error. Please try again.";
+            await say(apology);
+          } else {
+            await say({
+              text: slackText,
+              blocks: [
+                { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+                ...fallbackImages.slice(0, 3).map(img => ({
+                  type: 'image' as const,
+                  image_url: img.url,
+                  alt_text: img.alt,
+                })),
+                buildFeedbackBlock(),
+              ],
+            });
+          }
         } catch (sayError) {
-          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+          const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+          const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+          logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
         }
       }
     } else {
@@ -1680,24 +1712,31 @@ async function handleUserMessage({
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
-        await say({
-          text: slackText,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: slackText,
+        // Slack rejects section blocks with empty mrkdwn text. If the model
+        // returned nothing (or everything was sanitized/extracted), fall back
+        // to a plain apology instead of a malformed blocks payload.
+        if (!slackText.trim()) {
+          await say("I'm sorry, I encountered an error. Please try again.");
+        } else {
+          await say({
+            text: slackText,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: slackText,
+                },
               },
-            },
-            ...images.slice(0, 3).map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
-            buildFeedbackBlock(),
-          ],
-        });
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        }
       } catch (error) {
         logger.error({ error }, 'Addie Bolt: Failed to send response');
       }
@@ -1774,7 +1813,11 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const dmEffectiveModel = (routedTools.requiresPrecision || routedTools.requiresDepth) ? ModelConfig.precision : AddieModelConfig.chat;
+  const dmEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2108,14 +2151,23 @@ async function handleAppMention({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
   const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
+  const mentionModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || mentionIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
+  // namespaced Slack ID so unmapped users still get a bounded
+  // daily Addie spend budget.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
   };
 
   // Process with Claude
@@ -2150,7 +2202,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -3067,13 +3119,19 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
   };
 
   // Process with Claude
@@ -3444,14 +3502,21 @@ async function handleActiveThreadReply({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
   const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
+  const threadModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || threadIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
-  // Admin users get higher iteration limit
+  // Admin users get higher iteration limit.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
   };
 
   // Process with Claude
@@ -3487,7 +3552,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -4025,13 +4090,20 @@ async function handleChannelMessage({
     // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
     const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
     const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
-    const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+    const channelModelOverride = plan.requires_precision
+      ? ModelConfig.precision
+      : (plan.requires_depth || channelIsDepthChannel)
+        ? ModelConfig.depth
+        : undefined;
+    const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
+    // Cost cap scope follows the mention-handler pattern above.
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+      ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
+      costScope: await buildSlackCostScope(memberContext, userId),
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4811,12 +4883,14 @@ async function handleReactionAdded({
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, reactingUserId),
   };
 
   // Process with Claude

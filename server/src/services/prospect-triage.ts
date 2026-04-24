@@ -487,6 +487,8 @@ export async function triageAndNotify(
     verdict: result.verdict,
     companyType: result.companyType,
     source: context?.source ?? 'inbound',
+    contactName: context?.name,
+    contactEmail: context?.email,
     // No orgId — the user will create their own org during onboarding
   }).catch(err => {
     logger.warn({ err, domain }, 'Prospect notification failed');
@@ -586,6 +588,8 @@ export async function triageAndCreateProspect(
     companyType: result.companyType,
     source: context?.source ?? 'inbound',
     orgId,
+    contactName: context?.name,
+    contactEmail: context?.email,
   }).catch(err => {
     logger.warn({ err, domain }, 'Prospect notification failed');
   });

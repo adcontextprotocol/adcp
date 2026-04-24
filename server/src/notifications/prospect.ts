@@ -20,6 +20,16 @@ const MATCH_METHOD_LABELS: Record<string, string> = {
   redirect: 'HTTP redirect',
 };
 
+function signedUpByBlock(name?: string, email?: string): SlackBlock | null {
+  if (!name && !email) return null;
+  const emailPart = email ? `<mailto:${email}|${email}>` : '';
+  const parts = [name, emailPart ? `(${emailPart})` : ''].filter(Boolean).join(' ');
+  return {
+    type: 'section',
+    text: { type: 'mrkdwn', text: `*Signed up by:* ${parts}` },
+  };
+}
+
 export async function notifyAliasMatch(data: {
   signupDomain: string;
   matchedDomain: string;
@@ -69,13 +79,8 @@ export async function notifyAliasMatch(data: {
     },
   ];
 
-  if (data.contactName || data.contactEmail) {
-    const contactParts = [data.contactName, data.contactEmail ? `(${data.contactEmail})` : ''].filter(Boolean).join(' ');
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: `*New contact:* ${contactParts}` },
-    });
-  }
+  const aliasContactBlock = signedUpByBlock(data.contactName, data.contactEmail);
+  if (aliasContactBlock) blocks.push(aliasContactBlock);
 
   blocks.push({
     type: 'actions',
@@ -120,6 +125,8 @@ export async function notifyNewProspect(data: {
   companyType?: string;
   source: string;
   orgId?: string;
+  contactName?: string;
+  contactEmail?: string;
 }): Promise<boolean> {
   if (!isSlackConfigured()) {
     logger.debug('Slack not configured, skipping prospect notification');
@@ -165,6 +172,12 @@ export async function notifyNewProspect(data: {
         { type: 'mrkdwn', text: `*Source:*\n${sourceLabel}` },
       ],
     },
+  ];
+
+  const contactBlock = signedUpByBlock(data.contactName, data.contactEmail);
+  if (contactBlock) blocks.push(contactBlock);
+
+  blocks.push(
     {
       type: 'section',
       fields: [
@@ -176,7 +189,7 @@ export async function notifyNewProspect(data: {
       type: 'section',
       text: { type: 'mrkdwn', text: `*Assessment:*\n${data.verdict}` },
     },
-  ];
+  );
 
   // Add action buttons for human-needed prospects
   if (isHumanNeeded && data.orgId) {

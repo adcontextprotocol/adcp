@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Addie Cost Cap — AdCP Admin</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--color-bg-page);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .container { flex: 1; max-width: 1400px; margin: 0 auto; padding: 40px 20px; width: 100%; }
+    h1 { color: var(--color-text-heading); margin-bottom: 8px; font-size: 28px; }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: 30px; font-size: 14px; }
+
+    .cards-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: var(--shadow-md);
+    }
+    .card-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-secondary);
+      margin-bottom: 6px;
+    }
+    .card-value { font-size: 28px; font-weight: 600; color: var(--color-text-heading); }
+    .card-sub { font-size: 13px; color: var(--color-text-muted); margin-top: 4px; }
+
+    .section {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 30px;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .section h2 { color: var(--color-text-heading); font-size: 20px; }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+    .filter-group select {
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: var(--color-bg-card);
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--color-border);
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text);
+      font-size: 14px;
+      vertical-align: top;
+    }
+    tr:hover { background-color: var(--color-bg-subtle); cursor: pointer; }
+
+    .tier-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .tier-anonymous { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
+    .tier-member_free { background: var(--color-info-50); color: var(--color-info-700); }
+    .tier-member_paid { background: var(--color-success-50); color: var(--color-success-700); }
+
+    .ns-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      font-family: monospace;
+    }
+
+    .percent-bar {
+      display: inline-block;
+      position: relative;
+      width: 80px;
+      height: 8px;
+      background: var(--color-bg-subtle);
+      border-radius: 4px;
+      margin-right: 8px;
+      vertical-align: middle;
+      overflow: hidden;
+    }
+    .percent-bar .fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      background: var(--color-info-500, #3b82f6);
+    }
+    .percent-bar .fill.warn { background: var(--color-warning-500, #f59e0b); }
+    .percent-bar .fill.hot  { background: var(--color-error-500, #ef4444); }
+
+    .scope-key {
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      word-break: break-all;
+    }
+    .member-name { font-weight: 500; }
+    .empty-state, .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+
+    .detail-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 60px 20px;
+      overflow-y: auto;
+    }
+    .detail-modal.show { display: flex; }
+    .detail-modal .panel {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 900px;
+      width: 100%;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    .detail-modal .close-btn {
+      float: right;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+    }
+    .detail-modal h3 { margin-bottom: 12px; color: var(--color-text-heading); }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <h1>Addie Cost Cap</h1>
+    <p class="subtitle">
+      Per-user Anthropic API spend tracked against the rolling 24h cap
+      (anonymous $1 · member_free $5 · member_paid $25). Scope keys group
+      callers by identity namespace — bare <code>user_…</code> ids join back
+      to real members; <code>email:</code>/<code>mcp:</code>/<code>tavus:</code>
+      stay opaque by design.
+    </p>
+
+    <!-- Summary cards -->
+    <div class="cards-row" id="summaryCards">
+      <div class="card"><div class="card-label">Loading…</div></div>
+    </div>
+
+    <!-- Namespace breakdown -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Spend by namespace (last 24h)</h2>
+      </div>
+      <div id="namespaceTable"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Top spenders</h2>
+        <div class="filter-group">
+          <label for="windowFilter">Window</label>
+          <select id="windowFilter">
+            <option value="24h">24h (cap window)</option>
+            <option value="7d">7 days</option>
+          </select>
+          <label for="limitFilter">Limit</label>
+          <select id="limitFilter">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+      <div id="leaderboardTable"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- Detail modal -->
+  <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true">
+    <div class="panel">
+      <button id="detailCloseBtn" class="close-btn" type="button">Close</button>
+      <h3 id="detailTitle">Scope detail</h3>
+      <div id="detailContent"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <script>
+    function escapeHtml(text) {
+      if (text === null || text === undefined) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
+    function formatTimestamp(iso) {
+      return new Date(iso).toLocaleString();
+    }
+
+    function percentFillClass(pct) {
+      if (pct >= 80) return 'hot';
+      if (pct >= 50) return 'warn';
+      return '';
+    }
+
+    async function loadSummary() {
+      try {
+        const res = await fetch('/api/admin/addie-costs/summary');
+        if (!res.ok) throw new Error('summary failed');
+        const data = await res.json();
+
+        document.getElementById('summaryCards').innerHTML = `
+          <div class="card">
+            <div class="card-label">Spend · 24h</div>
+            <div class="card-value">$${data.window_24h.spent_usd.toFixed(2)}</div>
+            <div class="card-sub">${data.window_24h.events} events · ${data.window_24h.unique_scopes} scopes</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Spend · 7d</div>
+            <div class="card-value">$${data.window_7d.spent_usd.toFixed(2)}</div>
+            <div class="card-sub">${data.window_7d.events} events</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Namespaces active</div>
+            <div class="card-value">${data.by_namespace.length}</div>
+            <div class="card-sub">with spend in last 24h</div>
+          </div>
+        `;
+
+        const rows = data.by_namespace.map(ns => `
+          <tr>
+            <td><span class="ns-badge">${escapeHtml(ns.namespace)}</span></td>
+            <td>${ns.unique_scopes}</td>
+            <td>${ns.events}</td>
+            <td>$${ns.spent_usd.toFixed(2)}</td>
+            <td><span class="tier-badge tier-${escapeHtml(ns.fallback_tier)}">${escapeHtml(ns.fallback_tier)}</span></td>
+            <td>$${ns.fallback_cap_usd.toFixed(2)}/day</td>
+          </tr>
+        `).join('');
+
+        document.getElementById('namespaceTable').innerHTML = data.by_namespace.length === 0 ? `
+          <div class="empty-state">No Addie spend recorded in the last 24 hours.</div>
+        ` : `
+          <table>
+            <thead>
+              <tr><th>Namespace</th><th>Unique scopes</th><th>Events</th><th>Spent</th><th>Fallback tier</th><th>Cap</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      } catch (err) {
+        console.error(err);
+        document.getElementById('summaryCards').innerHTML = '<div class="card"><div class="card-label">Error loading summary</div></div>';
+        document.getElementById('namespaceTable').innerHTML = '<div class="empty-state">Failed to load.</div>';
+      }
+    }
+
+    async function loadLeaderboard() {
+      const windowValue = document.getElementById('windowFilter').value;
+      const limitValue = document.getElementById('limitFilter').value;
+      const params = new URLSearchParams({ limit: limitValue, window: windowValue });
+
+      document.getElementById('leaderboardTable').innerHTML = '<div class="loading">Loading…</div>';
+
+      try {
+        const res = await fetch(`/api/admin/addie-costs/leaderboard?${params}`);
+        if (!res.ok) throw new Error('leaderboard failed');
+        const data = await res.json();
+
+        if (data.leaderboard.length === 0) {
+          document.getElementById('leaderboardTable').innerHTML = '<div class="empty-state">No spend recorded in this window.</div>';
+          return;
+        }
+
+        const rows = data.leaderboard.map(row => {
+          const fillCls = percentFillClass(row.percent_of_cap);
+          const widthPct = Math.max(0, Math.min(100, row.percent_of_cap));
+          const memberCell = row.member_name
+            ? `<div class="member-name">${escapeHtml(row.member_name)}</div><div class="scope-key">${escapeHtml(row.member_email || '')}</div>`
+            : '<span class="scope-key" style="color: var(--color-text-muted);">—</span>';
+          return `
+            <tr data-scope-key="${escapeHtml(row.scope_key)}">
+              <td>
+                <div><span class="ns-badge">${escapeHtml(row.namespace)}</span></div>
+                <div class="scope-key" style="margin-top: 4px;">${escapeHtml(row.scope_key)}</div>
+              </td>
+              <td>${memberCell}</td>
+              <td>${escapeHtml(row.org_name || '—')}</td>
+              <td><span class="tier-badge tier-${escapeHtml(row.inferred_tier)}">${escapeHtml(row.inferred_tier)}</span></td>
+              <td>$${row.spent_usd.toFixed(2)}</td>
+              <td>
+                <span class="percent-bar"><span class="fill ${fillCls}" style="width: ${widthPct}%;"></span></span>
+                ${row.percent_of_cap.toFixed(1)}%
+              </td>
+              <td>${row.event_count}</td>
+              <td>${escapeHtml(row.models.join(', '))}</td>
+            </tr>
+          `;
+        }).join('');
+
+        document.getElementById('leaderboardTable').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Scope</th>
+                <th>Member</th>
+                <th>Organization</th>
+                <th>Tier</th>
+                <th>Spent</th>
+                <th>% of cap</th>
+                <th>Events</th>
+                <th>Models</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      } catch (err) {
+        console.error(err);
+        document.getElementById('leaderboardTable').innerHTML = '<div class="empty-state">Failed to load.</div>';
+      }
+    }
+
+    async function openDetail(scopeKey) {
+      const modal = document.getElementById('detailModal');
+      document.getElementById('detailTitle').textContent = `Scope: ${scopeKey}`;
+      document.getElementById('detailContent').innerHTML = '<div class="loading">Loading…</div>';
+      modal.classList.add('show');
+
+      try {
+        const res = await fetch(`/api/admin/addie-costs/scope/${encodeURIComponent(scopeKey)}/events`);
+        if (!res.ok) throw new Error('events failed');
+        const data = await res.json();
+
+        if (data.events.length === 0) {
+          document.getElementById('detailContent').innerHTML = '<div class="empty-state">No events for this scope.</div>';
+          return;
+        }
+
+        const rows = data.events.map(ev => `
+          <tr>
+            <td>${escapeHtml(formatTimestamp(ev.recorded_at))}</td>
+            <td>${escapeHtml(ev.model)}</td>
+            <td style="text-align: right;">${ev.tokens_input.toLocaleString()}</td>
+            <td style="text-align: right;">${ev.tokens_output.toLocaleString()}</td>
+            <td style="text-align: right;">$${ev.cost_usd.toFixed(4)}</td>
+          </tr>
+        `).join('');
+
+        document.getElementById('detailContent').innerHTML = `
+          <p style="color: var(--color-text-secondary); margin-bottom: 16px;">${data.count} most-recent events (capped at 200).</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Recorded</th>
+                <th>Model</th>
+                <th style="text-align: right;">Input tokens</th>
+                <th style="text-align: right;">Output tokens</th>
+                <th style="text-align: right;">Cost</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      } catch (err) {
+        console.error(err);
+        document.getElementById('detailContent').innerHTML = '<div class="empty-state">Failed to load events.</div>';
+      }
+    }
+
+    function closeDetail() {
+      document.getElementById('detailModal').classList.remove('show');
+    }
+
+    document.getElementById('detailModal').addEventListener('click', (e) => {
+      if (e.target.id === 'detailModal') closeDetail();
+    });
+    document.getElementById('detailCloseBtn').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDetail();
+    });
+
+    document.getElementById('windowFilter').addEventListener('change', loadLeaderboard);
+    document.getElementById('limitFilter').addEventListener('change', loadLeaderboard);
+
+    // Delegated click handler for leaderboard rows — avoids inline
+    // onclick with its attribute-quoting hazards (some scope keys could
+    // in principle contain characters that break quoted attributes).
+    document.getElementById('leaderboardTable').addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-scope-key]');
+      if (!tr) return;
+      openDetail(tr.getAttribute('data-scope-key'));
+    });
+
+    loadSummary();
+    loadLeaderboard();
+  </script>
+</body>
+</html>

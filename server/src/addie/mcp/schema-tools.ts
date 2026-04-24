@@ -16,33 +16,33 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import { ToolError } from '../tool-error.js';
 
-// Schema base URLs for different versions
+const SCHEMA_HOST = 'https://adcontextprotocol.org';
+
+// Schema base URLs for different versions. v3 is current; keep older aliases
+// so Addie can still answer historical questions.
 const SCHEMA_BASE_URLS: Record<string, string> = {
-  v2: 'https://adcontextprotocol.org/schemas/v2',
-  v3: 'https://adcontextprotocol.org/schemas/v3',
-  // Specific versions
-  '2.5': 'https://adcontextprotocol.org/schemas/v2.5',
-  '2.6': 'https://adcontextprotocol.org/schemas/v2.6',
-  '2.6.0': 'https://adcontextprotocol.org/schemas/2.6.0',
+  v2: `${SCHEMA_HOST}/schemas/v2`,
+  v3: `${SCHEMA_HOST}/schemas/v3`,
+  '2.5': `${SCHEMA_HOST}/schemas/v2.5`,
+  '2.6': `${SCHEMA_HOST}/schemas/v2.6`,
+  '2.6.0': `${SCHEMA_HOST}/schemas/2.6.0`,
 };
 
-// Common schemas available
-const COMMON_SCHEMAS = [
-  'core/format.json',
-  'core/product.json',
-  'core/media-buy.json',
-  'core/creative-manifest.json',
-  'core/property.json',
-  'core/targeting.json',
-  'core/pricing-option.json',
-  'enums/asset-content-type.json',
-  'enums/channels.json',
-];
+const DEFAULT_VERSION = 'v3';
 
 // Cache for fetched schemas (5 minute TTL, max 50 entries)
 const schemaCache = new Map<string, { schema: unknown; fetchedAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_SIZE = 50;
+
+// Cache for the per-version schema registry (index.json). Separate from
+// schemaCache so expiration semantics match — registries are cheap and
+// refetched every 5 minutes.
+export type SchemaRegistry = {
+  paths: string[]; // flat list: ["core/product.json", "protocol/get-adcp-capabilities-response.json", ...]
+  byCategory: Map<string, string[]>; // "core" -> ["core/product.json", ...]
+};
+const registryCache = new Map<string, { registry: SchemaRegistry; fetchedAt: number }>();
 
 /**
  * Fetch a schema from the AdCP schema server
@@ -80,41 +80,189 @@ async function fetchSchema(schemaUrl: string): Promise<unknown> {
 }
 
 /**
- * Find the closest matching schema path from COMMON_SCHEMAS.
- * Returns the match if one is found, null otherwise.
+ * Walk the index.json tree and collect every `$ref` that points at a schema.
+ * Returns paths relative to the version root (e.g. "core/product.json",
+ * "protocol/get-adcp-capabilities-response.json").
+ *
+ * Uses a WeakSet to guard against cycles in case a future registry format
+ * ever includes self-referential nodes.
+ *
+ * Exported for testing.
  */
-function findClosestSchema(schemaPath: string): string | null {
-  const clean = schemaPath.replace(/^\//, '').replace(/\.json$/, '').toLowerCase();
-  // Exact match
-  if (COMMON_SCHEMAS.includes(schemaPath)) return schemaPath;
-  // Match by filename stem (e.g., "creative" matches "core/creative-manifest.json")
-  const stem = clean.split('/').pop() || clean;
-  const matches = COMMON_SCHEMAS.filter(s => {
-    const sStem = s.replace(/\.json$/, '').split('/').pop() || '';
-    return sStem === stem || sStem.startsWith(stem);
-  });
-  return matches.length === 1 ? matches[0] : null;
+export function extractRegistryPaths(index: unknown): string[] {
+  const found = new Set<string>();
+  const seen = new WeakSet<object>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (seen.has(node as object)) return;
+    seen.add(node as object);
+    const obj = node as Record<string, unknown>;
+    const ref = obj.$ref;
+    if (typeof ref === 'string') {
+      // $ref formats: "/schemas/3.0.0/core/product.json" or "/schemas/v3/core/product.json"
+      const match = ref.match(/^\/schemas\/[^/]+\/(.+\.json)$/);
+      if (match) found.add(match[1]);
+    }
+    for (const value of Object.values(obj)) visit(value);
+  };
+  visit(index);
+  return [...found].sort();
 }
 
 /**
- * Resolve and sanitize a schema path, applying fuzzy correction if needed.
- * Returns { resolved, corrected } where corrected is true if the path was auto-fixed.
+ * Fetch and cache the schema registry (index.json) for a given version alias.
  */
-function resolveSchemaPath(schemaPath: string): { resolved: string; corrected: boolean } {
-  if (COMMON_SCHEMAS.includes(schemaPath)) return { resolved: schemaPath, corrected: false };
-  const closest = findClosestSchema(schemaPath);
-  if (closest) {
-    logger.info({ requested: schemaPath, resolved: closest }, 'Auto-corrected schema path');
-    return { resolved: closest, corrected: true };
+async function fetchRegistry(version: string): Promise<SchemaRegistry> {
+  const cached = registryCache.get(version);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.registry;
   }
-  return { resolved: schemaPath, corrected: false };
+
+  const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
+  const indexUrl = `${baseUrl}/index.json`;
+  const index = await fetchSchema(indexUrl);
+  const paths = extractRegistryPaths(index);
+
+  const byCategory = new Map<string, string[]>();
+  for (const p of paths) {
+    const category = p.split('/')[0];
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category)!.push(p);
+  }
+
+  const registry: SchemaRegistry = { paths, byCategory };
+  // Don't cache an empty registry — upstream likely returned malformed JSON
+  // or an index shape we don't recognize. Next call will retry instead of
+  // silently returning "no schemas" for the full TTL.
+  if (paths.length > 0) {
+    registryCache.set(version, { registry, fetchedAt: Date.now() });
+  } else {
+    logger.warn({ indexUrl }, 'Schema registry index returned zero paths; not caching');
+  }
+  return registry;
+}
+
+/**
+ * Tokenize a schema path for fuzzy matching. Splits on `/`, `-`, `_`, `.`
+ * and lowercases. "protocol/get-adcp-capabilities-response.json" →
+ * ["protocol", "get", "adcp", "capabilities", "response"].
+ */
+function tokenize(schemaPath: string): string[] {
+  return schemaPath
+    .replace(/\.json$/, '')
+    .toLowerCase()
+    .split(/[/\-_.]+/)
+    .filter(Boolean);
+}
+
+/**
+ * Find the closest matching schema path in the registry.
+ * Strategy: exact match → same-filename match → best-overlap scoring.
+ * Only returns a match if the winner is meaningfully ahead of the runner-up,
+ * to avoid silently picking the wrong schema when the query is ambiguous.
+ *
+ * Exported for testing.
+ */
+export function findClosestSchema(schemaPath: string, registry: SchemaRegistry): string | null {
+  if (registry.paths.includes(schemaPath)) return schemaPath;
+
+  const clean = schemaPath.replace(/^\//, '');
+  const filename = clean.split('/').pop() || clean;
+
+  // Filename-only match (e.g., user omitted or guessed wrong category)
+  const filenameMatches = registry.paths.filter(p => p.endsWith('/' + filename));
+  if (filenameMatches.length === 1) return filenameMatches[0];
+
+  // Token-overlap scoring
+  const queryTokens = new Set(tokenize(clean));
+  if (queryTokens.size === 0) return null;
+
+  const scored = registry.paths.map(p => {
+    const pTokens = new Set(tokenize(p));
+    let overlap = 0;
+    for (const t of queryTokens) if (pTokens.has(t)) overlap++;
+    // Jaccard-like, but weighted toward query coverage to favor paths that
+    // contain all query tokens (e.g., "get capabilities response" fully
+    // covered by "protocol/get-adcp-capabilities-response").
+    const coverage = overlap / queryTokens.size;
+    const union = queryTokens.size + pTokens.size - overlap;
+    const jaccard = overlap / union;
+    return { path: p, score: coverage * 0.7 + jaccard * 0.3 };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const [best, runnerUp] = scored;
+  if (!best || best.score < 0.5) return null;
+  if (runnerUp && best.score - runnerUp.score < 0.1) return null;
+  return best.path;
+}
+
+/**
+ * Format a "did you mean?" list for error messages when a schema path is wrong
+ * or unresolvable. Shows the top token-overlap candidates from the registry,
+ * or a category breakdown if we have no query signal.
+ */
+function formatCandidates(schemaPath: string, registry: SchemaRegistry | null): string {
+  if (!registry || registry.paths.length === 0) {
+    return 'Use `list_schemas` to see available schemas.';
+  }
+
+  const queryTokens = new Set(tokenize(schemaPath));
+  if (queryTokens.size === 0) {
+    return 'Use `list_schemas` to see available schemas.';
+  }
+
+  const ranked = registry.paths
+    .map(p => {
+      const pTokens = new Set(tokenize(p));
+      let overlap = 0;
+      for (const t of queryTokens) if (pTokens.has(t)) overlap++;
+      return { path: p, overlap };
+    })
+    .filter(x => x.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, 8);
+
+  if (ranked.length === 0) {
+    return 'Use `list_schemas` to see available schemas.';
+  }
+
+  return `Closest matches:\n${ranked.map(r => `- \`${r.path}\``).join('\n')}\n\nUse \`list_schemas\` to see the full registry.`;
+}
+
+/**
+ * Resolve a schema path, applying fuzzy correction via the registry if needed.
+ */
+async function resolveSchemaPath(
+  schemaPath: string,
+  version: string,
+): Promise<{ resolved: string; corrected: boolean; registry: SchemaRegistry | null }> {
+  let registry: SchemaRegistry | null = null;
+  try {
+    registry = await fetchRegistry(version);
+  } catch (error) {
+    // Registry fetch failed — still try the path as-is and let the schema
+    // fetch return a useful error.
+    logger.warn({ error, version }, 'Failed to fetch schema registry');
+    return { resolved: schemaPath, corrected: false, registry: null };
+  }
+
+  if (registry.paths.includes(schemaPath)) {
+    return { resolved: schemaPath, corrected: false, registry };
+  }
+  const closest = findClosestSchema(schemaPath, registry);
+  if (closest) {
+    logger.info({ requested: schemaPath, resolved: closest, version }, 'Auto-corrected schema path');
+    return { resolved: closest, corrected: true, registry };
+  }
+  return { resolved: schemaPath, corrected: false, registry };
 }
 
 /**
  * Build full schema URL from version and path
  */
 function buildSchemaUrl(version: string, schemaPath: string): string {
-  const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS['v2'];
+  const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
   // Remove leading slash and sanitize path
   let cleanPath = schemaPath.startsWith('/') ? schemaPath.slice(1) : schemaPath;
   // Prevent path traversal
@@ -210,7 +358,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use: "v2" (current stable), "v3" (upcoming), or specific like "2.6.0". Defaults to version in $schema or "v2".',
+            'Schema version to use: "v3" (current stable, default), "v2" (legacy), or specific like "2.6.0". Defaults to version in $schema or "v3".',
           enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
         },
       },
@@ -233,7 +381,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version: "v2" (current stable), "v3" (upcoming), or specific like "2.6.0"',
+          description: 'Schema version: "v3" (current stable, default), "v2" (legacy), or specific like "2.6.0"',
           enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
         },
         property: {
@@ -308,12 +456,13 @@ export function createSchemaToolHandlers(): Map<
     let schemaPath = input.schema_path as string | undefined;
     let version = input.version as string | undefined;
 
-    // Try to extract version and schema from $schema field
+    // Try to extract version and schema from $schema field. Accepts both
+    // major-alias form (`/schemas/v3/...`) and pinned-semver form
+    // (`/schemas/3.0.0/...`). The version must match a key in
+    // SCHEMA_BASE_URLS, which uses `v3` etc. — not bare `3`.
     if (jsonObj.$schema && typeof jsonObj.$schema === 'string') {
       const schemaUrl = jsonObj.$schema;
-      // Parse URL like https://adcontextprotocol.org/schemas/v2/core/format.json
-      // or https://schemas.adcontextprotocol.org/v3/format.json
-      const urlMatch = schemaUrl.match(/schemas(?:\.adcontextprotocol\.org)?\/(?:v?(\d+(?:\.\d+)?(?:\.\d+)?))\/(.+)$/);
+      const urlMatch = schemaUrl.match(/schemas(?:\.adcontextprotocol\.org)?\/(v\d+(?:\.\d+)?|\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)\/(.+)$/);
       if (urlMatch) {
         version = version || urlMatch[1];
         schemaPath = schemaPath || urlMatch[2];
@@ -324,10 +473,9 @@ export function createSchemaToolHandlers(): Map<
       return `Cannot determine schema. Please provide schema_path (e.g., "core/format.json") or include a $schema field in the JSON.`;
     }
 
-    const { resolved: resolvedPath } = resolveSchemaPath(schemaPath);
+    version = version || DEFAULT_VERSION;
+    const { resolved: resolvedPath, registry } = await resolveSchemaPath(schemaPath, version);
     schemaPath = resolvedPath;
-
-    version = version || 'v2';
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
     try {
@@ -349,16 +497,16 @@ ${errorList}
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to validate: ${message}
 
-Make sure the schema path is correct. Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
+${formatCandidates(schemaPath, registry)}`);
     }
   });
 
   handlers.set('get_schema', async (input) => {
-    const version = (input.version as string) || 'v2';
+    const version = (input.version as string) || DEFAULT_VERSION;
     const property = input.property as string | undefined;
 
-    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
+    const requestedPath = input.schema_path as string;
+    const { resolved: schemaPath, registry } = await resolveSchemaPath(requestedPath, version);
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
     try {
@@ -415,47 +563,57 @@ ${truncated ? '\n**Note:** Schema truncated. Use the `property` parameter to foc
 
 **Schema URL attempted:** ${schemaUrl}
 
-Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
+${formatCandidates(requestedPath, registry)}`);
     }
   });
 
   handlers.set('list_schemas', async (input) => {
-    const version = (input.version as string) || 'v2';
-    const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS['v2'];
+    const version = (input.version as string) || DEFAULT_VERSION;
+    const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
+
+    let registry: SchemaRegistry | null = null;
+    try {
+      registry = await fetchRegistry(version);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new ToolError(`Failed to fetch schema registry from ${baseUrl}/index.json: ${message}`);
+    }
+
+    const categoryList = [...registry.byCategory.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, paths]) => {
+        const items = paths.map(p => `  - \`${p}\` → ${baseUrl}/${p}`).join('\n');
+        return `#### ${category}/ (${paths.length})\n${items}`;
+      })
+      .join('\n\n');
 
     return `## Available AdCP Schemas
 
-**Current Version:** v2 (2.6.x stable)
-**Upcoming Version:** v3 (in development)
+**Version:** ${version} (${baseUrl})
+**Total schemas:** ${registry.paths.length}
 
 ### Schema Versions
-| Version | URL | Status |
-|---------|-----|--------|
-| v2 | ${SCHEMA_BASE_URLS.v2} | Current stable |
-| v3 | ${SCHEMA_BASE_URLS.v3} | Development |
-| 2.6.0 | ${SCHEMA_BASE_URLS['2.6.0']} | Latest patch |
+| Version | URL | Notes |
+|---------|-----|-------|
+| v3 | ${SCHEMA_BASE_URLS.v3} | Current stable (3.x) |
+| v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |
 
 ### Key Differences: v2 vs v3
 ${VERSION_CHANGES['v2-to-v3'].map((change) => `- ${change}`).join('\n')}
 
-### Common Schemas (${version})
-${COMMON_SCHEMAS.map((s) => `- \`${s}\` → ${baseUrl}/${s}`).join('\n')}
+### Schemas by Category
+${categoryList}
 
-### Schema Categories
-- **core/** - Core data types (format, product, media-buy, creative-manifest, etc.)
-- **enums/** - Enumeration types (asset-content-type, channels, etc.)
-- **media-buy/** - Media buying task schemas (get-products, create-media-buy, etc.)
-- **creative/** - Creative agent task schemas
-- **signals/** - Signals agent task schemas
-
-**Tip:** Use \`get_schema\` with a schema path to see the full definition, or \`compare_schema_versions\` to see detailed differences between versions.`;
+**Tip:** Use \`get_schema\` with any path above to see the full definition, or \`compare_schema_versions\` to see detailed differences between versions.`;
   });
 
   handlers.set('compare_schema_versions', async (input) => {
-    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
     const fromVersion = (input.from_version as string) || 'v2';
     const toVersion = (input.to_version as string) || 'v3';
+    const requestedPath = input.schema_path as string;
+    // Resolve against the "to" version's registry — that's where we most
+    // want the path to exist, and the registry also contains legacy schemas.
+    const { resolved: schemaPath, registry } = await resolveSchemaPath(requestedPath, toVersion);
 
     const fromUrl = buildSchemaUrl(fromVersion, schemaPath);
     const toUrl = buildSchemaUrl(toVersion, schemaPath);
@@ -474,8 +632,7 @@ Attempted URLs:
 - ${fromUrl}
 - ${toUrl}
 
-Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
+${formatCandidates(requestedPath, registry)}`;
       }
 
       // Build comparison report

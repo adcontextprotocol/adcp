@@ -1,7 +1,15 @@
-# Current Context
+## Current Context
 
-Snapshot of what's active in the AdCP ecosystem. Refreshed weekly by the
-context-refresh routine. Human edits welcome between refreshes.
+Public snapshot of what's active in the AdCP ecosystem. Injected into
+Addie's system prompt and readable by the triage routines, so content
+here must be safe to quote back to any community member. Keep entries
+factual (PRs, issues, status). Strategic commentary and stakeholder-
+sensitive phrasing live in `internal-context.md` instead.
+
+Refreshed weekly by the context-refresh routine. Human edits welcome
+between refreshes. The CI lint at
+`.github/workflows/validate-agent-context.yml` checks safety and the
+public/internal boundary on every PR.
 
 Last refresh: 2026-04-23 (initial seed)
 
@@ -34,7 +42,7 @@ Last refresh: 2026-04-23 (initial seed)
   (OpenRTB vs TMP JSON vs Cap'n Proto), Addie live demo. Building in
   subdirectories first. Status: **active**.
 - **DBCFM integration** — German DBCFM standard mapping to AdCP.
-  David Porzelt gap analysis. Related PRs:
+  David Porzelt analysis. Related PRs:
   [#1594](https://github.com/adcontextprotocol/adcp/pull/1594)
   (price_breakdown),
   [#1605](https://github.com/adcontextprotocol/adcp/pull/1605)
@@ -83,12 +91,3 @@ Last refresh: 2026-04-23 (initial seed)
   `strict:true`. Aligned. Status: **shipped**.
 - **Registry agents snapshot tables** — PR 86eba0cd2. Materialize
   agent health + capabilities in DB snapshot tables. Status: **shipped**.
-
-## Narratives and gaps
-
-- **Security narrative gap** — mechanics exist (security.mdx,
-  idempotency, auth declarations) but no community-facing narrative or
-  curriculum. Brian flagged as tier-1 gap 2026-04-19. Status: **active**.
-- **SDK both-sides framing** — @adcp/client and adcp (Python) ship
-  server primitives + testing utilities. Docs framing reads
-  caller-first, hides this. Status: **active**.

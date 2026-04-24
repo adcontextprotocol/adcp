@@ -7,6 +7,7 @@
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { buildSlackCostScope } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -596,8 +597,13 @@ export async function handleAssistantMessage(
     // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {
@@ -763,8 +769,13 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // Create user-scoped tools (these can only operate on behalf of this user)
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {
