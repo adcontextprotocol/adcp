@@ -142,12 +142,11 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  // wrapEnvelope stamps the AdCP idempotency + context echo envelope.
-  // `replayed: false` signals a fresh execution so storyboards that
-  // assert `replayed: false (or omitted)` grade consistently; a
-  // follow-up wrapper intercepts replays and flips it to true.
+  // wrapEnvelope stamps the AdCP context-echo envelope. `replayed` is
+  // intentionally NOT set here — per protocol-envelope.json and the
+  // SDK's injectReplayed helper, fresh executions MUST omit the field
+  // (the framework stamps `replayed: true` only on idempotency replays).
   const withEnvelope = wrapEnvelope(inner, {
-    replayed: false,
     ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
       ? { context: callerContext }
       : {}),
