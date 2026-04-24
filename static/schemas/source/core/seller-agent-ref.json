@@ -8,7 +8,7 @@
     "agent_url": {
       "type": "string",
       "format": "uri",
-      "description": "The seller agent's API endpoint URL as declared in the property publisher's adagents.json `authorized_agents[].url`. MUST be HTTPS in production. Receivers compare this URL against the `authorized_agents` list using the AdCP URL canonicalization rules (see `docs/reference/url-canonicalization`) — not byte-equality — and reject mismatches with `seller_not_authorized`."
+      "description": "The seller agent's API endpoint URL as declared in the property publisher's adagents.json `authorized_agents[].url`. MUST use the `https://` scheme. Receivers compare this URL against the `authorized_agents` list using the AdCP URL canonicalization rules — not byte-equality — and reject mismatches with `seller_not_authorized`. See docs/reference/url-canonicalization."
     },
     "id": {
       "type": "string",

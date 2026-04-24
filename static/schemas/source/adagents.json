@@ -160,7 +160,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules (see `docs/reference/url-canonicalization`), not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent."
+                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -266,7 +266,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules (see `docs/reference/url-canonicalization`), not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent."
+                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -372,7 +372,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules (see `docs/reference/url-canonicalization`), not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent."
+                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -478,7 +478,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules (see `docs/reference/url-canonicalization`), not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent."
+                    "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -585,7 +585,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized signals agent's API endpoint URL"
+                    "description": "The authorized signals agent's API endpoint URL. Callers comparing this URL against a signal-provider registry MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -639,7 +639,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "The authorized signals agent's API endpoint URL"
+                    "description": "The authorized signals agent's API endpoint URL. Callers comparing this URL against a signal-provider registry MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
                   },
                   "authorized_for": {
                     "type": "string",
@@ -704,7 +704,7 @@
               "url": {
                 "type": "string",
                 "format": "uri",
-                "description": "The agent's API endpoint URL"
+                "description": "The agent's API endpoint URL. Callers comparing this URL against a feature-provider registry MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
               },
               "name": {
                 "type": "string",

@@ -2,46 +2,19 @@
 "adcontextprotocol": patch
 ---
 
-**URL canonicalization: lift the rules out of the signing profile as a
-general AdCP reference.**
+**URL canonicalization: one authoritative reference for every URL-as-identifier comparison in AdCP.**
 
-The canonicalization algorithm used for request-signing's `@target-uri`
-is the same algorithm AdCP needs everywhere URLs are compared as
-identifiers — TMP seller authorization (`seller_agent.agent_url` vs
-`authorized_agents[].url`), `adagents.json` authorization lookups,
-`format-id.agent_url` equivalence, and any future URL-keyed registry.
-Schemas today said "exactly as declared," which invites byte-equality
-comparison; two URLs that differ only in case, default port, or
-percent-encoded unreserved characters would miss the match.
+The canonicalization algorithm previously lived only under the request-signing profile in `docs/building/implementation/security.mdx`, but AdCP compares URLs as identifiers in many other places — TMP seller authorization (`seller_agent.agent_url` vs `authorized_agents[].url`), TMP provider resolution (`ProviderEntry.agent_url`), `format-id.agent_url` equivalence, and signal/feature agent lookups in `adagents.json`. Schemas today said "exactly as declared," which reads as byte-equality; two URLs that differ only in case, default port, or percent-encoded unreserved characters would silently miss the match.
 
-- **New `docs/reference/url-canonicalization.mdx`** — canonical
-  reference lifting the RFC 3986 §6.2.2 + §6.2.3 rules out of the
-  signing-specific section. Covers the 8 normalization steps, IPv6
-  zone-identifier rejection, the UTS-46 Nontransitional IDN pin, and
-  a "where it applies" table with links to each consuming surface.
-  Points to the existing conformance vectors at
-  `/compliance/latest/test-vectors/request-signing/canonicalization.json`.
-- **`static/schemas/source/core/seller-agent-ref.json`** — `agent_url`
-  description now says comparison uses the canonicalization rules
-  (not byte-equality) and links to the reference page.
-- **`static/schemas/source/adagents.json`** — all four
-  `authorized_agents[].url` descriptions (across the `property_ids`,
-  `brand_ids`, and signal-authorization variants) updated to require
-  canonicalization-based comparison.
-- **`static/schemas/source/core/format-id.json`** — `agent_url`
-  description updated to require canonicalization before treating two
-  formats as the same.
-- **`docs/trusted-match/specification.mdx`** — TMP Sync-Time
-  Validation step 2 now links the canonicalization rules explicitly
-  instead of leaving implementers to infer byte-equality.
-- **`docs/building/implementation/security.mdx`** — `@target-uri`
-  canonicalization section adds a forward-reference to the general
-  page so the signing profile and the general rules cross-link both
-  ways.
-- **`docs.json`** — page added to the Reference nav (both primary and
-  legacy sidebars).
+This change moves the algorithm to a first-class reference page and links every consuming surface to it, so the same canonicalization binds everywhere.
 
-No schema shape changes — descriptions only. The reference page does
-not redefine the algorithm; it confirms that the same algorithm
-governs every URL-as-identifier comparison in AdCP and tells readers
-where to find the authoritative detail and conformance vectors.
+- **New `docs/reference/url-canonicalization.mdx`** — the authoritative home of the 8-step algorithm (RFC 3986 §6.2.2 + §6.2.3, UTS-46 Nontransitional IDN pin, IPv6 zone-identifier rejection, enumerated malformed-authority cases), a "where it applies" table covering signing / TMP seller authorization / TMP provider resolution / `adagents.json` lookups / `format-id` / `authoritative_location` indirection, a "signing profile extensions" note for the transport-only bits, and a common-pitfalls list.
+- **`docs/building/implementation/security.mdx`** — `@target-uri` section now cites the reference page instead of restating the eight steps. Keeps only the signing-specific extensions (HTTP/2 `:authority` derivation, dual-header rejection, `request_target_uri_malformed` error, cross-vhost replay gate). Removes the drift risk between two copies.
+- **`static/schemas/source/core/seller-agent-ref.json`** — `agent_url` description replaces "exactly as declared" with canonicalization-based comparison. Also drops the "in production" weasel on HTTPS — the scheme requirement is now unconditional.
+- **`static/schemas/source/adagents.json`** — all six `url` descriptions updated: the four `authorized_agents[].url` variants, plus the two signals-authorization variants (`signal_ids`, `signal_tags`) and the property-features variant.
+- **`static/schemas/source/core/format-id.json`** — `agent_url` description updated to require canonicalization.
+- **`static/schemas/source/tmp/provider-registration.json`** — `endpoint` description extends the existing SSRF/DNS-rebinding language with a canonicalization rule for provider-registry de-duplication.
+- **`docs/trusted-match/specification.mdx`** — TMP Sync-Time Validation step 2 links canonicalization rules explicitly and adds an explicit `https://`-only rejection (non-HTTPS seller URLs get `seller_not_authorized`, closing the scheme-mismatch bypass). ProviderEntry table row links the canonicalization rules for provider comparison.
+- **`docs.json`** — reference page added to both primary and legacy sidebars adjacent to `versioning` (other interop-rules references).
+
+No schema shape changes. Descriptions only. Schema link style follows the repo convention (`See docs/<path>` bare, no backticks or leading slash).
