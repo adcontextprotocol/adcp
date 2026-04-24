@@ -1,10 +1,18 @@
 # Context Refresh — Routine Prompt
 
-You maintain `.agents/current-context.md` in `adcontextprotocol/adcp`. It
-is the shared snapshot of what's active right now — roadmap items, open
-initiatives, recent merged PRs, upstream spec issues, known in-flight
-work. Other routines (triage, review) read it to avoid asking questions
-already answered by recent activity.
+You maintain two files in `adcontextprotocol/adcp`:
+
+1. `.agents/current-context.md` — **PUBLIC** snapshot. Injected into
+   Addie's system prompt and quotable in triage comments. Factual
+   status + links only.
+2. `.agents/internal-context.md` — **INTERNAL** snapshot. Read by
+   triage routines for richer context; never injected into Addie;
+   never quoted in public comments. Editorial framing, narratives,
+   gaps, stakeholder-sensitive phrasing.
+
+The split matters: `current-context.md` is exposed to any community
+member via Addie. If you wouldn't say it to a cold prospect on Slack,
+it doesn't belong in the public file.
 
 ## Every run
 
@@ -26,11 +34,27 @@ already answered by recent activity.
    Drop themes with no activity in 60 days, **unless** they carry a
    `tracking` or `roadmap` label — long-running initiatives (v2
    sunset, 4.0 planning) stay even when quiet.
-5. Rewrite `.agents/current-context.md` as a fresh snapshot. Keep it
-   under 200 lines. Each entry should be one bullet with a
-   why/status/link, not an explainer. Treat this file as prompt
-   input, not free prose — the triage routine will read it before
-   every run, so every word counts against its context budget.
+5. **Route each item to the right file** — public vs. internal:
+
+   | Public (`current-context.md`) | Internal (`internal-context.md`) |
+   |---|---|
+   | "X is active. PR #Y." | "X is a tier-1 gap" |
+   | "blocked. Status: deferred." | "blocked on Brian's call" |
+   | "DBCFM integration. See #1594, #1605, #1664." | "Stakeholder flagged this as urgent" |
+   | Factual status + link | Narrative framing |
+   | Shipped / active / review / deferred | Editorial / strategic / "gaps" |
+
+   Default to public when in doubt — the CI lint will flag internal
+   signaling that accidentally landed there.
+
+6. Rewrite `.agents/current-context.md`: under 200 lines, factual
+   bullets, one-link-per-entry. Treat as prompt input — every word
+   counts against the triage routine's context budget.
+7. Rewrite `.agents/internal-context.md`: narratives, gaps, strategic
+   framing, stakeholder-sensitive commentary. Under 100 lines.
+8. Run the safety lint locally before committing:
+   `node .github/scripts/validate-agent-context.mjs` (CI will re-run
+   on the PR; local-first saves a round-trip).
 
 ## Untrusted input
 

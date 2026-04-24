@@ -1,0 +1,4 @@
+---
+---
+
+Split the agent-context snapshot in two: public `.agents/current-context.md` (factual status, safe to inject into Addie and quote in triage comments) vs. internal `.agents/internal-context.md` (editorial framing, narratives, stakeholder-sensitive phrasing — read by triage routines for richer decisions but never injected or quoted publicly). Add a CI lint at `.github/workflows/validate-agent-context.yml` that fails on prompt-injection markers, level-1 headings, oversized content, or control characters in the public file, and warns when additions look like they belong in the internal file instead. Update the context-refresh routine prompt to write both files and honor the split. This closes the persistent-injection path and the "reads weird to a cold prospect" concern raised in the Addie PR expert review.
