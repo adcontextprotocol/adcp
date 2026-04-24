@@ -30,6 +30,7 @@ import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { resolveUserTierForScopeKey } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -1526,7 +1527,10 @@ async function handleUserMessage({
   // (consistent with tool-rate-limiter's scope keys); fall back to a
   // `slack:${userId}` namespace when no mapping exists so the cap
   // still bounds an individual Slack user's Addie spend (#2790).
+  // Mapped WorkOS users resolve to member_paid when they have an
+  // active subscription; Slack-fallback users stay at member_free.
   const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const costScopeTier = await resolveUserTierForScopeKey(costScopeUserId);
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
@@ -1534,12 +1538,7 @@ async function handleUserMessage({
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     slackUserId: userId,
     threadId: thread.thread_id,
-    // Conservative tier resolution: member_free for all authenticated
-    // Slack users. Upgrading to member_paid for real subscribers is
-    // filed as a follow-up — the active-subscription lookup isn't
-    // already threaded here. AAO admins should never hit the cap in
-    // legitimate use; if they do, the follow-up covers elevating them.
-    costScope: { userId: costScopeUserId, tier: 'member_free' },
+    costScope: { userId: costScopeUserId, tier: costScopeTier },
   };
 
   // Process with Claude using streaming
@@ -2144,13 +2143,14 @@ async function handleAppMention({
   // namespaced Slack ID so unmapped users still get a bounded
   // daily Addie spend budget.
   const mentionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const mentionCostScopeTier = await resolveUserTierForScopeKey(mentionCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: { userId: mentionCostScopeUserId, tier: 'member_free' as const },
+    costScope: { userId: mentionCostScopeUserId, tier: mentionCostScopeTier },
   };
 
   // Process with Claude
@@ -3105,13 +3105,14 @@ async function handleDirectMessage(
   // Admin users get higher iteration limit for bulk operations.
   // Cost cap scope follows the mention-handler pattern above.
   const dmCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const dmCostScopeTier = await resolveUserTierForScopeKey(dmCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: { userId: dmCostScopeUserId, tier: 'member_free' as const },
+    costScope: { userId: dmCostScopeUserId, tier: dmCostScopeTier },
   };
 
   // Process with Claude
@@ -3486,13 +3487,14 @@ async function handleActiveThreadReply({
   // Admin users get higher iteration limit.
   // Cost cap scope follows the mention-handler pattern above.
   const threadCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const threadCostScopeTier = await resolveUserTierForScopeKey(threadCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: { userId: threadCostScopeUserId, tier: 'member_free' as const },
+    costScope: { userId: threadCostScopeUserId, tier: threadCostScopeTier },
   };
 
   // Process with Claude
@@ -4069,13 +4071,14 @@ async function handleChannelMessage({
     const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
     // Cost cap scope follows the mention-handler pattern above.
     const channelCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+    const channelCostScopeTier = await resolveUserTierForScopeKey(channelCostScopeUserId);
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
-      costScope: { userId: channelCostScopeUserId, tier: 'member_free' as const },
+      costScope: { userId: channelCostScopeUserId, tier: channelCostScopeTier },
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4858,12 +4861,13 @@ async function handleReactionAdded({
   // Admin users get higher iteration limit for bulk operations.
   // Cost cap scope follows the mention-handler pattern above.
   const reactionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${reactingUserId}`;
+  const reactionCostScopeTier = await resolveUserTierForScopeKey(reactionCostScopeUserId);
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
-    costScope: { userId: reactionCostScopeUserId, tier: 'member_free' as const },
+    costScope: { userId: reactionCostScopeUserId, tier: reactionCostScopeTier },
   };
 
   // Process with Claude

@@ -263,6 +263,43 @@ export function resolveUserTier(opts: {
 }
 
 /**
+ * Resolve the right tier for a scope-key userId by looking up the
+ * subscription status of a bare WorkOS user id. Non-WorkOS scope keys
+ * (`slack:...`, `email:...`, etc.) can't resolve a real subscription
+ * at call time, so they stay `member_free` regardless of the underlying
+ * person's membership — upgrading those paths would need the caller to
+ * have already mapped to a WorkOS id and passed *that* here. DB errors
+ * fall back to `member_free` so a transient outage doesn't accidentally
+ * grant the $25/day ceiling to unverified callers.
+ *
+ * This is the async counterpart to the pure `resolveUserTier` above —
+ * call this one when the caller only knows a scope-key userId and
+ * needs the DB to tell it whether the user has an active subscription.
+ */
+export async function resolveUserTierForScopeKey(userId: string): Promise<UserTier> {
+  if (!userId.startsWith('user_')) return 'member_free';
+  try {
+    const { rows } = await query<{ exists: 1 }>(
+      `SELECT 1 AS exists
+         FROM organization_memberships om
+         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+        WHERE om.workos_user_id = $1
+          AND o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+        LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0 ? 'member_paid' : 'member_free';
+  } catch (err) {
+    logger.warn(
+      { err, userId },
+      'Failed to resolve user tier — defaulting to member_free',
+    );
+    return 'member_free';
+  }
+}
+
+/**
  * Test-only: swap the store implementation. Tests pass an
  * InMemoryStore so they don't need a DB connection.
  */
