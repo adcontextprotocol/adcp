@@ -603,6 +603,16 @@
             <span id="addieRating">-</span> avg rating
           </div>
         </div>
+
+        <div class="insight-box">
+          <div class="insight-label">Gemini Illustrations (daily cost cap)</div>
+          <div class="insight-text">
+            <span id="illustrationsGenerated24h">-</span> /
+            <span id="illustrationsCapDaily">-</span> generated
+            · <span id="illustrationsCapRemaining">-</span> remaining
+            · <span id="illustrationsGenerated7d">-</span> over 7 days
+          </div>
+        </div>
       </div>
 
       <!-- GOAL 2: FUNNEL -->
@@ -820,6 +830,12 @@
           const addieTrend = calculateTrend(trends.addie_threads.current, trends.addie_threads.previous);
           document.getElementById('addieTrend').textContent = addieTrend.text;
         }
+
+        // Gemini illustration cap (#2796)
+        document.getElementById('illustrationsGenerated24h').textContent = formatNumber(stats.illustrations_generated_24h);
+        document.getElementById('illustrationsCapDaily').textContent = formatNumber(stats.illustrations_cap_daily);
+        document.getElementById('illustrationsCapRemaining').textContent = formatNumber(stats.illustrations_cap_remaining);
+        document.getElementById('illustrationsGenerated7d').textContent = formatNumber(stats.illustrations_generated_7d);
 
         // FUNNEL
         document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
