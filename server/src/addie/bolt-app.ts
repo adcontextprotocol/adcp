@@ -2198,7 +2198,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -3552,7 +3552,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({

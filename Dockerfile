@@ -107,6 +107,12 @@ COPY --from=builder /app/server/src/addie/rules/*.md ./dist/addie/rules/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
 
+# Shared agent-infrastructure read at Addie prompt-assembly time (rules/index.ts)
+# and by the triage routines. These are committed repo files; without them,
+# loadRules() silently degrades.
+COPY --from=builder /app/.agents ./.agents
+COPY --from=builder /app/.claude/agents ./.claude/agents
+
 # Copy pre-cloned repos (warm cache for Addie)
 COPY --from=repos /repos ./.addie-repos
 
