@@ -39,6 +39,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'set_outreach_preference', // Users can always opt out of proactive outreach
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
   'draft_github_issue',  // Bug reports & feature requests should always be possible
+  'create_github_issue', // Paired with draft — if a member wants it filed directly, keep it reachable
   'get_github_issue',    // Users paste GitHub links in any conversation; reading should never be routed away
   // Content submission is a first-class action — a member sharing a draft in
   // any channel (editorial, admin, DM) should land in pending_review, not an
@@ -198,10 +199,12 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: 'content',
-    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, add or update committee documents (admin actions)',
+    // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
+    // intentionally NOT listed here — neither in the description nor the tools
+    // array. Duplicating it caused Addie to hallucinate "I can't file GitHub
+    // issues" when the router didn't pick `content`.
+    description: 'Manage content workflows - propose news sources, handle content approvals, add or update committee documents (admin actions)',
     tools: [
-      'draft_github_issue',
-      'create_github_issue',
       'propose_news_source',
       'list_pending_content',
       'approve_content',
@@ -456,12 +459,35 @@ export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boo
     return `- **${setName}**: ${set.description}`;
   });
 
+  // Remind Claude which escape-hatch tools bypass set routing. Without this,
+  // the model sometimes reads an unavailable-set description that overlaps
+  // with an always-available capability (e.g., GitHub issue filing) and
+  // hallucinates that the capability is off. Keep this list tight — only the
+  // tools users explicitly ask for by name.
+  //
+  // NOTE: each key MUST exist in ALWAYS_AVAILABLE_TOOLS. A test enforces this
+  // so a renamed/removed tool can't silently rot into a lying hint.
+  const ALWAYS_AVAILABLE_BLURBS: Record<string, string> = {
+    draft_github_issue: 'filing bugs / feature requests as a pre-filled GitHub link',
+    create_github_issue: "filing an issue directly under the member's GitHub account (if connected)",
+    get_github_issue: 'reading a GitHub issue or PR by number or URL',
+    escalate_to_admin: 'handing the thread to a human admin',
+  };
+  const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)
+    .filter(([tool]) => ALWAYS_AVAILABLE_TOOLS.includes(tool))
+    .map(([tool, blurb]) => `${tool} — ${blurb}`);
+
   return `
 ## Capabilities Not Available in This Conversation
 
 The following capabilities are not available right now. If the user asks for something in these areas, explain what you can't help with in plain, natural language and suggest an alternative (e.g., direct them to the right person, page, or channel). Do NOT use technical terms like "tool sets", "not loaded", or "tool categories" — describe capabilities naturally (e.g., "I don't have access to scheduling features right now" rather than "meeting tools aren't loaded").
 
 ${hints.join('\n')}
+
+## Capabilities That ARE Always Available
+
+These tools are callable in every conversation. If you're about to tell the user you can't do one of these, call it instead:
+${alwaysAvailableReminder.map(l => `- ${l}`).join('\n')}
 `;
 }
 
