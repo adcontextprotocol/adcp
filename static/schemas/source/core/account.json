@@ -94,7 +94,7 @@
     },
     "governance_agents": {
       "type": "array",
-      "description": "Governance agent endpoint registered on this account. Array with exactly one entry per sync_governance's one-agent-per-account invariant. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
+      "description": "Governance agent endpoint registered on this account. Exactly one entry per sync_governance's one-agent-per-account invariant. The array shape is preserved for wire compatibility with 3.0; `maxItems: 1` is load-bearing and mirrors the singular `governance_context` on the protocol envelope. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
       "items": {
         "type": "object",
         "properties": {

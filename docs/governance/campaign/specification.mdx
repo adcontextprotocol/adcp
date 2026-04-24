@@ -984,7 +984,7 @@ The seller calls each governance agent at its registered URL using MCP over HTTP
 
 ### One governance agent per account
 
-An account binds to exactly one governance agent per [`sync_governance`](/docs/accounts/tasks/sync_governance). Registration is single-agent by schema (`governance_agents` is an array for forward compatibility but MUST contain exactly one entry today); the envelope carries a single `governance_context` token; all lifecycle calls route to that one agent.
+An account binds to exactly one governance agent per [`sync_governance`](/docs/accounts/tasks/sync_governance). Registration is single-agent by schema — `governance_agents` is an array because that is what 3.0 shipped with, constrained to `maxItems: 1` as a load-bearing invariant (not a staging post toward relaxation). The envelope carries a single `governance_context` token; all lifecycle calls route to that one agent. Loosening the cap would require a coordinated change across `sync_governance`, the protocol envelope, and every lifecycle task that threads the token — that change is not planned.
 
 This is deliberate. A governance plan is unitary — budget authority, delivery monitoring, brand safety, and regulatory compliance are not independent specialisms held by different authorities. They are phases and facets of the same evaluation against the same plan state:
 

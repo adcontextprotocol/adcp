@@ -27,7 +27,7 @@
               },
               "governance_agents": {
                 "type": "array",
-                "description": "Governance agent now synced on this account. Reflects the persisted state after sync. Exactly one entry — see sync_governance request schema for the one-agent-per-account invariant.",
+                "description": "Governance agent now synced on this account. Reflects the persisted state after sync. Exactly one entry; the array shape mirrors the request schema and the one-agent-per-account invariant. See sync_governance request schema.",
                 "items": {
                   "type": "object",
                   "properties": {
