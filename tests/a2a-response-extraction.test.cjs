@@ -582,7 +582,6 @@ describe('A2A 1.0 safety hardening', () => {
   it('should require exact-match normalized state (not collapse extra separators)', () => {
     // TASK_STATE_INPUT__REQUIRED (double underscore) normalizes to 'input--required' — not allowlisted.
     const result = extractAdcpResponseFromA2A({
-      status: { state: 'TASK_STATE_INPUT__REQUIRED' },
       status: {
         state: 'TASK_STATE_INPUT__REQUIRED',
         message: { role: 'ROLE_AGENT', parts: [{ data: { foo: 'bar' } }] }
