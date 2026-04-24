@@ -66,8 +66,12 @@ const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
  * multi-member workspace collectively drives the tool past a
  * defensible cost ceiling, or where an attacker rotates through
  * compromised user sessions to stay under individual caps.
+ *
+ * Exported so admin observability (#2796 ops metric) can read the cap
+ * value instead of hard-coding it — single source of truth for the
+ * ceiling.
  */
-const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
+export const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
   // Gemini generation — most expensive tool in the Addie surface.
   // 50/day across the whole workspace keeps monthly spend bounded
   // (~1500 generations/mo max). The per-user 5/month quota + per-user
