@@ -54,6 +54,12 @@
     "payload"
   ],
   "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["task_status"] },
+      { "required": ["response_status"] }
+    ]
+  },
   "examples": [
     {
       "description": "Synchronous task response with immediate results",
