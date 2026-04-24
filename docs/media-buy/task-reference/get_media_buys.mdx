@@ -10,6 +10,12 @@ Retrieve the current operational state of media buys: configuration, creative ap
 
 **Response Time**: ~1 second
 
+## Scope of Results
+
+Sales agents MUST return every media buy owned by the authenticated account, regardless of how the buy was created — via AdCP `create_media_buy`, via the seller's own APIs, via manual trafficking, via legacy or third-party systems. Scope is **account ownership**, not creation surface. A `media_buy_id` returned here identifies any order in the seller's ad server accessible to the authenticated caller.
+
+Any media buy returned by `get_media_buys` MUST be reachable by every task in its `valid_actions`. Sales agents MUST NOT mark a buy read-only, hide it, or refuse updates on the basis that it was not originally created via AdCP. If an action is unavailable for business reasons, the seller SHOULD omit it from `valid_actions` rather than returning a buy that cannot be operated on.
+
 **Request Schema**: [`/schemas/v3/media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-request.json)
 **Response Schema**: [`/schemas/v3/media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-response.json)
 
