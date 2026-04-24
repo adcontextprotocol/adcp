@@ -895,6 +895,14 @@
             </div>
           </div>
 
+          <!-- New-member announcement state (Workflow B) -->
+          <div class="card" id="announcementCard" style="display: none;">
+            <h2 class="collapsible" onclick="toggleSection(this)">New-member announcement</h2>
+            <div class="collapsible-content" id="announcementContent">
+              <div class="empty-state">Loading...</div>
+            </div>
+          </div>
+
           <!-- Users (Members + Slack-only) -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1811,8 +1819,88 @@
       // Billing (Stripe link, sync, payment history, delete workspace)
       renderBillingCard();
 
+      // New-member announcement state (Workflow B)
+      renderAnnouncement();
+
       // Populate team dropdowns
       populateTeamDropdowns();
+    }
+
+    function renderAnnouncement() {
+      const a = accountData.announcement;
+      const card = document.getElementById('announcementCard');
+      const content = document.getElementById('announcementContent');
+      if (!a) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = '';
+
+      // `_label` strings come from the server and are either a literal
+      // `<@U…>` Slack mention or a plain-text fallback like "an AAO
+      // admin". We treat both as already-formatted display text — the
+      // server is trusted since it assembled them from typed columns,
+      // not free-form draft content.
+      const byLabel = (label) => label ? ` by ${escapeHtml(label)}` : '';
+      const rows = [];
+      if (a.skipped) {
+        rows.push(`<div>⊘ <strong>Skipped</strong>${byLabel(a.skipper_label)}${a.skipped_at ? ` on ${escapeHtml(new Date(a.skipped_at).toLocaleString())}` : ''}</div>`);
+      } else {
+        rows.push(
+          a.slack_posted
+            ? `<div>✓ <strong>Slack posted</strong>${byLabel(a.slack_approver_label)}${a.slack_channel_id ? ` to <code>${escapeHtml(a.slack_channel_id)}</code>` : ''}</div>`
+            : `<div>⏳ Slack pending</div>`,
+        );
+        rows.push(
+          a.linkedin_posted
+            ? `<div>✓ <strong>LinkedIn posted</strong>${byLabel(a.linkedin_marker_label)}${a.linkedin_marked_at ? ` on ${escapeHtml(new Date(a.linkedin_marked_at).toLocaleString())}` : ''}</div>`
+            : `<div>⏳ LinkedIn pending</div>`,
+        );
+      }
+
+      // `Mark posted to LinkedIn` is only offered when Slack is done,
+      // LinkedIn hasn't been marked, and the draft wasn't skipped. The
+      // same button exists in the editorial-review Slack card; clicking
+      // either converges on one `announcement_published` row through the
+      // shared advisory-lock path.
+      const canMarkLinkedin = a.slack_posted && !a.linkedin_posted && !a.skipped;
+      const button = canMarkLinkedin
+        ? `<button class="btn btn-primary btn-sm" id="markLinkedInBtn" onclick="markAnnouncementLinkedIn()" style="margin-top: var(--space-3);">Mark posted to LinkedIn</button>`
+        : '';
+
+      content.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm);">
+          ${rows.join('')}
+        </div>
+        ${button}
+      `;
+    }
+
+    async function markAnnouncementLinkedIn() {
+      const btn = document.getElementById('markLinkedInBtn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'Marking…';
+      try {
+        const response = await manageFetch(`/api/admin/accounts/${accountId}/announcement/linkedin`, {
+          method: 'POST',
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          alert(body.message || body.error || `Failed (${response.status})`);
+          btn.disabled = false;
+          btn.textContent = 'Mark posted to LinkedIn';
+          return;
+        }
+        // Re-fetch the account so the announcement section reflects the
+        // new state (and hides the button).
+        await loadAccount();
+      } catch (err) {
+        console.error('markAnnouncementLinkedIn failed', err);
+        alert('Failed to mark LinkedIn posted. Please retry.');
+        btn.disabled = false;
+        btn.textContent = 'Mark posted to LinkedIn';
+      }
     }
 
     function renderOwner() {

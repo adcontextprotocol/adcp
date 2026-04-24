@@ -29,6 +29,10 @@ import {
 } from "../../db/membership-invites-db.js";
 import { sendMembershipInviteEmail } from "../../notifications/email.js";
 import { createProspect, updateProspect } from "../../services/prospect.js";
+import {
+  loadDraftAndState,
+  markLinkedInPosted,
+} from "../../addie/jobs/announcement-handlers.js";
 import { WorkOS } from "@workos-inc/node";
 import {
   MEMBER_FILTER_ALIASED,
@@ -388,6 +392,7 @@ export function setupAccountRoutes(
           similarOrgsResult,
           pendingSlackUsersResult,
           subsidiariesResult,
+          announcementLoaded,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -644,6 +649,14 @@ export function setupAccountRoutes(
                 [org.email_domain, orgId]
               )
             : Promise.resolve({ rows: [] }),
+
+          // Workflow B announcement state: returns null when no draft has
+          // been posted yet. Non-blocking — if the fetch errors we still
+          // render the rest of the account page.
+          loadDraftAndState(orgId).catch((err: unknown) => {
+            logger.warn({ err, orgId }, "loadDraftAndState failed for account detail");
+            return null;
+          }),
         ]);
 
         // Brand-aware similar org detection via aliases and hierarchy
@@ -881,6 +894,39 @@ export function setupAccountRoutes(
           // Pending Slack users (discovered via domain but not yet linked/members)
           pending_slack_users: pendingSlackUsersResult.rows,
           pending_slack_count: pendingSlackUsersResult.rows.length,
+
+          // Workflow B announcement state. `null` = no draft has been
+          // posted yet. Admin UI renders a `Mark posted to LinkedIn`
+          // action when `slack_posted && !linkedin_posted && !skipped`.
+          // Actors are collapsed to a single `_label` string suitable
+          // for display; internal ids stay server-side.
+          announcement: announcementLoaded
+            ? (() => {
+                const s = announcementLoaded.state;
+                const actorLabel = (actor: typeof s.slackApprover): string | null => {
+                  if (actor.source === "admin" && actor.workosUserId) return "an AAO admin";
+                  if (actor.slackUserId) return `<@${actor.slackUserId}>`;
+                  if (actor.workosUserId) return "an AAO admin";
+                  return null;
+                };
+                return {
+                  slack_posted: Boolean(s.slackTs),
+                  slack_ts: s.slackTs,
+                  slack_channel_id: s.slackAnnouncementChannelId,
+                  slack_approver_label: actorLabel(s.slackApprover),
+                  linkedin_posted: Boolean(
+                    s.linkedinMarker.slackUserId || s.linkedinMarker.workosUserId,
+                  ),
+                  linkedin_marked_at: s.linkedinMarkedAt?.toISOString() ?? null,
+                  linkedin_marker_label: actorLabel(s.linkedinMarker),
+                  skipped: Boolean(s.skipper.slackUserId || s.skipper.workosUserId),
+                  skipped_at: s.skippedAt?.toISOString() ?? null,
+                  skipper_label: actorLabel(s.skipper),
+                  org_name: announcementLoaded.draft.org_name ?? null,
+                  profile_slug: announcementLoaded.draft.profile_slug ?? null,
+                };
+              })()
+            : null,
 
           owner: owner
             ? {
@@ -1638,6 +1684,72 @@ export function setupAccountRoutes(
       });
     }
   });
+
+  // POST /api/admin/accounts/:orgId/announcement/linkedin
+  // Admin-UI counterpart to the `Mark posted to LinkedIn` Slack button.
+  // Idempotent — the shared `markLinkedInPosted` holds a Postgres advisory
+  // lock keyed on (orgId, 'mark_linkedin') so this endpoint, the Bolt
+  // handler, and concurrent double-submits all converge on one row.
+  apiRouter.post(
+    "/accounts/:orgId/announcement/linkedin",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        if (!/^org_[A-Z0-9]+$/.test(orgId)) {
+          return res.status(400).json({ error: "Invalid organization id" });
+        }
+        const workosUserId = req.user?.id;
+        if (!workosUserId) {
+          return res.status(401).json({ error: "Unauthenticated" });
+        }
+        // Reject the static `ADMIN_API_KEY` auth path (id = 'admin_api_key')
+        // — this endpoint records the caller into the audit trail and a
+        // shared static key can't stand in for an individual admin.
+        if (workosUserId === "admin_api_key") {
+          return res.status(403).json({
+            error: "admin_api_key_not_allowed",
+            message:
+              "This action must be performed by a signed-in admin, not the static API key.",
+          });
+        }
+
+        const outcome = await markLinkedInPosted(orgId, {
+          source: "admin",
+          workosUserId,
+        });
+
+        switch (outcome.kind) {
+          case "no_draft":
+            return res.status(404).json({
+              error: "no_draft",
+              message:
+                "No announcement draft has been posted for this org yet.",
+            });
+          case "refuse":
+            return res.status(409).json({
+              error: "refused",
+              message: outcome.notice,
+            });
+          case "already_done":
+            return res.status(200).json({
+              success: true,
+              already_done: true,
+              message: outcome.notice,
+            });
+          case "recorded":
+            return res.status(200).json({ success: true });
+        }
+      } catch (error) {
+        logger.error(
+          { err: error, orgId: req.params.orgId },
+          "Error marking announcement LinkedIn posted"
+        );
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
 
   // POST /api/admin/accounts/:orgId/activities/:activityId/complete - Mark a task complete
   apiRouter.post(
