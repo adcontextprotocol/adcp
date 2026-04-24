@@ -5710,6 +5710,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
+    this.app.get('/admin/escalations/triage', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-escalation-triage.html');
+    });
+
     this.app.get('/admin/jobs', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-jobs.html');
     });

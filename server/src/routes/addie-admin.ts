@@ -38,6 +38,14 @@ import {
   type EscalationStatus,
   type EscalationCategory,
 } from "../db/escalation-db.js";
+import {
+  listSuggestions,
+  getSuggestion,
+  recordDecision,
+  getSuggestionStats,
+  type SuggestionConfidence,
+} from "../db/escalation-triage-db.js";
+import { runEscalationTriageJob } from "../addie/jobs/escalation-triage.js";
 import * as imageDb from "../db/addie-image-db.js";
 import {
   listInsights,
@@ -1876,6 +1884,125 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       });
     }
   });
+
+  // =========================================================================
+  // ESCALATION TRIAGE SUGGESTIONS API
+  // =========================================================================
+
+  // GET /api/admin/addie/escalations/suggestions - List triage suggestions
+  apiRouter.get("/escalations/suggestions", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { confidence, bucket, pending_only, limit, offset } = req.query;
+      const [suggestions, stats] = await Promise.all([
+        listSuggestions({
+          confidence: confidence as SuggestionConfidence | undefined,
+          bucket: bucket as string | undefined,
+          pending_only: pending_only !== 'false',
+          limit: typeof limit === 'string' ? parseInt(limit, 10) : undefined,
+          offset: typeof offset === 'string' ? parseInt(offset, 10) : undefined,
+        }),
+        getSuggestionStats(),
+      ]);
+
+      // Enrich each suggestion with the escalation snapshot so the admin UI
+      // can render summary + reporter without a second fetch.
+      const enriched = await Promise.all(
+        suggestions.map(async (s) => ({
+          ...s,
+          escalation: await getEscalation(s.escalation_id),
+        })),
+      );
+
+      res.json({ suggestions: enriched, stats });
+    } catch (error) {
+      logger.error({ err: error }, "Error listing triage suggestions");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/addie/escalations/suggestions/run - Trigger an on-demand triage run.
+  apiRouter.post("/escalations/suggestions/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { minAgeDays, limit, staleOpsDays } = req.body ?? {};
+      const result = await runEscalationTriageJob({
+        minAgeDays: typeof minAgeDays === 'number' ? minAgeDays : undefined,
+        limit: typeof limit === 'number' ? limit : undefined,
+        staleOpsDays: typeof staleOpsDays === 'number' ? staleOpsDays : undefined,
+      });
+      res.json({ success: true, result });
+    } catch (error) {
+      logger.error({ err: error }, "Error running on-demand triage");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/addie/escalations/suggestions/:id/accept
+  // Applies the suggested status to the escalation and marks the suggestion accepted.
+  apiRouter.post(
+    "/escalations/suggestions/:id/accept",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const id = parseNumericId(req.params.id);
+        if (!id) return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+
+        const suggestion = await getSuggestion(id);
+        if (!suggestion) return res.status(404).json({ error: "Not found" });
+        if (suggestion.decision) {
+          return res.status(409).json({ error: "Already reviewed", decision: suggestion.decision });
+        }
+        if (suggestion.suggested_status === 'keep_open') {
+          // Nothing to apply — record decision as accepted but don't mutate the escalation.
+          const updated = await recordDecision(id, 'accepted', (req as unknown as { user?: { email?: string } }).user?.email ?? 'admin');
+          return res.json({ success: true, suggestion: updated });
+        }
+
+        const user = (req as unknown as { user?: { email?: string } }).user;
+        const reviewer = user?.email ?? 'admin';
+        const notes = `Triage suggestion #${id}: ${suggestion.reasoning}`;
+        const updatedEsc = await updateEscalationStatus(
+          suggestion.escalation_id,
+          suggestion.suggested_status,
+          reviewer,
+          notes,
+        );
+        if (!updatedEsc) return res.status(404).json({ error: "Escalation not found" });
+
+        const updatedSug = await recordDecision(id, 'accepted', reviewer, req.body?.notes);
+        res.json({ success: true, suggestion: updatedSug, escalation: updatedEsc });
+      } catch (error) {
+        logger.error({ err: error }, "Error accepting triage suggestion");
+        res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
+
+  // POST /api/admin/addie/escalations/suggestions/:id/reject
+  apiRouter.post(
+    "/escalations/suggestions/:id/reject",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const id = parseNumericId(req.params.id);
+        if (!id) return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+
+        const suggestion = await getSuggestion(id);
+        if (!suggestion) return res.status(404).json({ error: "Not found" });
+        if (suggestion.decision) {
+          return res.status(409).json({ error: "Already reviewed", decision: suggestion.decision });
+        }
+
+        const reviewer = (req as unknown as { user?: { email?: string } }).user?.email ?? 'admin';
+        const updated = await recordDecision(id, 'rejected', reviewer, req.body?.notes);
+        res.json({ success: true, suggestion: updated });
+      } catch (error) {
+        logger.error({ err: error }, "Error rejecting triage suggestion");
+        res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
 
   // =========================================================================
   // IMAGE LIBRARY API (mounted at /api/admin/addie/images)
