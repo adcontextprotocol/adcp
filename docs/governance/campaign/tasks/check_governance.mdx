@@ -20,6 +20,8 @@ Universal governance check for campaign actions. Both the orchestrator (buyer-si
 
 The governance agent maintains all state. Callers do not chain check IDs or track conversation history -- they post the action, and the governance agent correlates by `plan_id`. On subsequent lifecycle checks, callers include `governance_context` from the prior response for continuity.
 
+An account binds to one governance agent (see [`sync_governance`](/docs/accounts/tasks/sync_governance) and [One governance agent per account](/docs/governance/campaign/specification#one-governance-agent-per-account)). All lifecycle calls for a governed action go to that same agent.
+
 ## Check types
 
 ### Intent checks (orchestrator)
@@ -35,7 +37,7 @@ The orchestrator calls `check_governance` with `tool` and `payload` before sendi
 
 ### Execution checks (seller)
 
-The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
+The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has a governance agent configured (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
 
 Before executing the check, the seller verifies the signed `governance_context` token that arrived on the protocol envelope from the buyer. The buyer produces an **intent-phase** token (per the [JWS profile](/docs/building/implementation/security#adcp-jws-profile)); the seller's own execution check produces the `purchase`/`modification`/`delivery`-phase tokens bound to the assigned `media_buy_id` for the rest of the lifecycle.
 
