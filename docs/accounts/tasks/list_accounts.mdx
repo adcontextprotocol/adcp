@@ -91,6 +91,7 @@ All parameters are optional. An empty request returns all accounts.
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
 | `governance_agents` | Governance agent endpoints registered on this account. Present when governance agents have been configured via [`sync_governance`](/docs/accounts/tasks/sync_governance). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
+| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Sellers that support scope introspection SHOULD populate this; sellers claiming the `attestation_verifier` standard scope MUST populate it. Absence means the seller does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics. |
 
 ## Common Scenarios
 

@@ -151,6 +151,10 @@
               "sandbox": {
                 "type": "boolean",
                 "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
+              },
+              "authorization": {
+                "$ref": "/schemas/core/account-authorization.json",
+                "description": "Optional. The caller's scope grant against this account after the sync operation. Sellers that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Sellers claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the seller does not advertise introspectable scope — callers MUST NOT infer access from absence."
               }
             },
             "required": [
