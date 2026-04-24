@@ -46,7 +46,7 @@ Every AdCP response uses a **flat structure** where task-specific fields are at 
 ```
 
 :::warning Single status field required
-Agents MUST NOT emit legacy status fields (`task_status`, `response_status`, or any other alias) alongside `status`. The `status` field is the single authoritative task state. Agents emitting both are non-conformant and will fail storyboard testing.
+Agents MUST NOT emit legacy status fields (`task_status`, `response_status`, or any other alias) alongside `status`. The `status` field is the single authoritative task state. Agents emitting both are non-conformant.
 :::
 
 ## Status Handling
