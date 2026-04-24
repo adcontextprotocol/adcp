@@ -15,6 +15,7 @@ import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
+import { isUuid } from "../utils/uuid.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
@@ -84,8 +85,7 @@ import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
-import { query as dbQuery } from "../db/client.js";
-import { validateWorkOSApiKey } from "../middleware/auth.js";
+import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -235,7 +235,7 @@ registry.registerPath({
   description:
     "Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
   tags: ["Brand Resolution"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -434,7 +434,7 @@ registry.registerPath({
   description:
     "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
   tags: ["Property Resolution"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -1013,7 +1013,7 @@ registry.registerPath({
   description:
     "Create or update a community-contributed policy. Requires authentication. Registry-sourced and pending-review policies cannot be edited (returns 409). Updates automatically create a revision record.",
   tags: ["Policy Registry"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -1076,7 +1076,7 @@ registry.registerPath({
   description:
     "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
       cursor: z.string().uuid().optional().openapi({ description: "Resume after this event ID" }),
@@ -1129,7 +1129,7 @@ registry.registerPath({
   description:
     "Search agents by inventory profile — channels, markets, content categories, property types, and more. Filters use AND across dimensions and OR within a dimension. Results are ranked by relevance score.",
   tags: ["Agent Discovery"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
       channels: z.string().optional().openapi({ description: "Comma-separated channel filter", example: "ctv,olv" }),
@@ -1186,7 +1186,7 @@ registry.registerPath({
   description:
     "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
   tags: ["Agent Discovery"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -1234,7 +1234,7 @@ registry.registerPath({
   description:
     "Trigger an immediate re-crawl of a domain's brand.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour (shared with adagents.json crawl requests).",
   tags: ["Brand Discovery"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -1304,7 +1304,7 @@ registry.registerPath({
   description:
     "Returns per-storyboard test results for an agent. Includes title, category, track, pass/fail status, and step counts.\n\n**Members only** — requires authentication and an active membership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fexample.com%2Fmcp" }),
@@ -1339,7 +1339,7 @@ registry.registerPath({
   description:
     "Returns per-storyboard test results for multiple agents in a single request.\n\n**Members only** — requires authentication and an active membership. Maximum 100 agent URLs per request.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -1415,7 +1415,7 @@ registry.registerPath({
   description:
     "Set the lifecycle stage for an agent. Requires authentication and ownership of the agent.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1447,7 +1447,7 @@ registry.registerPath({
   description:
     "Opt an agent in or out of public compliance reporting. Requires authentication and ownership of the agent.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1481,7 +1481,7 @@ registry.registerPath({
   description:
     "Returns the monitoring configuration for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1504,7 +1504,7 @@ registry.registerPath({
   description:
     "Pause or resume automated compliance monitoring for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1536,7 +1536,7 @@ registry.registerPath({
   description:
     "Set the check interval for automated compliance monitoring (6–168 hours). Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1568,7 +1568,7 @@ registry.registerPath({
   description:
     "Returns the outbound request log for an agent (compliance checks, health probes, etc.). Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1609,7 +1609,7 @@ registry.registerPath({
   description:
     "Returns whether an agent has stored authentication credentials and OAuth token status. Requires authentication.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1631,7 +1631,7 @@ registry.registerPath({
   description:
     "Store authentication credentials for an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1675,7 +1675,7 @@ registry.registerPath({
   description:
     "Store a machine-to-machine OAuth 2.0 client-credentials configuration (RFC 6749 §4.4) for this agent. The SDK exchanges at the token endpoint before every call and refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time, the server stores it as written (encrypted uniformly). Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1728,7 +1728,7 @@ registry.registerPath({
   description:
     "Exchange the saved client_credentials at the token endpoint and discard the resulting access token. Returns success + latency on a 2xx exchange, or the SDK's `ClientCredentialsExchangeError` kind (`oauth`, `malformed`, `network`) on failure so operators get same-second feedback instead of waiting for the next compliance heartbeat. Requires authentication and ownership. Requires credentials to already be saved via `PUT /oauth-client-credentials`.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1776,7 +1776,7 @@ registry.registerPath({
   description:
     "Probe the agent's get_adcp_capabilities and resolve its declared supported_protocols and specialisms to the compliance bundles that will run. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -1941,7 +1941,7 @@ registry.registerPath({
   description:
     "Create or update a hosted brand.json for a domain owned by the authenticated user's organization. Returns the hosted URL and a pointer snippet for DNS setup.",
   tags: ["Brand Resolution"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     body: {
       content: {
@@ -2085,7 +2085,7 @@ registry.registerPath({
   description:
     "Execute a single storyboard step against an agent. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -2151,7 +2151,7 @@ registry.registerPath({
   description:
     "Execute all steps of a storyboard against an agent and record the compliance result. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -2199,7 +2199,7 @@ registry.registerPath({
   description:
     "Run a storyboard against both the target agent and the public reference agent, returning side-by-side results. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
-  security: [{ bearerAuth: [] }],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
@@ -2985,8 +2985,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Property List Check ────────────────────────────────────────
 
-  const REPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
@@ -3010,7 +3008,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/properties/check/:reportId", async (req, res) => {
     try {
       const { reportId } = req.params;
-      if (!REPORT_UUID_RE.test(reportId)) {
+      if (!isUuid(reportId)) {
         return res.status(404).json({ error: "Report not found or expired" });
       }
       const results = await propertyCheckDb.getReport(reportId);
@@ -3049,7 +3047,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/properties/check/bulk/:reportId", async (req, res) => {
     try {
       const { reportId } = req.params;
-      if (!REPORT_UUID_RE.test(reportId)) {
+      if (!isUuid(reportId)) {
         return res.status(404).json({ error: "Report not found or expired" });
       }
       const results = await bulkCheckService.getReport(reportId);
@@ -3253,21 +3251,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
       let includeMembersOnly = false;
-      if (req.user?.id) {
-        try {
-          const row = await dbQuery<{ primary_organization_id: string | null }>(
-            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-            [req.user.id],
-          );
-          const orgId = row.rows[0]?.primary_organization_id;
-          if (orgId) {
-            const org = await orgDb.getOrganization(orgId);
-            if (org && hasApiAccess(resolveMembershipTier(org))) {
-              includeMembersOnly = true;
-            }
-          }
-        } catch (err) {
-          logger.warn({ err, userId: req.user.id }, 'members_only visibility check failed — falling back to public-only');
+      const callerOrgId = await resolveCallerOrgId(req);
+      if (callerOrgId) {
+        const org = await orgDb.getOrganization(callerOrgId);
+        if (org && hasApiAccess(resolveMembershipTier(org))) {
+          includeMembersOnly = true;
         }
       }
 
@@ -4680,23 +4668,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
-      // Resolve caller's organization. API key path (optAuth skips Bearer
-      // API keys — see middleware/auth.ts:1332) takes precedence over session.
-      let callerOrgId: string | null = null;
-      const apiKey = await validateWorkOSApiKey(req);
-      if (apiKey) {
-        callerOrgId = apiKey.organizationId;
-      } else if (req.user?.id) {
-        try {
-          const row = await dbQuery<{ primary_organization_id: string | null }>(
-            'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-            [req.user.id],
-          );
-          callerOrgId = row.rows[0]?.primary_organization_id ?? null;
-        } catch (err) {
-          logger.warn({ err, userId: req.user.id }, 'operator: org resolution failed — falling back to public-only');
-        }
-      }
+      const callerOrgId = await resolveCallerOrgId(req);
 
       let includeMembersOnly = false;
       if (callerOrgId) {
@@ -5495,7 +5467,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
 
         // Validate cursor format (should be a UUID if provided)
-        if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cursor)) {
+        if (cursor && !isUuid(cursor)) {
           return res.status(400).json({ error: "Invalid cursor format. Must be a UUID." });
         }
 

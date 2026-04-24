@@ -19,6 +19,38 @@ import { registry } from "../server/src/schemas/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Register security schemes. These must be registered on the registry —
+// passing them via the generateDocument `components` option is silently
+// dropped by OpenApiGeneratorV31, which emits only registered components.
+registry.registerComponent("securitySchemes", "bearerAuth", {
+  type: "http",
+  scheme: "bearer",
+  description: [
+    "Bearer token in the `Authorization` header. Two token types are accepted:",
+    "",
+    "- **Organization API key** (`sk_...`) issued via the dashboard. Org-scoped, long-lived, for server-to-server use.",
+    "- **User JWT** obtained via the OAuth 2.1 authorization code flow with PKCE. User-scoped, short-lived. Discover the authorization server at `/.well-known/oauth-authorization-server` and the protected-resource metadata at `/.well-known/oauth-protected-resource/api`.",
+  ].join("\n"),
+});
+
+registry.registerComponent("securitySchemes", "oauth2", {
+  type: "oauth2",
+  description:
+    "OAuth 2.1 authorization code flow with PKCE. Users authenticate via AuthKit and clients receive a Bearer JWT that authorizes both the MCP endpoint and this REST API. Dynamic client registration is supported at `/register`.",
+  flows: {
+    authorizationCode: {
+      authorizationUrl: "https://agenticadvertising.org/authorize",
+      tokenUrl: "https://agenticadvertising.org/token",
+      refreshUrl: "https://agenticadvertising.org/token",
+      scopes: {
+        openid: "User identifier",
+        profile: "User profile information",
+        email: "User email address",
+      },
+    },
+  },
+});
+
 const generator = new OpenApiGeneratorV31(registry.definitions);
 
 const doc = generator.generateDocument({
@@ -31,7 +63,8 @@ const doc = generator.generateDocument({
       "AdCP ecosystem.",
       "",
       "Most endpoints are public and require no authentication. Endpoints marked",
-      "with a lock icon require a Bearer token — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).",
+      "with a lock icon accept either an organization API key or a user JWT",
+      "obtained via the OAuth 2.1 flow — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).",
       "",
       "**Base URL:** `https://agenticadvertising.org`",
     ].join("\n"),
@@ -48,15 +81,6 @@ const doc = generator.generateDocument({
     },
   ],
   security: [],
-  components: {
-    securitySchemes: {
-      bearerAuth: {
-        type: "http",
-        scheme: "bearer",
-        description: "API key issued to an AgenticAdvertising.org member organization.",
-      },
-    },
-  },
 });
 
 // Tag descriptions for the generated spec

@@ -21,6 +21,7 @@ import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
+import { isUuid } from '../../utils/uuid.js';
 
 const logger = createLogger('admin-relationships');
 
@@ -269,7 +270,7 @@ export function setupRelationshipRoutes(apiRouter: Router): void {
       const { personId } = req.params;
 
       // Basic UUID format validation
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(personId)) {
+      if (!isUuid(personId)) {
         return res.status(400).json({ error: 'Invalid person ID format' });
       }
 
@@ -314,7 +315,7 @@ export function setupRelationshipRoutes(apiRouter: Router): void {
     try {
       const { personId } = req.params;
 
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(personId)) {
+      if (!isUuid(personId)) {
         return res.status(400).json({ error: 'Invalid person ID format' });
       }
 

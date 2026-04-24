@@ -1,0 +1,4 @@
+---
+---
+
+Fix OIDC JWT verification on `/api/registry/operator` and `/api/registry/agents` to pick the JWKS per-token from the `iss` claim instead of a single server-wide `WORKOS_CLIENT_ID`. The previous implementation built `https://api.workos.com/sso/jwks/<WORKOS_CLIENT_ID>`, which only serves keys for the server's own AuthKit app — third-party OAuth clients mint tokens signed with their own keys at `/sso/jwks/<issuing_client_id>`, so verification silently failed and authenticated member JWTs still got `agents: []`. Now the JWT's `iss` claim is decoded unverified, the issuing `client_id` is extracted from its `/user_management/<client_id>` suffix, and `jwtVerify` is called with `{ issuer }` pinned so the unverified decode can't redirect verification at an attacker-controlled JWKS. Adds warn-level logging for every failure mode.

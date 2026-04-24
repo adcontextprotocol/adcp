@@ -35,6 +35,7 @@ import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
+import { setupAddieCostRoutes } from "./admin/addie-costs.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
 // Ensure newsletters register themselves before routes mount
@@ -170,6 +171,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Perspective illustration generation routes
   setupIllustrationRoutes(apiRouter);
+
+  // Addie cost-cap observability (per-user Anthropic spend)
+  setupAddieCostRoutes(apiRouter);
 
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {

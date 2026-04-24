@@ -6,6 +6,28 @@ import { CachedPostgresStore } from './pg-rate-limit-store.js';
 const logger = createLogger('rate-limit');
 
 /**
+ * Parse a `Retry-After` header value into delta-seconds. Handles both
+ * the number form (express-rate-limit with `standardHeaders: true`
+ * emits seconds as a number) and the string form. Returns `undefined`
+ * for anything that doesn't look like a positive integer — including
+ * zero, which we treat as "no meaningful wait" rather than exposing
+ * a degenerate countdown value.
+ *
+ * Callers surface the value in the 429 body as a proxy-stripped
+ * fallback for the header (#2804).
+ */
+export function parseRetryAfterSeconds(raw: number | string | string[] | undefined): number | undefined {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+  }
+  if (typeof raw === 'string') {
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Generate a rate limit key from request, preferring user ID over IP.
  * Uses proper IPv6 subnet masking when falling back to IP addresses.
  */
@@ -233,12 +255,12 @@ export const agentReadRateLimiter = rateLimit({
     // headers, and the dashboard needs SOMETHING to key its countdown
     // off. `retryAfter` is seconds-to-retry, matching the header's
     // delta-seconds format.
-    const retryAfterHeader = res.getHeader('Retry-After');
-    const retryAfter = typeof retryAfterHeader === 'number'
-      ? retryAfterHeader
-      : typeof retryAfterHeader === 'string'
-        ? parseInt(retryAfterHeader, 10) || undefined
-        : undefined;
+    //
+    // The HTTP spec (RFC 9110 §10.2.3) also allows an HTTP-date here,
+    // but express-rate-limit only emits delta-seconds — so a parseInt
+    // is sufficient. If that ever changes (e.g., we swap limiter
+    // libraries), the fallback below would need a second parse path.
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
       message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',

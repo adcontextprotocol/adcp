@@ -39,7 +39,7 @@ Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [2],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -93,7 +93,7 @@ The Signals Protocol defines two tasks. See task reference pages for complete re
 
 ### get_signals
 
-**Schema**: [`get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json) / [`get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json)
+**Schema**: [`get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json) / [`get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json)
 
 **Reference**: [`get_signals` task](/docs/signals/tasks/get_signals)
 
@@ -106,7 +106,7 @@ Discover signals matching campaign criteria.
 
 ### activate_signal
 
-**Schema**: [`activate-signal-request.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json) / [`activate-signal-response.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json)
+**Schema**: [`activate-signal-request.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json) / [`activate-signal-response.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json)
 
 **Reference**: [`activate_signal` task](/docs/signals/tasks/activate_signal)
 
@@ -194,9 +194,9 @@ The `activate_signal` request supports two destination types. The choice depends
 
 | Schema | Description |
 |--------|-------------|
-| [`signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-request.json) | get_signals request |
-| [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/latest/signals/get-signals-response.json) | get_signals response |
-| [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-request.json) | activate_signal request |
-| [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/latest/signals/activate-signal-response.json) | activate_signal response |
-| [`core/deployment.json`](https://adcontextprotocol.org/schemas/latest/core/deployment.json) | Deployment target |
-| [`core/activation-key.json`](https://adcontextprotocol.org/schemas/latest/core/activation-key.json) | Activation key |
+| [`signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json) | get_signals request |
+| [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json) | get_signals response |
+| [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json) | activate_signal request |
+| [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v3/signals/activate-signal-response.json) | activate_signal response |
+| [`core/deployment.json`](https://adcontextprotocol.org/schemas/v3/core/deployment.json) | Deployment target |
+| [`core/activation-key.json`](https://adcontextprotocol.org/schemas/v3/core/activation-key.json) | Activation key |

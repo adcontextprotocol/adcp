@@ -24,10 +24,10 @@ import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import * as db from '../db/network-health-db.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('network-health');
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLACK_WEBHOOK_PATTERN = /^https:\/\/hooks\.slack\.com\/services\//;
 
 const alertRuleSchema = z.object({
@@ -174,7 +174,7 @@ export function createNetworkHealthApiRouter(): Router {
   apiRouter.post('/:orgId/alerts/:alertId/resolve', requireAdmin, async (req, res) => {
     try {
       const { alertId } = req.params;
-      if (!UUID_PATTERN.test(alertId)) {
+      if (!isUuid(alertId)) {
         return res.status(400).json({ error: 'Invalid alert ID format' });
       }
       await db.resolveAlert(alertId);

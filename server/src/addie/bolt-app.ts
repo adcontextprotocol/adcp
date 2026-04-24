@@ -30,6 +30,7 @@ import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { resolveUserTierFromDb } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -1522,6 +1523,14 @@ async function handleUserMessage({
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  // Resolve the cost-cap identity. Prefer the mapped WorkOS user ID
+  // (consistent with tool-rate-limiter's scope keys); fall back to a
+  // `slack:${userId}` namespace when no mapping exists so the cap
+  // still bounds an individual Slack user's Addie spend (#2790).
+  // Mapped WorkOS users resolve to member_paid when they have an
+  // active subscription; Slack-fallback users stay at member_free.
+  const costScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const costScopeTier = await resolveUserTierFromDb(costScopeUserId);
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
@@ -1529,6 +1538,7 @@ async function handleUserMessage({
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: costScopeUserId, tier: costScopeTier },
   };
 
   // Process with Claude using streaming
@@ -1652,20 +1662,32 @@ async function handleUserMessage({
           const fallbackValidation = validateOutput(guarded.text);
           const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
-          await say({
-            text: slackText,
-            blocks: [
-              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
-              ...fallbackImages.slice(0, 3).map(img => ({
-                type: 'image' as const,
-                image_url: img.url,
-                alt_text: img.alt,
-              })),
-              buildFeedbackBlock(),
-            ],
-          });
+          // Slack rejects section blocks with empty mrkdwn text. If streaming
+          // produced nothing (e.g. upstream overload before any deltas), fall
+          // back to a plain apology so the user isn't left silent.
+          if (!slackText.trim()) {
+            const apology = isRetriesExhaustedError(stopError)
+              ? `${stopError.reason}. Please try again in a moment.`
+              : "I'm sorry, I encountered an error. Please try again.";
+            await say(apology);
+          } else {
+            await say({
+              text: slackText,
+              blocks: [
+                { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+                ...fallbackImages.slice(0, 3).map(img => ({
+                  type: 'image' as const,
+                  image_url: img.url,
+                  alt_text: img.alt,
+                })),
+                buildFeedbackBlock(),
+              ],
+            });
+          }
         } catch (sayError) {
-          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+          const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+          const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+          logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
         }
       }
     } else {
@@ -1680,24 +1702,31 @@ async function handleUserMessage({
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
-        await say({
-          text: slackText,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: slackText,
+        // Slack rejects section blocks with empty mrkdwn text. If the model
+        // returned nothing (or everything was sanitized/extracted), fall back
+        // to a plain apology instead of a malformed blocks payload.
+        if (!slackText.trim()) {
+          await say("I'm sorry, I encountered an error. Please try again.");
+        } else {
+          await say({
+            text: slackText,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: slackText,
+                },
               },
-            },
-            ...images.slice(0, 3).map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
-            buildFeedbackBlock(),
-          ],
-        });
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        }
       } catch (error) {
         logger.error({ error }, 'Addie Bolt: Failed to send response');
       }
@@ -2109,13 +2138,19 @@ async function handleAppMention({
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
   const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
+  // namespaced Slack ID so unmapped users still get a bounded
+  // daily Addie spend budget.
+  const mentionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const mentionCostScopeTier = await resolveUserTierFromDb(mentionCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: mentionCostScopeUserId, tier: mentionCostScopeTier },
   };
 
   // Process with Claude
@@ -3067,13 +3102,17 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
+  const dmCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const dmCostScopeTier = await resolveUserTierFromDb(dmCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: dmCostScopeUserId, tier: dmCostScopeTier },
   };
 
   // Process with Claude
@@ -3445,13 +3484,17 @@ async function handleActiveThreadReply({
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
   const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
 
-  // Admin users get higher iteration limit
+  // Admin users get higher iteration limit.
+  // Cost cap scope follows the mention-handler pattern above.
+  const threadCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+  const threadCostScopeTier = await resolveUserTierFromDb(threadCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: { userId: threadCostScopeUserId, tier: threadCostScopeTier },
   };
 
   // Process with Claude
@@ -4026,12 +4069,16 @@ async function handleChannelMessage({
     const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
     const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
     const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+    // Cost cap scope follows the mention-handler pattern above.
+    const channelCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
+    const channelCostScopeTier = await resolveUserTierFromDb(channelCostScopeUserId);
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
+      costScope: { userId: channelCostScopeUserId, tier: channelCostScopeTier },
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4811,12 +4858,16 @@ async function handleReactionAdded({
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
+  const reactionCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${reactingUserId}`;
+  const reactionCostScopeTier = await resolveUserTierFromDb(reactionCostScopeUserId);
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
+    costScope: { userId: reactionCostScopeUserId, tier: reactionCostScopeTier },
   };
 
   // Process with Claude
