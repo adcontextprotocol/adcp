@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": patch
 ---
 
 **TMP: explicit seller-agent attribution on AvailablePackage.**
