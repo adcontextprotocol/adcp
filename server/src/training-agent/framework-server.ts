@@ -20,12 +20,13 @@
  * storyboard parity is verified and a follow-up PR flips the default.
  */
 
-import { bridgeFromSessionStore, createAdcpServer, wrapEnvelope } from '@adcp/client/server';
+import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
+import { mergeSeedProduct } from '@adcp/client/testing';
 import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
 import { MediaChannelSchema } from '@adcp/client/types';
 import type { Product } from '@adcp/client';
 import { z } from 'zod';
-import type { TrainingContext, ToolArgs, AccountRef, BrandRef, SessionState } from './types.js';
+import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
 import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
@@ -474,9 +475,14 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 
     // Seeded-product bridge: flow `comply_test_controller.seed_product`
     // fixtures into `get_products` responses on sandbox requests. Our seed
-    // store is session-scoped (one Map per brand.domain/account_id); the
-    // SDK's `bridgeFromSessionStore` wires load + select + merge + defaults
-    // into one helper so the callback stays a three-liner.
+    // store is session-scoped (one Map per brand.domain/account_id), so
+    // the SDK's `bridgeFromTestControllerStore(store, defaults)` helper
+    // (which closes over a `Map<string, unknown>` at server-construction
+    // time, before the request is parsed) doesn't fit. We session-load in
+    // the callback and run each fixture through `mergeSeedProduct` on top
+    // of `SEED_PRODUCT_DEFAULTS` (the response-schema minimum fields).
+    // `bridgeFromSessionStore` in @adcp/client 5.14+ collapses this to a
+    // one-liner — pending adcp-client#866 (5.14 storyboard regression).
     //
     // Security: the dispatcher's sandbox gate is `isSandboxRequest(params)`
     // + (when `resolveAccount` is wired) `ctx.account.sandbox === true`.
@@ -491,11 +497,18 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     // security posture). Production sellers adopting this wiring SHOULD
     // configure `resolveAccount` so the dispatcher's belt-and-suspenders
     // second gate activates.
-    testController: bridgeFromSessionStore<SessionState>({
-      loadSession: (input) => getSession(sessionKeyFromArgs(input as { account?: AccountRef; brand?: BrandRef }, 'open')),
-      selectSeededProducts: (session) => session.complyExtensions.seededProducts,
-      productDefaults: SEED_PRODUCT_DEFAULTS,
-    }),
+    testController: {
+      async getSeededProducts(bridgeCtx) {
+        const args = bridgeCtx.input as { account?: AccountRef; brand?: BrandRef };
+        const session = await getSession(sessionKeyFromArgs(args, 'open'));
+        const seeded = session.complyExtensions.seededProducts;
+        if (seeded.size === 0) return [];
+        return Array.from(seeded.entries()).map(([productId, fixture]) => {
+          const base = { ...SEED_PRODUCT_DEFAULTS, product_id: productId } as Partial<Product>;
+          return mergeSeedProduct(base, fixture as Partial<Product>) as Product;
+        });
+      },
+    },
 
     capabilities: {
       major_versions: [3],

@@ -1,47 +1,53 @@
 ---
 ---
 
-Dogfood `@adcp/client` 5.14 seller helpers in the reference training agent
-(closes adcontextprotocol/adcp#2889).
+Dogfood `@adcp/client` 5.13 seller helpers in the reference training
+agent (closes adcontextprotocol/adcp#2889).
 
-Bumps `@adcp/client` to `^5.14.0` and adopts the helper surface end-to-end:
+Pins `@adcp/client` to `5.13.0` (not `^5.13.0`) because 5.14 regressed
+the storyboard runner — filed upstream as
+adcontextprotocol/adcp-client#866. The adoptions below all exist in
+5.11+ / 5.13.0.
 
 - **`wrapEnvelope`** replaces hand-rolled sibling-field emission
   (`replayed` / `context` / `operation_id`) in
-  `framework-server.ts`'s `toAdaptedResponse`, `serviceUnavailable`, and
+  `framework-server.ts`'s `toAdaptedResponse` / `serviceUnavailable` /
   `versionUnsupported`.
-- **`bridgeFromSessionStore({ loadSession, selectSeededProducts, productDefaults })`**
-  (new in 5.14 via adcontextprotocol/adcp-client#830) wires
+- **Session-scoped `testController.getSeededProducts` callback** wires
   `comply_test_controller.seed_product` fixtures through `get_products`
-  responses on sandbox requests. Closes the latent gap where seeded
-  products never surfaced through the buyer-facing tool. `SEED_PRODUCT_DEFAULTS`
-  provides the minimum schema-valid baseline so sparse fixtures still
-  pass response validation.
+  responses on sandbox requests — new behavior that closes a latent
+  gap where seeded products never surfaced through the buyer-facing
+  tool. `SEED_PRODUCT_DEFAULTS` provides the schema-minimum baseline
+  so sparse fixtures still pass response validation. 5.14 would
+  collapse this to a `bridgeFromSessionStore(...)` one-liner; deferring
+  that follow-up until the 5.14 storyboard regression resolves.
 - **`mergeSeedProduct`** replaces the shallow-spread merge in
   `overlaySeededProducts`, gaining permissive-leaf semantics and by-id
   `pricing_options` overlay.
-- **`mcpAcceptHeaderMiddleware`** (5.14 now patches `rawHeaders` per
-  adcontextprotocol/adcp-client#830) replaces the inline Accept header
-  rewrite + `rawHeaders` mutation in `index.ts` on both `/mcp` and
-  `/mcp-strict`.
-- **Deleted** `server/src/training-agent/conflict-envelope.ts` and its
-  test: `adcpError()` now consults `ADCP_ERROR_FIELD_ALLOWLIST` and the
-  dispatcher re-applies `sanitizeAdcpErrorEnvelope` to every
-  handler-returned envelope, so `recovery` no longer leaks into
-  `IDEMPOTENCY_CONFLICT` responses at any layer. Added a framework-path
-  regression that asserts `recovery` is absent on a real conflict
-  envelope.
 
-Not adopted — noted for follow-up:
+Not adopted — blocked on 5.14 follow-up (adcp-client#866):
 
-- `createDefaultTestControllerStore` was deleted from adcp-client in
-  adcontextprotocol/adcp-client#843 (replaced with a worked seller
-  example); the training agent's rich-state controller stays.
-- `registerTestController`'s auto-emit of the
-  `capabilities.compliance_testing.scenarios` block only fires when the
-  tool is registered through that helper. The training agent registers
-  `comply_test_controller` via `customTools` (our wrapper handles a
-  sandbox gate and session load around `handleTestControllerRequest`).
-  Migrating to `registerTestController` is a larger refactor; keeping
-  the manual capability override in `capabilities.overrides` until
-  then.
+- `bridgeFromSessionStore` (5.14-only) — would replace the hand-rolled
+  callback with a one-liner.
+- `mcpAcceptHeaderMiddleware` from `@adcp/client/express-mcp` — 5.14
+  fixed the `rawHeaders` patch gap (adcp-client#825/#830). 5.13's
+  version only mutates `req.headers.accept`, which doesn't propagate
+  through `StreamableHTTPServerTransport`'s `@hono/node-server`-backed
+  Fetch Request. Keeping the inline dual-surface rewrite in
+  `index.ts` until the bump.
+- Deleting `conflict-envelope.ts` + `wrapResponseForConflictRedaction`
+  — 5.14 ships `sanitizeAdcpErrorEnvelope` in the dispatcher, making
+  the wire-layer redactor redundant. Kept in 5.13 because
+  `adcpError()` still auto-injects `recovery` on `IDEMPOTENCY_CONFLICT`
+  envelopes.
+
+Also deferred (not blocked on 5.14): migrating `comply_test_controller`
+off `customTools` onto `registerTestController` for its auto-emitted
+`capabilities.compliance_testing.scenarios` block. Out of scope here.
+
+Guard rails added as comments (no code changes): the bridge-wiring
+security posture (single-gate sandbox with no `resolveAccount`,
+fixture data non-sensitive by design) and the custom-tool sanitizer
+bypass (`handleComplyTestController` sidesteps the dispatcher's
+`sanitizeAdcpErrorEnvelope` — today no `adcp_error` is emitted there,
+but a future edit would need to route through `adcpError()`).

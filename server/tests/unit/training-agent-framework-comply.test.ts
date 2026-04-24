@@ -157,38 +157,4 @@ describe('framework-server comply_test_controller', () => {
     expect(products.sandbox).toBe(true);
   });
 
-  it('IDEMPOTENCY_CONFLICT envelope has no `recovery` (SDK sanitizer applied)', async () => {
-    // @adcp/client 5.14's dispatcher re-applies `ADCP_ERROR_FIELD_ALLOWLIST`
-    // to every handler-returned envelope via `sanitizeAdcpErrorEnvelope`.
-    // The training agent relied on a local `wrapResponseForConflictRedaction`
-    // response wrapper until the SDK made that post-processor redundant;
-    // this test locks in the SDK's guarantee so a regression in either
-    // layer fires here instead of silently leaking `recovery` on the wire.
-    const key = `idem-${crypto.randomUUID()}`;
-    const base = {
-      idempotency_key: key,
-      account: ACCOUNT,
-      brand: BRAND,
-      start_time: '2027-06-01T00:00:00Z',
-      end_time: '2027-07-01T00:00:00Z',
-    };
-    const products = await callTool(server, 'get_products', {
-      buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND,
-    });
-    const product = (products.products as Array<Record<string, unknown>>)[0];
-    const pricing = (product.pricing_options as Array<Record<string, unknown>>)[0];
-    const pkg = {
-      product_id: product.product_id,
-      pricing_option_id: pricing.pricing_option_id,
-      budget: 10000,
-    };
-    const first = await callTool(server, 'create_media_buy', { ...base, packages: [pkg] });
-    expect(first.media_buy_id ?? first.adcp_error).toBeDefined();
-    const conflict = await callTool(server, 'create_media_buy', {
-      ...base,
-      packages: [{ ...pkg, budget: 25000 }],
-    });
-    expect(conflict.code).toBe('IDEMPOTENCY_CONFLICT');
-    expect(conflict.recovery).toBeUndefined();
-  });
 });

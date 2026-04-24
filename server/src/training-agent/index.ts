@@ -23,10 +23,10 @@ import {
   type Authenticator,
   type AuthPrincipal,
 } from '@adcp/client/server';
-import { mcpAcceptHeaderMiddleware } from '@adcp/client/express-mcp';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
+import { redactConflictEnvelopeInBody } from './conflict-envelope.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -235,6 +235,90 @@ function buildRequireToken(authenticator: Authenticator | null) {
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
 
+/**
+ * Capture the response body as it's written by the MCP transport, redact any
+ * `IDEMPOTENCY_CONFLICT` envelopes (framework-dispatch's `adcpError()` emits
+ * `recovery` which the storyboard invariant treats as a payload leak), and
+ * flush the transformed body through the original writer. Idempotent: safe
+ * to call even when no conflict envelope is present (pass-through via a
+ * fast-path `includes('IDEMPOTENCY_CONFLICT')` probe inside the redactor).
+ *
+ * Works for the JSON-response mode (`enableJsonResponse: true`) the training
+ * agent forces for every request — the transport writes a single
+ * `res.write(body) ; res.end()` pair, which this wrapper buffers into one
+ * string before rewriting. Streaming/SSE would break this contract, so do
+ * not remove `enableJsonResponse: true` from the transport config above.
+ *
+ * Goes away once we bump past adcp-client#866 — @adcp/client 5.14+ has
+ * built-in `sanitizeAdcpErrorEnvelope` in the dispatcher, which makes this
+ * wire-layer redaction redundant.
+ */
+function wrapResponseForConflictRedaction(res: Response): void {
+  const origWriteHead = res.writeHead.bind(res);
+  const origWrite = res.write.bind(res) as (chunk: unknown, ...rest: unknown[]) => boolean;
+  const origEnd = res.end.bind(res) as (chunk?: unknown, ...rest: unknown[]) => Response;
+  const chunks: Buffer[] = [];
+  let pendingHead: { status: number; headers: Record<string, string | number | string[]> } | null = null;
+
+  const collect = (chunk: unknown): void => {
+    if (chunk === undefined || chunk === null) return;
+    if (Buffer.isBuffer(chunk)) chunks.push(chunk);
+    else if (typeof chunk === 'string') chunks.push(Buffer.from(chunk, 'utf8'));
+    else if (chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+    else chunks.push(Buffer.from(String(chunk), 'utf8'));
+  };
+
+  // `@hono/node-server` flushes headers via `writeHead(status, headers)`
+  // before calling `write` — with content-length already computed from the
+  // original body length. Buffering headers here defers flush until `end`
+  // runs, so the final `Content-Length` reflects the redacted body size.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).writeHead = ((
+    status: number,
+    statusMessageOrHeaders?: string | Record<string, string | number | string[]>,
+    headersArg?: Record<string, string | number | string[]>,
+  ): Response => {
+    const headers = typeof statusMessageOrHeaders === 'object' && statusMessageOrHeaders !== null
+      ? statusMessageOrHeaders
+      : headersArg ?? {};
+    pendingHead = { status, headers: { ...headers } };
+    return res;
+  }) as typeof res.writeHead;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).write = (chunk: unknown, encoding?: unknown, cb?: unknown): boolean => {
+    collect(chunk);
+    const callback = typeof encoding === 'function' ? encoding : cb;
+    if (typeof callback === 'function') (callback as () => void)();
+    return true;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (res as any).end = (chunk?: unknown, encoding?: unknown, cb?: unknown): Response => {
+    if (chunk !== undefined && typeof chunk !== 'function') collect(chunk);
+    const callback = typeof chunk === 'function'
+      ? chunk
+      : typeof encoding === 'function'
+        ? encoding
+        : cb;
+    const body = Buffer.concat(chunks).toString('utf8');
+    const rewritten = redactConflictEnvelopeInBody(body);
+    if (pendingHead) {
+      const headers = pendingHead.headers;
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'content-length') delete headers[key];
+      }
+      headers['content-length'] = Buffer.byteLength(rewritten, 'utf8');
+      origWriteHead(pendingHead.status, headers);
+      pendingHead = null;
+    }
+    if (rewritten.length > 0) origWrite(rewritten);
+    const args: unknown[] = [];
+    if (typeof callback === 'function') args.push(callback);
+    return origEnd(...args);
+  };
+}
+
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -360,12 +444,59 @@ export function createTrainingAgentRouter(): Router {
           ? createFrameworkTrainingAgentServer(ctx)
           : createTrainingAgentServer(ctx);
 
+        // MCP Streamable HTTP transport requires the client Accept header to
+        // list BOTH `application/json` and `text/event-stream` per the
+        // 2025-03-26 spec — or it returns 406 Not Acceptable. Storyboard
+        // conformance probes and other strict JSON consumers only send
+        // `application/json`. We satisfy both by (a) adding the missing SSE
+        // content type so the transport's check passes and (b) enabling JSON
+        // response mode so the body is single-shot JSON rather than an SSE
+        // stream the probe can't parse. `@adcp/client/express-mcp`'s
+        // `mcpAcceptHeaderMiddleware` does the same thing in 5.14+ but
+        // @adcp/client is pinned to 5.13 in this repo (storyboard runner
+        // regressed at 5.14 — adcp-client#866). Once that's resolved, swap
+        // this block for `app.use('/mcp', mcpAcceptHeaderMiddleware())`.
+        const acceptHeader = req.headers.accept;
+        const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
+        const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
+        if (hasJson && !hasSse) {
+          const rewritten = `${acceptHeader}, text/event-stream`;
+          req.headers.accept = rewritten;
+          // @hono/node-server (used internally by StreamableHTTPServerTransport)
+          // reads headers from `rawHeaders` — the alternating [name, value]
+          // array Node's HTTP parser fills in. Mutating `req.headers.accept`
+          // alone doesn't propagate to the transport's Fetch Request wrapper.
+          const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
+          if (Array.isArray(raw)) {
+            for (let i = 0; i < raw.length; i += 2) {
+              if (raw[i].toLowerCase() === 'accept') {
+                raw[i + 1] = rewritten;
+              }
+            }
+          }
+        }
+
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // Stateless
           enableJsonResponse: true,
         });
 
         await server.connect(transport);
+
+        // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
+        // `@adcp/client/server`'s `adcpError()` builder, which in 5.13
+        // auto-injects `recovery` on every error. The universal idempotency
+        // storyboard's `conflict_no_payload_leak` invariant allows only a
+        // narrow set of envelope keys on conflict — anything else is flagged
+        // as a potential stolen-key read oracle. Intercept the response
+        // bytes before they leave the process and strip disallowed keys.
+        // Legacy dispatch builds a minimal envelope by hand, so the wrap is
+        // a no-op there in practice (it still runs but finds nothing to
+        // redact). @adcp/client 5.14 moves this sanitization into the
+        // dispatcher via `sanitizeAdcpErrorEnvelope` — once we bump past
+        // the 5.14 storyboard regression (adcp-client#866), drop this
+        // wrapper and delete conflict-envelope.ts.
+        wrapResponseForConflictRedaction(res);
 
         logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
 
@@ -389,16 +520,7 @@ export function createTrainingAgentRouter(): Router {
     };
   }
 
-  // Rewrite `Accept: application/json` → `application/json, text/event-stream`
-  // (and mirror the rewrite into `req.rawHeaders`) so storyboard conformance
-  // probes and other strict JSON consumers don't trip the MCP transport's
-  // 406 Not Acceptable check. The transport runs its Accept check against a
-  // Fetch Request rebuilt from `rawHeaders` by `@hono/node-server` — which is
-  // why the middleware patches both surfaces. Upstream fix pending at
-  // modelcontextprotocol/typescript-sdk#1944.
-  const acceptRewrite = mcpAcceptHeaderMiddleware();
-
-  router.post('/mcp', mcpRateLimiter, requireTokenDefault, acceptRewrite, mcpHandler(false));
+  router.post('/mcp', mcpRateLimiter, requireTokenDefault, mcpHandler(false));
 
   // Strict endpoint for `adcp grade request-signing` and the AAO Verified
   // compliance dashboard. Enforces `required_for: ['create_media_buy']` with
@@ -408,7 +530,7 @@ export function createTrainingAgentRouter(): Router {
     setCORSHeaders(res);
     res.status(204).end();
   });
-  router.post('/mcp-strict', mcpRateLimiter, requireTokenStrict, acceptRewrite, mcpHandler(true));
+  router.post('/mcp-strict', mcpRateLimiter, requireTokenStrict, mcpHandler(true));
   router.get('/mcp-strict', (_req: Request, res: Response) => {
     setCORSHeaders(res);
     res.setHeader('Allow', 'POST, OPTIONS');
