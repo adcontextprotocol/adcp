@@ -263,6 +263,21 @@ export function resolveUserTier(opts: {
 }
 
 /**
+ * In-memory memo cache for `resolveUserTierFromDb` results. Subscription
+ * status changes on the order of days (Stripe webhooks → organizations
+ * update), so a 60s stale window is well within tolerance — a paying
+ * member briefly seeing member_free after a cancel, or a fresh
+ * subscriber seeing member_free for up to 60s after activation, is
+ * acceptable. The alternative is ~1 DB probe per Addie turn per active
+ * user, which burns connections for a value that rarely changes.
+ *
+ * Per-process: each worker has its own cache. No coherence needed
+ * across workers — staleness is bounded by the TTL.
+ */
+const TIER_CACHE_TTL_MS = 60_000;
+const tierCache = new Map<string, { tier: UserTier; expiresAt: number }>();
+
+/**
  * Resolve the right tier for a scope-key userId by looking up the
  * subscription status of a bare WorkOS user id. Non-WorkOS scope keys
  * (`slack:...`, `email:...`, etc.) can't resolve a real subscription
@@ -282,9 +297,16 @@ export function resolveUserTier(opts: {
  * This is the async, DB-touching counterpart to the pure
  * `resolveUserTier` above — the `FromDb` suffix is deliberate so a
  * call site can tell at a glance that this one awaits the database.
+ * Results are memoized for 60 seconds per userId to keep the hot path
+ * off the DB on repeated calls from the same user in a conversation.
  */
 export async function resolveUserTierFromDb(userId: string | null | undefined): Promise<UserTier> {
   if (!userId || !userId.startsWith('user_')) return 'member_free';
+
+  const now = Date.now();
+  const cached = tierCache.get(userId);
+  if (cached && cached.expiresAt > now) return cached.tier;
+
   try {
     const { rows } = await query<{ exists: 1 }>(
       `SELECT 1 AS exists
@@ -296,14 +318,44 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
         LIMIT 1`,
       [userId],
     );
-    return rows.length > 0 ? 'member_paid' : 'member_free';
+    const tier: UserTier = rows.length > 0 ? 'member_paid' : 'member_free';
+    tierCache.set(userId, { tier, expiresAt: now + TIER_CACHE_TTL_MS });
+    return tier;
   } catch (err) {
     logger.warn(
       { err, userId },
       'Failed to resolve user tier — defaulting to member_free',
     );
+    // Don't cache errors — a transient DB issue shouldn't make a
+    // member see member_free for a full TTL. Next call retries.
     return 'member_free';
   }
+}
+
+/**
+ * Build a complete cost-scope `{ userId, tier }` for Slack-originated
+ * callers. Collapses the 2-line prelude that was duplicated at every
+ * Slack site: resolve the WorkOS id (preferred) with a `slack:${id}`
+ * fallback, then probe the DB for subscription tier. Keeps the
+ * scope-key fallback shape in one place so future renames of the
+ * `slack:` namespace only touch one line.
+ */
+export async function buildSlackCostScope(
+  memberContext: { workos_user?: { workos_user_id?: string | null } | null } | null | undefined,
+  slackUserId: string,
+): Promise<{ userId: string; tier: UserTier }> {
+  const userId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
+  const tier = await resolveUserTierFromDb(userId);
+  return { userId, tier };
+}
+
+/**
+ * Test-only: clear the tier-resolution memo cache. Unit tests that
+ * drive the DB probe need a clean cache between runs so an earlier
+ * test's memoized result doesn't leak into the next.
+ */
+export function __clearTierCache(): void {
+  tierCache.clear();
 }
 
 /**

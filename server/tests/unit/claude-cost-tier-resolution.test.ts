@@ -16,10 +16,15 @@ vi.mock('../../src/db/client.js', () => ({
 
 // Import after the mock is installed so the module picks up the mocked
 // `query` reference instead of the real db/client.
-const { resolveUserTierFromDb } = await import('../../src/addie/claude-cost-tracker.js');
+const { resolveUserTierFromDb, buildSlackCostScope, __clearTierCache } =
+  await import('../../src/addie/claude-cost-tracker.js');
 
 beforeEach(() => {
   queryMock.mockReset();
+  // The helper memoizes results for 60s per userId. Clear between
+  // tests so cached values from an earlier case don't leak into the
+  // next one's expectations.
+  __clearTierCache();
 });
 
 describe('resolveUserTierFromDb', () => {
@@ -72,5 +77,61 @@ describe('resolveUserTierFromDb', () => {
     queryMock.mockRejectedValueOnce(new Error('Connection refused'));
     const tier = await resolveUserTierFromDb('user_01H2ABC');
     expect(tier).toBe('member_free');
+  });
+
+  it('memoizes results so repeated probes for the same user hit the DB once', async () => {
+    // 60s in-process cache. A chat burst should not produce N DB
+    // probes for the same user — one probe, cached tier, replayed.
+    queryMock.mockResolvedValueOnce({ rows: [{ exists: 1 }] });
+    expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
+    expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
+    expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
+    expect(queryMock).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT cache error paths — next call retries the DB', async () => {
+    // Transient DB failures shouldn't lock a paying member out of
+    // member_paid for a full 60s. The first call fails → returns
+    // member_free without caching; the second call retries.
+    queryMock.mockRejectedValueOnce(new Error('Connection refused'));
+    queryMock.mockResolvedValueOnce({ rows: [{ exists: 1 }] });
+    expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_free');
+    expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('memoizes per-user, not globally — different users get independent probes', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ exists: 1 }] });
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    expect(await resolveUserTierFromDb('user_alice')).toBe('member_paid');
+    expect(await resolveUserTierFromDb('user_bob')).toBe('member_free');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    // Second round: both cached, no further probes.
+    expect(await resolveUserTierFromDb('user_alice')).toBe('member_paid');
+    expect(await resolveUserTierFromDb('user_bob')).toBe('member_free');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('buildSlackCostScope', () => {
+  it('prefers the mapped WorkOS user id when memberContext carries one', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ exists: 1 }] });
+    const scope = await buildSlackCostScope(
+      { workos_user: { workos_user_id: 'user_01H2ABC' } },
+      'U_slack',
+    );
+    expect(scope).toEqual({ userId: 'user_01H2ABC', tier: 'member_paid' });
+  });
+
+  it('falls back to slack:<id> at member_free when no WorkOS mapping exists', async () => {
+    const scope = await buildSlackCostScope(null, 'U_unmapped');
+    expect(scope).toEqual({ userId: 'slack:U_unmapped', tier: 'member_free' });
+    // No DB probe — slack: scope keys skip the lookup.
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to slack:<id> when memberContext exists but workos_user is null', async () => {
+    const scope = await buildSlackCostScope({ workos_user: null }, 'U_pending');
+    expect(scope).toEqual({ userId: 'slack:U_pending', tier: 'member_free' });
   });
 });
