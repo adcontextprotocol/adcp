@@ -86,6 +86,29 @@ describe('getToolsForSets', () => {
       expect(TOOL_SETS.content.description).not.toMatch(/github issue/i);
     });
   });
+
+  describe('ALWAYS_AVAILABLE overlap invariant', () => {
+    it('no always-available tool (regular or admin) appears in any set tools array', () => {
+      // If a guaranteed tool is also in a set's tools array, that set's
+      // description will (by construction) describe that capability. When the
+      // set appears in the unavailable-sets hint, Sonnet reads the description
+      // and hallucinates that the capability is off — even though the tool is
+      // loaded via ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS.
+      // Keeping these arrays disjoint is the only way to prevent that class of
+      // hallucination. See #2998.
+      const always = new Set([...ALWAYS_AVAILABLE_TOOLS, ...ALWAYS_AVAILABLE_ADMIN_TOOLS]);
+      for (const [setName, set] of Object.entries(TOOL_SETS)) {
+        for (const tool of set.tools) {
+          expect(
+            always.has(tool),
+            `${setName}.tools contains "${tool}" which is also in ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS. ` +
+            `Remove it from the set's tools array — it is already guaranteed and duplicating it ` +
+            `causes Sonnet to hallucinate unavailability from set descriptions.`,
+          ).toBe(false);
+        }
+      }
+    });
+  });
 });
 
 describe('buildUnavailableSetsHint', () => {
