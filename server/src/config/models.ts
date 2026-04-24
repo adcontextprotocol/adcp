@@ -32,6 +32,20 @@ export const ModelConfig = {
    * Examples: sending invoices, quoting prices, handling payments.
    */
   precision: process.env.CLAUDE_MODEL_PRECISION || 'claude-opus-4-6',
+
+  /**
+   * Depth model for multi-step reasoning, expert consultation, and long-
+   * context synthesis. Same model powers the AdCP triage routines so
+   * Addie's deep-question answers stay consistent with GitHub triage.
+   * Default: claude-opus-4-7[1m] (newer, larger context)
+   * Override: CLAUDE_MODEL_DEPTH
+   *
+   * Use this when the turn requires reasoning across many docs, multi-
+   * expert synthesis, or protocol-level analysis. Distinct from precision
+   * (billing accuracy) — depth is about thinking, precision is about
+   * "don't hallucinate this number."
+   */
+  depth: process.env.CLAUDE_MODEL_DEPTH || 'claude-opus-4-7[1m]',
 } as const;
 
 /**
