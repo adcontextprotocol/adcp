@@ -130,8 +130,11 @@ describe('buildSlackCostScope', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to slack:<id> when memberContext exists but workos_user is null', async () => {
-    const scope = await buildSlackCostScope({ workos_user: null }, 'U_pending');
+  it('falls back to slack:<id> when memberContext exists but workos_user is absent', async () => {
+    // MemberContext.workos_user is optional — matches the case where
+    // the caller found a memberContext but the Slack user isn't
+    // mapped to a WorkOS identity yet.
+    const scope = await buildSlackCostScope({ workos_user: undefined }, 'U_pending');
     expect(scope).toEqual({ userId: 'slack:U_pending', tier: 'member_free' });
   });
 });

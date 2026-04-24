@@ -46,6 +46,7 @@ import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { costUsdMicros, type ClaudeUsage } from './claude-pricing.js';
 import { SYSTEM_USER_IDS } from './system-identities.js';
+import type { MemberContext } from './member-context.js';
 
 const logger = createLogger('addie-cost-tracker');
 
@@ -272,10 +273,39 @@ export function resolveUserTier(opts: {
  * user, which burns connections for a value that rarely changes.
  *
  * Per-process: each worker has its own cache. No coherence needed
- * across workers — staleness is bounded by the TTL.
+ * across workers — staleness is bounded by the TTL. There is no
+ * webhook-triggered invalidation hook; Stripe cancellations propagate
+ * via the next DB probe after the 60s TTL elapses.
+ *
+ * Expired entries are lazy-evicted on the next lookup for the same
+ * key. Under normal load the cache self-trims at a steady state
+ * equal to distinct active users in the last 60s. The lazy sweep
+ * inside `writeCachedTier` bounds worst-case growth if the caller
+ * graph ever starts passing more transient keys than we expect.
  */
 const TIER_CACHE_TTL_MS = 60_000;
+const TIER_CACHE_MAX_SIZE = 10_000;
 const tierCache = new Map<string, { tier: UserTier; expiresAt: number }>();
+
+function writeCachedTier(userId: string, tier: UserTier): void {
+  // When the cache crosses the soft cap, opportunistically sweep
+  // expired entries. Bounds memory at worst case O(cap) under any
+  // access pattern without paying for eviction on the hot path.
+  if (tierCache.size >= TIER_CACHE_MAX_SIZE) {
+    const now = Date.now();
+    for (const [k, v] of tierCache) {
+      if (v.expiresAt <= now) tierCache.delete(k);
+    }
+    // Pathological burst: 10k distinct users active within the TTL
+    // window. Clear oldest half via insertion-order iteration so the
+    // cache can resume filling with fresh entries.
+    if (tierCache.size >= TIER_CACHE_MAX_SIZE) {
+      const keysToDrop = [...tierCache.keys()].slice(0, Math.floor(TIER_CACHE_MAX_SIZE / 2));
+      for (const k of keysToDrop) tierCache.delete(k);
+    }
+  }
+  tierCache.set(userId, { tier, expiresAt: Date.now() + TIER_CACHE_TTL_MS });
+}
 
 /**
  * Resolve the right tier for a scope-key userId by looking up the
@@ -319,7 +349,7 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
       [userId],
     );
     const tier: UserTier = rows.length > 0 ? 'member_paid' : 'member_free';
-    tierCache.set(userId, { tier, expiresAt: now + TIER_CACHE_TTL_MS });
+    writeCachedTier(userId, tier);
     return tier;
   } catch (err) {
     logger.warn(
@@ -339,9 +369,14 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
  * fallback, then probe the DB for subscription tier. Keeps the
  * scope-key fallback shape in one place so future renames of the
  * `slack:` namespace only touch one line.
+ *
+ * Accepts `Pick<MemberContext, 'workos_user'>` rather than the full
+ * `MemberContext` shape — the helper only reads `workos_user`, so
+ * accepting a narrower structural type keeps the dependency minimal
+ * while still tracking shape changes in `member-context.ts`.
  */
 export async function buildSlackCostScope(
-  memberContext: { workos_user?: { workos_user_id?: string | null } | null } | null | undefined,
+  memberContext: Pick<MemberContext, 'workos_user'> | null | undefined,
   slackUserId: string,
 ): Promise<{ userId: string; tier: UserTier }> {
   const userId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
