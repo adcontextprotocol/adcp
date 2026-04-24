@@ -1,0 +1,4 @@
+---
+---
+
+Pin `@latest` in every documented `npx @adcp/client` invocation. Unpinned `npx` silently reuses whatever version is cached in `~/.npm/_npx/` — users follow our docs, run months-old CLI code, hit bugs that are already fixed, and don't realize they're on a stale version. Touches all five `docs/building/` guides, the buyer/publisher/platform learning tracks + instructional-design, the `create_media_buy` task reference, `server/public/llms.txt` + `llms-full.txt`, Addie's certification-tools + prompts + knowledge rules (so Addie recommends the pinned form and can diagnose stale-cache symptoms), and `scripts/build-protocol-tarball.cjs`. Mirrors adcontextprotocol/adcp-client#835, which also adds a CLI startup staleness check for every path that `@latest` doesn't cover (global installs, locked `package.json`, corporate forks, `pnpm dlx`).
