@@ -10,6 +10,7 @@ vi.hoisted(() => {
 import {
   sendChannelMessage,
   verifyChannelStillPrivate,
+  verifyChannelPrivacyForWrite,
   __resetChannelCacheForTests,
 } from '../../src/slack/client.js';
 
@@ -185,5 +186,66 @@ describe('sendChannelMessage({ requirePrivate: "strict-public-only" })', () => {
     expect(result.ok).toBe(false);
     expect(result.skipped).toBe('not_private');
     expect(postedMessages).toHaveLength(0);
+  });
+});
+
+/**
+ * #3003 — write-time privacy check. The 7 admin settings PUT routes
+ * previously had a silent fail-open on `getChannelInfo` null: if Slack
+ * couldn't describe the channel (bot not a member, missing scope,
+ * transient 5xx), the check was skipped and the write was accepted.
+ * For private-required endpoints the downstream send-time gate
+ * covered most cases, but the announcement endpoint (inverted:
+ * require public) had no downstream gate and would silently misroute.
+ *
+ * `verifyChannelPrivacyForWrite` now fails closed on null with a
+ * distinct `cannot_verify` reason so the caller can render a distinct
+ * message ("invite the bot, retry") vs `wrong_privacy` ("pick
+ * another channel").
+ */
+describe('verifyChannelPrivacyForWrite', () => {
+  it('expected=private, channel is private → ok', async () => {
+    channelInfoResponses.set('C_p', { id: 'C_p', name: 'priv', is_private: true });
+    expect(await verifyChannelPrivacyForWrite('C_p', 'private')).toEqual({ ok: true });
+  });
+
+  it('expected=public, channel is public → ok', async () => {
+    channelInfoResponses.set('C_pub', { id: 'C_pub', name: 'pub', is_private: false });
+    expect(await verifyChannelPrivacyForWrite('C_pub', 'public')).toEqual({ ok: true });
+  });
+
+  it('expected=private, channel is public → wrong_privacy with actual/expected', async () => {
+    channelInfoResponses.set('C_wrong', { id: 'C_wrong', name: 'wrong', is_private: false });
+    expect(await verifyChannelPrivacyForWrite('C_wrong', 'private')).toEqual({
+      ok: false,
+      reason: 'wrong_privacy',
+      actual: 'public',
+      expected: 'private',
+    });
+  });
+
+  it('expected=public, channel is private → wrong_privacy with actual/expected', async () => {
+    channelInfoResponses.set('C_wrong2', { id: 'C_wrong2', name: 'wrong2', is_private: true });
+    expect(await verifyChannelPrivacyForWrite('C_wrong2', 'public')).toEqual({
+      ok: false,
+      reason: 'wrong_privacy',
+      actual: 'private',
+      expected: 'public',
+    });
+  });
+
+  it('cannot resolve the channel → cannot_verify (fail-closed)', async () => {
+    // Previously this path silently accepted the write. The new
+    // contract is: refuse with cannot_verify so the admin knows to
+    // invite the bot and retry rather than saving an unverifiable
+    // channel id that might misroute at send time.
+    expect(await verifyChannelPrivacyForWrite('C_not_found', 'private')).toEqual({
+      ok: false,
+      reason: 'cannot_verify',
+    });
+    expect(await verifyChannelPrivacyForWrite('C_not_found', 'public')).toEqual({
+      ok: false,
+      reason: 'cannot_verify',
+    });
   });
 });
