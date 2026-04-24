@@ -145,6 +145,23 @@ Sellers that support scope introspection attach an `authorization` object to eac
 
 Sellers claiming the `attestation_verifier` standard scope **MUST** populate `authorization` — the Tier-2 attestation flow depends on verifying the advertised scope matches enforcement.
 
+### Identity binding, refresh cadence, and consistency
+
+The `authorization` object is **implicitly scoped to the `(caller identity, account_id)` tuple** at read time. The same account returned to a different authenticated caller MAY return a different `authorization` object — that's the point of the RBAC model. Sellers MUST resolve caller identity from the authenticated request (not from any client-supplied field) and MUST bind the returned `authorization` to that resolved identity.
+
+**Refresh cadence.**
+
+- Callers SHOULD re-read `authorization` at least every **300 seconds** of active use against an account, via `sync_accounts` or `list_accounts` (filtered by the held `account`).
+- Sellers MUST reflect operator-initiated scope changes in `sync_accounts` / `list_accounts` responses **within 300 seconds** of the change being made. A compliant caller polling every 300s sees operator changes within at most one refresh cycle.
+- Sellers MAY cache the `authorization` object briefly but MUST NOT cache past 300 seconds without revalidation.
+- The 300s figure is a floor, not a target — sellers whose scope changes more frequently SHOULD surface them faster, and callers running Tier-2 attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
+
+**Consistency.**
+
+For a given `(caller identity, account_id)` tuple, sequential reads within the refresh window MUST return identical `authorization` objects, modulo operator-initiated scope changes. Flicker from load-balanced or eventually-consistent backends — two reads 10 seconds apart returning different `allowed_tasks` because they hit different replicas — is non-conformant. Compliance engines and coding agents rely on scope stability for state tracking; a seller that cannot guarantee it MUST omit `authorization` rather than populate it inconsistently.
+
+This is the concrete form of the "systematically-divergent is non-conformant" guarantee from the presence semantics above — it's verifiable: a conformance check can read the same account twice from the same identity inside the refresh window and diff the results.
+
 ### Standard named scope: `attestation_verifier`
 
 Sellers advertising Tier-2 Production Verified conformance readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
