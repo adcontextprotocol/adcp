@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/offer-price.json",
   "title": "Offer Price",
   "description": "Lightweight price for a TMP offer. Used when the product supports variable pricing and the buyer specifies a price at match time.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "amount": {

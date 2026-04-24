@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/offer.json",
   "title": "Offer",
   "description": "A buyer's response to a context match request. Generalizes package activation — a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "package_id": {
