@@ -38,7 +38,7 @@ describe('Rules Loader', () => {
     expect(rules).toContain('## Partner Directory');
 
     // Knowledge
-    expect(rules).toContain('## AdCP Agent Types');
+    expect(rules).toContain('## AdCP Protocol Architecture');
     expect(rules).toContain('## Prebid Expertise');
     expect(rules).toContain('## Trusted Match Protocol (TMP)');
 
