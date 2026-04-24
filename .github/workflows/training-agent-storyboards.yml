@@ -43,12 +43,12 @@ jobs:
             min_passing_steps: 378
           - mode: framework
             flag_value: '1'
-            # 44→51 after 5.13 bump + wrapEnvelope(replayed:false) +
-            # governance plan cross-session fallback + event-source
-            # auto-register. Single residual: create_media_buy_initial
-            # replayed field (framework adapter task-path wrapping).
-            min_clean_storyboards: 51
-            min_passing_steps: 378
+            # 51→52 after dropping the fresh-path replayed assertion
+            # in universal/idempotency.yaml (per envelope spec, fresh
+            # executions MAY omit the field; the replay step already
+            # covers the real regression surface).
+            min_clean_storyboards: 52
+            min_passing_steps: 390
     steps:
       - uses: actions/checkout@v6
 
