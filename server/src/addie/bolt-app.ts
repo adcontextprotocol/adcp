@@ -1545,7 +1545,11 @@ async function handleUserMessage({
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     slackUserId: userId,
     threadId: thread.thread_id,
     costScope: { userId: costScopeUserId, tier: costScopeTier },
@@ -1813,7 +1817,11 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const dmEffectiveModel = (routedTools.requiresPrecision || routedTools.requiresDepth) ? ModelConfig.precision : AddieModelConfig.chat;
+  const dmEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2147,6 +2155,11 @@ async function handleAppMention({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
   const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
+  const mentionModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || mentionIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
   // Admin users get higher iteration limit for bulk operations.
   // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
@@ -2156,7 +2169,7 @@ async function handleAppMention({
   const mentionCostScopeTier = await resolveUserTierFromDb(mentionCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
@@ -2195,7 +2208,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -3118,7 +3131,11 @@ async function handleDirectMessage(
   const dmCostScopeTier = await resolveUserTierFromDb(dmCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
@@ -3493,6 +3510,11 @@ async function handleActiveThreadReply({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
   const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
+  const threadModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || threadIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
   // Admin users get higher iteration limit.
   // Cost cap scope follows the mention-handler pattern above.
@@ -3500,7 +3522,7 @@ async function handleActiveThreadReply({
   const threadCostScopeTier = await resolveUserTierFromDb(threadCostScopeUserId);
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
@@ -3540,7 +3562,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -4078,13 +4100,18 @@ async function handleChannelMessage({
     // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
     const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
     const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
-    const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+    const channelModelOverride = plan.requires_precision
+      ? ModelConfig.precision
+      : (plan.requires_depth || channelIsDepthChannel)
+        ? ModelConfig.depth
+        : undefined;
+    const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
     // Cost cap scope follows the mention-handler pattern above.
     const channelCostScopeUserId = memberContext?.workos_user?.workos_user_id ?? `slack:${userId}`;
     const channelCostScopeTier = await resolveUserTierFromDb(channelCostScopeUserId);
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+      ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
