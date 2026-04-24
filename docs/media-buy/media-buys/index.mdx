@@ -276,6 +276,8 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 
 **Terminal states**: `completed`, `rejected`, and `canceled` are terminal — no transitions out. Sellers MUST reject updates to terminal-state media buys with error code `INVALID_STATE`.
 
+**Seller implementation requirement — persist status, never recompute from dates**: `status` MUST be stored as an explicit field and mutated only by protocol events. Flight-date arithmetic cannot represent `paused`, `canceled`, or `rejected` — those are driven by explicit commands, not the clock. Sellers that recompute `status` from `start_time`/`end_time` at request time will silently drop these states, breaking `valid_actions` for every buyer reading the media buy. The correct approach: date comparison sets the initial status at `create_media_buy` time (`pending_creatives`, `pending_start`, or `active`); after that, the state machine owns the field.
+
 **Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine:
 
 ```json

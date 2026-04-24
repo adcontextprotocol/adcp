@@ -140,6 +140,10 @@ Implement `create_media_buy` to accept campaign instructions from buyer agents. 
 
 Your platform processes the buy according to your normal workflow — whether that's instant activation, internal review, or an approval queue. AdCP's asynchronous status system (`completed`, `working`, `submitted`, `input-required`) lets you model any workflow.
 
+<Note>
+**Status must be persisted, not computed from flight dates.** Store `status` as an explicit database field, updated only by protocol events — not by comparing `start_time`/`end_time` to the current date. Date arithmetic cannot produce `paused`, `canceled`, or `rejected`; those states are driven by explicit commands. See [lifecycle states](/docs/media-buy/media-buys#lifecycle-states) for the full implementation requirement.
+</Note>
+
 </Steps>
 
 ## Industry-specific guidance
