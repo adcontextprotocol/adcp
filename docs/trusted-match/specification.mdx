@@ -300,7 +300,11 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 
 ## Package Sync
 
-Package metadata is synced from seller agents to TMP providers at media buy creation time and whenever the media buy materially changes. Providers cache the `AvailablePackage` set per placement and use it at request time — no package metadata flows through `context_match_request` or `identity_match_request`. The sync transport and authentication are deployment-specific; this section defines the payload contract and the obligations each participant inherits.
+Package metadata is synced from seller agents to TMP providers at media buy creation time and whenever the media buy materially changes. Providers cache the `AvailablePackage` set per placement and use it at request time — no package metadata flows through `context_match_request` or `identity_match_request`. The sync transport, authentication, and batch-error shape are deployment-specific; this section defines the payload contract and the obligations each participant inherits.
+
+<Note>
+`seller_agent` on `AvailablePackage` is required under the experimental `trusted_match.core` surface. Sellers running TMP in existing deployments must update their sync payloads to populate it — see the [experimental feature contract](/docs/reference/experimental-status) for the 3.x-to-3.x evolution policy.
+</Note>
 
 ### AvailablePackage
 
@@ -331,19 +335,21 @@ The canonical seller identity in AdCP is the agent URL declared in the property 
 - Putting `seller_agent` on the request would either duplicate the sync-time binding (redundant) or open a path for request-time seller filtering, which re-introduces the identity- and allocation-leakage failure modes [Package set decorrelation](#package-set-decorrelation) exists to prevent.
 - Publishers and routers can derive seller identity from `media_buy_id` via their own stores; providers cannot. Keeping attribution on the package serves the actor that actually needs it on the wire.
 
-**Offer echo.** `seller_agent` MAY appear on `offer.json` as an echo from the cached package. It is non-authoritative — if an offer's `seller_agent` disagrees with the cached `AvailablePackage`, the cached binding wins. The echo exists for publisher-side log pipelines that want one-hop attribution without rejoining to the media-buy store. Routers MAY stamp it on merge when providers omit it.
+**Offer echo.** `seller_agent` MAY appear on `offer.json` as an echo from the cached package, for publisher-side log pipelines that want one-hop attribution without rejoining to the media-buy store. The echo is non-authoritative — the cached `AvailablePackage` binding is source of truth. Providers and routers MUST overwrite a disagreeing echo with the cached binding before logging, forwarding, or emitting the offer downstream, and MUST NOT use the echo value in any field consumed for billing, reporting, or dispute resolution. A disagreement SHOULD be counted to a `seller_agent_echo_mismatch` metric for anomaly detection. Routers MAY stamp `seller_agent` on merge when providers omit it.
 
 ### Sync-Time Validation
 
 Providers SHOULD validate `seller_agent.agent_url` against the property publisher's adagents.json at sync time:
 
-1. For each property the package may serve, resolve the authoritative adagents.json via `/.well-known/adagents.json` on the property domain (following the [adagents.json authoritative_location](/schemas/adagents.json) indirection rules).
+1. For each property the package may serve, fetch `/.well-known/adagents.json` on the property domain. If the file contains an `authoritative_location` pointer, follow it at most one hop to a same-scheme HTTPS URL; do not chain further. Both the initial fetch and the `authoritative_location` hop MUST apply the [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS-only, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no transparent redirects, and the TCP connection pinned to the validated IP. The inbound-fetch rules referenced for [Provider registration security](#provider-registration-security) apply equally to this outbound fetch.
 2. Confirm that `seller_agent.agent_url` appears in `authorized_agents[].url` and that any `property_ids`, `collections`, `placement_ids`, `placement_tags`, `countries`, `effective_from`, and `effective_until` constraints on that entry permit the package's scope.
-3. On mismatch, reject the sync operation for that `AvailablePackage` with an `error` response using `code: seller_not_authorized`. Other packages in the same sync batch are unaffected.
+3. On mismatch, reject the sync operation for that `AvailablePackage` with an `error` response using `code: seller_not_authorized`. Other packages in the same sync batch are unaffected. The exact wire shape of the sync error is deployment-specific; `code` is the machine-readable reason.
 
-The validation result SHOULD be cached to match the adagents.json cache window (recommended: 5 minutes, aligned with the [Provider registration security](#provider-registration-security) rules for external HTTPS fetches). Providers MUST revalidate when the cache expires and SHOULD surface sustained `seller_not_authorized` rejections to publisher operations — repeated failures usually indicate the publisher's adagents.json and the seller's sync pipeline have diverged.
+**Cache and re-validation.** The validation result SHOULD be cached for at most 5 minutes, matching the recommended adagents.json cache window. Providers MUST re-validate on cache expiry and SHOULD surface sustained `seller_not_authorized` rejections to publisher operations — repeated failures usually indicate the publisher's adagents.json and the seller's sync pipeline have diverged. When an authorization's `effective_until` passes or the seller is removed from `authorized_agents`, providers MUST treat previously-cached packages from that seller as `unknown_package` at request time until they are re-synced and re-validated.
 
-This validation is SHOULD rather than MUST for v1 because seller agents in early TMP deployments often predate adagents.json coverage of their URLs. Deployments that run trusted seller onboarding out of band MAY skip the check; deployments that accept public sync traffic MUST enable it.
+**Fetch failures.** When validation cannot complete (fetch error, timeout, cert failure, malformed file), providers SHOULD reject the sync with `seller_not_authorized` rather than cache an unvalidated binding. Providers that fail-open MUST bound the unvalidated window to the 5-minute cache TTL and re-validate at the next opportunity; a binding that has never successfully validated MUST NOT remain cached past that window.
+
+**Bypass for pre-attested relationships.** Providers MAY skip the adagents.json check only when they can verify the same `agent_url → authorized_agents[].url` binding through an out-of-band onboarding process (e.g., a mutually authenticated provider-seller enrollment that carries the publisher's attestation), and SHOULD publish their enforcement mode (`enforcing` / `advisory`) in their conformance self-report so publishers can gate onboarding. This escape hatch is permitted for `trusted_match.core` v1 and will be removed in the first non-experimental TMP release, at which point the validation becomes MUST.
 
 ### Participant Responsibilities
 
@@ -352,13 +358,13 @@ This validation is SHOULD rather than MUST for v1 because seller agents in early
 | **Seller agent** | Include its own adagents-registered `agent_url` as `seller_agent.agent_url` on every `AvailablePackage` it syncs. MUST be the URL the publisher has attested in `authorized_agents[].url`. | No new behavior. The offer MAY echo `seller_agent`; omitting it is fine — the router can stamp from cache. |
 | **Publisher** | Keep `authorized_agents` in adagents.json accurate, including scope constraints (`property_ids`, `placement_ids`, `countries`, effective windows). | No new behavior. |
 | **Router** | No new behavior. | MAY stamp `seller_agent` on offers that arrive without it, using its cached package→seller binding. MUST NOT forward `seller_agent` into `context_match_request` or `identity_match_request`. |
-| **Provider** | Validate `seller_agent.agent_url` against the property's adagents.json per [Sync-Time Validation](#sync-time-validation). Reject unauthorized packages with `seller_not_authorized`. Store the binding with the cached package. | Echo `seller_agent` on offers it produces. No request-time seller logic — the binding is immutable once cached. |
+| **Provider** | Validate `seller_agent.agent_url` against the property's adagents.json per [Sync-Time Validation](#sync-time-validation). Reject unauthorized packages with `seller_not_authorized`. Store the binding with the cached package. | Echo `seller_agent` on offers it produces. The cached binding is immutable for an in-flight decision, but providers MUST treat packages whose authorization has expired (removal from `authorized_agents` or `effective_until` passed) as `unknown_package` on subsequent requests until the package is re-synced. |
 
 ### What This Is Not
 
 - **Not a request-time filter.** Publishers, routers, and providers MUST NOT use `seller_agent` to scope, filter, or route `context_match_request` or `identity_match_request`. `package_ids` remains the only scoping mechanism.
 - **Not a sellers.json bridge.** IAB sellers.json `seller_id` and TAG-IDs serve a distinct financial-audit identity space. They remain on `adagents.json` `contact` — TMP does not duplicate them.
-- **Not a cryptographic attestation.** The binding is publisher-attested via adagents.json over HTTPS. Signed TMP seller claims are a future enhancement and can layer onto `SellerAgentRef` through the reserved `id` slot or an `ext` field without breaking changes.
+- **Not a cryptographic attestation.** The binding is publisher-attested via adagents.json over HTTPS. Signed TMP seller claims are a future enhancement and can layer onto `SellerAgentRef` through the reserved `id` slot or an `ext` field without breaking changes. When a future release populates both `agent_url` and `id`, `agent_url` remains authoritative and `id` is advisory — a disagreement between the two MUST NOT be used to upgrade trust above what the URL's adagents.json binding provides.
 
 ## Privacy Requirements
 

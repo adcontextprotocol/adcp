@@ -12,8 +12,9 @@
     },
     "id": {
       "type": "string",
-      "description": "Reserved for a future registry-assigned stable seller identifier. Not used today. Included so the reference can absorb an opaque ID layer later without a breaking rename.",
-      "pattern": "^[a-zA-Z0-9_-]+$"
+      "description": "Reserved for a future registry-assigned stable seller identifier. Not used today — senders MUST NOT populate this field until a registry is defined. When a future release populates both `agent_url` and `id`, `agent_url` remains authoritative and `id` is advisory.",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "minLength": 1
     }
   },
   "required": ["agent_url"],
