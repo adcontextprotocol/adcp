@@ -84,16 +84,55 @@ Be pragmatic. Most edits are fine. Only flag what genuinely looks wrong.`,
       .map(b => b.text)
       .join('');
 
-    const parsed = JSON.parse(text);
-    const validVerdicts = ['ok', 'suspicious', 'malicious'];
-    if (validVerdicts.includes(parsed.verdict) && parsed.reason) {
-      return { verdict: parsed.verdict, reason: parsed.reason };
+    const parsed = parseReviewJson(text);
+    const validVerdicts = ['ok', 'suspicious', 'malicious'] as const;
+    if (
+      parsed &&
+      (validVerdicts as readonly string[]).includes(parsed.verdict) &&
+      parsed.reason
+    ) {
+      return {
+        verdict: parsed.verdict as ReviewResult['verdict'],
+        reason: parsed.reason,
+      };
     }
     return { verdict: 'ok', reason: 'Review completed (could not parse structured response)' };
   } catch (error) {
     logger.error({ error }, 'Registry review LLM call failed');
     return { verdict: 'ok', reason: 'Review skipped due to error' };
   }
+}
+
+/**
+ * Extract a JSON object from an LLM response, tolerating markdown code fences
+ * and leading/trailing prose.
+ */
+function parseReviewJson(text: string): { verdict: string; reason: string } | null {
+  const trimmed = text.trim();
+
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidates: string[] = [];
+  if (fenceMatch) candidates.push(fenceMatch[1].trim());
+  candidates.push(trimmed);
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as { verdict: string; reason: string };
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return null;
 }
 
 /**
