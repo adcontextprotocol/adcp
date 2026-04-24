@@ -121,4 +121,25 @@ describe('resolveEditorialChannel', () => {
     const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBeNull();
   });
+
+  it('treats whitespace-only DB channel_id as unset (symmetric with env)', async () => {
+    mockGetEditorialChannel.mockResolvedValueOnce({
+      channel_id: '   ',
+      channel_name: 'whatever',
+    });
+    process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0FROMENV01';
+
+    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
+    expect(await resolveEditorialChannel()).toBe('C0FROMENV01');
+  });
+
+  it('trims whitespace from DB channel_id', async () => {
+    mockGetEditorialChannel.mockResolvedValueOnce({
+      channel_id: '  C0FROMDB01  ',
+      channel_name: 'editorial',
+    });
+
+    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
+    expect(await resolveEditorialChannel()).toBe('C0FROMDB01');
+  });
 });

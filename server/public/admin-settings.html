@@ -243,6 +243,60 @@
           </div>
         </div>
 
+        <!-- Editorial Review Channel -->
+        <div class="setting-section">
+          <h3>Editorial review channel</h3>
+          <p>
+            Private channel where the editorial working group approves new-member
+            announcements, content drafts, and other posts that need human review
+            before they go public.
+          </p>
+
+          <div class="current-value" id="currentEditorialChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="editorialChannel">Select channel</label>
+              <select id="editorialChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only private channels are shown. Invite Addie to your editorial channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveEditorialChannelBtn" onclick="saveEditorialChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Public Announcement Channel -->
+        <div class="setting-section">
+          <h3>Public announcement channel <span class="badge badge-public" style="display: inline-block; margin-left: var(--space-2); padding: 2px 8px; font-size: var(--text-xs); font-weight: 500; background: var(--color-blue-50, #eff6ff); color: var(--color-blue-700, #1d4ed8); border-radius: var(--radius-sm);">public</span></h3>
+          <p>
+            Public channel where approved new-member announcements are posted.
+            This is the only picker here that accepts public channels —
+            announcements are meant for broad visibility.
+          </p>
+
+          <div class="current-value" id="currentAnnouncementChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="announcementChannel">Select channel</label>
+              <select id="announcementChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only <strong>public</strong> channels are shown. Invite Addie to the channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveAnnouncementChannelBtn" onclick="saveAnnouncementChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
         <!-- Prospect Notifications Channel -->
         <div class="setting-section">
           <h3>Prospect notifications channel</h3>
@@ -290,60 +344,6 @@
               <small>Only private channels are shown. Invite Addie to your error channel first.</small>
             </div>
             <button class="btn btn-primary" id="saveErrorChannelBtn" onclick="saveErrorChannel()" disabled>
-              Save
-            </button>
-          </div>
-        </div>
-
-        <!-- Editorial Review Channel -->
-        <div class="setting-section">
-          <h3>Editorial review channel</h3>
-          <p>
-            Private channel where the editorial working group approves new-member
-            announcements, content drafts, and other posts that need human review
-            before they go public. Receives Workflow B announcement review cards.
-          </p>
-
-          <div class="current-value" id="currentEditorialChannel">
-            <span>Loading...</span>
-          </div>
-
-          <div class="setting-row">
-            <div class="field">
-              <label for="editorialChannel">Select channel</label>
-              <select id="editorialChannel" disabled>
-                <option value="">Loading channels...</option>
-              </select>
-              <small>Only private channels are shown. Invite Addie to your editorial channel first.</small>
-            </div>
-            <button class="btn btn-primary" id="saveEditorialChannelBtn" onclick="saveEditorialChannel()" disabled>
-              Save
-            </button>
-          </div>
-        </div>
-
-        <!-- Public Announcement Channel -->
-        <div class="setting-section">
-          <h3>Public announcement channel</h3>
-          <p>
-            Public channel where approved new-member announcements land (Workflow B
-            Stage 2). Unlike the other channels here, this one is intentionally public —
-            a private channel would defeat the point of a broad welcome.
-          </p>
-
-          <div class="current-value" id="currentAnnouncementChannel">
-            <span>Loading...</span>
-          </div>
-
-          <div class="setting-row">
-            <div class="field">
-              <label for="announcementChannel">Select channel</label>
-              <select id="announcementChannel" disabled>
-                <option value="">Loading channels...</option>
-              </select>
-              <small>Only public channels are shown. Invite Addie to the channel first.</small>
-            </div>
-            <button class="btn btn-primary" id="saveAnnouncementChannelBtn" onclick="saveAnnouncementChannel()" disabled>
               Save
             </button>
           </div>
@@ -419,11 +419,17 @@
       }
     }
 
-    // Load Slack channels for all pickers. Private channels fill five
-    // of the six dropdowns; the announcement dropdown pulls from the
+    // Load Slack channels for all pickers. Private channels fill six
+    // of the seven dropdowns; the announcement dropdown pulls from the
     // separate `visibility=public` endpoint because an announcement
     // posted to a private channel would defeat the point.
+    //
+    // The two fetches are independent: if public fails, the five
+    // private pickers must still populate, so the public fetch is
+    // isolated in its own try/catch and degrades to a distinct
+    // error state on the announcement dropdown only.
     let publicSlackChannels = [];
+    let publicFetchError = null;
     async function loadSlackChannels() {
       const billingSelect = document.getElementById('billingChannel');
       const escalationSelect = document.getElementById('escalationChannel');
@@ -445,7 +451,22 @@
 
         const privateData = await privateRes.json();
         slackChannels = privateData.channels;
-        publicSlackChannels = publicRes.ok ? (await publicRes.json()).channels ?? [] : [];
+
+        // Public fetch: keep isolated so a failure here doesn't wipe
+        // the private dropdowns. publicFetchError distinguishes
+        // "fetch failed" from "really zero public channels".
+        try {
+          if (!publicRes.ok) {
+            const data = await publicRes.json().catch(() => ({}));
+            throw new Error(data.message || `Public-channel fetch returned ${publicRes.status}`);
+          }
+          publicSlackChannels = (await publicRes.json()).channels ?? [];
+          publicFetchError = null;
+        } catch (pubErr) {
+          publicSlackChannels = [];
+          publicFetchError = pubErr instanceof Error ? pubErr.message : String(pubErr);
+          showStatusMessage('Could not load public channels: ' + publicFetchError, 'error');
+        }
 
         // Build options for all private-channel dropdowns
         let billingHtml = '<option value="">-- No channel (disabled) --</option>';
@@ -504,10 +525,25 @@
           document.getElementById('saveEditorialChannelBtn').disabled = false;
         }
 
-        // Public channels for the announcement picker.
+        // Public channels for the announcement picker. Three states:
+        //   - Fetch failed → keep disabled + distinct error label
+        //   - Fetch succeeded but no channels → invite-Addie hint +
+        //     fire a warning (the picker is unusable without one)
+        //   - Fetch succeeded with channels → normal render
         let announcementHtml = '<option value="">-- No channel (disabled) --</option>';
-        if (publicSlackChannels.length === 0) {
+        if (publicFetchError) {
+          announcementSelect.innerHTML = `<option value="">Error loading public channels</option>`;
+        } else if (publicSlackChannels.length === 0) {
           announcementSelect.innerHTML = '<option value="">No public channels found - invite Addie first</option>';
+          // Only warn if the admin needs this picker to work (no
+          // existing setting). If it's already configured, they
+          // don't need to see a scary error on every load.
+          if (!currentSettings?.announcement_channel?.channel_id) {
+            showStatusMessage(
+              'Addie is not in any public channels. Invite @Addie to a public channel and refresh to enable the announcement picker.',
+              'error',
+            );
+          }
         } else {
           publicSlackChannels.forEach(ch => {
             const selected = currentSettings?.announcement_channel?.channel_id === ch.id ? 'selected' : '';
@@ -842,7 +878,12 @@
       }
     }
 
-    // Update the current editorial channel display
+    // Update the current editorial channel display.
+    // NB: we don't claim the feature is "disabled" when unset — the
+    // server can still fall back to SLACK_EDITORIAL_REVIEW_CHANNEL env
+    // var, and we don't know from the client whether that's set. "Not
+    // configured" is the honest label; the admin can reason about
+    // what that means for their deployment.
     function updateCurrentEditorialChannelDisplay() {
       const el = document.getElementById('currentEditorialChannel');
       const channel = currentSettings?.editorial_channel;
@@ -852,11 +893,11 @@
         el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
       } else {
         el.className = 'current-value not-set';
-        el.innerHTML = '<strong>Current:</strong> Not configured (editorial review disabled)';
+        el.innerHTML = '<strong>Current:</strong> Not configured';
       }
     }
 
-    // Update the current announcement channel display
+    // Update the current announcement channel display.
     function updateCurrentAnnouncementChannelDisplay() {
       const el = document.getElementById('currentAnnouncementChannel');
       const channel = currentSettings?.announcement_channel;
@@ -866,7 +907,7 @@
         el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
       } else {
         el.className = 'current-value not-set';
-        el.innerHTML = '<strong>Current:</strong> Not configured (announcements stay in review)';
+        el.innerHTML = '<strong>Current:</strong> Not configured';
       }
     }
 

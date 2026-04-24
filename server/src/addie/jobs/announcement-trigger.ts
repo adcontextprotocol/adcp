@@ -422,13 +422,20 @@ async function processAnnounceCandidate(
  * (`editorial_slack_channel`), falls back to the legacy
  * `SLACK_EDITORIAL_REVIEW_CHANNEL` env var for safe rollout. Both null
  * returns `null`; callers should skip the run and log.
+ *
+ * Logs at error level when the DB read fails — the env fallback keeps
+ * the job running for transient blips, but a persistent outage where
+ * the admin's DB value is stale (or wrong) needs SRE attention, not a
+ * buried warn.
  */
 export async function resolveEditorialChannel(): Promise<string | null> {
   try {
     const setting = await getEditorialChannel();
-    if (setting.channel_id) return setting.channel_id;
+    if (typeof setting.channel_id === 'string' && setting.channel_id.trim()) {
+      return setting.channel_id.trim();
+    }
   } catch (err) {
-    logger.warn({ err }, 'resolveEditorialChannel: DB read failed, falling back to env');
+    logger.error({ err }, 'resolveEditorialChannel: DB read failed, falling back to env');
   }
   const env = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
   return env && env.trim() ? env.trim() : null;
