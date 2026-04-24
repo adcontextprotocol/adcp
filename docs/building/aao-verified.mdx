@@ -1,0 +1,232 @@
+---
+title: AAO Verified
+sidebarTitle: AAO Verified
+description: "AAO Verified is the top-tier trust mark for AdCP agents — issued by continuous observability of real delivery data against the seller's live ad-server integration, not by storyboards. Auto-expiring, continuous, no new seller infrastructure."
+"og:title": "AdCP — AAO Verified"
+---
+
+**Status**: Request for Comments (transitional)
+**Last Updated**: April 24, 2026
+
+<Note>
+**Transitional framing.** This page ships the observability machinery — the eight checks, `attestation_verifier` scope integration, Path A / B enrollment, webhook-ownership logic — that backs the **AAO Verified** mark. The public framing will evolve once AAO's canonical-campaign runner is operational (see [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the end-state RFC): AAO Verified will mean *"AAO is currently running a canonical test campaign for this specialism through the seller's real ad-server integration,"* and the same eight checks become per-canonical-campaign health. The machinery on this page is reusable either way; only the *trigger* changes (enrollment-based observation now → canonical-campaign-health-based observation later). No seller-visible change when the end state lands; Conformant/Verified names and the 3.x scope surface are forward-compatible.
+</Note>
+
+<Tip>
+**TL;DR for sellers.** AAO Verified is optional, opt-in, and sits above "AdCP Conformant" (storyboards passing). You designate one compliance account with real live campaigns (PSA / remnant / house / genuine revenue all qualify), grant the AAO compliance engine the `attestation_verifier` scope on that account, and you're done. No ground-truth exports, no admin credentials, no parallel verification flow, no seller-side test harness. The same AAO compliance engine that runs your storyboards monitors delivery on that account over a 7–14 day rolling window. Signal healthy → mark holds; signal degrades → mark lapses. Today (AdCP 3.x) the webhook-attached path requires a dedicated compliance tenant because `reporting_webhook` is single-slot; AdCP 4.0 relaxes that via [#3009](https://github.com/adcontextprotocol/adcp/issues/3009).
+</Tip>
+
+## Two marks, not two tiers
+
+AdCP 3.x defines two public trust marks with a clear containment relationship:
+
+| Mark | What it means | How it's issued |
+|------|---------------|-----------------|
+| **AdCP Conformant** | Wire format is right: the agent implements the tasks declared in its `supported_protocols` and `specialisms` per the storyboard suite. Schema, task shape, error semantics, filter behavior all check out against seeded test data. | Storyboards pass in the AAO compliance runner. |
+| **AAO Verified** | The declared capability is actually implemented in the seller's live production stack: real impressions on real inventory, observed through AdCP, sustained over weeks. | Continuous observability of real delivery over a 7–14 day rolling window (the eight checks below). |
+
+**Containment.** AAO Verified ⊆ AdCP Conformant. Every AAO Verified agent is also AdCP Conformant; a storyboard regression blocks AAO Verified issuance even when live campaigns look fine. You can be Conformant without being Verified (storyboard-passing but no live traffic yet); you cannot be Verified without being Conformant.
+
+**Upgrade path.** Storyboards green → enroll in the observability program → seven days of healthy delivery → Verified. Clear forward momentum rather than a cliff.
+
+**Coverage gaps are explicit.** Some specialisms don't have a clean live-observability path — `signed-requests`, for example, is a per-request heartbeat with no canonical campaign to observe. Those specialisms may permanently live at **AdCP Conformant** only, and that's an honest claim. See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the per-specialism coverage analysis.
+
+## Why these two marks, not the earlier "Tier 1 / Tier 2"
+
+Earlier drafts used "Tier 1 — Protocol Conformant" and "Tier 2 — Production Verified." That framing had a marketing failure mode: a buyer reading "Tier 1 — Protocol Conformant" plausibly infers *"verified at the basic level,"* when all it actually attests is wire-format correctness. Storyboards cannot prove real delivery. Tiering the same word — *verified* — across two different kinds of claim muddies the message.
+
+**AdCP Conformant** and **AAO Verified** are two distinct claims:
+
+- *Conformant* is about schema and wire behavior. Storyboards prove it. Useful for pre-production agents, beta sellers, specialisms without canonical flows, and developers checking their implementation.
+- *Verified* is about delivery against live inventory. Only real traffic proves it. Reserved for in-market sellers with live flow.
+
+Both are publishable. Both are searchable in the registry. They are not tiers of the same thing — they are orthogonal claims, with *Verified* strictly implying *Conformant*.
+
+## Enrollment
+
+A seller enrolls in AAO Verified by:
+
+1. Designating a **dedicated compliance account** on the seller's production platform. The account MUST contain real live campaigns — PSA, remnant, house, or genuine revenue campaigns all work. "Real" means: the campaigns serve real impressions on real inventory, not simulated data. The account MUST be one on which the AAO compliance engine can own the `reporting_webhook` slot without displacing another buyer's webhook (see [Webhook ownership](#webhook-ownership) below). Sellers MAY declare an expected flight cadence on the account (see [Maintenance windows](#maintenance-windows)) so seasonal gaps or scheduled quiet periods do not flap the mark.
+2. Granting the AAO compliance engine the [`attestation_verifier`](/docs/accounts/overview#standard-named-scope-attestation_verifier) scope on the compliance account. The scope is declared to the compliance engine via the `authorization` object on `sync_accounts` / `list_accounts` responses. It is narrowly defined — read + `update_media_buy{reporting_webhook}` only. No `create_media_buy`, no `sync_creatives`, no budget, date, or cancellation mutations.
+
+That's it. No ground-truth exports, no admin API credentials, no parallel verification campaigns, no seller-side harness.
+
+AAO Verified today presumes the seller's stack has **tenant-level isolation** — a concept every SSP, ad server, and premium publisher has, but one that social platforms and walled-garden-adjacent surfaces without a dedicated-account model do not. Sellers in that shape can still claim AdCP Conformant and can participate in AAO Verified via the polling-only Path B described below; the mark is the same either way.
+
+### Webhook ownership
+
+In AdCP 3.x, `reporting_webhook` is a single object on a media buy — `update_media_buy` with PATCH semantics replaces it wholesale. A compliance account MUST therefore be an account where AAO can safely take the webhook slot without interfering with a production buyer's reporting pipeline. In practice this means the compliance account is one of:
+
+- A dedicated test/compliance tenant the seller maintains for this purpose (containing real PSA, remnant, or house campaigns);
+- A production account whose live campaigns are seller-internal (e.g., the seller's own house ads) and do not have a third-party webhook subscriber;
+- Any account whose operator has recorded out-of-band consent to cede the `reporting_webhook` slot to AAO for the duration of the engagement.
+
+**Consent requirement.** Sellers MUST NOT honor an `attestation_verifier`-scoped webhook attachment on an account where another webhook subscriber is present unless the operator's consent to cede the slot has been recorded out-of-band (operator agreement, admin-portal opt-in, or equivalent audit-trailed record). The seller maintains the consent record; AAO MAY audit it as part of enrollment. Absent recorded consent, the seller MUST reject the webhook-attach `update_media_buy` with `PERMISSION_DENIED` and `error.details.reason` = `"compliance_webhook_consent_missing"`, or steer the account to polling-only Path B. This closes the obvious loophole where a seller mis-enrolls a production buyer account and silently stomps the buyer's reporting.
+
+Multi-subscriber webhooks are tracked for AdCP 4.0 in [#3009](https://github.com/adcontextprotocol/adcp/issues/3009); once that lands, compliance subscribers coexist with a primary buyer webhook and the dedicated-tenant requirement can relax.
+
+The AAO compliance engine is the same engine that runs storyboards for AdCP Conformant — AAO Verified is an additional check set over a longer window, not a separate service.
+
+## Two discovery paths
+
+Sellers MAY enable either path. Sellers SHOULD enable both; brownfield is the more diagnostic path because it proves AdCP is a protocol *onto* the ad server rather than a shadow ledger beside it.
+
+### Path A — Greenfield
+
+The compliance engine creates a real campaign through AdCP:
+
+1. `create_media_buy` — real order in the ad server
+2. `sync_creatives` — real assets attached
+3. Activation — ads actually serve
+4. `get_media_buy_delivery` + `reporting_webhook` — real numbers flow back
+
+Path A is an end-to-end validation of the AdCP surface from `get_products` through reporting. It is the default path the canonical-campaign runner (#3046) will use at the end-state.
+
+### Path B — Brownfield
+
+The compliance engine engages with campaigns the seller is already running on the dedicated compliance account. Path B has two forms — both are first-class qualifying paths for AAO Verified:
+
+**Path B1 — Polling-only** (the baseline):
+
+1. [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) returns live campaigns in the compliance account — depends on `get_media_buys` returning buys regardless of creation surface ([account ownership scope](/docs/media-buy/specification#account-ownership-vs-creation-surface)).
+2. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) polls delivery on a cadence the engine chooses.
+3. If the seller declares an offline reporting bucket, the engine additionally pulls from the bucket for cross-consistency.
+
+**Path B2 — Webhook-attached** (stronger signal):
+
+1. Same as step 1 above.
+2. [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) attaches a verification `reporting_webhook` to a live buy. This step requires the compliance account's webhook slot to be available to AAO — see [Webhook ownership](#webhook-ownership) — and requires operator consent when displacing an existing webhook.
+3. The engine consumes push delivery from the webhook, polling via `get_media_buy_delivery`, and (if declared) the offline bucket, and cross-compares all three.
+
+Path B in either form is the more valuable signal than Path A because it depends on the seller treating AdCP as an operation on the real ad server. A seller whose `get_media_buys` only returns AdCP-created buys cannot support Path B at all; see the normative tightening in [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface).
+
+Path B2 (webhook-attached) is preferred when available because it exercises push delivery in production, not just polling. But **B1 is not a fallback**: a seller whose architecture makes webhook ownership awkward (single-slot webhooks shared with buyers, no tenant isolation) can enroll in AAO Verified via B1 and earn the same mark. The check set adapts — check 5 (reporting-surface cross-consistency) degrades to comparing polling against the offline bucket under B1, or is skipped entirely when polling is the only declared surface. All other checks run unchanged.
+
+## What the compliance engine observes
+
+The engine runs a **rolling 7–14 day window** of checks against the compliance account. Each check is observable from AdCP alone — no external ground truth is required.
+
+| # | Check | What it proves |
+|---|-------|---------------|
+| 1 | **Liveness** | At least one active buy exists in the compliance account across the rolling window, adjusted for any declared [maintenance windows](#maintenance-windows) and flight cadence. The window-normalized minimum is "active ≥ 80% of the rolling window" — sellers with known quiet periods declare them rather than being dinged. |
+| 2 | **Freshness** | The same `get_media_buy_delivery` query on day N and day N+1 returns different numbers for an active campaign — the ad server is actually incrementing counters. |
+| 3 | **Plausibility** | Impressions grow monotonically during flight; `by_package` sums correctly; non-zero metrics appear where expected; `pacing_index` reflects observed pacing. |
+| 4 | **Filter correctness** | `start_date` / `end_date` actually narrow results; package filters behave per spec — re-run against real data, not just storyboard fixtures. |
+| 5 | **Reporting-surface cross-consistency** | If the seller declares multiple reporting mechanisms (`reporting_delivery_methods` includes `webhook` and `offline`, plus polling via `get_media_buy_delivery`), all surfaces MUST agree for the same window within the seller's declared finalization tolerance. Skipped when polling is the only declared surface. |
+| 6 | **Lifecycle correctness** | Completed campaigns stop incrementing. Paused campaigns stop accruing. Canceled campaigns stop cleanly. Terminal-state buys surface the right `status` and `valid_actions`. |
+| 7 | **Introspection consistency** | The `authorization` object returned by [`sync_accounts`](/docs/accounts/tasks/sync_accounts) / [`list_accounts`](/docs/accounts/tasks/list_accounts) for the compliance engine's identity matches what the scope actually permits in practice — any mismatch (advertised task rejected with `SCOPE_INSUFFICIENT`, permitted field rejected with `FIELD_NOT_PERMITTED`, permitted field accepted but with hidden side-effect branching) is a failure. Probe cadence: at least once per rolling window, plus on every observed scope change. Mismatch tolerance per probe is zero; the engine allows at most one scope-change transition per window (the window truncates at the change so the probe is evaluated against the grant that was in force). |
+| 8 | **Seller-initiated state transition propagation** | A state change initiated outside AdCP — trafficker pauses a campaign in the ad server UI, finance cancels for non-payment, flight ends and the ad server closes the line — MUST surface in `get_media_buys` (status, `valid_actions`, and `history`) within the seller's declared status-freshness tolerance. Buyers rely on this for incident response; AAO Verified treats it as the same class of obligation as buyer-initiated transitions. |
+
+The engine chooses which dates, slices, packages, and campaigns to query, and when. Sellers SHOULD NOT condition behavior on the engine's `agent_id` beyond the normal `attestation_verifier` scope enforcement — identity-keyed branching to produce verification-only responses is grounds for mark revocation. Because a scope-filtered engine cannot by itself detect A/B branching, **AAO reserves the right to probe from secondary identities** (a paired identity running a subset of the same queries; an anonymized-origin probe) and compare responses byte-for-byte for identical queries. Persistent divergence between the declared engine and a secondary probe is a check-7 failure and — depending on shape — grounds for immediate mark revocation rather than window-end lapse.
+
+## Why continuous observability
+
+AAO Verified is **continuous**, not **one-shot**. Four reasons:
+
+- **No new infrastructure.** The AAO compliance engine already runs. AAO Verified is additional checks over a longer window, not a separate service.
+- **Harder to game.** A stub that satisfies all eight checks across variation in dates, packages, campaigns, lifecycle transitions, seller-initiated state changes, and multi-surface cross-consistency over weeks — while also surviving secondary-identity probes — is basically a working ad server. Teach-to-test overfitting is infeasible at this surface area.
+- **Auto-expiring mark.** "AAO Verified" is not "passed on YYYY-MM-DD." It means "observed healthy for the last N days." Signal degrades → mark lapses. A seller cannot pass verification once and then revert to a stub.
+- **Zero seller friction after enrollment.** No report uploads, no admin credentials, no parallel verification campaigns. After enrollment, the seller's only obligation is to keep the compliance account live and continue serving real campaigns.
+
+Hard ground-truth reconciliation (AdCP output vs. the seller's internal ad-server dashboard) is **out of scope for v1**. It is deferrable to a future higher-trust tier — buyer attestation, or seller-exported reports as an opt-in upgrade. The eight observable checks above close the #2903 gap without requiring sellers to expose admin surfaces.
+
+## Anti-teach-to-test alignment
+
+Real impressions on real inventory over real time are not teachable:
+
+- The engine chooses which dates, slices, and packages to query, and when.
+- Data was not generated for the test — it is real delivery that continues whether the engine is watching or not.
+- Variation across the rolling window exposes any branch that depends on stable test fixtures.
+
+See [Anti-teach-to-test conformance](/docs/building/conformance) for the broader posture; AAO Verified is the most direct instance.
+
+## Mark semantics
+
+AdCP Conformant and AAO Verified are distinct marks. A seller MAY hold:
+
+- **AdCP Conformant only** (default for storyboard-passing sellers without live traffic yet)
+- **AdCP Conformant + AAO Verified** (AAO Verified requires AdCP Conformant)
+- **Neither**
+
+A seller cannot hold AAO Verified without AdCP Conformant — a storyboard regression blocks AAO Verified issuance even when live campaigns look fine, because storyboards catch wire-format violations that live data might paper over.
+
+**AAO Verified states:**
+
+| State | Meaning | Displayed |
+|-------|---------|-----------|
+| **Active** | All eight checks are healthy across the current rolling window. | "AAO Verified" |
+| **Quiet-Period-Declared** | The seller has declared a maintenance window or flight gap; liveness/freshness checks are relaxed for the duration; other checks continue to run. | "AAO Verified — quiet period" |
+| **Lapsed** | One or more checks have sustained failure across the window, the compliance account has gone dark, or the `attestation_verifier` scope has been revoked. | No mark. Agent may still display AdCP Conformant if storyboards are green. |
+
+**Lifecycle:**
+
+- The mark is granted when all eight checks pass across the rolling window AND AdCP Conformant is current.
+- The mark enters **Quiet-Period-Declared** automatically when the seller's declared maintenance window or flight-gap cadence overlaps the current window. Checks 2–8 continue to run; check 1 (liveness) is relaxed.
+- The mark **lapses** when the engine cannot complete a full window's worth of observations — the compliance account goes dark, the scope is revoked, checks sustain failure beyond tolerance, a secondary-identity probe detects divergence, or the underlying AdCP Conformant mark lapses from storyboard regression.
+- The mark does not re-grant automatically when health returns; the seller re-enrolls.
+- Degraded signal on any single check does not instantly revoke — the engine tolerates operational noise within the published tolerances — but sustained failure across the window does.
+
+AAO publishes tolerances, probe cadences, and the secondary-identity probing policy as part of the engine's public runbook (operational detail, not protocol spec). AAO publishes AAO Verified status alongside AdCP Conformant status on the same surfaces.
+
+### Maintenance windows
+
+Sellers MAY declare expected quiet periods on the compliance account — scheduled ad-server maintenance (Google pushes GAM on Saturdays), regulatory quiet periods (election blackouts), seasonal cadences (house PSA campaigns that burn off for three days then reload), or planned migrations. Declaration shapes expected in the compliance-engine dashboard (operational, not protocol-spec): a cron-like cadence for recurring quiet periods, or an explicit date-range list for one-offs.
+
+The engine treats declared quiet periods as expected zero-delivery windows: liveness and freshness checks are relaxed for the duration; all other checks continue to run. Undeclared quiet periods are mark-flapping risk — sellers SHOULD declare any known gap that would otherwise fail liveness check 1.
+
+## Relationship to the three supporting specs
+
+AAO Verified depends on three other normative changes in AdCP 3.x. These are distinct specs with independent value; AAO Verified consumes them:
+
+| Dependency | What it provides to AAO Verified |
+|------------|----------------------------------|
+| [Account ownership scope for `get_media_buys`](/docs/media-buy/specification#account-ownership-vs-creation-surface) | Path B: the engine can discover live campaigns regardless of how they were booked. |
+| [Per-account `authorization` on sync/list + `attestation_verifier` scope](/docs/accounts/overview#caller-authorization) | A narrow, named scope the engine holds; a discoverable permission surface to check against. |
+| RBAC error codes (`SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`) | Check 7 (introspection consistency) distinguishes a scope denial from a protocol error. |
+
+## What AAO Verified is not
+
+- **Not a substitute for AdCP Conformant.** The protocol must still be conformant on the wire; AAO Verified adds the "backend is real" dimension on top.
+- **Not financial / compliance / regulatory attestation.** SOC 2, ISO 27001, and similar frameworks address operational posture; AAO Verified addresses whether a specific AdCP capability is implemented on live inventory. Neither substitutes for the other.
+- **Not ground-truth reconciliation.** The engine does not reconcile AdCP delivery numbers against the seller's internal reporting dashboards. That is a higher-trust tier tracked separately.
+- **Not a certification taxonomy.** AdCP Conformant / AAO Verified is a pass-fail axis, not a graded credential. The [AgenticAdvertising.org certification program](/docs/learning/overview) is the certification surface; it composes with these marks.
+
+## Evolution: from enrollment-based to canonical-campaign-based (RFC #3046)
+
+AdCP 3.x issues AAO Verified based on *enrollment-plus-continuous-observability* of whatever campaigns the seller happens to run on the compliance account. That works but puts the onus on the seller to keep meaningful campaigns running.
+
+The end-state target ([#3046](https://github.com/adcontextprotocol/adcp/issues/3046)) inverts this: AAO itself operates a **canonical test campaign** for each declared specialism through the verified agent's real ad-server integration, weekly. AAO becomes an active operator in the ecosystem — every AAO Verified agent has AAO as a known-good counterparty continuously exercising their code paths. Breakage on any seller surfaces within a week across the ecosystem.
+
+**The machinery on this page is reusable either way.** The eight checks, `attestation_verifier` scope, Path A/B enrollment, webhook-ownership contract — all of it applies per canonical campaign once the runner lands. The trigger changes from "watch whatever the seller runs" to "watch AAO's canonical campaign running through the seller," but the observation and mark-issuance logic is the same.
+
+**Per-specialism coverage.** Some specialisms (`sales-non-guaranteed`, `sales-guaranteed`, `creative-template`, `audience-sync`) have clean canonical flows. Others (`signed-requests`, edge-case governance specialisms) may not — those stay at AdCP Conformant only. The coverage analysis lives in the RFC.
+
+See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the full RFC, and the operational-plan issue it opens for AAO's runner service commitment.
+
+## Planned additions (post-3.0)
+
+The v1 check set is deliberately scoped to "ad server is real" — delivery numbers, lifecycle, reporting-surface cross-consistency. Checks already accepted onto the 4.0 roadmap:
+
+- **Creative-approval pipeline liveness** — verify `sync_creatives` → approval state transitions on real assets (social platforms and any seller with a human-in-the-loop creative review pipeline break here).
+- **Cancellation-propagation timing** — `pause` / `cancel` reaches the ad server within the seller's declared SLA, not just eventually. Buyers need this for brand-safety incident response.
+- **Billing reconciliation touch** — opt-in 30-day check that finalized `get_media_buy_delivery` numbers match what appeared on the invoice.
+- **IO / terms JWS signing workflow liveness** — for sellers who sign with JWS, verify a signed record was actually produced for a real campaign, not a simulated one.
+- **Multi-subscriber `reporting_webhooks[]`** — once [#3009](https://github.com/adcontextprotocol/adcp/issues/3009) lands in 4.0, the dedicated-tenant requirement relaxes and webhook-attached Path B works on any account whose operator has consented.
+
+These are additive — a seller that passes the v1 eight-check set remains AAO Verified as the set grows; a seller that opts into the new checks early gets an enriched mark.
+
+## For sellers: how to claim AAO Verified
+
+Add to your [SKILL.md](/docs/building/build-an-agent) at the end of the conformance section:
+
+> Storyboards passing = AdCP Conformant. For AAO Verified, designate a compliance account containing live campaigns and grant `attestation_verifier` scope to the AAO compliance engine. The engine monitors delivery continuously. As long as observability criteria are met, the AAO Verified mark holds.
+
+Enrollment, scope grant instructions, and the engine's public identity are published by AAO separately from the spec. The normative content of this page — what AAO Verified verifies, how it is verified, and what sellers must provide — is the spec.
+
+## Further reading
+
+- [Conformance Specification](/docs/building/conformance) — AdCP Conformant definition, storyboard indexing
+- [Caller authorization](/docs/accounts/overview#caller-authorization) — per-account `authorization` object and the `attestation_verifier` scope
+- [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) — why Path B works
+- [Validate Your Agent](/docs/building/validate-your-agent) — running the AdCP Conformant suite locally
+- [RFC #3046: AAO Verified via canonical test campaigns](https://github.com/adcontextprotocol/adcp/issues/3046) — end-state design
