@@ -1175,14 +1175,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'create_github_issue',
     description:
-      'File a GitHub issue authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply. All issues go to the "adcp" repository.',
+      'File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.',
     usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back.',
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Issue title' },
         body: { type: 'string', description: 'Issue body (no PII - GitHub is public)' },
-        repo: { type: 'string', description: 'Repo name (default: "adcp")' },
       },
       required: ['title', 'body'],
     },
@@ -4634,14 +4633,13 @@ export function createMemberToolHandlers(
   handlers.set('create_github_issue', async (input) => {
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     if (!workosUserId) {
-      return 'You need to be logged in to create GitHub issues. Please log in at https://agenticadvertising.org/dashboard first.';
+      return 'You need to be logged in to create GitHub issues. Please log in at https://agenticadvertising.org/auth/login first.';
     }
 
     const title = input.title as string;
     const body = input.body as string;
     const org = 'adcontextprotocol';
-    const ALLOWED_REPOS = new Set(['adcp']);
-    const repo = ALLOWED_REPOS.has(input.repo as string) ? (input.repo as string) : 'adcp';
+    const repo = 'adcp';
 
     let tokenResult: Awaited<ReturnType<typeof getGitHubAccessToken>>;
     try {

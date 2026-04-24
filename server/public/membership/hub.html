@@ -1354,7 +1354,24 @@
       window.location.href = '/auth/login?return_to=/member-hub';
     }
 
-    document.addEventListener('DOMContentLoaded', loadHub);
+    document.addEventListener('DOMContentLoaded', () => {
+      loadHub();
+      maybeShowConnectedToast();
+    });
+
+    function maybeShowConnectedToast() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('connected') !== 'github') return;
+      const toast = document.createElement('div');
+      toast.textContent = 'GitHub connected. Ask Addie to file your issue now.';
+      toast.style.cssText = 'position:fixed; top:var(--space-4); right:var(--space-4); background:#059669; color:#fff; padding:var(--space-3) var(--space-4); border-radius:var(--radius-md); box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:9999; font-size:var(--text-sm); font-weight:500; max-width:340px;';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.style.opacity = '0', 4500);
+      setTimeout(() => toast.remove(), 5000);
+      params.delete('connected');
+      const newSearch = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (newSearch ? '?' + newSearch : ''));
+    }
 
     async function loadHub() {
       try {
@@ -1376,6 +1393,7 @@
             return;
           }
           if (engRes.status === 404) {
+            const github = githubRes.ok ? await githubRes.json() : { connected: false };
             document.getElementById('hub-loading').innerHTML =
               '<div class="hub-empty-panel">' +
               '<div class="hub-kicker">My hub</div>' +
@@ -1385,7 +1403,8 @@
               '<a href="/membership" class="btn btn-primary">Explore membership</a>' +
               '<a href="/community" class="btn btn-secondary">Browse community</a>' +
               '</div>' +
-              '</div>';
+              '</div>' +
+              '<div class="hub-card" style="max-width:720px; margin:var(--space-6) auto 0;">' + renderConnections({ github }) + '</div>';
             return;
           }
           throw new Error('Failed to load engagement data');

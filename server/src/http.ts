@@ -7008,8 +7008,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       try {
         const host = req.get('host') || '';
         const protocol = req.protocol === 'http' && !host.startsWith('localhost') ? 'https' : req.protocol;
-        const requested = typeof req.body?.return_to === 'string' ? req.body.return_to : '/member-hub?connected=github';
-        const safeReturn = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/member-hub?connected=github';
+        const DEFAULT_RETURN = '/member-hub?connected=github';
+        const requested = typeof req.body?.return_to === 'string' ? req.body.return_to : DEFAULT_RETURN;
+        const isSafeReturn = requested.startsWith('/')
+          && !requested.startsWith('//')
+          && !requested.includes('\\')
+          && !/[\r\n\t]/.test(requested);
+        const safeReturn = isSafeReturn ? requested : DEFAULT_RETURN;
         const returnTo = `${protocol}://${host}${safeReturn}`;
         const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
         res.json({ url });
