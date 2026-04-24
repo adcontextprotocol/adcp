@@ -39,6 +39,11 @@ jobs:
             # 50→52 after bumping @adcp/client to 5.13 (governance denial
             # recovery invariant relaxed in adcp-client#813) and overlay
             # targets the SDK-versioned cache dir.
+            # Passing-step asymmetry with framework mode (378 vs 390) is
+            # intentional: the two modes declare different capabilities,
+            # so the storyboard runner skips a different subset of steps
+            # in each (legacy skips 50, framework skips 37). Both modes
+            # pass every step they run.
             min_clean_storyboards: 52
             min_passing_steps: 378
           - mode: framework
