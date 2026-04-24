@@ -410,7 +410,7 @@ export function handleEmailLinkVerification(app: {
             tokenRecord.primary_workos_user_id,
             tokenRecord.target_workos_user_id,
             tokenRecord.primary_workos_user_id,
-            workos
+            getWorkos()
           );
         }
 
