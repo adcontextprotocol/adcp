@@ -1430,11 +1430,15 @@ export async function createCheckoutSession(
       ...(data.customerId ? { customer: data.customerId } : data.customerEmail ? { customer_email: data.customerEmail } : {}),
       ...(discounts ? { discounts } : {}),
       ...(allow_promotion_codes ? { allow_promotion_codes } : {}),
-      // For subscriptions, copy org metadata so webhook handlers can resolve the org
+      // For subscriptions, copy identity metadata so webhook handlers can
+      // resolve both the org and the user who initiated checkout. The
+      // workos_user_id is the one who agreed to the Membership Agreement on
+      // behalf of the org and must be recorded in user_agreement_acceptances.
       ...(mode === 'subscription' ? {
         subscription_data: {
           metadata: {
             ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+            ...(data.workosUserId && { workos_user_id: data.workosUserId }),
           },
         },
       } : {}),
