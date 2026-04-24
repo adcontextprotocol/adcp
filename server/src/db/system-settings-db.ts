@@ -15,6 +15,15 @@ export interface SystemSetting<T = unknown> {
   updated_by: string | null;
 }
 
+export interface SystemSettingAuditEntry {
+  id: string;
+  key: string;
+  old_value: unknown | null;
+  new_value: unknown;
+  changed_by: string | null;
+  changed_at: Date;
+}
+
 export interface BillingChannelSetting {
   channel_id: string | null;
   channel_name: string | null;
@@ -77,7 +86,9 @@ export async function getSetting<T>(key: string): Promise<T | null> {
 }
 
 /**
- * Set a setting value
+ * Set a setting value and atomically record the change in the audit table.
+ * Uses a writable CTE so the old value, upsert, and audit INSERT all occur
+ * in a single round-trip with no TOCTOU gap.
  */
 export async function setSetting<T>(
   key: string,
@@ -85,10 +96,20 @@ export async function setSetting<T>(
   updatedBy?: string
 ): Promise<void> {
   await query(
-    `INSERT INTO system_settings (key, value, updated_at, updated_by)
-     VALUES ($1, $2, NOW(), $3)
-     ON CONFLICT (key)
-     DO UPDATE SET value = $2, updated_at = NOW(), updated_by = $3`,
+    `WITH old AS (
+       SELECT value AS old_value FROM system_settings WHERE key = $1
+     ),
+     upserted AS (
+       INSERT INTO system_settings (key, value, updated_at, updated_by)
+       VALUES ($1, $2::jsonb, NOW(), $3)
+       ON CONFLICT (key)
+       DO UPDATE SET value = $2::jsonb, updated_at = NOW(), updated_by = $3
+       RETURNING value AS new_value
+     )
+     INSERT INTO system_settings_audit (key, old_value, new_value, changed_by, changed_at)
+     SELECT $1, old.old_value, upserted.new_value, $3, NOW()
+     FROM upserted
+     LEFT JOIN old ON true`,
     [key, JSON.stringify(value), updatedBy ?? null]
   );
 }
@@ -99,6 +120,21 @@ export async function setSetting<T>(
 export async function getAllSettings(): Promise<SystemSetting[]> {
   const result = await query<SystemSetting>(
     `SELECT * FROM system_settings ORDER BY key`
+  );
+  return result.rows;
+}
+
+/**
+ * Get recent audit entries for system settings changes
+ */
+export async function getSettingAuditHistory(limit = 50): Promise<SystemSettingAuditEntry[]> {
+  const safeLimit = Math.min(Math.max(1, limit), 200);
+  const result = await query<SystemSettingAuditEntry>(
+    `SELECT id, key, old_value, new_value, changed_by, changed_at
+     FROM system_settings_audit
+     ORDER BY changed_at DESC
+     LIMIT $1`,
+    [safeLimit]
   );
   return result.rows;
 }
