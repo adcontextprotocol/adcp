@@ -40,6 +40,7 @@ import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
+import { runEscalationTriageJob } from './escalation-triage.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
@@ -767,6 +768,18 @@ export function registerAllJobs(): void {
     options: { limit: 50 },
     shouldLogResult: (r) => r.generated > 0 || r.alerts_fired > 0,
   });
+
+  // Escalation triage - scans open escalations and writes suggested resolutions
+  // for admin review. Never resolves directly; an admin accept/reject is required.
+  jobScheduler.register({
+    name: 'escalation-triage',
+    description: 'Escalation triage suggestions',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 25, unit: 'minutes' },
+    runner: runEscalationTriageJob,
+    options: { minAgeDays: 7, limit: 25, staleOpsDays: 21 },
+    shouldLogResult: (r) => r.suggested > 0 || r.errors > 0,
+  });
 }
 
 /**
@@ -807,4 +820,5 @@ export const JOB_NAMES = {
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
   NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
+  ESCALATION_TRIAGE: 'escalation-triage',
 } as const;
