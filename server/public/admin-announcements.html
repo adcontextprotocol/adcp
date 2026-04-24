@@ -326,12 +326,17 @@
       //     editorial checks daily. An empty state there means "nothing
       //     to do right now" — tell them the flow keeps running without
       //     them needing to refresh.
-      //   - all/done/skipped: informational; the plain label is fine.
+      //   - `all` empty = no announcements on the system yet — "state
+      //     All" reads oddly, so special-case.
+      //   - done/skipped: plain label is fine.
       if (state === 'pending_review') {
         return 'Nothing to review. New drafts are posted hourly by the trigger job.';
       }
       if (state === 'li_pending') {
         return 'Nothing waiting on LinkedIn right now.';
+      }
+      if (state === 'all') {
+        return 'No announcements yet.';
       }
       return `No announcements in state &ldquo;${escapeHtml(STATE_LABELS[state] ?? state)}&rdquo;.`;
     }
@@ -452,14 +457,15 @@
       // Relative age — "3d ago", "2mo ago", "1y ago" — so an editorial
       // scan of the table reads "this member joined recently" vs
       // "this is a stale backfill" without mental math on a date.
+      // Each unit derives from the next-smaller one so the transitions
+      // line up (30d boundary → 1mo, 12mo boundary → 1y).
       if (!iso) return '—';
       const days = daysAgo(iso);
       if (days < 1) return 'today';
       if (days < 30) return `${days}d ago`;
       const months = Math.floor(days / 30);
       if (months < 12) return `${months}mo ago`;
-      const years = Math.floor(days / 365);
-      return `${years}y ago`;
+      return `${Math.floor(months / 12)}y ago`;
     }
 
     function escapeHtml(text) {
