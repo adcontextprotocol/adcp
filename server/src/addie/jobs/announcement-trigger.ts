@@ -25,6 +25,7 @@ import {
   resolveAnnouncementVisual,
   type VisualResolution,
 } from '../../services/announcement-visual.js';
+import { getEditorialChannel } from '../../db/system-settings-db.js';
 import type { SlackBlock, SlackElement } from '../../slack/types.js';
 
 const logger = createLogger('announcement-trigger');
@@ -416,12 +417,31 @@ async function processAnnounceCandidate(
   }
 }
 
+/**
+ * Resolve the editorial review channel. Prefers the admin-UI DB setting
+ * (`editorial_slack_channel`), falls back to the legacy
+ * `SLACK_EDITORIAL_REVIEW_CHANNEL` env var for safe rollout. Both null
+ * returns `null`; callers should skip the run and log.
+ */
+export async function resolveEditorialChannel(): Promise<string | null> {
+  try {
+    const setting = await getEditorialChannel();
+    if (setting.channel_id) return setting.channel_id;
+  } catch (err) {
+    logger.warn({ err }, 'resolveEditorialChannel: DB read failed, falling back to env');
+  }
+  const env = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
+  return env && env.trim() ? env.trim() : null;
+}
+
 export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
   const result: TriggerResult = { candidates: 0, drafted: 0, failed: 0 };
 
-  const reviewChannel = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
+  const reviewChannel = await resolveEditorialChannel();
   if (!reviewChannel) {
-    logger.warn('SLACK_EDITORIAL_REVIEW_CHANNEL not configured — skipping run');
+    logger.warn(
+      'Editorial channel not configured — set it at /admin/settings (or SLACK_EDITORIAL_REVIEW_CHANNEL env) — skipping run',
+    );
     return result;
   }
 
