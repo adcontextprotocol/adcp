@@ -5625,6 +5625,11 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-audit.html');
     });
 
+    // Addie cost-cap observability (#2945 / #2790 follow-up)
+    this.app.get('/admin/addie-costs', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-addie-costs.html');
+    });
+
     // Note: /admin/billing is now served from billing.ts router
 
     // Admin content management — now lives in dashboard
