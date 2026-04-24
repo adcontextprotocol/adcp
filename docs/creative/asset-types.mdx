@@ -270,9 +270,9 @@ A single URL bound to a VAST `TrackingEvents` event. Use this when the creative 
 ```
 
 **Properties:**
-- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression` (see normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `clickTracking`, `viewableImpression`.
+- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` — those live in other VAST elements (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `viewableImpression`.
 - `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
-- `offset`: Required for `vast_event: "progress"`. VAST offset format: `HH:MM:SS[.mmm]` or an integer percentage (`50%`).
+- `offset`: Required for `vast_event: "progress"`. VAST 4.x offset format: `HH:MM:SS` or `HH:MM:SS.mmm` (exactly 3 fractional digits) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative time offsets (measured from end of ad) are allowed per VAST 4.x.
 
 ### DAAST Asset
 
@@ -335,7 +335,7 @@ Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEv
 ```
 
 **Properties:**
-- `daast_event`: Any DAAST tracking-event enum value **except** `impression`.
+- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` (same routing rule as `vast_tracker`).
 - `url`: Tracker URL. Supports AdCP universal macros.
 - `offset`: Required for `daast_event: "progress"`. Same format as VAST offset.
 
@@ -372,9 +372,15 @@ A creative manifest MAY emit VAST trackers in **one** of two shapes. The creativ
 
 ### Normative rules
 
-1. **Wrapper ownership.** The **sales agent** is responsible for constructing the VAST `Wrapper` / `InLine` envelope and any `AdVerifications` block. The **creative agent** MUST NOT emit pre-wrapped VAST. When the creative agent hands off a `vast` asset with `delivery_type: "url"`, the sales agent treats that URL as the wrapper target.
-2. **Impression vs `TrackingEvents` split.** The VAST `Impression` URL is **not** a tracking event. It MUST be modeled as a `url` asset with `url_type: "tracker_pixel"`. A `vast_tracker` asset MUST NOT have `vast_event: "impression"`. The same rule applies to DAAST.
-3. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression) assets — the sales agent merges them into one VAST document at serve time.
+1. **Wrapper is a sales-agent concern.** The creative agent MUST NOT emit a VAST `Wrapper` element. `Wrapper` is a multi-hop chaining construct — if the served VAST needs to be wrapped (for macro signing, SSAI-compatible envelope, or ad-server redirection), the **sales agent** constructs the wrapper at serve time around the creative agent's output. Emitting an inline VAST document with `Ad > InLine > Creatives` content (the pattern shown in [Universal Macros](/docs/creative/universal-macros)) is permitted and unchanged.
+2. **Assembly responsibilities.** The sales agent is responsible for constructing VAST envelope elements that assemble resources from the creative agent: `TrackingEvents` (from `vast_tracker` assets), `AdVerifications` (from OMID verification resources), and `Wrapper` / `VASTAdTagURI` (if chaining). The creative agent supplies the resources; the sales agent places them in the correct element. A dedicated `omid_verification` asset type for decomposing OMID resources is a planned follow-up.
+3. **Tracker routing by element.** VAST's tracker URLs live in three different elements and AdCP models them with three different asset shapes — don't cross the streams:
+   - `Impression` URL → `url` asset with `url_type: "tracker_pixel"` (not a `vast_tracker`).
+   - `TrackingEvents` events (start, quartiles, complete, pause, etc.) → `vast_tracker` asset with `vast_event`.
+   - `VideoClicks` URLs (`ClickThrough`, `ClickTracking`, `CustomClick`) → `url` asset (`url_type: "clickthrough"` for `ClickThrough`; click-tracker URLs use `url_type: "tracker_pixel"`).
+
+   The `vast_tracker` schema enforces this split: `vast_event` MUST NOT be `impression`, `clickTracking`, `customClick`, or `error`. The same rule applies to DAAST.
+4. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression / click) assets — the sales agent merges them into one VAST document at serve time.
 
 ### SSAI caveat
 

@@ -11,8 +11,22 @@
       "description": "Discriminator identifying this as a VAST tracker asset. See /schemas/creative/asset-types for the registry."
     },
     "vast_event": {
-      "$ref": "/schemas/enums/vast-tracking-event.json",
-      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute. MUST NOT be `impression` \u2014 use a `url` asset with `url_type: \"tracker_pixel\"` for impression trackers (they belong in `Impression`, not `TrackingEvents`)."
+      "allOf": [
+        {
+          "$ref": "/schemas/enums/vast-tracking-event.json"
+        },
+        {
+          "not": {
+            "enum": [
+              "impression",
+              "clickTracking",
+              "customClick",
+              "error"
+            ]
+          }
+        }
+      ],
+      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (that belongs in the VAST `Impression` element \u2014 model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (those belong in `VideoClicks`), or `error` (VAST `Error` element)."
     },
     "url": {
       "type": "string",
@@ -22,7 +36,7 @@
     "offset": {
       "type": "string",
       "description": "VAST `offset` attribute for `vast_event: \"progress\"`. Format matches VAST: `HH:MM:SS[.mmm]` for absolute time, or an integer percentage suffixed with `%`. Ignored for other events.",
-      "pattern": "^(\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?|\\d{1,3}%)$"
+      "pattern": "^-?\\d+:\\d{2}:\\d{2}(\\.\\d{3})?$|^(100|\\d{1,2})%$"
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
