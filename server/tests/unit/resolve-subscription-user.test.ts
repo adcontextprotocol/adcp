@@ -46,6 +46,61 @@ function makeWorkos(opts: {
 }
 
 describe('resolveWorkosUserForSubscription', () => {
+  it('resolves via pending_agreement_user_id before touching metadata', async () => {
+    const checkboxUser = { id: 'user_checkbox', email: 'click@b.com' };
+    const getUser = vi.fn().mockResolvedValue(checkboxUser);
+    const workos = makeWorkos({ getUser });
+    const result = await resolveWorkosUserForSubscription({
+      subscription: makeSubscription({ workos_user_id: 'user_sub' }),
+      customer: makeCustomer({ email: 'different@b.com', metadata: { workos_user_id: 'user_cust' } }),
+      organizationId: ORG_ID,
+      pendingAgreementUserId: 'user_checkbox',
+      workos,
+      logger: makeLogger(),
+    });
+    expect(result).toEqual({ user: checkboxUser, source: 'pending_agreement_user' });
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledWith('user_checkbox');
+  });
+
+  it('falls through from pending_agreement_user when that user is not a member of the org', async () => {
+    const staleUser = { id: 'user_stale', email: 'stale@b.com' };
+    const subUser = { id: 'user_sub', email: 's@b.com' };
+    const getUser = vi.fn().mockImplementation(async (id) => {
+      if (id === 'user_stale') return staleUser;
+      if (id === 'user_sub') return subUser;
+      throw new Error('unexpected id ' + id);
+    });
+    const listOrganizationMemberships = vi.fn().mockImplementation(async ({ userId }) => {
+      if (userId === 'user_sub') return { data: [{ id: 'om' }] };
+      return { data: [] };
+    });
+    const workos = makeWorkos({ getUser, listOrganizationMemberships });
+    const result = await resolveWorkosUserForSubscription({
+      subscription: makeSubscription({ workos_user_id: 'user_sub' }),
+      customer: makeCustomer(),
+      organizationId: ORG_ID,
+      pendingAgreementUserId: 'user_stale',
+      workos,
+      logger: makeLogger(),
+    });
+    expect(result).toEqual({ user: subUser, source: 'subscription_metadata' });
+  });
+
+  it('does not re-fetch a user id already tried via pending', async () => {
+    const getUser = vi.fn().mockRejectedValue(new Error('missing'));
+    const workos = makeWorkos({ getUser });
+    await resolveWorkosUserForSubscription({
+      subscription: makeSubscription({ workos_user_id: 'user_dup' }),
+      customer: makeCustomer({ metadata: { workos_user_id: 'user_dup' } }),
+      organizationId: ORG_ID,
+      pendingAgreementUserId: 'user_dup',
+      workos,
+      logger: makeLogger(),
+    });
+    expect(getUser).toHaveBeenCalledTimes(1);
+  });
+
   it('resolves via subscription metadata when workos_user_id is present and user is org member', async () => {
     const user = { id: 'user_1', email: 'a@b.com', firstName: 'Alice' };
     const workos = makeWorkos({ getUser: vi.fn().mockResolvedValue(user) });

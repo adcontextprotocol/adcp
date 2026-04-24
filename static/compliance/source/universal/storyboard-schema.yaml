@@ -553,13 +553,27 @@
 # --- Validation ---
 #
 # check: string (what to validate: "response_schema", "field_present", "field_value",
-#                "status_code", "http_status", "http_status_in", "error_code",
-#                "on_401_require_header", "resource_equals_agent_url", "any_of",
-#                "refs_resolve")
+#                "field_value_or_absent", "status_code", "http_status", "http_status_in",
+#                "error_code", "on_401_require_header", "resource_equals_agent_url",
+#                "any_of", "refs_resolve")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
-# value: any (expected value — string, number, or boolean; required when check is "field_value")
-# allowed_values: array (acceptable values for "field_value", "http_status_in", "error_code", "any_of")
+# value: any (expected value — string, number, or boolean; required when check is "field_value";
+#             accepted (optional) when check is "field_value_or_absent")
+# allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
+#                        "http_status_in", "error_code", "any_of")
 # description: string (human-readable description of validation)
+#
+# field_value_or_absent check:
+#   Passes when the field is absent OR present and equal to `value` / contained in
+#   `allowed_values`; fails only when the field is present with a disallowed value.
+#   Use for fields that the spec permits to be omitted but MUST NOT carry a wrong value
+#   when present (e.g., a `replayed` flag that MAY be omitted on a fresh path but MUST
+#   NOT be true). Accepts both `value` (single expected value) and `allowed_values` (set
+#   membership); at least one of the two MUST be provided. A `field_value_or_absent` check
+#   that declares neither `value` nor `allowed_values` is a storyboard-load error; runners
+#   MUST reject the storyboard before execution begins.
+#   For fields that are required by the response schema, pair this check with a separate
+#   `check: field_present` to avoid silently accepting absent fields that are required.
 #
 # Error-shape validation — use `check: error_code`:
 #   The `error_code` check is shape-agnostic. The runner resolves the code from

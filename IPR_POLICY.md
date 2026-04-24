@@ -103,6 +103,6 @@ Foundation pull request containing the exact phrase:
 A single signature, recorded by GitHub user identity, applies to all future
 Contributions from that Contributor across Foundation repositories. The
 canonical ledger of signatures lives at
-[`signatures/ipr-signatures.json`](./signatures/ipr-signatures.json); see
-[`signatures/README.md`](./signatures/README.md) for the mechanics, how to
-sign, and how to operate the ledger.
+[`signatures/ipr-signatures.json`](https://github.com/adcontextprotocol/adcp/blob/main/signatures/ipr-signatures.json);
+see [`signatures/README.md`](https://github.com/adcontextprotocol/adcp/blob/main/signatures/README.md)
+for the mechanics, how to sign, and how to operate the ledger.
