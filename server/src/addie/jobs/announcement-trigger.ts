@@ -689,10 +689,21 @@ export const REMINDER_INTERVAL_DAYS = 7;
 /** Hard cap so a stuck draft doesn't generate reminders forever. */
 export const MAX_REMINDERS_PER_ORG = 3;
 
+/**
+ * Advisory lock key for the reminder job. Prevents two concurrent runs
+ * (multi-process deploys, overlapping schedulers) from both seeing the
+ * same candidate before either's activity-row INSERT lands and
+ * double-reminding. Stable 64-bit constant derived from the string
+ * "aao:announcement-li-reminder".
+ */
+const REMINDER_LOCK_ID = 7391204820563829141n;
+
 export interface ReminderResult {
   candidates: number;
   reminded: number;
   failed: number;
+  /** True when another process held the reminder advisory lock. */
+  lockedOut?: boolean;
 }
 
 export interface ReminderCandidate {
@@ -804,24 +815,69 @@ export async function findStaleLiCandidates(): Promise<ReminderCandidate[]> {
     review_channel_id: r.review_channel_id,
     review_message_ts: r.review_message_ts,
     slack_posted_at: r.slack_posted_at,
-    days_since_slack: Math.floor(Number(r.days_since_slack)),
+    // Round so 8.7 renders as "9 days" rather than "8" — matches
+    // how an operator reads a real-world duration.
+    days_since_slack: Math.round(Number(r.days_since_slack)),
     reminder_count: Number(r.reminder_count),
     last_reminder_at: r.last_reminder_at,
   }));
 }
 
+/**
+ * Escape Slack mrkdwn formatting chars + link syntax + bare URLs in
+ * untrusted text (org names from WorkOS, etc.) so a hostile value
+ * can't break the rendered reminder or inject a clickable link.
+ *
+ *  - `*`, `_`, `~`, backtick are Slack's inline formatting tokens.
+ *    Prefix each with a zero-width space so Slack's parser sees them
+ *    as mid-word literals rather than token boundaries.
+ *  - `<`, `|`, `>` make up Slack's explicit link/mention syntax
+ *    (`<url|label>`, `<@U…>`, `<#C…>`). Strip entirely.
+ *  - `http://` / `https://` schemes trigger Slack's auto-linking.
+ *    Break the scheme with a zero-width space so `https://evil/` in
+ *    an org name renders as literal text, not a clickable link.
+ *
+ * A WorkOS org renamed to `Acme<https://evil|click>Co` would
+ * otherwise phishing-link editorial on the reminder card.
+ */
+function escapeSlackMrkdwn(s: string): string {
+  return s
+    .replace(/[<|>]/g, '')
+    // `​` is zero-width space; insert after the scheme so
+    // `http://x` becomes `http:/​/x` — Slack no longer auto-links.
+    .replace(/(https?:)\/\//gi, '$1/​/')
+    // Same ZWSP trick so mid-word formatting chars render literal.
+    .replace(/([*_~`])/g, '​$1');
+}
+
 export function buildReminderText(args: {
   orgName: string;
   daysSinceSlack: number;
-  reminderNumber: number;
-  max: number;
 }): string {
+  const safeName = escapeSlackMrkdwn(args.orgName);
   return (
-    `⏳ Still waiting on LinkedIn for *${args.orgName}* — ` +
-    `${args.daysSinceSlack} days since the Slack post. ` +
-    `Use the *Mark posted to LinkedIn* button above, or ` +
-    `<${APP_URL}/admin/announcements|the admin backlog>. ` +
-    `(Reminder ${args.reminderNumber} of ${args.max}.)`
+    `📌 LinkedIn not yet marked posted for *${safeName}* — ` +
+    `${args.daysSinceSlack} days since Slack. ` +
+    `Mark it from the review card above, or <${APP_URL}/admin/announcements|the admin backlog>.`
+  );
+}
+
+/**
+ * Message posted when the original review-card thread is unreachable
+ * (deleted or archived) on a terminal `message_not_found`. Routes
+ * editorial to the admin backlog — the working surface — rather than
+ * letting the draft silently fall off the Slack radar.
+ */
+export function buildDeadParentText(args: {
+  orgName: string;
+  daysSinceSlack: number;
+}): string {
+  const safeName = escapeSlackMrkdwn(args.orgName);
+  return (
+    `🧹 Review card for *${safeName}* is no longer reachable ` +
+    `(deleted or archived). LinkedIn is still unmarked ` +
+    `${args.daysSinceSlack} days after Slack — ` +
+    `manage from <${APP_URL}/admin/announcements|the admin backlog>.`
   );
 }
 
@@ -838,93 +894,180 @@ export function buildReminderText(args: {
 export async function runAnnouncementReminderJob(): Promise<ReminderResult> {
   const result: ReminderResult = { candidates: 0, reminded: 0, failed: 0 };
 
-  let candidates: ReminderCandidate[];
+  // Advisory lock: refuse to run if another reminder job is already
+  // in progress (multi-process deploys, overlapping scheduler ticks).
+  // Two runs seeing the same candidate before either's INSERT lands
+  // would double-ping — the SQL filter alone can't prevent that.
+  const pool = getPool();
+  const client = await pool.connect();
+  let haveLock = false;
   try {
-    candidates = await findStaleLiCandidates();
-  } catch (err) {
-    logger.error({ err }, 'Failed to load stale LinkedIn reminder candidates');
-    return result;
-  }
+    const lockRes = await client.query<{ pg_try_advisory_lock: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
+      [REMINDER_LOCK_ID.toString()],
+    );
+    haveLock = lockRes.rows[0]?.pg_try_advisory_lock === true;
+    if (!haveLock) {
+      logger.warn('li-reminder: another run is already holding the advisory lock — refusing');
+      result.lockedOut = true;
+      return result;
+    }
 
-  result.candidates = candidates.length;
-
-  for (const candidate of candidates) {
+    let candidates: ReminderCandidate[];
     try {
-      const reminderNumber = candidate.reminder_count + 1;
-      const text = buildReminderText({
-        orgName: candidate.org_name,
-        daysSinceSlack: candidate.days_since_slack,
-        reminderNumber,
-        max: MAX_REMINDERS_PER_ORG,
-      });
+      candidates = await findStaleLiCandidates();
+    } catch (err) {
+      logger.error({ err }, 'Failed to load stale LinkedIn reminder candidates');
+      return result;
+    }
 
-      const post = await sendChannelMessage(
-        candidate.review_channel_id,
-        {
-          text,
-          blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
-          thread_ts: candidate.review_message_ts,
-        },
-        { requirePrivate: true },
-      );
+    result.candidates = candidates.length;
 
-      if (!post.ok) {
-        logger.error(
+    for (const candidate of candidates) {
+      try {
+        const reminderNumber = candidate.reminder_count + 1;
+        const text = buildReminderText({
+          orgName: candidate.org_name,
+          daysSinceSlack: candidate.days_since_slack,
+        });
+
+        // `candidate.review_channel_id` is the channel where Stage 1
+        // posted this draft's review card. If the editorial channel
+        // setting has since been rotated, reminders still thread into
+        // the old channel — that's where the parent ts lives.
+        const post = await sendChannelMessage(
+          candidate.review_channel_id,
+          {
+            text,
+            blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+            thread_ts: candidate.review_message_ts,
+          },
+          { requirePrivate: true },
+        );
+
+        if (!post.ok) {
+          // `message_not_found` means the review card was deleted or
+          // the channel archived; retrying the thread reply will
+          // never succeed. Post a *fresh* (non-threaded) notice to
+          // the same editorial channel so editorial has a signal and
+          // a link to the admin backlog, then record a best-effort
+          // activity row so we stop retrying. Other errors (rate
+          // limit, transient Slack) are worth re-trying on the next
+          // run's candidate list.
+          const isTerminal = post.error === 'message_not_found';
+          logger.error(
+            {
+              orgId: candidate.workos_organization_id,
+              error: post.error,
+              skipped: post.skipped,
+              terminal: isTerminal,
+            },
+            isTerminal
+              ? 'LI reminder parent message gone — posting fresh notice + recording a dead-parent reminder'
+              : 'Failed to post LI reminder — will retry next run',
+          );
+          result.failed++;
+          if (isTerminal) {
+            const freshText = buildDeadParentText({
+              orgName: candidate.org_name,
+              daysSinceSlack: candidate.days_since_slack,
+            });
+            try {
+              await sendChannelMessage(
+                candidate.review_channel_id,
+                {
+                  text: freshText,
+                  blocks: [
+                    { type: 'section', text: { type: 'mrkdwn', text: freshText } },
+                  ],
+                },
+                { requirePrivate: true },
+              );
+            } catch (freshErr) {
+              logger.warn(
+                { err: freshErr, orgId: candidate.workos_organization_id },
+                'Failed to post dead-parent notice — editorial gets the backlog view',
+              );
+            }
+            try {
+              await query(
+                `INSERT INTO org_activities (
+                    organization_id, activity_type, description, metadata, activity_date
+                 ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
+                [
+                  candidate.workos_organization_id,
+                  `Reminder ${candidate.reminder_count + 1}/${MAX_REMINDERS_PER_ORG}: review card missing, cannot post thread reply`,
+                  JSON.stringify({
+                    reminder_number: candidate.reminder_count + 1,
+                    days_stale: candidate.days_since_slack,
+                    failed: 'thread_parent_gone',
+                  }),
+                ],
+              );
+            } catch (recordErr) {
+              logger.error(
+                { err: recordErr, orgId: candidate.workos_organization_id },
+                'Failed to record dead-parent reminder — will retry next run',
+              );
+            }
+          }
+          continue;
+        }
+
+        try {
+          await query(
+            `INSERT INTO org_activities (
+                organization_id, activity_type, description, metadata, activity_date
+             ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
+            [
+              candidate.workos_organization_id,
+              `Reminder ${reminderNumber}/${MAX_REMINDERS_PER_ORG}: LinkedIn post still pending ${candidate.days_since_slack} days after Slack`,
+              JSON.stringify({
+                reminder_number: reminderNumber,
+                days_stale: candidate.days_since_slack,
+                reply_ts: post.ts,
+              }),
+            ],
+          );
+        } catch (recordErr) {
+          // Reminder landed but activity write failed. Next run will
+          // see no reminder row and ping again — an extra nudge every
+          // 7 days is better than a missed one, and the threaded reply
+          // would be hard to undo cleanly. Just log.
+          logger.error(
+            { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+            'LI reminder posted but activity write failed — next run may re-ping',
+          );
+        }
+
+        result.reminded++;
+        logger.info(
           {
             orgId: candidate.workos_organization_id,
-            error: post.error,
-            skipped: post.skipped,
+            reviewTs: candidate.review_message_ts,
+            replyTs: post.ts,
+            reminderNumber,
           },
-          'Failed to post LI reminder — will retry next run',
+          'Posted LI reminder',
+        );
+      } catch (err) {
+        logger.error(
+          { err, orgId: candidate.workos_organization_id },
+          'Failed to draft/post LI reminder — will retry next run',
         );
         result.failed++;
-        continue;
       }
-
-      try {
-        await query(
-          `INSERT INTO org_activities (
-              organization_id, activity_type, description, metadata, activity_date
-           ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
-          [
-            candidate.workos_organization_id,
-            `Reminder ${reminderNumber}/${MAX_REMINDERS_PER_ORG}: LinkedIn post still pending ${candidate.days_since_slack} days after Slack`,
-            JSON.stringify({
-              reminder_number: reminderNumber,
-              days_stale: candidate.days_since_slack,
-              reply_ts: post.ts,
-            }),
-          ],
-        );
-      } catch (recordErr) {
-        // Reminder landed but activity write failed. Next run will
-        // see no reminder row and ping again — an extra nudge every
-        // 7 days is better than a missed one, and the threaded reply
-        // would be hard to undo cleanly. Just log.
-        logger.error(
-          { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
-          'LI reminder posted but activity write failed — next run may re-ping',
-        );
-      }
-
-      result.reminded++;
-      logger.info(
-        {
-          orgId: candidate.workos_organization_id,
-          reviewTs: candidate.review_message_ts,
-          replyTs: post.ts,
-          reminderNumber,
-        },
-        'Posted LI reminder',
-      );
-    } catch (err) {
-      logger.error(
-        { err, orgId: candidate.workos_organization_id },
-        'Failed to draft/post LI reminder — will retry next run',
-      );
-      result.failed++;
     }
-  }
 
-  return result;
+    return result;
+  } finally {
+    if (haveLock) {
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [REMINDER_LOCK_ID.toString()]);
+      } catch (err) {
+        logger.warn({ err }, 'li-reminder: failed to release advisory lock (client will release it)');
+      }
+    }
+    client.release();
+  }
 }
