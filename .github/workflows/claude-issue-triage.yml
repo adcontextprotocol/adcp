@@ -3,7 +3,7 @@ name: Claude Issue Triage Bridge
 # Bridges GitHub events to a Claude Code routine's /fire endpoint.
 # Two entry points:
 #   1. `issues.opened` / `issues.reopened` — automatic triage on new issues.
-#   2. `issue_comment.created` with `/claude-triage` in the body — manual
+#   2. `issue_comment.created` with `@claude-triage` in the body — manual
 #      nudge from a repo member, useful when you want the routine to
 #      (re-)look at a specific issue on demand.
 #
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     # Skip bots always. For comment events: only repo members can nudge,
-    # and the comment body must contain `/claude-triage`.
+    # and the comment body must contain `@claude-triage`.
     if: >-
       github.event.issue.user.type != 'Bot' &&
       !endsWith(github.event.issue.user.login, '[bot]') &&
@@ -44,7 +44,7 @@ jobs:
         github.event_name == 'issues' ||
         (
           github.event_name == 'issue_comment' &&
-          contains(github.event.comment.body, '/claude-triage') &&
+          contains(github.event.comment.body, '@claude-triage') &&
           (
             github.event.comment.author_association == 'OWNER' ||
             github.event.comment.author_association == 'MEMBER' ||
@@ -89,7 +89,7 @@ jobs:
           # The already-engaged check should pass this through; the nudge IS
           # the explicit request.
           if [ "$EVENT_NAME" = "issue_comment" ]; then
-            nudge_note="MANUAL NUDGE: @${COMMENT_AUTHOR} requested triage via /claude-triage. Comment body (trimmed): \"${COMMENT_BODY_SAFE}\". Treat this as an explicit request; do NOT silent-defer on already-engaged signals — the nudge overrides."
+            nudge_note="MANUAL NUDGE: @${COMMENT_AUTHOR} requested triage via @claude-triage. Comment body (trimmed): \"${COMMENT_BODY_SAFE}\". Treat this as an explicit request; do NOT silent-defer on already-engaged signals — the nudge overrides."
           else
             nudge_note=""
           fi
