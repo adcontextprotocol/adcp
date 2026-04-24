@@ -27,6 +27,7 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 
 - **Rename** — Field name changed, same semantics. Find-and-replace.
 - **Restructure** — Shape changed (e.g., string → object, single → array). Requires code changes.
+- **Remove** — Field existed in v2, removed in v3. Find-and-delete.
 - **New requirement** — Didn't exist in v2. Requires new implementation.
 
 | Area | Change | Effort | Details |
@@ -50,6 +51,7 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
 | Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
 | Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
+| Task status | Legacy `task_status` and `response_status` fields MUST NOT be emitted alongside v3 `status` — remove both | Remove | [Task lifecycle](/docs/building/implementation/task-lifecycle) |
 | Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
 | Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/implementation/security) |
 | Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/implementation/security) |
