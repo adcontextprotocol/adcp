@@ -90,6 +90,16 @@ Concretely:
 - Any `media_buy_id` returned by `get_media_buys` MUST be a valid argument to `get_media_buy_delivery` and to `update_media_buy` for every action listed in its `valid_actions`.
 - A sales agent MUST NOT mark a buy read-only, hide it, or return `MEDIA_BUY_NOT_FOUND` on the basis that it was not originally booked through AdCP.
 - When a specific action is unavailable for business reasons (contractual obligations, platform constraints, policy), the sales agent expresses that by omitting the action from `valid_actions`, not by refusing the buy from account-scoped listings.
+- **Creation surface is never a business reason.** Sales agents MUST NOT omit an action from `valid_actions` — or return `INVALID_STATE` on an otherwise-valid update — solely because the buy was created outside AdCP. `valid_actions` omissions are legitimate only when grounded in actual contractual, platform, or policy constraints that would apply equally to an AdCP-created buy in the same state. A seller that returns non-AdCP buys with a systematically empty `valid_actions` is non-conformant, because that behavior is indistinguishable from hiding the buy and defeats the normative intent of the rules above.
+
+#### Partitioning belongs at the account boundary
+
+When a seller has a legitimate reason to keep a set of buys outside a caller's operational reach — child-seller models, NDA-scoped PMP deals, sandbox-vs-production separation, tenant-level privacy partitions — the correct mechanism is **account partitioning**, not within-account filtering:
+
+- Expose the hidden subset as a separate account (or sub-account) the caller is not authorized to reference.
+- Within any account the caller *is* authorized on, return the full set of buys that account owns per the rules above.
+
+The account boundary is the AdCP primitive for access partitioning; `get_agent_capabilities` is the introspection surface for the scope granted on a given account. Callers can see what they can see; what they cannot see lives behind an account reference they do not hold. Within-account filtering — returning only a subset of an account's buys to a caller who is authorized on that account — reintroduces the shadow-ledger problem this rule forbids.
 
 ### Asynchronous Operations
 

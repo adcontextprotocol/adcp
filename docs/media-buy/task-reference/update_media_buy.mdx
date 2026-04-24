@@ -12,7 +12,9 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 ## Scope
 
-`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is. When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints), the seller MUST omit that action from `valid_actions` on the buy rather than silently rejecting the corresponding update.
+`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is.
+
+When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return `INVALID_STATE` on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
