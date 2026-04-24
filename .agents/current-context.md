@@ -82,7 +82,7 @@ Last refresh: 2026-04-24
   strict/lenient response-schema reporting ([#831](https://github.com/adcontextprotocol/adcp-client/pull/831)),
   creative-agent ergonomics ([#848](https://github.com/adcontextprotocol/adcp-client/pull/848)).
   Status: **active**.
-- **Compliance storyboard gaps** — `governance_aware_seller` phase loss
+- **Compliance storyboard remediation** — `governance_aware_seller` phase loss
   ([#2972](https://github.com/adcontextprotocol/adcp/issues/2972),
   [#2923](https://github.com/adcontextprotocol/adcp/issues/2923); fix
   [PR #2973](https://github.com/adcontextprotocol/adcp/pull/2973)); filter-behaviour
