@@ -86,7 +86,28 @@ the last 10 minutes. **Skip.** Do not apply `claude-triaged`. Do not
 spawn experts. Move to the next issue and note the skip in your run
 summary. This is the dedup lock — it costs one API call per issue.
 
+## Manual nudge — overrides the already-engaged check
+
+If the event context (the text the routine receives) contains a
+`MANUAL NUDGE:` line, a repo member explicitly requested triage via
+a `/claude-triage` comment. **Skip the already-engaged check.** The
+nudge *is* the explicit request for help — proceed with full triage
+regardless of assignees, open PRs, or recent comments.
+
+If the comment text includes a modifier after `/claude-triage`, use
+it to bias the decision:
+
+- `/claude-triage execute` — lean toward Execute on borderline
+  non-breaking changes
+- `/claude-triage clarify` — force a clarifying-question comment
+  even if you'd otherwise act
+- `/claude-triage defer` — force defer and stop
+
+Without a modifier, use standard four-outcome logic.
+
 ## Already-engaged check — before any expert work
+
+(Skip this section if the event is a MANUAL NUDGE — see above.)
 
 You can't see Conductor workspaces, local drafts, or Slack
 conversations. A human may be actively working on an issue without
