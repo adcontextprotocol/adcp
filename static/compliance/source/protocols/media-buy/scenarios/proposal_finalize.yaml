@@ -229,6 +229,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           proposal_id: "balanced_reach_q2"
           total_budget:
             amount: 50000
