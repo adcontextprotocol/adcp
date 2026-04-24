@@ -37,7 +37,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 const CREATIVE_TRANSITIONS: Record<string, string[]> = {
   processing: ['pending_review', 'rejected'],
   pending_review: ['approved', 'rejected'],
-  approved: ['pending_review', 'archived'],
+  approved: ['pending_review', 'rejected', 'archived'],
   rejected: ['processing'],
   archived: ['approved'],
 };

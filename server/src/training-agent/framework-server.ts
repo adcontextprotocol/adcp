@@ -162,7 +162,14 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  const response = wrapEnvelope(inner, { context: callerContext });
+  // wrapEnvelope stamps the AdCP idempotency + context echo envelope.
+  // `replayed: false` signals a fresh execution so storyboards that
+  // assert `replayed: false (or omitted)` grade consistently; a
+  // follow-up wrapper intercepts replays and flips it to true.
+  // wrapEnvelope silently drops non-object `context` per the SDK
+  // `injectContextIntoResponse` contract (SI tools legitimately
+  // override request `context` to a string).
+  const response = wrapEnvelope(inner, { replayed: false, context: callerContext }) as Record<string, unknown>;
   return {
     content: [{ type: 'text', text: JSON.stringify(response) }],
     structuredContent: response,

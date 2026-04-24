@@ -11,7 +11,7 @@
  */
 
 export { createUnifiedMCPServer, initializeMCPServer, isMCPServerReady, getAllTools } from './server.js';
-export { configureMCPRoutes } from './routes.js';
+export { configureMCPRoutes, resolveMCPServerURL } from './routes.js';
 export { createOAuthProvider, handleMCPOAuthCallback, MCP_AUTH_ENABLED } from './oauth-provider.js';
 export {
   authInfoToMCPAuthContext,

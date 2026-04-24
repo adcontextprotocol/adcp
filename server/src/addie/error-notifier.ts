@@ -129,7 +129,28 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     threadLine,
   ].filter(Boolean);
 
-  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
+  // 'strict-public-only': drop the send only on confirmed-public drift,
+  // not on transient verify failures. The error notifier is our primary
+  // signal for production errors; we'd rather tolerate a small leak
+  // window on a Slack API blip than silence the only way an operator
+  // hears about a system failure. Confirmed drift is still dropped —
+  // that's the whole point of #2735.
+  const result = await sendChannelMessage(
+    setting.channel_id,
+    { text: lines.join('\n') },
+    { requirePrivate: 'strict-public-only' },
+  );
+  if (result.skipped === 'not_private') {
+    // Loud log so log aggregation can alert on the silenced error.
+    logger.error(
+      {
+        source: 'tool-error-silenced',
+        toolName: ctx.toolName,
+        event: 'error_channel_drift_silenced',
+      },
+      'Tool error suppressed because error_slack_channel is no longer private — admin must re-privatize or reconfigure. Original error lost to Slack but recorded here.',
+    );
+  }
 }
 
 async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
@@ -155,5 +176,22 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
     quoted,
   ];
 
-  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
+  // See the matching comment in _postToolError — 'strict-public-only'
+  // keeps system-error alerting alive when Slack API is flaky. Drops
+  // only on confirmed drift.
+  const result = await sendChannelMessage(
+    setting.channel_id,
+    { text: lines.join('\n') },
+    { requirePrivate: 'strict-public-only' },
+  );
+  if (result.skipped === 'not_private') {
+    logger.error(
+      {
+        source: ctx.source,
+        errorMessage: ctx.errorMessage.substring(0, 200),
+        event: 'error_channel_drift_silenced',
+      },
+      'System error suppressed because error_slack_channel is no longer private — admin must re-privatize or reconfigure. Original error lost to Slack but recorded here.',
+    );
+  }
 }

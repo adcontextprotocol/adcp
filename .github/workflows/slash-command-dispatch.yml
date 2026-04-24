@@ -1,0 +1,45 @@
+name: Slash Command Dispatch
+
+# Routes `/<command>` comments on issues and PRs to dedicated handler
+# workflows via repository_dispatch events. Uses peter-evans/slash-command-
+# dispatch so we get:
+#   - Built-in permission checks (only OWNER / MEMBER / COLLABORATOR trigger)
+#   - Reactions on the triggering comment (eyes on ack, +1 on success, -1 on fail)
+#   - Clean separation: this workflow routes, downstream handlers do the work
+#
+# Required repo secret:
+#   TRIAGE_DISPATCH_PAT  — Personal Access Token with `repo` scope (or fine-
+#                         grained: contents:write, issues:write, pull-requests:write
+#                         on this repo). GITHUB_TOKEN cannot fire
+#                         repository_dispatch events.
+#
+# Current commands:
+#   /triage [modifier]  — fire the triage routine on this issue. Modifiers
+#                         bias the outcome (execute / clarify / defer).
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch slash command
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # Skip bot-authored comments always.
+    if: >-
+      github.event.comment.user.type != 'Bot' &&
+      !endsWith(github.event.comment.user.login, '[bot]')
+    steps:
+      - name: Slash command dispatch
+        uses: peter-evans/slash-command-dispatch@v5
+        with:
+          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          commands: |
+            triage
+          permission: write
+          reactions: true
+          issue-type: both

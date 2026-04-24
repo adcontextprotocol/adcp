@@ -20,9 +20,20 @@ import {
   getPendingInvoices,
   createCheckoutSession,
   getProductsForCustomer,
-  createAndSendInvoice,
 } from "../../billing/stripe-client.js";
+import {
+  createMembershipInvite,
+  listMembershipInvitesForOrg,
+  inviteStatus,
+  revokeMembershipInvite,
+} from "../../db/membership-invites-db.js";
+import { sendMembershipInviteEmail } from "../../notifications/email.js";
 import { createProspect, updateProspect } from "../../services/prospect.js";
+import {
+  loadDraftAndState,
+  markLinkedInPosted,
+  refreshReviewCardForOrg,
+} from "../../addie/jobs/announcement-handlers.js";
 import { WorkOS } from "@workos-inc/node";
 import {
   MEMBER_FILTER_ALIASED,
@@ -382,6 +393,7 @@ export function setupAccountRoutes(
           similarOrgsResult,
           pendingSlackUsersResult,
           subsidiariesResult,
+          announcementLoaded,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -638,6 +650,14 @@ export function setupAccountRoutes(
                 [org.email_domain, orgId]
               )
             : Promise.resolve({ rows: [] }),
+
+          // Workflow B announcement state: returns null when no draft has
+          // been posted yet. Non-blocking — if the fetch errors we still
+          // render the rest of the account page.
+          loadDraftAndState(orgId).catch((err: unknown) => {
+            logger.warn({ err, orgId }, "loadDraftAndState failed for account detail");
+            return null;
+          }),
         ]);
 
         // Brand-aware similar org detection via aliases and hierarchy
@@ -875,6 +895,39 @@ export function setupAccountRoutes(
           // Pending Slack users (discovered via domain but not yet linked/members)
           pending_slack_users: pendingSlackUsersResult.rows,
           pending_slack_count: pendingSlackUsersResult.rows.length,
+
+          // Workflow B announcement state. `null` = no draft has been
+          // posted yet. Admin UI renders a `Mark posted to LinkedIn`
+          // action when `slack_posted && !linkedin_posted && !skipped`.
+          // Actors are collapsed to a single `_label` string suitable
+          // for display; internal ids stay server-side.
+          announcement: announcementLoaded
+            ? (() => {
+                const s = announcementLoaded.state;
+                const actorLabel = (actor: typeof s.slackApprover): string | null => {
+                  if (actor.source === "admin" && actor.workosUserId) return "an AAO admin";
+                  if (actor.slackUserId) return `<@${actor.slackUserId}>`;
+                  if (actor.workosUserId) return "an AAO admin";
+                  return null;
+                };
+                return {
+                  slack_posted: Boolean(s.slackTs),
+                  slack_ts: s.slackTs,
+                  slack_channel_id: s.slackAnnouncementChannelId,
+                  slack_approver_label: actorLabel(s.slackApprover),
+                  linkedin_posted: Boolean(
+                    s.linkedinMarker.slackUserId || s.linkedinMarker.workosUserId,
+                  ),
+                  linkedin_marked_at: s.linkedinMarkedAt?.toISOString() ?? null,
+                  linkedin_marker_label: actorLabel(s.linkedinMarker),
+                  skipped: Boolean(s.skipper.slackUserId || s.skipper.workosUserId),
+                  skipped_at: s.skippedAt?.toISOString() ?? null,
+                  skipper_label: actorLabel(s.skipper),
+                  org_name: announcementLoaded.draft.org_name ?? null,
+                  profile_slug: announcementLoaded.draft.profile_slug ?? null,
+                };
+              })()
+            : null,
 
           owner: owner
             ? {
@@ -1632,6 +1685,88 @@ export function setupAccountRoutes(
       });
     }
   });
+
+  // POST /api/admin/accounts/:orgId/announcement/linkedin
+  // Admin-UI counterpart to the `Mark posted to LinkedIn` Slack button.
+  // Idempotent — the shared `markLinkedInPosted` holds a Postgres advisory
+  // lock keyed on (orgId, 'mark_linkedin') so this endpoint, the Bolt
+  // handler, and concurrent double-submits all converge on one row.
+  apiRouter.post(
+    "/accounts/:orgId/announcement/linkedin",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        if (!/^org_[A-Z0-9]+$/.test(orgId)) {
+          return res.status(400).json({ error: "Invalid organization id" });
+        }
+        const workosUserId = req.user?.id;
+        if (!workosUserId) {
+          return res.status(401).json({ error: "Unauthenticated" });
+        }
+        // Reject the static `ADMIN_API_KEY` auth path (id = 'admin_api_key')
+        // — this endpoint records the caller into the audit trail and a
+        // shared static key can't stand in for an individual admin.
+        if (workosUserId === "admin_api_key") {
+          return res.status(403).json({
+            error: "admin_api_key_not_allowed",
+            message:
+              "This action must be performed by a signed-in admin, not the static API key.",
+          });
+        }
+
+        const outcome = await markLinkedInPosted(orgId, {
+          source: "admin",
+          workosUserId,
+        });
+
+        // Uniform response shape across all success branches makes the
+        // admin-UI handler branch on `already_done` without checking for
+        // missing fields. `message` is absent on a fresh record because
+        // there's no "something was already true" to report.
+        switch (outcome.kind) {
+          case "no_draft":
+            return res.status(404).json({
+              error: "no_draft",
+              message:
+                "No announcement draft has been posted for this org yet.",
+            });
+          case "refuse":
+            return res.status(409).json({
+              error: "refused",
+              message: outcome.notice,
+            });
+          case "already_done":
+            // State already at the target — refresh the editorial Slack
+            // card anyway so it doesn't linger on a stale state.
+            void refreshReviewCardForOrg(orgId);
+            return res.status(200).json({
+              success: true,
+              already_done: true,
+              message: outcome.notice,
+            });
+          case "recorded":
+            // Fire-and-forget Slack refresh so the in-Slack review card
+            // shows the new state. We don't await — the HTTP response
+            // should complete fast, and any refresh failure is already
+            // logged; the DB is the authoritative source.
+            void refreshReviewCardForOrg(orgId);
+            return res.status(200).json({
+              success: true,
+              already_done: false,
+              message: "LinkedIn post recorded.",
+            });
+        }
+      } catch (error) {
+        logger.error(
+          { err: error, orgId: req.params.orgId },
+          "Error marking announcement LinkedIn posted"
+        );
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
 
   // POST /api/admin/accounts/:orgId/activities/:activityId/complete - Mark a task complete
   apiRouter.post(
@@ -2676,103 +2811,195 @@ export function setupAccountRoutes(
   );
 
   // POST /api/admin/accounts/:orgId/invoice - Generate and send a Stripe invoice
+  // POST /api/admin/accounts/:orgId/invite-membership
+  // Admin sends a membership invitation (not a direct invoice). The prospect
+  // clicks the emailed link, signs in, signs the membership agreement,
+  // confirms billing, and only then is the Stripe invoice issued. This
+  // replaces the previous admin-fills-out-a-form-and-invoice-goes-out flow,
+  // which was fragile (typos in email → orphan customers → unlinked payments).
   apiRouter.post(
-    "/accounts/:orgId/invoice",
+    "/accounts/:orgId/invite-membership",
     requireAuth,
     requireAdmin,
     async (req, res) => {
       try {
         const { orgId } = req.params;
-        const {
-          lookup_key,
-          company_name,
-          contact_name,
-          contact_email,
-          billing_address,
-          coupon_id,
-        } = req.body;
+        const { lookup_key, contact_email, contact_name, referral_code } = req.body as {
+          lookup_key?: string;
+          contact_email?: string;
+          contact_name?: string;
+          referral_code?: string;
+        };
 
-        if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
+        if (!lookup_key || !contact_email) {
           return res.status(400).json({
             error: "Missing required fields",
-            message: "lookup_key, company_name, contact_name, contact_email, and billing_address are required",
+            message: "lookup_key and contact_email are required",
           });
         }
 
-        if (!billing_address.line1 || !billing_address.city || !billing_address.state ||
-            !billing_address.postal_code || !billing_address.country) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        if (!emailRegex.test(contact_email)) {
           return res.status(400).json({
-            error: "Incomplete billing address",
-            message: "Billing address must include line1, city, state, postal_code, and country",
+            error: "Invalid email",
+            message: "Please provide a valid email address",
           });
         }
 
-        const pool = getPool();
-        const orgResult = await pool.query(
-          `SELECT workos_organization_id, name, stripe_coupon_id FROM organizations WHERE workos_organization_id = $1`,
-          [orgId]
-        );
+        if (!lookup_key.startsWith("aao_")) {
+          return res.status(400).json({
+            error: "Invalid product",
+            message: "Invalid product selection",
+          });
+        }
 
-        if (orgResult.rows.length === 0) {
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
           return res.status(404).json({ error: "Organization not found" });
         }
 
-        const org = orgResult.rows[0];
-        // Only fall back to org coupon if coupon_id was not provided;
-        // explicit null means the admin opted out of the discount
-        const effectiveCouponId = coupon_id !== undefined ? coupon_id : org.stripe_coupon_id;
-
-        const result = await createAndSendInvoice({
-          lookupKey: lookup_key,
-          companyName: company_name,
-          contactName: contact_name,
-          contactEmail: contact_email,
-          billingAddress: {
-            line1: billing_address.line1,
-            line2: billing_address.line2,
-            city: billing_address.city,
-            state: billing_address.state,
-            postal_code: billing_address.postal_code,
-            country: billing_address.country,
-          },
-          workosOrganizationId: orgId,
-          couponId: effectiveCouponId,
+        const customerType = org.is_personal ? "individual" : "company";
+        const eligibleProducts = await getProductsForCustomer({
+          customerType,
+          category: "membership",
         });
-
-        if (!result) {
-          return res.status(500).json({
-            error: "Failed to create invoice",
-            message: "Stripe may not be configured or the product was not found",
+        const product = eligibleProducts.find((p) => p.lookup_key === lookup_key);
+        if (!product) {
+          return res.status(400).json({
+            error: "Product not available",
+            message: "This membership tier is not available for this organization.",
           });
         }
 
+        const normalizedEmail = contact_email.trim().toLowerCase();
+
+        const invite = await createMembershipInvite({
+          workos_organization_id: orgId,
+          lookup_key,
+          contact_email: normalizedEmail,
+          contact_name: contact_name?.trim() || undefined,
+          referral_code: referral_code?.trim() || undefined,
+          invited_by_user_id: req.user!.id,
+        });
+
+        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        const inviteUrl = `${baseUrl}/invite/${invite.token}`;
+        const priceDisplay = `$${(product.amount_cents / 100).toLocaleString()}`;
+
+        const invitedByName =
+          [req.user!.firstName, req.user!.lastName].filter(Boolean).join(" ") ||
+          req.user!.email;
+
+        const emailSent = await sendMembershipInviteEmail({
+          to: normalizedEmail,
+          contactName: contact_name?.trim() || null,
+          orgName: org.name,
+          tierDisplayName: product.display_name,
+          priceDisplay,
+          inviteUrl,
+          invitedByName,
+          invitedByEmail: req.user!.email,
+          expiresAt: invite.expires_at,
+        });
+
+        // Keep the prospect contact info on the org record for visibility.
+        const pool = getPool();
         await pool.query(
           `UPDATE organizations SET
             invoice_requested_at = NOW(),
-            prospect_contact_name = $1,
+            prospect_contact_name = COALESCE($1, prospect_contact_name),
             prospect_contact_email = $2
            WHERE workos_organization_id = $3`,
-          [contact_name, contact_email, orgId]
+          [contact_name?.trim() || null, normalizedEmail, orgId]
         );
 
         logger.info(
-          { orgId, orgName: org.name, lookupKey: lookup_key, invoiceId: result.invoiceId, contactEmail: contact_email, adminEmail: req.user!.email },
-          "Admin sent invoice"
+          {
+            orgId,
+            orgName: org.name,
+            lookupKey: lookup_key,
+            contactEmail: contact_email,
+            inviteToken: invite.token.slice(0, 8) + "...",
+            emailSent,
+            adminEmail: req.user!.email,
+          },
+          "Admin sent membership invitation"
         );
 
         res.json({
           success: true,
-          invoice_id: result.invoiceId,
-          invoice_url: result.invoiceUrl,
+          invite: {
+            token: invite.token,
+            contact_email: invite.contact_email,
+            contact_name: invite.contact_name,
+            lookup_key: invite.lookup_key,
+            expires_at: invite.expires_at,
+            url: inviteUrl,
+          },
+          email_sent: emailSent,
           organization: { name: org.name },
-          contact: { name: contact_name, email: contact_email },
         });
       } catch (error) {
-        logger.error({ err: error }, "Error sending invoice");
+        logger.error({ err: error }, "Error sending membership invitation");
         res.status(500).json({
           error: "Internal server error",
-          message: "Unable to send invoice",
+          message: "Unable to send membership invitation",
         });
+      }
+    }
+  );
+
+  // GET /api/admin/accounts/:orgId/invites - List membership invitations for an org
+  apiRouter.get(
+    "/accounts/:orgId/invites",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const invites = await listMembershipInvitesForOrg(orgId);
+        res.json({
+          invites: invites.map((inv) => ({
+            token: inv.token,
+            contact_email: inv.contact_email,
+            contact_name: inv.contact_name,
+            lookup_key: inv.lookup_key,
+            invited_by_user_id: inv.invited_by_user_id,
+            created_at: inv.created_at,
+            expires_at: inv.expires_at,
+            accepted_at: inv.accepted_at,
+            accepted_by_user_id: inv.accepted_by_user_id,
+            invoice_id: inv.invoice_id,
+            revoked_at: inv.revoked_at,
+            status: inviteStatus(inv),
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error listing invitations");
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/invites/:token/revoke - Revoke a pending invite
+  apiRouter.post(
+    "/accounts/:orgId/invites/:token/revoke",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { token } = req.params;
+        const revoked = await revokeMembershipInvite(token, req.user!.id);
+        if (!revoked) {
+          return res.status(400).json({
+            error: "Cannot revoke",
+            message: "Invite is already accepted, revoked, or does not exist.",
+          });
+        }
+        res.json({ success: true, token: revoked.token });
+      } catch (error) {
+        logger.error({ err: error }, "Error revoking invitation");
+        res.status(500).json({ error: "Internal server error" });
       }
     }
   );

@@ -41,7 +41,11 @@ describe('error-notifier', () => {
       'C_ERROR_123',
       expect.objectContaining({
         text: expect.stringContaining('create_payment_link'),
-      })
+      }),
+      // error_slack_channel is admin-configured. 'strict-public-only'
+      // drops only on confirmed drift — transient Slack failures don't
+      // silence system-error alerting (#2735 follow-up).
+      { requirePrivate: 'strict-public-only' },
     );
 
     // Verify it includes the user mention and thread link
@@ -125,7 +129,8 @@ describe('error-notifier', () => {
       'C_ERROR_123',
       expect.objectContaining({
         text: expect.stringContaining('database-pool'),
-      })
+      }),
+      { requirePrivate: 'strict-public-only' },
     );
   });
 });

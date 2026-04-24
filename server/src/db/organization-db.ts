@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getPool, query } from './client.js';
 import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
@@ -133,8 +134,18 @@ export interface Organization {
   discount_granted_at: Date | null;
   stripe_coupon_id: string | null;
   stripe_promotion_code: string | null;
+  billing_address: BillingAddress | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface BillingAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
 }
 
 export interface SubscriptionInfo {
@@ -201,23 +212,67 @@ export function tierFromLookupKey(lookupKey: string | null | undefined): Members
 }
 
 /**
- * Resolve the effective membership tier for an organization.
- * Fallback chain: cached tier → stored lookup key → amount inference.
- * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ * Input shape for `resolveMembershipTier`. Kept as a named type so the
+ * companion SQL helpers below can declare a matching row type, and so
+ * a future resolver change that needs a new column surfaces every
+ * consumer via TS.
  */
-export function resolveMembershipTier(org: {
+export interface MembershipTierRow {
   membership_tier: string | null;
   subscription_price_lookup_key?: string | null;
   subscription_status: string | null;
   subscription_amount: number | null;
   subscription_interval: string | null;
   is_personal: boolean;
-} | null | undefined): MembershipTier | null {
+}
+
+/**
+ * Column list the resolver requires from the `organizations` table.
+ * Single source of truth for handlers that issue their own SELECT
+ * (typically inside a transaction) and then hand the row to
+ * `resolveMembershipTier`. Extending the resolver to consider a new
+ * column means adding it here AND to `MembershipTierRow` — TS will
+ * then surface every call site that needs to be updated.
+ */
+export const MEMBERSHIP_TIER_COLUMNS = [
+  'membership_tier',
+  'subscription_price_lookup_key',
+  'subscription_status',
+  'subscription_amount',
+  'subscription_interval',
+  'is_personal',
+] as const;
+
+/**
+ * Resolve the effective membership tier for an organization.
+ * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ */
+export function resolveMembershipTier(org: MembershipTierRow | null | undefined): MembershipTier | null {
   if (!org) return null;
   if (org.membership_tier) return org.membership_tier as MembershipTier;
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
   return tierFromLookupKey(org.subscription_price_lookup_key)
     ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+}
+
+/**
+ * Read + resolve the current membership tier for `orgId` using a
+ * caller-held pg client. Prefer this to inline SQL when the read
+ * must share a transaction with subsequent writes (e.g.,
+ * `applyAgentVisibility` re-reads the tier under `FOR UPDATE` after
+ * locking `member_profiles`). Pass `{ forUpdate: true }` when the
+ * caller needs to lock the organizations row as well.
+ */
+export async function readMembershipTierFromClient(
+  client: PoolClient,
+  orgId: string,
+  opts: { forUpdate?: boolean } = {},
+): Promise<MembershipTier | null> {
+  const lockSuffix = opts.forUpdate ? ' FOR UPDATE' : '';
+  const sql = `SELECT ${MEMBERSHIP_TIER_COLUMNS.join(', ')} FROM organizations WHERE workos_organization_id = $1${lockSuffix}`;
+  const result = await client.query<MembershipTierRow>(sql, [orgId]);
+  return resolveMembershipTier(result.rows[0] ?? null);
 }
 
 /**
@@ -365,20 +420,9 @@ export async function canAddSeat(
   try {
     await client.query('BEGIN');
 
-    // Lock the org row to serialize concurrent seat checks
-    const orgResult = await client.query<{
-      membership_tier: string | null;
-      subscription_price_lookup_key: string | null;
-      subscription_amount: number | null;
-      subscription_interval: string | null;
-      subscription_status: string | null;
-      is_personal: boolean;
-    }>(
-      'SELECT membership_tier, subscription_price_lookup_key, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
-      [orgId]
-    );
-    const org = orgResult.rows[0];
-    const tier = resolveMembershipTier(org);
+    // Lock the org row to serialize concurrent seat checks and resolve
+    // the tier from the same (locked) read.
+    const tier = await readMembershipTierFromClient(client, orgId, { forUpdate: true });
     const limits = getSeatLimits(tier);
 
     // Count active members (contributor = admin-assigned OR Slack-mapped OR in working group)
@@ -806,6 +850,7 @@ export class OrganizationDatabase {
       discount_granted_at: 'discount_granted_at',
       stripe_coupon_id: 'stripe_coupon_id',
       stripe_promotion_code: 'stripe_promotion_code',
+      billing_address: 'billing_address',
     };
 
     const setClauses: string[] = [];

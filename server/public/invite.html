@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="same-origin">
+  <title>Membership Invitation - AgenticAdvertising.org</title>
+  <meta name="description" content="Accept your AgenticAdvertising.org membership invitation.">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    .wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--space-8) var(--space-5); }
+    .card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-lg);
+      padding: var(--space-10) var(--space-8);
+      max-width: 560px; width: 100%;
+    }
+    .muted { color: var(--color-text-muted); font-size: var(--text-sm); }
+    .tier-block {
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-xl);
+      padding: var(--space-4) var(--space-5);
+      margin: var(--space-5) 0;
+    }
+    .tier-label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .tier-name { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: 2px; }
+    .tier-price { font-size: var(--text-base); color: var(--color-text-secondary); margin-top: 6px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
+    .form-group { margin-bottom: var(--space-3); }
+    label { display: block; font-size: var(--text-sm); font-weight: 500; color: var(--color-text); margin-bottom: var(--space-1); }
+    input[type=text], input[type=email] {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .agreement-block {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin: var(--space-4) 0;
+    }
+    .error {
+      color: var(--color-error-600);
+      background: var(--color-error-50);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      margin: var(--space-3) 0;
+    }
+    .hidden { display: none !important; }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+      padding: 12px 28px;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-block;
+      text-decoration: none;
+    }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: white;
+      color: var(--color-text-heading);
+      padding: 12px 28px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    ol { padding-left: 20px; margin: var(--space-4) 0; }
+    ol li { margin-bottom: var(--space-2); }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+      <div id="loadingState">
+        <p class="muted">Loading invitation…</p>
+      </div>
+
+      <div id="errorState" class="hidden">
+        <h1 id="errorTitle" style="margin-top: 0;">Something went wrong</h1>
+        <p id="errorMessage" class="muted"></p>
+        <p><a href="/" class="btn-secondary">Back to home</a></p>
+      </div>
+
+      <div id="successState" class="hidden">
+        <h1 style="margin-top: 0;" id="headline">You're invited to join AgenticAdvertising.org</h1>
+        <p class="muted" id="subhead"></p>
+
+        <div class="tier-block">
+          <div class="tier-label">Membership tier</div>
+          <div class="tier-name" id="tierName">—</div>
+          <div class="tier-price" id="tierPrice">—</div>
+        </div>
+
+        <div id="signInSection" class="hidden">
+          <p>Sign in (or create your account) to accept.</p>
+          <p>
+            <a id="signInBtn" class="btn-primary" href="#">Sign in to continue</a>
+          </p>
+          <p class="muted" style="margin-top: var(--space-3);">
+            The invitation was sent to <span id="contactEmailDisplay"></span>. You can sign in with any account email — we'll add you to the organization when you accept.
+          </p>
+        </div>
+
+        <div id="acceptSection" class="hidden">
+          <p><strong>Welcome, <span id="userName"></span>.</strong> Here's what happens next:</p>
+          <ol>
+            <li>Review and sign the membership agreement</li>
+            <li>Confirm your billing address</li>
+            <li>Receive the invoice — pay within 30 days to activate</li>
+          </ol>
+
+          <form id="acceptForm" onsubmit="submitAccept(event)">
+            <h3 style="margin-top: var(--space-5); margin-bottom: var(--space-3); font-size: var(--text-base);">Billing address</h3>
+            <div class="form-group">
+              <label for="line1">Street address *</label>
+              <input type="text" id="line1" name="line1" required>
+            </div>
+            <div class="form-group">
+              <label for="line2">Address line 2</label>
+              <input type="text" id="line2" name="line2">
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="city">City *</label>
+                <input type="text" id="city" name="city" required>
+              </div>
+              <div>
+                <label for="state">State/Province *</label>
+                <input type="text" id="state" name="state" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="postal_code">Postal code *</label>
+                <input type="text" id="postal_code" name="postal_code" required>
+              </div>
+              <div>
+                <label for="country">Country *</label>
+                <input type="text" id="country" name="country" value="US" required>
+              </div>
+            </div>
+
+            <div class="agreement-block">
+              <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-weight: normal;">
+                <input type="checkbox" id="agreementCheckbox" style="margin-top: 3px; cursor: pointer;">
+                <span>I have read and agree to the <a href="/membership-agreement" target="_blank" rel="noopener">AgenticAdvertising.org Membership Agreement</a>.</span>
+              </label>
+            </div>
+
+            <div id="acceptError" class="error hidden"></div>
+
+            <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
+              <a href="/" class="btn-secondary">Cancel</a>
+              <button type="submit" id="acceptBtn" class="btn-primary" disabled>Accept and issue invoice</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var pathParts = window.location.pathname.split('/');
+      var token = pathParts[pathParts.length - 1];
+
+      if (!token) {
+        showError('Invalid link', 'This invitation link is missing a token.');
+        return;
+      }
+
+      var agreementVersion = null;
+      var agreementReady = false;
+      fetch('/api/agreement/current?type=membership')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (data && data.version) agreementVersion = data.version;
+          agreementReady = true;
+        })
+        .catch(function () { agreementReady = true; /* server will reject on submit */ });
+
+      fetch('/api/invite/' + encodeURIComponent(token))
+        .then(function (res) {
+          if (res.status === 404) throw Object.assign(new Error('Not found'), { status: 404 });
+          if (!res.ok) throw Object.assign(new Error('Error'), { status: res.status });
+          return res.json();
+        })
+        .then(function (invite) {
+          if (invite.status === 'expired') {
+            showError('Invitation expired', 'This invitation has expired. Ask the sender for a new one.');
+            return;
+          }
+          if (invite.status === 'revoked') {
+            showError('Invitation revoked', 'This invitation was revoked by the sender.');
+            return;
+          }
+          if (invite.status === 'accepted') {
+            showError('Already accepted', 'This invitation has already been accepted.');
+            return;
+          }
+          renderInvite(invite);
+        })
+        .catch(function (err) {
+          if (err.status === 404) {
+            showError('Invitation not found', "We couldn't find this invitation. Double-check the link.");
+          } else {
+            showError('Something went wrong', 'Please refresh in a moment or contact finance@agenticadvertising.org.');
+          }
+        });
+
+      function renderInvite(invite) {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('successState').classList.remove('hidden');
+
+        var priceStr = invite.amount_cents != null
+          ? '$' + (invite.amount_cents / 100).toLocaleString() + (invite.billing_interval ? '/' + invite.billing_interval : '')
+          : '';
+
+        document.getElementById('headline').textContent =
+          invite.org_name + ', you\'re invited to become a member.';
+        document.getElementById('subhead').textContent =
+          'Accept this invitation to become an AgenticAdvertising.org member. The invoice will be sent to your signed-in account email after you accept.';
+        document.getElementById('tierName').textContent = invite.tier_display_name || invite.lookup_key;
+        document.getElementById('tierPrice').textContent = priceStr;
+        document.getElementById('contactEmailDisplay').textContent = invite.contact_email;
+
+        if (invite.billing_address) {
+          var a = invite.billing_address;
+          if (a.line1) document.getElementById('line1').value = a.line1;
+          if (a.line2) document.getElementById('line2').value = a.line2;
+          if (a.city) document.getElementById('city').value = a.city;
+          if (a.state) document.getElementById('state').value = a.state;
+          if (a.postal_code) document.getElementById('postal_code').value = a.postal_code;
+          if (a.country) document.getElementById('country').value = a.country;
+        }
+
+        var cfg = window.__APP_CONFIG__;
+        if (cfg && cfg.user) {
+          document.getElementById('userName').textContent =
+            (cfg.user.firstName || cfg.user.email || 'there');
+          document.getElementById('acceptSection').classList.remove('hidden');
+
+          var checkbox = document.getElementById('agreementCheckbox');
+          var btn = document.getElementById('acceptBtn');
+          checkbox.addEventListener('change', function () {
+            btn.disabled = !checkbox.checked;
+          });
+        } else {
+          document.getElementById('signInSection').classList.remove('hidden');
+          var signIn = document.getElementById('signInBtn');
+          signIn.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+        }
+      }
+
+      function showError(title, message) {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('errorTitle').textContent = title;
+        document.getElementById('errorMessage').textContent = message;
+        document.getElementById('errorState').classList.remove('hidden');
+      }
+
+      window.submitAccept = function (ev) {
+        ev.preventDefault();
+        var btn = document.getElementById('acceptBtn');
+        var err = document.getElementById('acceptError');
+        err.classList.add('hidden');
+
+        if (!agreementVersion) {
+          err.textContent = agreementReady
+            ? "We couldn't load the current membership agreement. Please refresh and try again."
+            : 'Still loading the membership agreement — please try again in a moment.';
+          err.classList.remove('hidden');
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+
+        var body = {
+          billingAddress: {
+            line1: document.getElementById('line1').value,
+            line2: document.getElementById('line2').value || undefined,
+            city: document.getElementById('city').value,
+            state: document.getElementById('state').value,
+            postal_code: document.getElementById('postal_code').value,
+            country: document.getElementById('country').value,
+          },
+          agreement_version: agreementVersion,
+        };
+
+        fetch('/api/invite/' + encodeURIComponent(token) + '/accept', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then(function (res) { return res.json().then(function (b) { return { ok: res.ok, body: b }; }); })
+          .then(function (r) {
+            if (r.ok) {
+              window.location.href = '/dashboard?invite=accepted';
+            } else {
+              err.textContent = (r.body && (r.body.message || r.body.error)) || 'Something went wrong.';
+              err.classList.remove('hidden');
+              btn.disabled = false;
+              btn.textContent = 'Accept and issue invoice';
+            }
+          })
+          .catch(function () {
+            err.textContent = 'Network error. Please try again.';
+            err.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Accept and issue invoice';
+          });
+      };
+    })();
+  </script>
+</body>
+</html>

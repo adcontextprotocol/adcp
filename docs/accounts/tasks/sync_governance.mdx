@@ -11,8 +11,8 @@ This uses **replace semantics** — each call replaces any previously registered
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/latest/account/sync-governance-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-governance-request.json)
-**Response Schema**: [`/schemas/latest/account/sync-governance-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-governance-response.json)
+**Request Schema**: [`/schemas/v3/account/sync-governance-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-governance-request.json)
+**Response Schema**: [`/schemas/v3/account/sync-governance-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-governance-response.json)
 
 ## Quick Start
 
@@ -249,7 +249,7 @@ asyncio.run(main())
 
 ```json Request
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-governance-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-governance-request.json",
   "idempotency_key": "e5b9f2c3-1234-48a0-1234-56789012345e",
   "accounts": [
     {

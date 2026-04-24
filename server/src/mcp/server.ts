@@ -112,8 +112,8 @@ function createAllHandlers() {
   // Chat tool handler (conversational AI wrapper)
   const chatHandlers = createChatToolHandler();
   for (const [name, handler] of chatHandlers) {
-    handlers.set(name, async (args) => {
-      const result = await handler(args);
+    handlers.set(name, async (args, auth) => {
+      const result = await handler(args, auth);
       return { content: [{ type: 'text', text: result }] };
     });
   }

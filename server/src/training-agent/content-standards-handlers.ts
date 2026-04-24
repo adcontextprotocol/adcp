@@ -324,6 +324,48 @@ export async function handleCalibrateContent(
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
+  // Sandbox heuristic: scan the artifact's text fields for must-rule keywords
+  // and mark the relevant feature fail. Real calibration runs policy
+  // classifiers; the training agent returns a deterministic verdict so
+  // storyboards can exercise both pass and fail paths without shipping a
+  // classifier. Keywords match the content_standards storyboard's fail
+  // artifacts (violent, gambling, alcohol).
+  const artifactText = JSON.stringify(req.artifact ?? {}).toLowerCase();
+  const violations: Array<{ keyword: string; rule: string }> = [];
+  const MUST_RULE_KEYWORDS: Array<{ keyword: string; rule: string }> = [
+    { keyword: 'violent', rule: 'No violent or controversial imagery (must)' },
+    { keyword: 'gambling', rule: 'No gambling-related content (must)' },
+    { keyword: 'alcohol', rule: 'No alcohol references in youth-facing inventory (must)' },
+    { keyword: 'stock photo', rule: 'Original photography required (must)' },
+    { keyword: 'without alt text', rule: 'Accessibility: alt text required on all images (must)' },
+  ];
+  for (const entry of MUST_RULE_KEYWORDS) {
+    if (artifactText.includes(entry.keyword)) violations.push(entry);
+  }
+
+  if (violations.length > 0) {
+    const first = violations[0];
+    return {
+      verdict: 'fail',
+      confidence: 0.92,
+      explanation: `Artifact violates policy: ${first.rule}.`,
+      features: [
+        {
+          feature_id: 'brand_safety',
+          status: 'failed',
+          explanation: `Detected "${first.keyword}" content; violates must-rule "${first.rule}".`,
+          remediation: 'Remove or replace the violating content and resubmit for calibration.',
+        },
+        {
+          feature_id: 'policy_compliance',
+          status: 'failed',
+          explanation: `Must-rule failure referencing ${first.rule}.`,
+          remediation: 'Align artifact with the declared content standards.',
+        },
+      ],
+    };
+  }
+
   return {
     verdict: 'pass',
     confidence: 0.95,

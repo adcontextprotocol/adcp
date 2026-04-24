@@ -158,6 +158,7 @@ export async function refreshToken(refreshToken: string): Promise<{
 export async function authenticateWithCodeForTokens(code: string): Promise<{
   accessToken: string;
   refreshToken: string;
+  user: WorkOSUser;
 }> {
   logger.debug('Authenticating with code for tokens (MCP flow)');
 
@@ -171,6 +172,15 @@ export async function authenticateWithCodeForTokens(code: string): Promise<{
   return {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
+    user: {
+      id: result.user.id,
+      email: result.user.email,
+      firstName: result.user.firstName ?? undefined,
+      lastName: result.user.lastName ?? undefined,
+      emailVerified: result.user.emailVerified,
+      createdAt: result.user.createdAt,
+      updatedAt: result.user.updatedAt,
+    },
   };
 }
 

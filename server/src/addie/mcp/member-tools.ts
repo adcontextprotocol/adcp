@@ -20,6 +20,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
+import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate } from './untrusted-input.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -66,6 +67,7 @@ import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
+import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../services/pipes.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -1174,14 +1176,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'create_github_issue',
     description:
-      'Create a GitHub issue directly via the API. Use this after showing the user a draft and getting their confirmation. Requires GITHUB_TOKEN to be configured. Attribution is added automatically. All issues go to the "adcp" repository.',
-    usage_hints: 'use after draft_github_issue when user confirms they want the issue created, or when user explicitly asks to create an issue directly',
+      'File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.',
+    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back.',
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Issue title' },
         body: { type: 'string', description: 'Issue body (no PII - GitHub is public)' },
-        repo: { type: 'string', description: 'Repo name (default: "adcp")' },
       },
       required: ['title', 'body'],
     },
@@ -2820,8 +2821,7 @@ export function createMemberToolHandlers(
     const isFeatured = input.is_featured as boolean | undefined;
 
     // Validate UUID format before API call
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(documentId)) {
+    if (!isUuid(documentId)) {
       return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
     }
 
@@ -2889,8 +2889,7 @@ export function createMemberToolHandlers(
     const documentId = input.document_id as string;
 
     // Validate UUID format before API call
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(documentId)) {
+    if (!isUuid(documentId)) {
       return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
     }
 
@@ -4631,33 +4630,49 @@ export function createMemberToolHandlers(
   });
 
   handlers.set('create_github_issue', async (input) => {
-    if (!memberContext?.workos_user?.workos_user_id) {
-      return 'You need to be logged in to create GitHub issues. Please log in at https://agenticadvertising.org/dashboard first.';
-    }
-
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      return 'GitHub issue creation is not configured (GITHUB_TOKEN not set). Use draft_github_issue to generate a link instead.';
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (!workosUserId) {
+      return 'You need to be logged in to create GitHub issues. Please log in at https://agenticadvertising.org/auth/login first.';
     }
 
     const title = input.title as string;
     const body = input.body as string;
     const org = 'adcontextprotocol';
-    const ALLOWED_REPOS = new Set(['adcp']);
-    const repo = ALLOWED_REPOS.has(input.repo as string) ? (input.repo as string) : 'adcp';
+    const repo = 'adcp';
 
-    // Add attribution
-    const userDisplayName = memberContext?.slack_user?.display_name
-      ?? (memberContext?.workos_user?.first_name
-        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
-        : undefined);
-    const orgName = memberContext?.organization?.name;
-    const attribution = userDisplayName
-      ? `\n\n---\n*Filed by Addie on behalf of ${userDisplayName}${orgName ? ` (${orgName})` : ''}*`
-      : '\n\n---\n*Filed by Addie*';
+    let tokenResult: Awaited<ReturnType<typeof getGitHubAccessToken>>;
+    try {
+      tokenResult = await getGitHubAccessToken(workosUserId);
+    } catch (error) {
+      logger.error({ err: error }, 'create_github_issue: Pipes getAccessToken failed');
+      return 'GitHub connection is unavailable right now. Use `draft_github_issue` to generate a pre-filled link you can submit yourself.';
+    }
+
+    if (tokenResult.status !== 'ok') {
+      const baseUrl = (process.env.BASE_URL || 'https://agenticadvertising.org').replace(/\/$/, '');
+      const returnTo = `${baseUrl}/member-hub?connected=github`;
+      let authorizeUrl: string;
+      try {
+        authorizeUrl = await getGitHubAuthorizeUrl(workosUserId, returnTo);
+      } catch (error) {
+        logger.error({ err: error }, 'create_github_issue: Failed to build Pipes authorize URL');
+        return 'GitHub connection is unavailable right now. Use `draft_github_issue` to generate a pre-filled link you can submit yourself.';
+      }
+
+      const reason = tokenResult.status === 'needs_reauthorization'
+        ? "Your GitHub connection needs to be re-authorized (the scopes we need changed)."
+        : "You haven't connected GitHub yet, so I can't file this as you directly.";
+      return [
+        reason,
+        '',
+        `**Two options:**`,
+        `1. **[Connect GitHub](${authorizeUrl})** — takes ~10 seconds, then I'll file the issue authored by your GitHub account.`,
+        `2. Ask me to use \`draft_github_issue\` instead and I'll give you a pre-filled link you submit yourself.`,
+      ].join('\n');
+    }
 
     const ghHeaders = {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${tokenResult.accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/vnd.github.v3+json',
     };
@@ -4669,7 +4684,7 @@ export function createMemberToolHandlers(
         headers: ghHeaders,
         body: JSON.stringify({
           title,
-          body: body + attribution,
+          body,
           labels: ['community-reported'],
         }),
       });
@@ -4677,12 +4692,11 @@ export function createMemberToolHandlers(
       if (!response.ok) {
         const errorText = await response.text();
         logger.error({ status: response.status, repo }, 'create_github_issue: GitHub API error');
-        // Retry without labels only if the 422 is specifically about labels
         if (response.status === 422 && errorText.includes('label')) {
           const retryResponse = await fetch(apiUrl, {
             method: 'POST',
             headers: ghHeaders,
-            body: JSON.stringify({ title, body: body + attribution }),
+            body: JSON.stringify({ title, body }),
           });
           if (retryResponse.ok) {
             const issue = await retryResponse.json() as { html_url: string; number: number };

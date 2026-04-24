@@ -6,6 +6,28 @@ import { CachedPostgresStore } from './pg-rate-limit-store.js';
 const logger = createLogger('rate-limit');
 
 /**
+ * Parse a `Retry-After` header value into delta-seconds. Handles both
+ * the number form (express-rate-limit with `standardHeaders: true`
+ * emits seconds as a number) and the string form. Returns `undefined`
+ * for anything that doesn't look like a positive integer — including
+ * zero, which we treat as "no meaningful wait" rather than exposing
+ * a degenerate countdown value.
+ *
+ * Callers surface the value in the 429 body as a proxy-stripped
+ * fallback for the header (#2804).
+ */
+export function parseRetryAfterSeconds(raw: number | string | string[] | undefined): number | undefined {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+  }
+  if (typeof raw === 'string') {
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Generate a rate limit key from request, preferring user ID over IP.
  * Uses proper IPv6 subnet masking when falling back to IP addresses.
  */
@@ -226,12 +248,23 @@ export const agentReadRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for agent dashboard reads');
 
-    // standardHeaders emits a RateLimit-Reset / Retry-After header with
-    // the real remaining window — clients should read those rather than
-    // a body field that can't reflect actual state.
+    // standardHeaders emits `Retry-After` / `RateLimit-Reset` with the
+    // real remaining window — that's the authoritative signal. We also
+    // surface the same value in the JSON body as a proxy-stripped
+    // fallback (#2804): some reverse proxies drop non-standard
+    // headers, and the dashboard needs SOMETHING to key its countdown
+    // off. `retryAfter` is seconds-to-retry, matching the header's
+    // delta-seconds format.
+    //
+    // The HTTP spec (RFC 9110 §10.2.3) also allows an HTTP-date here,
+    // but express-rate-limit only emits delta-seconds — so a parseInt
+    // is sufficient. If that ever changes (e.g., we swap limiter
+    // libraries), the fallback below would need a second parse path.
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
       message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });

@@ -13,8 +13,8 @@ Binding contractual request to acquire rights from a brand agent. Parallels `cre
 
 ## Schema
 
-- **Request**: [`acquire-rights-request.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-request.json)
-- **Response**: [`acquire-rights-response.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-response.json)
+- **Request**: [`acquire-rights-request.json`](https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-request.json)
+- **Response**: [`acquire-rights-response.json`](https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-response.json)
 
 {/* Using latest because these schemas are not yet released in any version.
      Update to correct version alias after the next release. */}
@@ -187,7 +187,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 | `campaign.estimated_impressions` | integer | No | Estimated total impressions |
 | `campaign.start_date` | date | No | Campaign start date |
 | `campaign.end_date` | date | No | Campaign end date |
-| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to this URL. |
+| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/v3/brand/revocation-notification.json) to this URL. |
 | `idempotency_key` | string | No | Client-generated key for safe retries. Resubmitting with the same key returns the original response. |
 | `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/docs/building/implementation/webhooks). |
 
@@ -235,7 +235,7 @@ After acquiring rights:
 
 1. **Generate**: Creative agent uses `generation_credentials` to produce content
 2. **Manifest**: Embed the `rights_constraint` from the `acquire_rights` response directly into the creative manifest's `rights` array. The rights agent pre-builds this constraint with the correct validity period, country restrictions, and impression cap from the agreed terms.
-3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
+3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/v3/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/v3/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
 4. **Serve**: Place approved creative via `create_media_buy`, respecting country and date restrictions
 5. **Report**: Use [`report_usage`](/docs/accounts/tasks/report_usage) with `rights_id` for cap tracking and billing
 
@@ -243,7 +243,7 @@ If `acquire_rights` returns `pending_approval` and you provided `push_notificati
 
 ## Revocation
 
-If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
+If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/v3/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
 
 The buyer is responsible for:
 - Deduplicating by `idempotency_key` — the same revocation may be delivered multiple times; see [Push Notifications — Reliability](/docs/building/implementation/webhooks#reliability) for the canonical dedup contract

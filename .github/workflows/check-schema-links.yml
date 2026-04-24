@@ -33,6 +33,16 @@ jobs:
             fi
           done
 
+          # Also flag /schemas/latest/ in docs/. Docs describe a specific
+          # major version and must pin to its alias (e.g. /schemas/v3/) so
+          # links stay stable across major releases. The one historical
+          # reference in release-notes.mdx documenting the alias concept
+          # itself is excluded.
+          LATEST_MATCHES=$(grep -rn "schemas/latest/" docs/ --include='*.md' --include='*.mdx' | grep -v 'docs/reference/release-notes' || true)
+          if [ -n "$LATEST_MATCHES" ]; then
+            STALE_FOUND="$STALE_FOUND\n$LATEST_MATCHES"
+          fi
+
           if [ -n "$STALE_FOUND" ]; then
             echo "❌ Found stale schema version references in docs/ (current major version is v${CURRENT_MAJOR}):"
             echo -e "$STALE_FOUND"

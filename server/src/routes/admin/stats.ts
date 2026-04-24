@@ -24,6 +24,7 @@ import {
   ENGAGED_FILTER,
   REGISTERED_FILTER,
 } from "../../db/org-filters.js";
+import { WORKSPACE_CAPS } from "../../addie/mcp/tool-rate-limiter.js";
 
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const memberDb = new MemberDatabase();
@@ -63,6 +64,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
         slackByWeek,
         engagementTrends,
         addieTrends,
+        illustrationStats,
       ] = await Promise.all([
         // Member counts from organizations
         pool.query(`
@@ -269,6 +271,30 @@ export function setupStatsRoutes(apiRouter: Router): void {
             COUNT(CASE WHEN started_at >= CURRENT_DATE - INTERVAL '60 days' AND started_at < CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as threads_previous
           FROM addie_threads
         `),
+
+        // Gemini illustration generation — rolling 24h window aligned
+        // with the enforced workspace cap in tool-rate-limiter's
+        // WORKSPACE_CAPS. Counts persisted rows (one Gemini call = one
+        // row) excluding `status='pending'`, which represents a
+        // pre-call placeholder insert without a paid generation.
+        // `rejected` rows are included because rejection happens after
+        // the paid generation — the dollars were spent.
+        //
+        // NOTE: this is an ops approximation of the enforcement
+        // counter, not the counter itself. The rate-limiter counts
+        // attempts (including cap-rejected ones) in
+        // `addie_tool_rate_limit_events`, while we count persists in
+        // `perspective_illustrations`. Bursts of cap-rejected attempts
+        // in the enforcement window won't show up here. Good enough
+        // for "what did we spend today" but not for "how close is the
+        // next generation to being blocked." (#2796)
+        pool.query(`
+          SELECT
+            COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as generated_24h,
+            COUNT(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 END)  as generated_7d
+          FROM perspective_illustrations
+          WHERE status != 'pending'
+        `),
       ]);
 
       const members = memberStats.rows[0] || {};
@@ -282,6 +308,14 @@ export function setupStatsRoutes(apiRouter: Router): void {
       const bookings = recentBookings.rows[0] || {};
       const engagement = engagementTrends.rows[0] || {};
       const addieT = addieTrends.rows[0] || {};
+      const illustrations = illustrationStats.rows[0] || {};
+
+      // Gemini cap is enforced in tool-rate-limiter.ts; read the
+      // configured value here rather than hard-coding so the metric
+      // and the enforcement stay in sync.
+      const illustrationCap = WORKSPACE_CAPS.generate_perspective_illustration?.max ?? 0;
+      const illustrationsGenerated24h = parseInt(illustrations.generated_24h) || 0;
+      const illustrationsCapRemaining = Math.max(0, illustrationCap - illustrationsGenerated24h);
 
       res.json({
         // Member stats
@@ -331,6 +365,15 @@ export function setupStatsRoutes(apiRouter: Router): void {
         addie_avg_rating: (parseFloat(ratings.avg_rating) || 0).toFixed(1),
         addie_positive_ratings: parseInt(ratings.positive_ratings) || 0,
         addie_negative_ratings: parseInt(ratings.negative_ratings) || 0,
+
+        // Gemini illustration cap observability (#2796). The `_daily`
+        // suffix on `cap_daily` marks it as a scalar ceiling (not a
+        // count over 24h, which would parallel the `_24h` suffixes
+        // above).
+        illustrations_generated_24h: illustrationsGenerated24h,
+        illustrations_generated_7d: parseInt(illustrations.generated_7d) || 0,
+        illustrations_cap_daily: illustrationCap,
+        illustrations_cap_remaining: illustrationsCapRemaining,
 
         // User stats (community points tiers)
         total_users: parseInt(users.total_users) || 0,

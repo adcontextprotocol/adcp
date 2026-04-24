@@ -20,11 +20,11 @@ import {
   rebuildManifestLogos,
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('brand-logo-routes');
 
 const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_LOGOS_PER_BRAND = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -257,7 +257,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         if (!logoDomainPattern.test(domain)) {
           return res.status(400).json({ error: 'Invalid domain' });
         }
-        if (!uuidPattern.test(logoId)) {
+        if (!isUuid(logoId)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
 

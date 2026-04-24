@@ -163,7 +163,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/cpm-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_guaranteed",
   "pricing_model": "cpm",
   "fixed_price": 12.50,
@@ -188,7 +188,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/vcpm-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/vcpm-option.json",
   "pricing_option_id": "vcpm_usd_guaranteed",
   "pricing_model": "vcpm",
   "fixed_price": 18.50,
@@ -211,7 +211,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/cpcv-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpcv-option.json",
   "pricing_option_id": "cpcv_usd_guaranteed",
   "pricing_model": "cpcv",
   "fixed_price": 0.15,
@@ -231,7 +231,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/cpv-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpv-option.json",
   "pricing_option_id": "cpv_usd_50pct",
   "pricing_model": "cpv",
   "fixed_price": 0.08,
@@ -257,7 +257,7 @@ Unlike `measurement_terms`, cancellation policy is not a negotiation surface —
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/cpp-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpp-option.json",
   "pricing_option_id": "cpp_usd_a18-49",
   "pricing_model": "cpp",
   "fixed_price": 250.00,
@@ -337,7 +337,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/cpa-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpa-option.json",
   "pricing_option_id": "cpa_usd_purchase",
   "pricing_model": "cpa",
   "event_type": "purchase",
@@ -392,7 +392,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Example** (sponsorship):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/flat-rate-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "flat_rate_usd_sponsorship",
   "pricing_model": "flat_rate",
   "fixed_price": 50000.00,
@@ -403,7 +403,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Example** (DOOH slot with parameters):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/flat-rate-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "flat_rate_usd_dooh_morning",
   "pricing_model": "flat_rate",
   "fixed_price": 5000.00,
@@ -442,7 +442,7 @@ Sponsorship flat_rate options omit `parameters` — the fixed price covers the p
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/time-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/time-option.json",
   "pricing_option_id": "time_usd_daily",
   "pricing_model": "time",
   "fixed_price": 50000.00,
