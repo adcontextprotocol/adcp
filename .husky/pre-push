@@ -18,9 +18,11 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
 
   # Use the local devDependency, not a re-resolved npx download.
   # Shuffle sibling dirs that contain non-MDX markdown Mintlify chokes on.
+  # `.changeset/` holds release-note markdown that is not MDX — Mintlify
+  # otherwise errors on raw `<1` / `<tag`-like sequences in changeset bodies.
   rm -rf dist/docs
   MOVED=""
-  for d in dist/addie/rules .addie-repos .context; do
+  for d in dist/addie/rules .addie-repos .context .changeset; do
     if [ -d "$d" ]; then
       tmp="/tmp/.prepush-$(echo "$d" | tr '/' '_')-$$"
       mv "$d" "$tmp"

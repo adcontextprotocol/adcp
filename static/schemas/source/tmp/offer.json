@@ -9,6 +9,10 @@
       "type": "string",
       "description": "Package identifier from the media buy."
     },
+    "seller_agent": {
+      "$ref": "/schemas/core/seller-agent-ref.json",
+      "description": "Optional echo of the package's seller agent from sync-time metadata. Provided for publisher-side observability so log pipelines can attribute offers to sellers without round-tripping to the media-buy store. Non-authoritative: the binding on the cached AvailablePackage is source of truth. When omitted, the router MAY stamp this field from its cached package→seller map."
+    },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand for this offer. Required when the product allows dynamic brands (brand selected at match time rather than fixed on the package). For single-brand packages, the brand is already known from the media buy."

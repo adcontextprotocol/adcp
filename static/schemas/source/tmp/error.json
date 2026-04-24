@@ -16,10 +16,11 @@
     },
     "code": {
       "type": "string",
-      "description": "Machine-readable error code",
+      "description": "Machine-readable error code. `seller_not_authorized` is returned by providers at sync time when an AvailablePackage declares a `seller_agent.agent_url` that is not present in the `authorized_agents` list of the publisher's adagents.json for a property the package claims to serve.",
       "enum": [
         "invalid_request",
         "unknown_package",
+        "seller_not_authorized",
         "rate_limited",
         "timeout",
         "internal_error",
