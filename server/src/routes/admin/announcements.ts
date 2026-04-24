@@ -40,6 +40,11 @@ export function setupAnnouncementsRoutes(
     requireAuth,
     requireAdmin,
     async (_req: Request, res: Response) => {
+      // Backlog is action-driven state; a stale cached response would
+      // show an admin pending rows after they've already been marked
+      // done in Slack. no-store keeps the browser from reusing a prior
+      // response on the back button or a reload.
+      res.set('Cache-Control', 'no-store');
       try {
         const rows = await loadAnnouncementBacklog();
         // Derive per-row state and counts server-side for convenience;

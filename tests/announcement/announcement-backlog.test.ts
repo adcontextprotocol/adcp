@@ -123,4 +123,37 @@ describe('loadAnnouncementBacklog', () => {
     const rows = await loadAnnouncementBacklog();
     expect(rows).toEqual([]);
   });
+
+  it('SQL LEFT-JOINs organizations so orphan drafts still surface', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
+    await loadAnnouncementBacklog();
+    const sql = mockQuery.mock.calls[0][0] as string;
+    // INNER JOIN on organizations would silently drop orphan drafts
+    // (org deleted after draft was posted). LEFT JOIN + the ?? fallback
+    // in the mapper keep them visible to editorial.
+    expect(sql).toMatch(/LEFT JOIN organizations o/);
+  });
+
+  it('falls back to organization_id when the joined org row is null', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          organization_id: 'org_DELETED',
+          org_name: null, // LEFT JOIN returned no org row
+          membership_tier: null,
+          profile_slug: null,
+          draft_posted_at: new Date(),
+          visual_source: null,
+          is_backfill: false,
+          slack_posted_at: null,
+          linkedin_marked_at: null,
+          skipped_at: null,
+        },
+      ],
+    });
+    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
+    const rows = await loadAnnouncementBacklog();
+    expect(rows[0].org_name).toBe('org_DELETED');
+  });
 });

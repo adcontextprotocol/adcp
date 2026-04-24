@@ -297,8 +297,6 @@ export interface BacklogRow {
   membership_tier: string | null;
   profile_slug: string | null;
   draft_posted_at: Date;
-  review_channel_id: string | null;
-  review_message_ts: string | null;
   visual_source: string | null;
   is_backfill: boolean;
   slack_posted: boolean;
@@ -312,18 +310,22 @@ export interface BacklogRow {
 export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
   const result = await query<{
     organization_id: string;
-    org_name: string;
+    org_name: string | null;
     membership_tier: string | null;
     profile_slug: string | null;
     draft_posted_at: Date;
-    review_channel_id: string | null;
-    review_message_ts: string | null;
     visual_source: string | null;
     is_backfill: boolean;
     slack_posted_at: Date | null;
     linkedin_marked_at: Date | null;
     skipped_at: Date | null;
   }>(
+    // organizations is LEFT JOIN'd so a draft whose org was later
+    // deleted (WorkOS-side delete, cleanup run, manual purge) still
+    // surfaces in the backlog. Without this, editorial loses
+    // visibility of an orphan draft — they can't act on it from
+    // Slack (the buttons still work on the Slack-side message) but
+    // at least they know it exists.
     `WITH latest_draft AS (
        SELECT DISTINCT ON (organization_id)
          organization_id,
@@ -365,15 +367,13 @@ export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
        o.membership_tier,
        mp.slug AS profile_slug,
        ld.draft_posted_at,
-       ld.metadata->>'review_channel_id' AS review_channel_id,
-       ld.metadata->>'review_message_ts' AS review_message_ts,
        ld.metadata->>'visual_source' AS visual_source,
        COALESCE((ld.metadata->>'backfill')::boolean, false) AS is_backfill,
        sp.slack_posted_at,
        li.linkedin_marked_at,
        sk.skipped_at
      FROM latest_draft ld
-     JOIN organizations o ON o.workos_organization_id = ld.organization_id
+     LEFT JOIN organizations o ON o.workos_organization_id = ld.organization_id
      LEFT JOIN member_profiles mp ON mp.workos_organization_id = ld.organization_id
      LEFT JOIN slack_pub sp ON sp.organization_id = ld.organization_id
      LEFT JOIN li_pub li ON li.organization_id = ld.organization_id
@@ -383,12 +383,12 @@ export async function loadAnnouncementBacklog(): Promise<BacklogRow[]> {
 
   return result.rows.map((r) => ({
     organization_id: r.organization_id,
-    org_name: r.org_name,
+    // Fall back to the opaque WorkOS id when the org row was deleted;
+    // editorial still sees the draft in the backlog with a raw id.
+    org_name: r.org_name ?? r.organization_id,
     membership_tier: r.membership_tier,
     profile_slug: r.profile_slug,
     draft_posted_at: r.draft_posted_at,
-    review_channel_id: r.review_channel_id,
-    review_message_ts: r.review_message_ts,
     visual_source: r.visual_source,
     is_backfill: r.is_backfill === true,
     slack_posted: r.slack_posted_at !== null,
