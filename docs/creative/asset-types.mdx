@@ -271,7 +271,7 @@ A single URL bound to a VAST `TrackingEvents` event. Use this when the creative 
 
 **Properties:**
 - `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression` (see normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `clickTracking`, `viewableImpression`.
-- `url`: Tracker URL. Supports [AdCP universal macros](/creative/universal-macros).
+- `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
 - `offset`: Required for `vast_event: "progress"`. VAST offset format: `HH:MM:SS[.mmm]` or an integer percentage (`50%`).
 
 ### DAAST Asset
