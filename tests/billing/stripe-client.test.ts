@@ -730,7 +730,7 @@ describe('stripe-client', () => {
   });
 
   describe('createCheckoutSession', () => {
-    test('includes subscription_data.metadata with org ID for subscription-mode checkout', async () => {
+    test('includes subscription_data.metadata with org and user IDs for subscription-mode checkout', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
@@ -768,7 +768,7 @@ describe('stripe-client', () => {
       const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
       expect(createCall.subscription_data).toBeDefined();
       expect(createCall.subscription_data.metadata.workos_organization_id).toBe('org_test_123');
-      expect(createCall.subscription_data.metadata.workos_user_id).toBeUndefined();
+      expect(createCall.subscription_data.metadata.workos_user_id).toBe('user_test_456');
     });
 
     test('does not include subscription_data for one-time payment checkout', async () => {

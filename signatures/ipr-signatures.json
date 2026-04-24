@@ -1,12 +1,266 @@
 {
   "signedContributors": [
     {
+      "name": "eclecticv",
+      "id": 41997094,
+      "created_at": "2025-12-17T23:27:22Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 340,
+      "comment_id": 3667576491
+    },
+    {
+      "name": "BaiyuScope3",
+      "id": 240560747,
+      "created_at": "2025-12-22T23:36:31Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 864,
+      "comment_id": 3684550304
+    },
+    {
+      "name": "roofeel-fm",
+      "id": 252136097,
+      "created_at": "2025-12-30T07:50:54Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 901,
+      "comment_id": 3698568710
+    },
+    {
+      "name": "youbek",
+      "id": 23215100,
+      "created_at": "2026-01-05T12:20:34Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 839,
+      "comment_id": 3710206852
+    },
+    {
+      "name": "igorantun",
+      "id": 5935946,
+      "created_at": "2026-01-08T21:26:21Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 944,
+      "comment_id": 3725889986
+    },
+    {
+      "name": "EmmaLouise2018",
+      "id": 14263050,
+      "created_at": "2026-01-13T17:18:12Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 686,
+      "comment_id": 3745502061
+    },
+    {
+      "name": "cparnell-scope3",
+      "id": 233810457,
+      "created_at": "2026-01-26T17:05:34Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 198,
+      "comment_id": 3800676851
+    },
+    {
+      "name": "pkras",
+      "id": 76162010,
+      "created_at": "2026-01-27T14:43:08Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 895,
+      "comment_id": 3805620738
+    },
+    {
+      "name": "dgirardi",
+      "id": 10151381,
+      "created_at": "2026-01-29T13:33:52Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 976,
+      "comment_id": 3817726292
+    },
+    {
+      "name": "patmmccann",
+      "id": 1683175,
+      "created_at": "2026-01-29T14:06:56Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 978,
+      "comment_id": 3817912858
+    },
+    {
+      "name": "KonstantinMirin",
+      "id": 138468,
+      "created_at": "2026-02-11T10:45:05Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1024,
+      "comment_id": 3883633666,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1024#issuecomment-3883633666"
+    },
+    {
+      "name": "mikemeier",
+      "id": 776406,
+      "created_at": "2026-02-16T11:07:03Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 1082,
+      "comment_id": 3907847877
+    },
+    {
+      "name": "lclaudon",
+      "id": 193897490,
+      "created_at": "2026-02-19T15:03:45Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1054,
+      "comment_id": 3927846906,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1054#issuecomment-3927846906"
+    },
+    {
       "name": "bokelley",
       "id": 134922,
-      "comment_id": 3939998906,
       "created_at": "2026-02-22T02:54:20Z",
-      "repoId": 1072097195,
-      "pullRequestNo": 48
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/creative-agent",
+      "pullRequestNo": 48,
+      "comment_id": 3939998906
+    },
+    {
+      "name": "kmoegling-scope3",
+      "id": 138035784,
+      "created_at": "2026-02-23T20:49:57Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1053,
+      "comment_id": 3947263307,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1053#issuecomment-3947263307"
+    },
+    {
+      "name": "torbenbrodt",
+      "id": 661781,
+      "created_at": "2026-02-24T08:06:50Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1064,
+      "comment_id": 3949912014,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1064#issuecomment-3949912014"
+    },
+    {
+      "name": "gravelg",
+      "id": 105263,
+      "created_at": "2026-03-03T16:55:11Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 1319,
+      "comment_id": 3992323759
+    },
+    {
+      "name": "nastassiafulconis",
+      "id": 75751323,
+      "created_at": "2026-03-05T22:45:37Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 299,
+      "comment_id": 4008297611
+    },
+    {
+      "name": "numarasSigmaSoftware",
+      "id": 226370549,
+      "created_at": "2026-03-12T00:04:07Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1117,
+      "comment_id": 4042999139,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1117#issuecomment-4042999139"
+    },
+    {
+      "name": "benminer",
+      "id": 24834721,
+      "created_at": "2026-03-13T17:59:43Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 326,
+      "comment_id": 4056978034
+    },
+    {
+      "name": "prateakb",
+      "id": 25592656,
+      "created_at": "2026-03-17T19:46:47Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 1537,
+      "comment_id": 4077589616
+    },
+    {
+      "name": "andrazbajec",
+      "id": 47412010,
+      "created_at": "2026-03-19T15:53:22Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 1569,
+      "comment_id": 4091200493
+    },
+    {
+      "name": "tdgonzales-boosted-to-11",
+      "id": 258317368,
+      "created_at": "2026-03-23T17:04:21Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 1636,
+      "comment_id": 4112211134,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/1636#issuecomment-4112211134"
+    },
+    {
+      "name": "damianbedrock",
+      "id": 213991026,
+      "created_at": "2026-04-08T21:43:26Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 450,
+      "comment_id": 4209867770,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/450#issuecomment-4209867770"
+    },
+    {
+      "name": "benjaminclot",
+      "id": 1415512,
+      "created_at": "2026-04-16T08:50:49Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1200,
+      "comment_id": 4258658039,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1200#issuecomment-4258658039"
+    },
+    {
+      "name": "thejamesbox",
+      "id": 272010607,
+      "created_at": "2026-04-17T16:13:36Z",
+      "method": "pr_comment",
+      "repo": "prebid/salesagent",
+      "pullRequestNo": 1218,
+      "comment_id": 4269589412,
+      "comment_url": "https://github.com/prebid/salesagent/pull/1218#issuecomment-4269589412"
+    },
+    {
+      "name": "mikulbhatt",
+      "id": 963914,
+      "created_at": "2026-04-17T21:40:53Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 2296,
+      "comment_id": 4271472257,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/2296#issuecomment-4271472257"
+    },
+    {
+      "name": "fgranata",
+      "id": 220887501,
+      "created_at": "2026-04-20T12:32:34Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 647,
+      "comment_id": 4280739898
     }
   ]
 }

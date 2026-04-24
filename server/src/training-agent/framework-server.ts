@@ -16,20 +16,24 @@
  * the five collection-list endpoints) register directly on the returned
  * server via `registerTool` after `createAdcpServer` returns.
  *
- * Opt-in via `TRAINING_AGENT_USE_FRAMEWORK=1`. Defaults to legacy until
- * storyboard parity is verified and a follow-up PR flips the default.
+ * Default dispatch path since both modes hit 52/52 storyboard parity.
+ * Legacy stays reachable via `TRAINING_AGENT_USE_FRAMEWORK=0` for one
+ * release as an escape hatch; a follow-up PR deletes the legacy dispatch
+ * after burn-in.
  */
 
 import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
+import { mergeSeedProduct } from '@adcp/client/testing';
 import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
 import { MediaChannelSchema } from '@adcp/client/types';
+import type { Product } from '@adcp/client';
 import { z } from 'zod';
-import type { TrainingContext, ToolArgs } from './types.js';
+import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
 import { getIdempotencyStore } from './idempotency.js';
 import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
-import { runWithSessionContext, flushDirtySessions } from './state.js';
+import { getSession, runWithSessionContext, flushDirtySessions, sessionKeyFromArgs } from './state.js';
 import { createLogger } from '../logger.js';
 
 import {
@@ -97,6 +101,26 @@ const logger = createLogger('training-agent-framework');
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 
+// Baseline seeded-product fields — fills in the Product response-schema
+// minimums (description, publisher_properties, format_ids, pricing_options,
+// reporting_capabilities, delivery_type) so storyboards that seed a sparse
+// `{ name, channels }` fixture still emit a schema-valid product.
+const SEED_PRODUCT_DEFAULTS: Partial<Product> = {
+  description: 'Seeded sandbox fixture product',
+  delivery_type: 'non_guaranteed',
+  publisher_properties: [],
+  format_ids: [],
+  pricing_options: [],
+  reporting_capabilities: {
+    available_metrics: [],
+    available_reporting_frequencies: ['daily'],
+    expected_delay_minutes: 240,
+    timezone: 'UTC',
+    supports_webhooks: false,
+    date_range_support: 'date_range',
+  },
+};
+
 // ── Types ────────────────────────────────────────────────────────
 
 type LegacyHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
@@ -133,8 +157,7 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     if (first.field) errorObj.field = first.field;
     if (first.details !== undefined) errorObj.details = first.details;
     if (first.recovery) errorObj.recovery = first.recovery;
-    const body: Record<string, unknown> = { adcp_error: errorObj };
-    if (callerContext !== undefined) body.context = callerContext;
+    const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
     return {
       isError: true,
       content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -142,12 +165,11 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  // wrapEnvelope stamps the AdCP idempotency + context echo envelope.
-  // `replayed: false` signals a fresh execution so storyboards that
-  // assert `replayed: false (or omitted)` grade consistently; a
-  // follow-up wrapper intercepts replays and flips it to true.
+  // wrapEnvelope stamps the AdCP context-echo envelope. `replayed` is
+  // intentionally NOT set here — per protocol-envelope.json and the
+  // SDK's injectReplayed helper, fresh executions MUST omit the field
+  // (the framework stamps `replayed: true` only on idempotency replays).
   const withEnvelope = wrapEnvelope(inner, {
-    replayed: false,
     ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
       ? { context: callerContext }
       : {}),
@@ -165,8 +187,7 @@ function serviceUnavailable(err: unknown, callerContext: unknown): AdaptedRespon
     message: err instanceof Error ? err.message : 'Unknown error',
     recovery: 'transient',
   };
-  const body: Record<string, unknown> = { adcp_error: errorObj };
-  if (callerContext !== undefined) body.context = callerContext;
+  const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -181,8 +202,7 @@ function versionUnsupported(requested: unknown, callerContext: unknown): Adapted
     details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
     field: 'adcp_major_version',
   };
-  const body: Record<string, unknown> = { adcp_error: errorObj };
-  if (callerContext !== undefined) body.context = callerContext;
+  const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -457,6 +477,43 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
       return `${auth}\u001F${scope ?? ''}`;
     },
 
+    // Seeded-product bridge: flow `comply_test_controller.seed_product`
+    // fixtures into `get_products` responses on sandbox requests. Our seed
+    // store is session-scoped (one Map per brand.domain/account_id), so
+    // the SDK's `bridgeFromTestControllerStore(store, defaults)` helper
+    // (which closes over a `Map<string, unknown>` at server-construction
+    // time, before the request is parsed) doesn't fit. We session-load in
+    // the callback and run each fixture through `mergeSeedProduct` on top
+    // of `SEED_PRODUCT_DEFAULTS` (the response-schema minimum fields).
+    // `bridgeFromSessionStore` in @adcp/client 5.14+ collapses this to a
+    // one-liner — pending adcp-client#866 (5.14 storyboard regression).
+    //
+    // Security: the dispatcher's sandbox gate is `isSandboxRequest(params)`
+    // + (when `resolveAccount` is wired) `ctx.account.sandbox === true`.
+    // We don't wire `resolveAccount` — by design for the training agent —
+    // so the *only* fence is `isSandboxRequest`. Sessions are keyed by
+    // `brand.domain` / `account_id`, not by auth principal. Any caller
+    // authenticated via the training-agent bearer authenticator that sends
+    // `context.sandbox: true` (or `account.sandbox: true`) plus another
+    // caller's `brand.domain` will read that tenant's seeded fixtures.
+    // Acceptable for this surface: fixture data is non-sensitive by design
+    // (see `buildBearerAuthenticator` in ./index.ts for the sandbox
+    // security posture). Production sellers adopting this wiring SHOULD
+    // configure `resolveAccount` so the dispatcher's belt-and-suspenders
+    // second gate activates.
+    testController: {
+      async getSeededProducts(bridgeCtx) {
+        const args = bridgeCtx.input as { account?: AccountRef; brand?: BrandRef };
+        const session = await getSession(sessionKeyFromArgs(args, 'open'));
+        const seeded = session.complyExtensions.seededProducts;
+        if (seeded.size === 0) return [];
+        return Array.from(seeded.entries()).map(([productId, fixture]) => {
+          const base = { ...SEED_PRODUCT_DEFAULTS, product_id: productId } as Partial<Product>;
+          return mergeSeedProduct(base, fixture as Partial<Product>) as Product;
+        });
+      },
+    },
+
     capabilities: {
       major_versions: [3],
       specialisms: ['signed-requests'],
@@ -604,13 +661,20 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 }
 
 /**
- * Returns true when the framework path should be used. Default is OFF —
- * the legacy hand-rolled dispatch remains authoritative until framework
- * zod parity is verified end-to-end. Set `TRAINING_AGENT_USE_FRAMEWORK=1`
- * to opt in. Default will flip to ON once the framework path passes every
- * storyboard the legacy path passes.
+ * Returns true when the framework path should be used. Default is ON now
+ * that both dispatch modes hit 52/52 storyboard parity. Set
+ * `TRAINING_AGENT_USE_FRAMEWORK=0` (or `=false`) to fall back to legacy
+ * as an escape hatch; the fallback exists for one release so a regression
+ * in the flipped-default config has a clean rollback before legacy is
+ * deleted.
  */
 export function useFrameworkServer(): boolean {
   const v = process.env.TRAINING_AGENT_USE_FRAMEWORK;
-  return v === '1' || v === 'true';
+  // Default ON (framework dispatch). Framework storyboards have been at
+  // 52/52 clean since the envelope + session-fallback work landed;
+  // legacy stays alive as an explicit opt-out escape hatch
+  // (`TRAINING_AGENT_USE_FRAMEWORK=0`) for one release so a regression
+  // shows up on the flipped-default config before legacy deletion.
+  if (v === '0' || v === 'false') return false;
+  return true;
 }

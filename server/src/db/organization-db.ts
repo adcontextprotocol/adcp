@@ -116,6 +116,7 @@ export interface Organization {
   agreement_version: string | null;
   pending_agreement_version: string | null;
   pending_agreement_accepted_at: Date | null;
+  pending_agreement_user_id: string | null;
   subscription_status: string | null;
   subscription_current_period_end: Date | null;
   subscription_product_id: string | null;
@@ -833,6 +834,7 @@ export class OrganizationDatabase {
       agreement_version: 'agreement_version',
       pending_agreement_version: 'pending_agreement_version',
       pending_agreement_accepted_at: 'pending_agreement_accepted_at',
+      pending_agreement_user_id: 'pending_agreement_user_id',
       subscription_current_period_end: 'subscription_current_period_end',
       subscription_product_id: 'subscription_product_id',
       subscription_product_name: 'subscription_product_name',

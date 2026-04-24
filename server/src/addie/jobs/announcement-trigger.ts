@@ -18,18 +18,30 @@
  */
 
 import { createLogger } from '../../logger.js';
-import { query } from '../../db/client.js';
+import { query, getPool } from '../../db/client.js';
 import { sendChannelMessage, deleteChannelMessage } from '../../slack/client.js';
 import { draftAnnouncement } from '../../services/announcement-drafter.js';
 import {
   resolveAnnouncementVisual,
   type VisualResolution,
 } from '../../services/announcement-visual.js';
+import { getEditorialChannel } from '../../db/system-settings-db.js';
 import type { SlackBlock, SlackElement } from '../../slack/types.js';
 
 const logger = createLogger('announcement-trigger');
 
 const MAX_DRAFTS_PER_RUN = 5;
+
+/**
+ * Hard ceiling on one backfill invocation. The default --limit is 15;
+ * --force can push past this up to BACKFILL_ABSOLUTE_MAX. This exists
+ * to stop a fat-fingered `--limit 9999` from flooding the editorial
+ * channel, billing thousands of Anthropic tokens, and eating Slack rate
+ * limits.
+ */
+export const BACKFILL_SOFT_CAP = 50;
+export const BACKFILL_ABSOLUTE_MAX = 200;
+
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 export interface TriggerResult {
@@ -38,7 +50,7 @@ export interface TriggerResult {
   failed: number;
 }
 
-interface AnnounceCandidate {
+export interface AnnounceCandidate {
   workos_organization_id: string;
   org_name: string;
   membership_tier: string | null;
@@ -54,18 +66,37 @@ interface AnnounceCandidate {
 }
 
 /**
- * Orgs eligible for a draft:
- *  - At least one `profile_published` activity recorded
+ * Orgs eligible for a draft. Base filter (always applied):
  *  - `member_profiles.is_public = true` right now
  *  - A brand.json manifest exists for their primary_brand_domain
  *  - `member_profiles.metadata->>'no_announcement'` is not 'true'
  *  - No prior `announcement_draft_posted` or `announcement_skipped` activity
  *
- * Ordered by most recent `profile_published` activity first so freshly
- * announce-ready members are not starved by a stale backlog when the
- * per-run cap kicks in.
+ * Live trigger path (`requireProfilePublished: true`, default) additionally
+ * requires a `profile_published` activity row. This is the event the
+ * trigger job reacts to.
+ *
+ * Backfill path (`requireProfilePublished: false`) drops that requirement
+ * so orgs that went public before the event emit was added (Workflow A
+ * Stage 2) are reachable. Those rows have `is_public = true` today but
+ * no activity row to prove when it flipped, so `last_published_at` is
+ * NULL and they sort to the end.
+ *
+ * Ordered by most recent `profile_published` DESC so freshly announce-
+ * ready members are never starved by a stale backlog; NULLs last so the
+ * backfill path processes newest-known first.
  */
-export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
+export async function findAnnounceCandidates(
+  options: { requireProfilePublished?: boolean } = {},
+): Promise<AnnounceCandidate[]> {
+  const requirePublished = options.requireProfilePublished ?? true;
+  const publishedClause = requirePublished
+    ? `AND EXISTS (
+          SELECT 1 FROM org_activities
+           WHERE organization_id = o.workos_organization_id
+             AND activity_type = 'profile_published'
+        )`
+    : '';
   const result = await query<AnnounceCandidate>(
     `SELECT
         o.workos_organization_id,
@@ -93,17 +124,13 @@ export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
        AND b.brand_manifest IS NOT NULL
       WHERE mp.is_public = true
         AND COALESCE(mp.metadata->>'no_announcement', 'false') <> 'true'
-        AND EXISTS (
-          SELECT 1 FROM org_activities
-           WHERE organization_id = o.workos_organization_id
-             AND activity_type = 'profile_published'
-        )
+        ${publishedClause}
         AND NOT EXISTS (
           SELECT 1 FROM org_activities
            WHERE organization_id = o.workos_organization_id
              AND activity_type IN ('announcement_draft_posted', 'announcement_skipped')
         )
-      ORDER BY last_published_at DESC NULLS LAST`,
+      ORDER BY last_published_at DESC NULLS LAST, o.created_at DESC`,
   );
   return result.rows;
 }
@@ -182,14 +209,20 @@ export function buildReviewBlocks(args: {
   linkedinText: string;
   visual: VisualResolution;
   profileSlug: string;
+  /** When true, prefixes the header with `[BACKFILL]` so the editorial
+   * team can tell a retroactive draft apart from a live-flow one. */
+  backfill?: boolean;
 }): { text: string; blocks: SlackBlock[] } {
   const profileUrl = `${APP_URL}/members/${args.profileSlug}`;
   const safeSlack = sanitizeDraftForSlack(args.slackText);
   const safeLinkedIn = sanitizeDraftForSlack(args.linkedinText, { forFencedBlock: true });
+  const headerText = args.backfill
+    ? `[BACKFILL] New member announcement ready: ${args.orgName}`
+    : `New member announcement ready: ${args.orgName}`;
   const blocks: SlackBlock[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `New member announcement ready: ${args.orgName}` },
+      text: { type: 'plain_text', text: headerText },
     },
     {
       type: 'context',
@@ -245,7 +278,7 @@ export function buildReviewBlocks(args: {
   ];
 
   return {
-    text: `New member announcement ready: ${args.orgName}`,
+    text: headerText,
     blocks,
   };
 }
@@ -262,12 +295,160 @@ async function recordDraftPosted(
   );
 }
 
+/**
+ * Process a single announce candidate: draft copy, resolve visual, post
+ * the review card to the editorial channel, record the idempotency row.
+ * Shared by `runAnnouncementTriggerJob` (live flow, hourly cap) and
+ * `runBackfillAnnouncements` (one-shot retroactive wave).
+ *
+ * Returns `true` on success, `false` on any handled failure (network,
+ * DB write miss). Unwinds the Slack post if the activity write fails
+ * so no orphan review card survives without an idempotency row.
+ */
+async function processAnnounceCandidate(
+  candidate: AnnounceCandidate,
+  options: { reviewChannel: string; backfill?: boolean },
+): Promise<boolean> {
+  const { reviewChannel, backfill = false } = options;
+  try {
+    const draft = await draftAnnouncement({
+      orgName: candidate.org_name,
+      membershipTier: candidate.membership_tier,
+      displayName: candidate.display_name,
+      tagline: candidate.tagline,
+      description: candidate.description,
+      offerings: candidate.offerings ?? [],
+      primaryBrandDomain: candidate.primary_brand_domain,
+      agents: summarizeAgents(candidate.brand_manifest),
+      profileSlug: candidate.slug,
+    });
+
+    const visual = await resolveAnnouncementVisual({
+      workosOrganizationId: candidate.workos_organization_id,
+      membershipTier: candidate.membership_tier,
+      primaryBrandDomain: candidate.primary_brand_domain,
+      displayName: candidate.display_name,
+    });
+
+    const { text, blocks } = buildReviewBlocks({
+      orgName: candidate.org_name,
+      workosOrganizationId: candidate.workos_organization_id,
+      slackText: draft.slackText,
+      linkedinText: draft.linkedinText,
+      visual,
+      profileSlug: candidate.slug,
+      backfill,
+    });
+
+    const post = await sendChannelMessage(
+      reviewChannel,
+      { text, blocks },
+      { requirePrivate: true },
+    );
+    if (!post.ok || !post.ts) {
+      logger.error(
+        {
+          orgId: candidate.workos_organization_id,
+          error: post.error,
+          skipped: post.skipped,
+        },
+        'Failed to post announcement draft to editorial channel',
+      );
+      return false;
+    }
+
+    try {
+      await recordDraftPosted(candidate.workos_organization_id, {
+        review_channel_id: reviewChannel,
+        review_message_ts: post.ts,
+        slack_text: draft.slackText,
+        linkedin_text: draft.linkedinText,
+        visual_url: visual.url,
+        visual_alt_text: visual.altText,
+        visual_source: visual.source,
+        org_name: candidate.org_name,
+        profile_slug: candidate.slug,
+        backfill,
+      });
+    } catch (recordErr) {
+      logger.error(
+        { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+        'Activity write failed after posting draft — unwinding Slack message',
+      );
+      try {
+        const undo = await deleteChannelMessage(reviewChannel, post.ts);
+        if (!undo.ok) {
+          logger.error(
+            {
+              orgId: candidate.workos_organization_id,
+              ts: post.ts,
+              undoError: undo.error,
+            },
+            'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
+          );
+        }
+      } catch (undoErr) {
+        logger.error(
+          { err: undoErr, orgId: candidate.workos_organization_id, ts: post.ts },
+          'CRITICAL: Slack unwind threw — orphan review card, no idempotency row',
+        );
+      }
+      return false;
+    }
+
+    logger.info(
+      {
+        orgId: candidate.workos_organization_id,
+        reviewTs: post.ts,
+        visualSource: visual.source,
+        backfill,
+      },
+      'Posted announcement draft for editorial review',
+    );
+    return true;
+  } catch (err) {
+    logger.error(
+      { err, orgId: candidate.workos_organization_id, backfill },
+      backfill
+        ? 'Failed to draft/post announcement'
+        : 'Failed to draft/post announcement — will retry next run',
+    );
+    return false;
+  }
+}
+
+/**
+ * Resolve the editorial review channel. Prefers the admin-UI DB setting
+ * (`editorial_slack_channel`), falls back to the legacy
+ * `SLACK_EDITORIAL_REVIEW_CHANNEL` env var for safe rollout. Both null
+ * returns `null`; callers should skip the run and log.
+ *
+ * Logs at error level when the DB read fails — the env fallback keeps
+ * the job running for transient blips, but a persistent outage where
+ * the admin's DB value is stale (or wrong) needs SRE attention, not a
+ * buried warn.
+ */
+export async function resolveEditorialChannel(): Promise<string | null> {
+  try {
+    const setting = await getEditorialChannel();
+    if (typeof setting.channel_id === 'string' && setting.channel_id.trim()) {
+      return setting.channel_id.trim();
+    }
+  } catch (err) {
+    logger.error({ err }, 'resolveEditorialChannel: DB read failed, falling back to env');
+  }
+  const env = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
+  return env && env.trim() ? env.trim() : null;
+}
+
 export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
   const result: TriggerResult = { candidates: 0, drafted: 0, failed: 0 };
 
-  const reviewChannel = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
+  const reviewChannel = await resolveEditorialChannel();
   if (!reviewChannel) {
-    logger.warn('SLACK_EDITORIAL_REVIEW_CHANNEL not configured — skipping run');
+    logger.warn(
+      'Editorial channel not configured — set it at /admin/settings (or SLACK_EDITORIAL_REVIEW_CHANNEL env) — skipping run',
+    );
     return result;
   }
 
@@ -289,107 +470,604 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
       );
       break;
     }
-
-    try {
-      const draft = await draftAnnouncement({
-        orgName: candidate.org_name,
-        membershipTier: candidate.membership_tier,
-        displayName: candidate.display_name,
-        tagline: candidate.tagline,
-        description: candidate.description,
-        offerings: candidate.offerings ?? [],
-        primaryBrandDomain: candidate.primary_brand_domain,
-        agents: summarizeAgents(candidate.brand_manifest),
-        profileSlug: candidate.slug,
-      });
-
-      const visual = await resolveAnnouncementVisual({
-        workosOrganizationId: candidate.workos_organization_id,
-        membershipTier: candidate.membership_tier,
-        primaryBrandDomain: candidate.primary_brand_domain,
-        displayName: candidate.display_name,
-      });
-
-      const { text, blocks } = buildReviewBlocks({
-        orgName: candidate.org_name,
-        workosOrganizationId: candidate.workos_organization_id,
-        slackText: draft.slackText,
-        linkedinText: draft.linkedinText,
-        visual,
-        profileSlug: candidate.slug,
-      });
-
-      const post = await sendChannelMessage(
-        reviewChannel,
-        { text, blocks },
-        { requirePrivate: true },
-      );
-      if (!post.ok || !post.ts) {
-        logger.error(
-          {
-            orgId: candidate.workos_organization_id,
-            error: post.error,
-            skipped: post.skipped,
-          },
-          'Failed to post announcement draft to editorial channel',
-        );
-        result.failed++;
-        continue;
-      }
-
-      try {
-        await recordDraftPosted(candidate.workos_organization_id, {
-          review_channel_id: reviewChannel,
-          review_message_ts: post.ts,
-          slack_text: draft.slackText,
-          linkedin_text: draft.linkedinText,
-          visual_url: visual.url,
-          visual_source: visual.source,
-        });
-      } catch (recordErr) {
-        logger.error(
-          { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
-          'Activity write failed after posting draft — unwinding Slack message',
-        );
-        try {
-          const undo = await deleteChannelMessage(reviewChannel, post.ts);
-          if (!undo.ok) {
-            logger.error(
-              {
-                orgId: candidate.workos_organization_id,
-                ts: post.ts,
-                undoError: undo.error,
-              },
-              'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
-            );
-          }
-        } catch (undoErr) {
-          logger.error(
-            { err: undoErr, orgId: candidate.workos_organization_id, ts: post.ts },
-            'CRITICAL: Slack unwind threw — orphan review card, no idempotency row',
-          );
-        }
-        result.failed++;
-        continue;
-      }
-
-      result.drafted++;
-      logger.info(
-        {
-          orgId: candidate.workos_organization_id,
-          reviewTs: post.ts,
-          visualSource: visual.source,
-        },
-        'Posted announcement draft for editorial review',
-      );
-    } catch (err) {
-      logger.error(
-        { err, orgId: candidate.workos_organization_id },
-        'Failed to draft/post announcement — will retry next run',
-      );
-      result.failed++;
-    }
+    const ok = await processAnnounceCandidate(candidate, { reviewChannel });
+    if (ok) result.drafted++;
+    else result.failed++;
   }
 
   return result;
+}
+
+export interface BackfillOptions {
+  /** Editorial channel id to post drafts into. Required. */
+  reviewChannel: string;
+  /** Hard cap on how many drafts this run will post. Default 15. */
+  limit?: number;
+  /** When true, print what would happen without posting or writing. */
+  dryRun?: boolean;
+  /**
+   * Bypass the `BACKFILL_SOFT_CAP` ceiling. An operator who really
+   * wants to post more than 50 drafts in one run sets this explicitly
+   * and accepts the blast-radius implications. Still hard-capped by
+   * `BACKFILL_ABSOLUTE_MAX`.
+   */
+  force?: boolean;
+}
+
+export type BackfillPreviewRow = {
+  workos_organization_id: string;
+  org_name: string;
+  membership_tier: string | null;
+  primary_brand_domain: string | null;
+  last_published_at: Date | null;
+};
+
+export interface BackfillResult extends TriggerResult {
+  dryRun: boolean;
+  /** Cap that was actually applied this run. Useful for log output. */
+  effectiveLimit: number;
+  /**
+   * Rows that would have been drafted (dryRun) or that actually were
+   * drafted on the live path. Callers use this to print a per-org
+   * summary to stdout and/or to Slack.
+   */
+  wouldDraft?: BackfillPreviewRow[];
+  /** Orgs the live run successfully drafted. Populated only when not dryRun. */
+  drafted_orgs?: BackfillPreviewRow[];
+  /**
+   * Set when another process holds the backfill advisory lock. Caller
+   * should surface this to the operator rather than silently skipping.
+   */
+  lockedOut?: boolean;
+}
+
+/**
+ * Postgres advisory lock key for the backfill critical section.
+ * `pg_try_advisory_lock(bigint)` returns false when another session
+ * holds the lock — we refuse to run rather than race. The constant is
+ * a stable 64-bit value derived from the string "aao:announcement-backfill".
+ */
+const BACKFILL_LOCK_ID = 4829347509283745837n;
+
+/**
+ * One-shot retroactive announcement wave (Workflow B Stage 4 spec).
+ *
+ * Queries announce-ready orgs including those without a
+ * `profile_published` event (orgs that went public before Workflow A
+ * Stage 2 added the event emit), caps at `limit`, and posts each
+ * through the same pipeline as the live trigger job with a `[BACKFILL]`
+ * header tag. Editorial team spaces them out via the normal approval
+ * flow.
+ */
+function previewRow(c: AnnounceCandidate): BackfillPreviewRow {
+  return {
+    workos_organization_id: c.workos_organization_id,
+    org_name: c.org_name,
+    membership_tier: c.membership_tier,
+    primary_brand_domain: c.primary_brand_domain,
+    last_published_at: c.last_published_at,
+  };
+}
+
+/**
+ * Resolve `options.limit` + `options.force` into an effective cap.
+ * Clamps to [1, BACKFILL_ABSOLUTE_MAX] regardless; without `force`,
+ * also clamps to BACKFILL_SOFT_CAP. Returns whether the caller's
+ * requested limit was shrunk so the CLI can warn the operator.
+ */
+function resolveBackfillLimit(options: BackfillOptions): {
+  effective: number;
+  shrunkByCap: boolean;
+  shrunkByAbsoluteMax: boolean;
+} {
+  const requested = Math.max(1, options.limit ?? 15);
+  const afterAbsolute = Math.min(requested, BACKFILL_ABSOLUTE_MAX);
+  const shrunkByAbsoluteMax = afterAbsolute < requested;
+  if (options.force) {
+    return {
+      effective: afterAbsolute,
+      shrunkByCap: false,
+      shrunkByAbsoluteMax,
+    };
+  }
+  const afterSoftCap = Math.min(afterAbsolute, BACKFILL_SOFT_CAP);
+  return {
+    effective: afterSoftCap,
+    shrunkByCap: afterSoftCap < requested,
+    shrunkByAbsoluteMax,
+  };
+}
+
+export async function runBackfillAnnouncements(
+  options: BackfillOptions,
+): Promise<BackfillResult> {
+  const { effective: limit } = resolveBackfillLimit(options);
+  const dryRun = options.dryRun ?? false;
+
+  const result: BackfillResult = {
+    candidates: 0,
+    drafted: 0,
+    failed: 0,
+    dryRun,
+    effectiveLimit: limit,
+  };
+
+  // Advisory lock: refuse to run if another backfill is already
+  // running. Same org set is otherwise visible to both callers, neither
+  // holds a lock across the INSERT, and they race. Dry-run also takes
+  // the lock so two operators don't both "preview" and then re-run
+  // simultaneously.
+  const pool = getPool();
+  const client = await pool.connect();
+  let haveLock = false;
+  try {
+    const lockRes = await client.query<{ pg_try_advisory_lock: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
+      [BACKFILL_LOCK_ID.toString()],
+    );
+    haveLock = lockRes.rows[0]?.pg_try_advisory_lock === true;
+    if (!haveLock) {
+      logger.warn('backfill: another run is already holding the advisory lock — refusing');
+      result.lockedOut = true;
+      return result;
+    }
+
+    let candidates: AnnounceCandidate[];
+    try {
+      candidates = await findAnnounceCandidates({ requireProfilePublished: false });
+    } catch (err) {
+      logger.error({ err }, 'backfill: failed to load announce candidates');
+      return result;
+    }
+
+    result.candidates = candidates.length;
+    const picked = candidates.slice(0, limit);
+
+    if (dryRun) {
+      result.wouldDraft = picked.map(previewRow);
+      logger.info(
+        { totalEligible: candidates.length, limit, wouldDraft: result.wouldDraft.length },
+        'backfill dry-run: no posts, no activity writes',
+      );
+      return result;
+    }
+
+    const drafted: BackfillPreviewRow[] = [];
+    for (const candidate of picked) {
+      const ok = await processAnnounceCandidate(candidate, {
+        reviewChannel: options.reviewChannel,
+        backfill: true,
+      });
+      if (ok) {
+        result.drafted++;
+        drafted.push(previewRow(candidate));
+      } else {
+        result.failed++;
+      }
+    }
+    result.drafted_orgs = drafted;
+
+    // One summary line in the editorial channel so the reviewers know a
+    // retroactive wave just landed. Non-critical — if it fails we log
+    // and move on; the cards themselves are the real signal.
+    if (result.drafted > 0) {
+      try {
+        const summary = `📦 Backfill wave posted — ${result.drafted} retroactive draft${result.drafted === 1 ? '' : 's'}${result.failed > 0 ? ` · ${result.failed} failed` : ''} (${candidates.length} eligible, cap ${limit}).`;
+        await sendChannelMessage(
+          options.reviewChannel,
+          { text: summary, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: summary } }] },
+          { requirePrivate: true },
+        );
+      } catch (err) {
+        logger.warn({ err }, 'backfill: failed to post summary message to editorial channel');
+      }
+    }
+
+    logger.info(
+      { drafted: result.drafted, failed: result.failed, totalEligible: candidates.length, limit },
+      'backfill complete',
+    );
+    return result;
+  } finally {
+    if (haveLock) {
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [BACKFILL_LOCK_ID.toString()]);
+      } catch (err) {
+        logger.warn({ err }, 'backfill: failed to release advisory lock (client will release it)');
+      }
+    }
+    client.release();
+  }
+}
+
+// --- Stale LinkedIn-pending reminders --------------------------------
+
+/** Days since Slack post before the first reminder fires. */
+export const REMINDER_STALE_DAYS = 7;
+/** Minimum days between successive reminders to the same org. */
+export const REMINDER_INTERVAL_DAYS = 7;
+/** Hard cap so a stuck draft doesn't generate reminders forever. */
+export const MAX_REMINDERS_PER_ORG = 3;
+
+/**
+ * Advisory lock key for the reminder job. Prevents two concurrent runs
+ * (multi-process deploys, overlapping schedulers) from both seeing the
+ * same candidate before either's activity-row INSERT lands and
+ * double-reminding. Stable 64-bit constant derived from the string
+ * "aao:announcement-li-reminder".
+ */
+const REMINDER_LOCK_ID = 7391204820563829141n;
+
+export interface ReminderResult {
+  candidates: number;
+  reminded: number;
+  failed: number;
+  /** True when another process held the reminder advisory lock. */
+  lockedOut?: boolean;
+}
+
+export interface ReminderCandidate {
+  workos_organization_id: string;
+  org_name: string;
+  review_channel_id: string;
+  review_message_ts: string;
+  slack_posted_at: Date;
+  days_since_slack: number;
+  reminder_count: number;
+  last_reminder_at: Date | null;
+}
+
+/**
+ * Orgs eligible for a "still waiting on LinkedIn" reminder:
+ *   - Has an `announcement_draft_posted` row (need the Slack review
+ *     channel + ts to thread into).
+ *   - Has an `announcement_published` (channel=slack) row more than
+ *     {@link REMINDER_STALE_DAYS} ago.
+ *   - Has NO `announcement_published` (channel=linkedin) row.
+ *   - Has NO `announcement_skipped` row.
+ *   - No prior `announcement_li_reminder_sent` in the last
+ *     {@link REMINDER_INTERVAL_DAYS} days.
+ *   - Fewer than {@link MAX_REMINDERS_PER_ORG} reminders recorded.
+ *   - Draft row carries a review_channel_id + review_message_ts.
+ *
+ * Ordered oldest-Slack-post first so the longest-stuck drafts nudge
+ * first when rate-limited.
+ */
+export async function findStaleLiCandidates(): Promise<ReminderCandidate[]> {
+  const result = await query<{
+    workos_organization_id: string;
+    org_name: string | null;
+    review_channel_id: string;
+    review_message_ts: string;
+    slack_posted_at: Date;
+    days_since_slack: string;
+    reminder_count: string;
+    last_reminder_at: Date | null;
+  }>(
+    `WITH drafts AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         metadata->>'review_channel_id' AS review_channel_id,
+         metadata->>'review_message_ts' AS review_message_ts
+       FROM org_activities
+       WHERE activity_type = 'announcement_draft_posted'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     slack_posts AS (
+       SELECT DISTINCT ON (organization_id)
+         organization_id,
+         activity_date AS slack_posted_at
+       FROM org_activities
+       WHERE activity_type = 'announcement_published'
+         AND metadata->>'channel' = 'slack'
+       ORDER BY organization_id, activity_date DESC
+     ),
+     li_posts AS (
+       SELECT DISTINCT organization_id FROM org_activities
+       WHERE activity_type = 'announcement_published' AND metadata->>'channel' = 'linkedin'
+     ),
+     skipped_orgs AS (
+       SELECT DISTINCT organization_id FROM org_activities
+       WHERE activity_type = 'announcement_skipped'
+     ),
+     reminders AS (
+       SELECT organization_id,
+              COUNT(*)::int AS reminder_count,
+              MAX(activity_date) AS last_reminder_at
+         FROM org_activities
+        WHERE activity_type = 'announcement_li_reminder_sent'
+        GROUP BY organization_id
+     )
+     SELECT
+       d.organization_id AS workos_organization_id,
+       o.name AS org_name,
+       d.review_channel_id,
+       d.review_message_ts,
+       sp.slack_posted_at,
+       EXTRACT(EPOCH FROM (NOW() - sp.slack_posted_at)) / 86400 AS days_since_slack,
+       COALESCE(r.reminder_count, 0) AS reminder_count,
+       r.last_reminder_at
+     FROM drafts d
+     JOIN slack_posts sp ON sp.organization_id = d.organization_id
+     LEFT JOIN organizations o ON o.workos_organization_id = d.organization_id
+     LEFT JOIN li_posts li ON li.organization_id = d.organization_id
+     LEFT JOIN skipped_orgs sk ON sk.organization_id = d.organization_id
+     LEFT JOIN reminders r ON r.organization_id = d.organization_id
+     WHERE li.organization_id IS NULL
+       AND sk.organization_id IS NULL
+       AND sp.slack_posted_at < NOW() - ($1::text || ' days')::interval
+       AND (r.last_reminder_at IS NULL OR r.last_reminder_at < NOW() - ($2::text || ' days')::interval)
+       AND COALESCE(r.reminder_count, 0) < $3
+       AND d.review_channel_id IS NOT NULL
+       AND d.review_message_ts IS NOT NULL
+     ORDER BY sp.slack_posted_at ASC`,
+    [
+      String(REMINDER_STALE_DAYS),
+      String(REMINDER_INTERVAL_DAYS),
+      MAX_REMINDERS_PER_ORG,
+    ],
+  );
+
+  return result.rows.map((r) => ({
+    workos_organization_id: r.workos_organization_id,
+    // Fallback for orphan-org drafts — same convention as the backlog view.
+    org_name: r.org_name ?? r.workos_organization_id,
+    review_channel_id: r.review_channel_id,
+    review_message_ts: r.review_message_ts,
+    slack_posted_at: r.slack_posted_at,
+    // Round so 8.7 renders as "9 days" rather than "8" — matches
+    // how an operator reads a real-world duration.
+    days_since_slack: Math.round(Number(r.days_since_slack)),
+    reminder_count: Number(r.reminder_count),
+    last_reminder_at: r.last_reminder_at,
+  }));
+}
+
+/**
+ * Escape Slack mrkdwn formatting chars + link syntax + bare URLs in
+ * untrusted text (org names from WorkOS, etc.) so a hostile value
+ * can't break the rendered reminder or inject a clickable link.
+ *
+ *  - `*`, `_`, `~`, backtick are Slack's inline formatting tokens.
+ *    Prefix each with a zero-width space so Slack's parser sees them
+ *    as mid-word literals rather than token boundaries.
+ *  - `<`, `|`, `>` make up Slack's explicit link/mention syntax
+ *    (`<url|label>`, `<@U…>`, `<#C…>`). Strip entirely.
+ *  - `http://` / `https://` schemes trigger Slack's auto-linking.
+ *    Break the scheme with a zero-width space so `https://evil/` in
+ *    an org name renders as literal text, not a clickable link.
+ *
+ * A WorkOS org renamed to `Acme<https://evil|click>Co` would
+ * otherwise phishing-link editorial on the reminder card.
+ */
+function escapeSlackMrkdwn(s: string): string {
+  return s
+    .replace(/[<|>]/g, '')
+    // `​` is zero-width space; insert after the scheme so
+    // `http://x` becomes `http:/​/x` — Slack no longer auto-links.
+    .replace(/(https?:)\/\//gi, '$1/​/')
+    // Same ZWSP trick so mid-word formatting chars render literal.
+    .replace(/([*_~`])/g, '​$1');
+}
+
+export function buildReminderText(args: {
+  orgName: string;
+  daysSinceSlack: number;
+}): string {
+  const safeName = escapeSlackMrkdwn(args.orgName);
+  return (
+    `📌 LinkedIn not yet marked posted for *${safeName}* — ` +
+    `${args.daysSinceSlack} days since Slack. ` +
+    `Mark it from the review card above, or <${APP_URL}/admin/announcements|the admin backlog>.`
+  );
+}
+
+/**
+ * Message posted when the original review-card thread is unreachable
+ * (deleted or archived) on a terminal `message_not_found`. Routes
+ * editorial to the admin backlog — the working surface — rather than
+ * letting the draft silently fall off the Slack radar.
+ */
+export function buildDeadParentText(args: {
+  orgName: string;
+  daysSinceSlack: number;
+}): string {
+  const safeName = escapeSlackMrkdwn(args.orgName);
+  return (
+    `🧹 Review card for *${safeName}* is no longer reachable ` +
+    `(deleted or archived). LinkedIn is still unmarked ` +
+    `${args.daysSinceSlack} days after Slack — ` +
+    `manage from <${APP_URL}/admin/announcements|the admin backlog>.`
+  );
+}
+
+/**
+ * Post a threaded reminder on each stale `li_pending` org's original
+ * review card and record an `announcement_li_reminder_sent` activity.
+ *
+ * Threaded replies preserve context — editorial sees the nudge right
+ * next to the "Mark posted" button they'd need to click. Rate-limited
+ * per-org via `last_reminder_at` + `reminder_count` so a stuck draft
+ * generates at most {@link MAX_REMINDERS_PER_ORG} pings over its
+ * lifetime.
+ */
+export async function runAnnouncementReminderJob(): Promise<ReminderResult> {
+  const result: ReminderResult = { candidates: 0, reminded: 0, failed: 0 };
+
+  // Advisory lock: refuse to run if another reminder job is already
+  // in progress (multi-process deploys, overlapping scheduler ticks).
+  // Two runs seeing the same candidate before either's INSERT lands
+  // would double-ping — the SQL filter alone can't prevent that.
+  const pool = getPool();
+  const client = await pool.connect();
+  let haveLock = false;
+  try {
+    const lockRes = await client.query<{ pg_try_advisory_lock: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
+      [REMINDER_LOCK_ID.toString()],
+    );
+    haveLock = lockRes.rows[0]?.pg_try_advisory_lock === true;
+    if (!haveLock) {
+      logger.warn('li-reminder: another run is already holding the advisory lock — refusing');
+      result.lockedOut = true;
+      return result;
+    }
+
+    let candidates: ReminderCandidate[];
+    try {
+      candidates = await findStaleLiCandidates();
+    } catch (err) {
+      logger.error({ err }, 'Failed to load stale LinkedIn reminder candidates');
+      return result;
+    }
+
+    result.candidates = candidates.length;
+
+    for (const candidate of candidates) {
+      try {
+        const reminderNumber = candidate.reminder_count + 1;
+        const text = buildReminderText({
+          orgName: candidate.org_name,
+          daysSinceSlack: candidate.days_since_slack,
+        });
+
+        // `candidate.review_channel_id` is the channel where Stage 1
+        // posted this draft's review card. If the editorial channel
+        // setting has since been rotated, reminders still thread into
+        // the old channel — that's where the parent ts lives.
+        const post = await sendChannelMessage(
+          candidate.review_channel_id,
+          {
+            text,
+            blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+            thread_ts: candidate.review_message_ts,
+          },
+          { requirePrivate: true },
+        );
+
+        if (!post.ok) {
+          // `message_not_found` means the review card was deleted or
+          // the channel archived; retrying the thread reply will
+          // never succeed. Post a *fresh* (non-threaded) notice to
+          // the same editorial channel so editorial has a signal and
+          // a link to the admin backlog, then record a best-effort
+          // activity row so we stop retrying. Other errors (rate
+          // limit, transient Slack) are worth re-trying on the next
+          // run's candidate list.
+          const isTerminal = post.error === 'message_not_found';
+          logger.error(
+            {
+              orgId: candidate.workos_organization_id,
+              error: post.error,
+              skipped: post.skipped,
+              terminal: isTerminal,
+            },
+            isTerminal
+              ? 'LI reminder parent message gone — posting fresh notice + recording a dead-parent reminder'
+              : 'Failed to post LI reminder — will retry next run',
+          );
+          result.failed++;
+          if (isTerminal) {
+            const freshText = buildDeadParentText({
+              orgName: candidate.org_name,
+              daysSinceSlack: candidate.days_since_slack,
+            });
+            try {
+              await sendChannelMessage(
+                candidate.review_channel_id,
+                {
+                  text: freshText,
+                  blocks: [
+                    { type: 'section', text: { type: 'mrkdwn', text: freshText } },
+                  ],
+                },
+                { requirePrivate: true },
+              );
+            } catch (freshErr) {
+              logger.warn(
+                { err: freshErr, orgId: candidate.workos_organization_id },
+                'Failed to post dead-parent notice — editorial gets the backlog view',
+              );
+            }
+            try {
+              await query(
+                `INSERT INTO org_activities (
+                    organization_id, activity_type, description, metadata, activity_date
+                 ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
+                [
+                  candidate.workos_organization_id,
+                  `Reminder ${candidate.reminder_count + 1}/${MAX_REMINDERS_PER_ORG}: review card missing, cannot post thread reply`,
+                  JSON.stringify({
+                    reminder_number: candidate.reminder_count + 1,
+                    days_stale: candidate.days_since_slack,
+                    failed: 'thread_parent_gone',
+                  }),
+                ],
+              );
+            } catch (recordErr) {
+              logger.error(
+                { err: recordErr, orgId: candidate.workos_organization_id },
+                'Failed to record dead-parent reminder — will retry next run',
+              );
+            }
+          }
+          continue;
+        }
+
+        try {
+          await query(
+            `INSERT INTO org_activities (
+                organization_id, activity_type, description, metadata, activity_date
+             ) VALUES ($1, 'announcement_li_reminder_sent', $2, $3::jsonb, NOW())`,
+            [
+              candidate.workos_organization_id,
+              `Reminder ${reminderNumber}/${MAX_REMINDERS_PER_ORG}: LinkedIn post still pending ${candidate.days_since_slack} days after Slack`,
+              JSON.stringify({
+                reminder_number: reminderNumber,
+                days_stale: candidate.days_since_slack,
+                reply_ts: post.ts,
+              }),
+            ],
+          );
+        } catch (recordErr) {
+          // Reminder landed but activity write failed. Next run will
+          // see no reminder row and ping again — an extra nudge every
+          // 7 days is better than a missed one, and the threaded reply
+          // would be hard to undo cleanly. Just log.
+          logger.error(
+            { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+            'LI reminder posted but activity write failed — next run may re-ping',
+          );
+        }
+
+        result.reminded++;
+        logger.info(
+          {
+            orgId: candidate.workos_organization_id,
+            reviewTs: candidate.review_message_ts,
+            replyTs: post.ts,
+            reminderNumber,
+          },
+          'Posted LI reminder',
+        );
+      } catch (err) {
+        logger.error(
+          { err, orgId: candidate.workos_organization_id },
+          'Failed to draft/post LI reminder — will retry next run',
+        );
+        result.failed++;
+      }
+    }
+
+    return result;
+  } finally {
+    if (haveLock) {
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [REMINDER_LOCK_ID.toString()]);
+      } catch (err) {
+        logger.warn({ err }, 'li-reminder: failed to release advisory lock (client will release it)');
+      }
+    }
+    client.release();
+  }
 }

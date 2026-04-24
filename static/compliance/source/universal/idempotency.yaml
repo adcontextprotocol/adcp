@@ -270,10 +270,17 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Agent returns a media_buy_id for the initial request"
-          - check: field_value
+          # Per `protocol-envelope.json`, fresh execution MAY omit
+          # `replayed` entirely; agents that do report it MUST NOT
+          # report `true` on a fresh call. `field_value_or_absent`
+          # (adcp-client#873, shipped in 5.16) asserts that tolerance:
+          # passes when absent OR present-and-matching. The replay
+          # step below asserts the positive side (`replayed: true`
+          # on replay) with plain `field_value`.
+          - check: field_value_or_absent
             path: "replayed"
             allowed_values: [false]
-            description: "Initial execution sets replayed: false (or omits the field)"
+            description: "If reported on fresh execution, replayed must be false"
 
           - check: field_present
             path: "context"

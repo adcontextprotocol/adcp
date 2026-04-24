@@ -15,6 +15,7 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { PostgresTaskStore } from '@adcp/client';
+import { mergeSeedProduct } from '@adcp/client/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
@@ -584,18 +585,17 @@ function overlaySeededProducts(
     ...pricingByProduct.keys(),
   ]);
   for (const productId of productIds) {
-    const existing = productMap.get(productId);
-    const fixture = seededProducts.get(productId) ?? {};
+    const existing = productMap.get(productId) ?? {} as Partial<Product>;
+    const fixture = seededProducts.get(productId) as Partial<Product> | undefined;
     const seededPricing = pricingByProduct.get(productId);
-    const merged = {
-      ...(existing ?? {}),
-      ...fixture,
-      product_id: productId,
-      pricing_options: seededPricing && seededPricing.length > 0
-        ? seededPricing
-        : (existing?.pricing_options ?? []),
-    } as unknown as import('@adcp/client').Product;
-    productMap.set(productId, merged);
+    let merged = mergeSeedProduct(existing as Partial<Product>, fixture ?? null);
+    merged = { ...merged, product_id: productId } as Partial<Product>;
+    if (seededPricing && seededPricing.length > 0) {
+      merged = mergeSeedProduct(merged, {
+        pricing_options: seededPricing as unknown as Product['pricing_options'],
+      });
+    }
+    productMap.set(productId, merged as Product);
   }
 }
 

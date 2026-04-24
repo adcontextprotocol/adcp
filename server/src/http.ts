@@ -26,11 +26,13 @@ import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { resolveWorkosUserForSubscription } from "./billing/resolve-subscription-user.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
+import { getGitHubConnectedAccount, getGitHubAuthorizeUrl } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -3492,28 +3494,78 @@ export class HTTPServer {
                   }
                 }
 
-                // Get customer info from Stripe to find user email
-                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-                const userEmail = customer.email || 'unknown@example.com';
-
-                // Warn if using fallback email - indicates missing customer data
-                if (!customer.email) {
-                  logger.warn({
+                // `customers.retrieve` returns `Customer | DeletedCustomer`. A
+                // deleted customer has no email/metadata; treat as a hard
+                // reconciliation case instead of attempting attribution.
+                const retrievedCustomer = await stripe.customers.retrieve(customerId);
+                if (retrievedCustomer.deleted) {
+                  logger.error({
                     customerId,
                     subscriptionId: subscription.id,
                     orgId: org.workos_organization_id,
-                  }, 'Using fallback email for subscription - customer has no email address');
-                }
+                    needs_manual_reconciliation: true,
+                  }, 'CRITICAL: Stripe customer is deleted — cannot record agreement acceptance. Manual backfill required.');
+                  notifySystemError({
+                    source: 'stripe-webhook-agreement',
+                    errorMessage: `Subscription ${subscription.id} (customer ${customerId}, org ${org.workos_organization_id}): customer is deleted — agreement acceptance cannot be recorded.`,
+                  });
+                } else {
+                  const customer: Stripe.Customer = retrievedCustomer;
+                  const userEmail = customer.email || 'unknown@example.com';
 
-                // Get WorkOS user ID from email
-                // Note: In production, we'd need a more robust way to link Stripe customer to WorkOS user
-                // For now, we'll use the email from the customer record
-                try {
-                  const users = await workos!.userManagement.listUsers({ email: userEmail });
-                  const workosUser = users.data[0];
+                  if (!customer.email) {
+                    logger.warn({
+                      customerId,
+                      subscriptionId: subscription.id,
+                      orgId: org.workos_organization_id,
+                    }, 'Using fallback email for subscription - customer has no email address');
+                  }
 
-                  if (workosUser) {
-                    // Record membership agreement acceptance
+                  // Resolve the user BEFORE clearing pending_* on the org row —
+                  // otherwise the pending_agreement_user_id source would be
+                  // wiped out in the same pass.
+                  const resolved = await resolveWorkosUserForSubscription({
+                    subscription,
+                    customer,
+                    organizationId: org.workos_organization_id,
+                    pendingAgreementUserId: org.pending_agreement_user_id,
+                    workos: workos!,
+                    logger,
+                  });
+
+                  // Org-level agreement update runs regardless of user
+                  // resolution: the org clicked the checkbox and paid, so the
+                  // membership-level attestation is known. pending_* fields
+                  // are NOT cleared here — if the user-level insert fails,
+                  // we want Stripe's retry to still have them available.
+                  await orgDb.updateOrganization(org.workos_organization_id, {
+                    agreement_signed_at: agreementAcceptedAt,
+                    agreement_version: agreementVersion,
+                  });
+
+                  // Fetch product details for Slack/activity notifications (user-independent).
+                  const subItems = subscription.items?.data || [];
+                  const firstItem = subItems[0];
+                  let productName: string | undefined;
+                  let amount: number | undefined;
+                  let interval: string | undefined;
+                  if (firstItem?.price) {
+                    amount = firstItem.price.unit_amount || undefined;
+                    interval = firstItem.price.recurring?.interval;
+                    if (firstItem.price.product) {
+                      try {
+                        const product = await stripe.products.retrieve(firstItem.price.product as string);
+                        productName = product.name;
+                      } catch (e) {
+                        // Ignore product fetch errors
+                      }
+                    }
+                  }
+
+                  if (resolved) {
+                    const workosUser = resolved.user;
+                    let userAgreementRecorded = false;
+
                     try {
                       await orgDb.recordUserAgreementAcceptance({
                         workos_user_id: workosUser.id,
@@ -3521,134 +3573,134 @@ export class HTTPServer {
                         agreement_type: 'membership',
                         agreement_version: agreementVersion,
                         workos_organization_id: org.workos_organization_id,
-                        // Note: IP and user-agent not available in webhook context
+                        // IP and user-agent not available in webhook context
                       });
+                      userAgreementRecorded = true;
+
+                      // Clear pending_* now that the user-level record is in.
+                      // If this update fails, the user row still exists and
+                      // the pending_* fields will just be lazily cleared on a
+                      // subsequent webhook — non-blocking.
+                      await orgDb.updateOrganization(org.workos_organization_id, {
+                        pending_agreement_version: null,
+                        pending_agreement_accepted_at: null,
+                        pending_agreement_user_id: null,
+                      }).catch(err => logger.warn({
+                        err,
+                        orgId: org.workos_organization_id,
+                      }, 'Failed to clear pending_agreement fields after successful recording (non-critical)'));
                     } catch (agreementError) {
-                      // CRITICAL: Agreement recording failed but subscription already exists
-                      // This needs manual intervention to fix the inconsistent state
+                      // Alert loudly but do not throw — the rest of the webhook
+                      // (subscription DB sync, tier change detection, directory
+                      // activation) must still run. Throwing here would force a
+                      // Stripe retry that re-fires notifyNewSubscription and
+                      // re-inserts a non-deduped org_activities row.
                       logger.error({
                         error: agreementError,
                         orgId: org.workos_organization_id,
                         subscriptionId: subscription.id,
+                        workosUserId: workosUser.id,
                         userEmail,
                         agreementVersion,
-                      }, 'CRITICAL: Failed to record agreement acceptance - subscription exists but agreement not recorded. Manual intervention required.');
-                      throw agreementError; // Re-throw to prevent further operations
+                        needs_manual_reconciliation: true,
+                      }, 'CRITICAL: Failed to insert user_agreement_acceptances — org agreement recorded but user attestation missing. Manual backfill required.');
+                      notifySystemError({
+                        source: 'stripe-webhook-agreement',
+                        errorMessage: `Subscription ${subscription.id} (org ${org.workos_organization_id}, user ${workosUser.id}): user_agreement_acceptances insert failed — manual backfill required.`,
+                      });
                     }
 
-                    // Update organization record
-                    await orgDb.updateOrganization(org.workos_organization_id, {
-                      agreement_signed_at: agreementAcceptedAt,
-                      agreement_version: agreementVersion,
-                    });
-
-                    // Store agreement metadata in Stripe subscription
-                    await stripe.subscriptions.update(subscription.id, {
-                      metadata: {
-                        workos_organization_id: org.workos_organization_id,
-                        membership_agreement_version: agreementVersion,
-                        membership_agreement_accepted_at: agreementAcceptedAt.toISOString(),
-                      }
-                    });
-
-                    logger.info({
-                      orgId: org.workos_organization_id,
-                      subscriptionId: subscription.id,
-                      agreementVersion,
-                      userEmail,
-                    }, 'Subscription created - membership agreement recorded atomically');
-
-                    // Record audit log for subscription creation
-                    await orgDb.recordAuditLog({
-                      workos_organization_id: org.workos_organization_id,
-                      workos_user_id: workosUser.id,
-                      action: 'subscription_created',
-                      resource_type: 'subscription',
-                      resource_id: subscription.id,
-                      details: {
-                        status: subscription.status,
-                        agreement_version: agreementVersion,
-                        stripe_customer_id: customerId,
-                      },
-                    });
-
-                    // Send Slack notification for new subscription
-                    // Get subscription details for notification
-                    const subItems = subscription.items?.data || [];
-                    const firstItem = subItems[0];
-                    let productName: string | undefined;
-                    let amount: number | undefined;
-                    let interval: string | undefined;
-
-                    if (firstItem?.price) {
-                      amount = firstItem.price.unit_amount || undefined;
-                      interval = firstItem.price.recurring?.interval;
-                      if (firstItem.price.product) {
-                        try {
-                          const product = await stripe.products.retrieve(firstItem.price.product as string);
-                          productName = product.name;
-                        } catch (e) {
-                          // Ignore product fetch errors
-                        }
-                      }
-                    }
-
-                    notifyNewSubscription({
-                      organizationName: org.name || 'Unknown Organization',
-                      customerEmail: userEmail,
-                      productName,
-                      amount,
-                      currency: subscription.currency,
-                      interval,
-                    }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
-
-                    // Capture the admin-facing touch context so the post-UPDATE
-                    // block can auto-publish the listing and thread the result
-                    // into the thank-you DM + welcome email. Deferring the
-                    // notifications avoids publishing a directory listing
-                    // before the organizations row reflects activation.
-                    activationAdminContext = {
-                      userEmail,
-                      workosUserId: workosUser.id,
-                      firstName: workosUser.firstName || undefined,
-                      productName,
-                    };
-
-                    // Record to org_activities for prospect tracking
-                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
-                    const intervalStr = interval ? `/${interval}` : '';
-                    await pool.query(
-                      `INSERT INTO org_activities (
-                        organization_id,
-                        activity_type,
-                        description,
-                        logged_by_user_id,
-                        logged_by_name,
-                        activity_date
-                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-                      [
-                        org.workos_organization_id,
-                        'subscription',
-                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
-                        workosUser.id,
+                    if (userAgreementRecorded) {
+                      logger.info({
+                        orgId: org.workos_organization_id,
+                        subscriptionId: subscription.id,
+                        workosUserId: workosUser.id,
+                        resolveSource: resolved.source,
+                        agreementVersion,
                         userEmail,
-                      ]
-                    );
+                      }, 'Subscription created — membership agreement recorded');
+
+                      await orgDb.recordAuditLog({
+                        workos_organization_id: org.workos_organization_id,
+                        workos_user_id: workosUser.id,
+                        action: 'subscription_created',
+                        resource_type: 'subscription',
+                        resource_id: subscription.id,
+                        details: {
+                          status: subscription.status,
+                          agreement_version: agreementVersion,
+                          stripe_customer_id: customerId,
+                          user_resolve_source: resolved.source,
+                        },
+                      });
+
+                      activationAdminContext = {
+                        userEmail,
+                        workosUserId: workosUser.id,
+                        firstName: workosUser.firstName || undefined,
+                        productName,
+                      };
+
+                      const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                      const intervalStr = interval ? `/${interval}` : '';
+                      await pool.query(
+                        `INSERT INTO org_activities (
+                          organization_id,
+                          activity_type,
+                          description,
+                          logged_by_user_id,
+                          logged_by_name,
+                          activity_date
+                        ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                        [
+                          org.workos_organization_id,
+                          'subscription',
+                          `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                          workosUser.id,
+                          userEmail,
+                        ]
+                      );
+                    }
                   } else {
                     logger.error({
-                      userEmail,
                       customerId,
                       subscriptionId: subscription.id,
                       orgId: org.workos_organization_id,
-                    }, 'Could not find WorkOS user for Stripe customer - subscription exists but no user found');
+                      userEmail,
+                      subMetadata: subscription.metadata,
+                      customerMetadata: customer.metadata,
+                      needs_manual_reconciliation: true,
+                    }, 'CRITICAL: Could not resolve WorkOS user for subscription — org-level agreement recorded, but user-level attestation missing. Manual backfill required.');
+                    notifySystemError({
+                      source: 'stripe-webhook-agreement',
+                      errorMessage: `Subscription ${subscription.id} (org ${org.workos_organization_id}, customer ${customerId}) created but no WorkOS user resolvable via subscription/customer metadata or email. Backfill user_agreement_acceptances manually.`,
+                    });
                   }
-                } catch (userError) {
-                  logger.error({
-                    error: userError,
-                    customerId,
+
+                  // Stamp the subscription with agreement metadata after the
+                  // attestation attempt. Best-effort: a failure here (Stripe
+                  // rate limit / transient 5xx) should not block the rest of
+                  // the webhook since the authoritative record is in our DB.
+                  stripe.subscriptions.update(subscription.id, {
+                    metadata: {
+                      workos_organization_id: org.workos_organization_id,
+                      membership_agreement_version: agreementVersion,
+                      membership_agreement_accepted_at: agreementAcceptedAt.toISOString(),
+                    }
+                  }).catch(err => logger.warn({
+                    err,
                     subscriptionId: subscription.id,
                     orgId: org.workos_organization_id,
-                  }, 'Failed to record agreement acceptance in webhook');
+                  }, 'Failed to stamp subscription metadata with agreement info — DB record remains authoritative'));
+
+                  notifyNewSubscription({
+                    organizationName: org.name || 'Unknown Organization',
+                    customerEmail: userEmail,
+                    productName,
+                    amount,
+                    currency: subscription.currency,
+                    interval,
+                  }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
                 }
               }
             }
@@ -7007,6 +7059,44 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         res.status(500).json({
           error: 'Failed to get agreement history',
         });
+      }
+    });
+
+    // GET /api/me/connected-accounts/github - Report whether the user has linked their GitHub via WorkOS Pipes
+    this.app.get('/api/me/connected-accounts/github', requireAuth, async (req, res) => {
+      try {
+        const account = await getGitHubConnectedAccount(req.user!.id);
+        if (account.status === 'unavailable') {
+          return res.status(503).json({ connected: false, unavailable: true });
+        }
+        if (account.status === 'not_connected') {
+          return res.json({ connected: false });
+        }
+        return res.json({ connected: true, login: account.login ?? null });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to look up GitHub connected account');
+        res.status(500).json({ error: 'Failed to look up connection status' });
+      }
+    });
+
+    // POST /api/me/connected-accounts/github/authorize - Mint a WorkOS Pipes authorize URL for GitHub
+    this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
+      try {
+        const host = req.get('host') || '';
+        const protocol = req.protocol === 'http' && !host.startsWith('localhost') ? 'https' : req.protocol;
+        const DEFAULT_RETURN = '/member-hub?connected=github';
+        const requested = typeof req.body?.return_to === 'string' ? req.body.return_to : DEFAULT_RETURN;
+        const isSafeReturn = requested.startsWith('/')
+          && !requested.startsWith('//')
+          && !requested.includes('\\')
+          && !/[\r\n\t]/.test(requested);
+        const safeReturn = isSafeReturn ? requested : DEFAULT_RETURN;
+        const returnTo = `${protocol}://${host}${safeReturn}`;
+        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
+        res.json({ url });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
+        res.status(502).json({ error: 'Failed to start GitHub connection' });
       }
     });
 

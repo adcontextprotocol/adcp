@@ -25,6 +25,9 @@ import {
   setErrorChannel,
   getEditorialChannel,
   setEditorialChannel,
+  getAnnouncementChannel,
+  setAnnouncementChannel,
+  getSettingAuditHistory,
 } from '../../db/system-settings-db.js';
 import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
 
@@ -45,6 +48,7 @@ export function createAdminSettingsRouter(): Router {
       const errorChannel = await getErrorChannel();
 
       const editorialChannel = await getEditorialChannel();
+      const announcementChannel = await getAnnouncementChannel();
 
       res.json({
         settings,
@@ -55,6 +59,7 @@ export function createAdminSettingsRouter(): Router {
         prospect_triage_enabled: prospectTriageEnabled,
         error_channel: errorChannel,
         editorial_channel: editorialChannel,
+        announcement_channel: announcementChannel,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -65,7 +70,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // GET /api/admin/settings/slack-channels - List available Slack channels for picker
-  router.get('/slack-channels', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  router.get('/slack-channels', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       if (!isSlackConfigured()) {
         res.status(400).json({
@@ -75,9 +80,14 @@ export function createAdminSettingsRouter(): Router {
         return;
       }
 
-      // Only private channels - billing info should not go to public channels
+      // `visibility=public` returns public channels for pickers that target
+      // broad-visibility destinations (e.g. the public announcement channel).
+      // Any other value, or no value, keeps the default: private channels
+      // only, because the other channel settings carry sensitive content.
+      const visibility = typeof req.query.visibility === 'string' ? req.query.visibility : null;
+      const types = visibility === 'public' ? 'public_channel' : 'private_channel';
       const channels = await getSlackChannels({
-        types: 'private_channel',
+        types,
         exclude_archived: true,
       });
 
@@ -417,6 +427,73 @@ export function createAdminSettingsRouter(): Router {
       res.status(500).json({
         error: 'Failed to update editorial channel',
       });
+    }
+  });
+
+  // PUT /api/admin/settings/announcement-channel - Update public announcement channel
+  router.put('/announcement-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { channel_id, channel_name } = req.body;
+
+      if (channel_id !== null && channel_id !== undefined) {
+        if (typeof channel_id !== 'string' || !/^[CG][A-Z0-9]+$/.test(channel_id)) {
+          res.status(400).json({
+            error: 'Invalid channel ID format',
+            message: 'Channel ID should start with C or G followed by alphanumeric characters',
+          });
+          return;
+        }
+
+        // The announcement channel is intentionally public — a private channel
+        // here would defeat the point of the welcome post. Reject private so
+        // nobody configures `#admin-editorial-review` as the announcement
+        // destination by mistake and floods a reviewer-only channel with
+        // member-facing posts.
+        if (isSlackConfigured()) {
+          const channelInfo = await getChannelInfo(channel_id);
+          if (channelInfo && channelInfo.is_private) {
+            res.status(400).json({
+              error: 'Invalid channel',
+              message: 'Announcement channel must be public — announcements are meant for broad visibility',
+            });
+            return;
+          }
+        }
+      }
+
+      if (channel_name !== null && channel_name !== undefined) {
+        if (typeof channel_name !== 'string' || channel_name.length > 200) {
+          res.status(400).json({
+            error: 'Invalid channel name',
+            message: 'Channel name must be a string under 200 characters',
+          });
+          return;
+        }
+      }
+
+      const userId = req.user?.id;
+      await setAnnouncementChannel(channel_id ?? null, channel_name ?? null, userId);
+
+      logger.info({ channel_id, channel_name, userId }, 'Announcement channel updated');
+
+      const updated = await getAnnouncementChannel();
+      res.json({ success: true, announcement_channel: updated });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update announcement channel');
+      res.status(500).json({
+        error: 'Failed to update announcement channel',
+      });
+    }
+  });
+
+  // GET /api/admin/settings/audit - Recent system settings changes
+  router.get('/audit', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const entries = await getSettingAuditHistory(50);
+      res.json({ entries });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to get settings audit history');
+      res.status(500).json({ error: 'Failed to get audit history' });
     }
   });
 

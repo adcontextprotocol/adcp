@@ -21,7 +21,7 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
-import { workos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
@@ -96,7 +96,7 @@ async function upsertMembership(
   let userData = user;
   if (!userData) {
     try {
-      const workosUser = await workos.userManagement.getUser(membership.user_id);
+      const workosUser = await getWorkos().userManagement.getUser(membership.user_id);
       userData = {
         id: workosUser.id,
         email: workosUser.email,
@@ -140,7 +140,7 @@ async function upsertMembership(
   // If the DB promoted this member to owner, sync the change to WorkOS
   if (assigned_role === 'owner' && role === 'member') {
     try {
-      await workos.userManagement.updateOrganizationMembership(membership.id, {
+      await getWorkos().userManagement.updateOrganizationMembership(membership.id, {
         roleSlug: 'owner',
       });
       logger.info({
@@ -189,19 +189,19 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
       // Promote in WorkOS first, then mirror locally
       let promotedInWorkos = false;
       if (target.workos_membership_id) {
-        await workos.userManagement.updateOrganizationMembership(
+        await getWorkos().userManagement.updateOrganizationMembership(
           target.workos_membership_id,
           { roleSlug: 'owner' }
         );
         promotedInWorkos = true;
       } else {
         // No cached membership ID — look it up from WorkOS
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await getWorkos().userManagement.listOrganizationMemberships({
           organizationId: membership.organization_id,
           userId: target.workos_user_id,
         });
         if (memberships.data.length > 0) {
-          await workos.userManagement.updateOrganizationMembership(
+          await getWorkos().userManagement.updateOrganizationMembership(
             memberships.data[0].id,
             { roleSlug: 'owner' }
           );
@@ -686,7 +686,7 @@ export function createWorkOSWebhooksRouter(): Router {
         }
 
         try {
-          await workos.webhooks.constructEvent({
+          await getWorkos().webhooks.constructEvent({
             payload: req.body,
             sigHeader,
             secret: WORKOS_WEBHOOK_SECRET,
@@ -707,7 +707,7 @@ export function createWorkOSWebhooksRouter(): Router {
             if (membership.status === 'active') {
               let workosUser: any;
               try {
-                workosUser = await workos.userManagement.getUser(membership.user_id);
+                workosUser = await getWorkos().userManagement.getUser(membership.user_id);
               } catch (error) {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
               }
@@ -944,7 +944,7 @@ export async function backfillOrganizationMemberships(): Promise<{
           // Fetch users for this org from WorkOS
           let after: string | undefined;
           do {
-            const usersResponse = await workos.userManagement.listUsers({
+            const usersResponse = await getWorkos().userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
               after,
@@ -953,7 +953,7 @@ export async function backfillOrganizationMemberships(): Promise<{
             for (const user of usersResponse.data) {
               try {
                 // Get the membership ID for this user in this org
-                const membershipsResponse = await workos.userManagement.listOrganizationMemberships({
+                const membershipsResponse = await getWorkos().userManagement.listOrganizationMemberships({
                   userId: user.id,
                 });
 
@@ -1102,7 +1102,7 @@ export async function backfillUsers(): Promise<{
     try {
       let after: string | undefined;
       do {
-        const usersResponse = await workos.userManagement.listUsers({
+        const usersResponse = await getWorkos().userManagement.listUsers({
           limit: 100,
           after,
         });
@@ -1141,7 +1141,7 @@ export async function backfillUsers(): Promise<{
         try {
           let orgAfter: string | undefined;
           do {
-            const usersResponse = await workos.userManagement.listUsers({
+            const usersResponse = await getWorkos().userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
               after: orgAfter,
@@ -1186,7 +1186,7 @@ export async function backfillUsers(): Promise<{
       for (const row of candidates) {
         try {
           // Confirm the user is actually gone from WorkOS before deleting
-          await workos.userManagement.getUser(row.workos_user_id);
+          await getWorkos().userManagement.getUser(row.workos_user_id);
           // User still exists in WorkOS — skip deletion
           result.usersSkipped++;
         } catch (getErr: any) {
@@ -1266,7 +1266,7 @@ export async function backfillOrganizationDomains(): Promise<{
 
       await Promise.all(batch.map(async (org) => {
         try {
-          const workosOrg = await workos.organizations.getOrganization(org.workos_organization_id);
+          const workosOrg = await getWorkos().organizations.getOrganization(org.workos_organization_id);
 
           // Map WorkOS SDK response to the shape syncOrganizationDomains expects
           const orgData: OrganizationData = {

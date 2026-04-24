@@ -86,7 +86,28 @@ the last 10 minutes. **Skip.** Do not apply `claude-triaged`. Do not
 spawn experts. Move to the next issue and note the skip in your run
 summary. This is the dedup lock — it costs one API call per issue.
 
+## Manual nudge — overrides the already-engaged check
+
+If the event context (the text the routine receives) contains a
+`MANUAL NUDGE:` line, a repo member explicitly requested triage via
+a `/triage` comment. **Skip the already-engaged check.** The
+nudge *is* the explicit request for help — proceed with full triage
+regardless of assignees, open PRs, or recent comments.
+
+If the comment text includes a modifier after `/triage`, use
+it to bias the decision:
+
+- `/triage execute` — lean toward Execute on borderline
+  non-breaking changes
+- `/triage clarify` — force a clarifying-question comment
+  even if you'd otherwise act
+- `/triage defer` — force defer and stop
+
+Without a modifier, use standard four-outcome logic.
+
 ## Already-engaged check — before any expert work
+
+(Skip this section if the event is a MANUAL NUDGE — see above.)
 
 You can't see Conductor workspaces, local drafts, or Slack
 conversations. A human may be actively working on an issue without
@@ -275,8 +296,10 @@ Post a comment when:
 MEMBER/COLLABORATOR/OWNER. They don't need a "your issue is deferred"
 note. Just apply `claude-triaged` + labels.
 
-Comment format (≤1500 chars total, prose ≤4 sentences). For
-`FIRST_TIME_CONTRIBUTOR`: open with "Thanks for filing!" before the
+Comment format: default cap **≤1500 chars total, prose ≤4 sentences**,
+**lifted when option examples are required** (see below — a few fenced
+code blocks beat a short prose description the reader can't act on).
+For `FIRST_TIME_CONTRIBUTOR`: open with "Thanks for filing!" before the
 block.
 
 ```
@@ -299,10 +322,66 @@ block.
 <If drafting-pr: one-line summary of the PR about to open.>
 <If security-sensitive on adcp-go: "ready-for-human, security-sensitive
  — details withheld." Do not describe the vector.>
+<If ready-for-human with option paths: **show each option as a JSON /
+ wire-format snippet** — see "Show options as wire examples" below.>
 
 ---
 Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}
 ```
+
+#### Show options as wire examples — required when asking for a decision
+
+When the comment presents the human with two or more paths (Option A
+vs Option B, or "3.x cleanup vs 4.0 redesign"), each option **must**
+include a concrete wire-format snippet showing what the change looks
+like in practice. The reader should be able to pick without opening
+the spec.
+
+Rules:
+
+1. **One fenced code block per option.** Use `json`, `yaml`, `http`,
+   or `diff` as the fence language. Favor `diff` when showing a
+   migration: `+` for the new shape, `-` for the old.
+2. **Show the minimum that disambiguates** — 5–15 lines. Elide
+   unrelated fields with `// ...` or `"other_fields": "..."`. Don't
+   paste whole schemas.
+3. **Label each block** with a one-line caption above it so a skim-
+   reader gets the gist from captions alone.
+4. **Quote, don't invent.** If the existing shape is already in
+   `static/schemas/source/**` or an existing example, copy the real
+   field names and types. Don't hallucinate fields.
+5. **Keep prose tight around the blocks** — the blocks do the work.
+   A sentence of setup + the block + a sentence of consequence is
+   plenty.
+
+Example structure (spec-change flag):
+
+```
+**Option A — 3.x docs/enum cleanup, no wire change:**
+```json
+// asset manifest entry — format lookup disambiguates kind
+{
+  "asset_id": "clickthrough_url",
+  "url": "https://..."
+}
+```
+Existing consumers unaffected. Docs reconciled; enum unchanged.
+
+**Option B — 4.0 explicit discriminator on asset:**
+```json
+{
+  "asset_id": "clickthrough_url",
+  "url_type": "clickthrough",
+  "url": "https://..."
+}
+```
+Breaks optional→required. Widens enum from 3 to 6 values.
+```
+
+This pattern applies to **spec / protocol**, **registry /
+discovery**, and **addie** (for prompt/copy options) buckets. For
+**web / site / docs** and typo-level issues, inline examples are
+usually unnecessary — the PR itself is the artifact.
 
 Apply `claude-triaged` + any matching bucket labels.
 
@@ -375,6 +454,97 @@ change is clear and non-breaking. **Scope is NOT a gate.** A
 **When in doubt: Execute.** A draft PR is reversible. An unshipped
 good change rarely gets revisited.
 
+## Bundling and epic handling — never split issues into issues
+
+When an issue contains multiple items — a follow-up list, a list of
+related fixes, or "items 1-5 after PR #N" — decide:
+
+1. **Ready items + deferred items** → open **one PR** covering all
+   the ready items as a cohesive change (name it after the umbrella
+   work, e.g., `test+docs: post-#261 A2A follow-ups (items 3, 5)`).
+   Leave the parent issue open. Comment on the parent with what
+   shipped and what remains: `items 3, 5 → #<PR>; item 4 deferred
+   pending upstream; items 1, 2 are cross-repo policy, flagged for
+   @bokelley.` Do **not** split the parent into child issues.
+
+2. **Parent is truly epic-shaped** — multi-week, cross-cutting,
+   needs its own tracking structure → flag-for-review with
+   `Status: ready-for-human`, recommend "convert #N to an epic with
+   a task list of child issues owned by a human." The human decides
+   the shape; you never create peer issues.
+
+3. **Never create peer issues autonomously.** Issues fan out into
+   more issues only when a human decides the parent is an epic.
+   Until then: bundle the ready work into one PR and leave the
+   remaining work on the parent.
+
+A single cohesive PR of 200 non-breaking lines is easier to review
+than three PRs of 60 lines with dependencies and cross-links. The
+bot's job is to reduce maintainer clicks, not multiply them.
+
+## Pre-PR build + test gate — mandatory before expert review
+
+The expert review is expensive; don't run it on broken code. Before
+spawning experts, make sure the diff actually compiles and the
+unit tests pass.
+
+1. Run the repo's build + fast test tier:
+   - `npm run precommit` — prefer this (bundled build + typecheck +
+     unit tests); falls back to `npm run build && npm test` if not
+     defined
+   - If the diff touches only `docs/**` or `static/**`, skip build
+     and run the relevant doc check instead (e.g., `npm run
+     docs:check` or `mintlify broken-links`)
+2. **If build or tests fail:** read the errors, fix the code,
+   re-run. Cap at **2 build→fix iterations.** If still failing,
+   abandon the PR and Flag for human review with the build log
+   in the comment.
+3. Do **not** skip tests locally because "CI will run them." The
+   point of this gate is to not ship known-broken code even as a
+   draft, because (a) review noise, (b) a human reviewer may
+   admin-merge a draft that looks fine, (c) a green CI on push
+   is the baseline for the auto-fix loop — a red PR at push time
+   is indistinguishable from drift after the fact.
+4. Only once build + tests pass on the final diff: proceed to
+   pre-PR expert review.
+
+## Pre-PR expert review — mandatory before `gh pr create`
+
+After build + tests are green but **before** opening the PR, run a
+second expert pass on the actual diff. The Step 4 synthesis
+reviewed the plan; this step reviews the code. They catch
+different things — protocol drift, broken tests, overlong files,
+wrong PR target, typos — before a human reviewer sees anything.
+
+1. Capture the diff: `git diff main...HEAD`.
+2. Spawn 2 experts **in parallel** via Task:
+   - `code-reviewer` — always
+   - The domain expert matching the bucket (same one from
+     Step 4; for cross-cutting diffs, pick the bucket the diff
+     primarily touches)
+3. Pass each expert: the diff + 2–3 sentences of intent ("Issue
+   #N asks for X; this PR does Y by touching Z"). Ask them to
+   classify each finding as **blocker**, **nit**, or **out of
+   scope**.
+4. **Fix blockers.** Re-run only the experts that flagged
+   blockers on the updated diff. Cap at **2 review→fix
+   iterations.** If blockers persist after two passes, abandon
+   the PR and Flag for human review instead.
+5. Surface nits in the PR body; don't fix them.
+6. If experts disagree on a blocker, do **not** resolve it
+   yourself — Flag for human review with both positions.
+7. Record both sign-offs in the PR body:
+
+   ```
+   **Pre-PR review:**
+   - code-reviewer: approved (1 nit noted)
+   - ad-tech-protocol-expert: approved — non-breaking per spec
+   ```
+
+**Never skip this step**, not even for one-line typo fixes.
+Cost is ~90 seconds of Task calls; benefit is two perspectives
+have read the diff before a human reviewer does.
+
 ## PR constraints
 
 - Branch: `claude/issue-<N>-<short-slug>`
@@ -387,11 +557,10 @@ good change rarely gets revisited.
   - **Non-breaking justification:** one line naming why the change
     is non-breaking per the definition above (e.g., "adds optional
     field X; existing clients unaffected")
-  - Expert consensus note: "ad-tech-protocol-expert and
-    code-reviewer reviewed; both approved."
+  - **Pre-PR review** block (from the step above) with both
+    experts' one-line sign-off
   - `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`
 - Include a changeset file
-- Run code-reviewer **on your own diff** before pushing; fix blockers
 - Run any relevant repo checks (tests for MDX if MDX touched, schema
   validation if JSON schemas touched)
 - **Never edit:** `.github/**`, `.agents/**`, `.claude/**`,

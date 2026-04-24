@@ -16,3 +16,11 @@ query-filters:
   # Rate limiting is handled at the infrastructure level (Fly.io proxy).
   - exclude:
       id: js/missing-rate-limiting
+
+  # "File data in outbound network request" fires any time a script reads a
+  # local file and later makes an API call — which is the normal pattern for
+  # our IPR signature scripts (read signatures/ipr-signatures.json, call the
+  # GitHub API to post comments/statuses). The file is repo-owned and written
+  # by the same workflow; there's no external taint source.
+  - exclude:
+      id: js/file-access-to-http

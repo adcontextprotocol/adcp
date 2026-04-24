@@ -1924,6 +1924,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.updateOrganization(orgId, {
         pending_agreement_version: agreement_version,
         pending_agreement_accepted_at: agreement_accepted_at ? new Date(agreement_accepted_at) : new Date(),
+        pending_agreement_user_id: user.id,
       });
 
       logger.info({
