@@ -39,8 +39,8 @@ After all eight steps, comparison is byte-for-byte. Implementations MUST NOT app
 | Request signing | `@target-uri` canonical output signed and verified | [Signed Requests (Transport Layer)](/docs/building/implementation/security#signed-requests-transport-layer) |
 | TMP seller authorization | `seller_agent.agent_url` vs `authorized_agents[].url` | [TMP Sync-Time Validation](/docs/trusted-match/specification#sync-time-validation) |
 | TMP provider resolution | `ProviderEntry.agent_url` vs router's registered provider endpoint | [TMP Product Integration](/docs/trusted-match/specification#product-integration) |
-| `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](/schemas/adagents.json) |
-| `format-id` resolution | `format-id.agent_url` against the URL an agent publishes for its formats | [format-id schema](/schemas/core/format-id.json) |
+| `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](https://adcontextprotocol.org/schemas/v3/adagents.json) |
+| `format-id` resolution | `format-id.agent_url` against the URL an agent publishes for its formats | [format-id schema](https://adcontextprotocol.org/schemas/v3/core/format-id.json) |
 | `adagents.json` `authoritative_location` indirection | Following the pointer; the target URL MUST canonicalize the same way | [Managed networks](/docs/governance/property/managed-networks#security-considerations) |
 | Any registry with a URL primary key | Canonical form is the key; raw input is not | — |
 
