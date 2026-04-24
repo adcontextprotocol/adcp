@@ -38,7 +38,7 @@ export interface TriggerResult {
   failed: number;
 }
 
-interface AnnounceCandidate {
+export interface AnnounceCandidate {
   workos_organization_id: string;
   org_name: string;
   membership_tier: string | null;
@@ -54,18 +54,37 @@ interface AnnounceCandidate {
 }
 
 /**
- * Orgs eligible for a draft:
- *  - At least one `profile_published` activity recorded
+ * Orgs eligible for a draft. Base filter (always applied):
  *  - `member_profiles.is_public = true` right now
  *  - A brand.json manifest exists for their primary_brand_domain
  *  - `member_profiles.metadata->>'no_announcement'` is not 'true'
  *  - No prior `announcement_draft_posted` or `announcement_skipped` activity
  *
- * Ordered by most recent `profile_published` activity first so freshly
- * announce-ready members are not starved by a stale backlog when the
- * per-run cap kicks in.
+ * Live trigger path (`requireProfilePublished: true`, default) additionally
+ * requires a `profile_published` activity row. This is the event the
+ * trigger job reacts to.
+ *
+ * Backfill path (`requireProfilePublished: false`) drops that requirement
+ * so orgs that went public before the event emit was added (Workflow A
+ * Stage 2) are reachable. Those rows have `is_public = true` today but
+ * no activity row to prove when it flipped, so `last_published_at` is
+ * NULL and they sort to the end.
+ *
+ * Ordered by most recent `profile_published` DESC so freshly announce-
+ * ready members are never starved by a stale backlog; NULLs last so the
+ * backfill path processes newest-known first.
  */
-export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
+export async function findAnnounceCandidates(
+  options: { requireProfilePublished?: boolean } = {},
+): Promise<AnnounceCandidate[]> {
+  const requirePublished = options.requireProfilePublished ?? true;
+  const publishedClause = requirePublished
+    ? `AND EXISTS (
+          SELECT 1 FROM org_activities
+           WHERE organization_id = o.workos_organization_id
+             AND activity_type = 'profile_published'
+        )`
+    : '';
   const result = await query<AnnounceCandidate>(
     `SELECT
         o.workos_organization_id,
@@ -93,17 +112,13 @@ export async function findAnnounceCandidates(): Promise<AnnounceCandidate[]> {
        AND b.brand_manifest IS NOT NULL
       WHERE mp.is_public = true
         AND COALESCE(mp.metadata->>'no_announcement', 'false') <> 'true'
-        AND EXISTS (
-          SELECT 1 FROM org_activities
-           WHERE organization_id = o.workos_organization_id
-             AND activity_type = 'profile_published'
-        )
+        ${publishedClause}
         AND NOT EXISTS (
           SELECT 1 FROM org_activities
            WHERE organization_id = o.workos_organization_id
              AND activity_type IN ('announcement_draft_posted', 'announcement_skipped')
         )
-      ORDER BY last_published_at DESC NULLS LAST`,
+      ORDER BY last_published_at DESC NULLS LAST, o.created_at DESC`,
   );
   return result.rows;
 }
@@ -182,14 +197,20 @@ export function buildReviewBlocks(args: {
   linkedinText: string;
   visual: VisualResolution;
   profileSlug: string;
+  /** When true, prefixes the header with `[BACKFILL]` so the editorial
+   * team can tell a retroactive draft apart from a live-flow one. */
+  backfill?: boolean;
 }): { text: string; blocks: SlackBlock[] } {
   const profileUrl = `${APP_URL}/members/${args.profileSlug}`;
   const safeSlack = sanitizeDraftForSlack(args.slackText);
   const safeLinkedIn = sanitizeDraftForSlack(args.linkedinText, { forFencedBlock: true });
+  const headerText = args.backfill
+    ? `[BACKFILL] New member announcement ready: ${args.orgName}`
+    : `New member announcement ready: ${args.orgName}`;
   const blocks: SlackBlock[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `New member announcement ready: ${args.orgName}` },
+      text: { type: 'plain_text', text: headerText },
     },
     {
       type: 'context',
@@ -245,7 +266,7 @@ export function buildReviewBlocks(args: {
   ];
 
   return {
-    text: `New member announcement ready: ${args.orgName}`,
+    text: headerText,
     blocks,
   };
 }
@@ -260,6 +281,128 @@ async function recordDraftPosted(
      ) VALUES ($1, 'announcement_draft_posted', $2, $3::jsonb, NOW())`,
     [orgId, 'Announcement draft posted for editorial review', JSON.stringify(metadata)],
   );
+}
+
+/**
+ * Process a single announce candidate: draft copy, resolve visual, post
+ * the review card to the editorial channel, record the idempotency row.
+ * Shared by `runAnnouncementTriggerJob` (live flow, hourly cap) and
+ * `runBackfillAnnouncements` (one-shot retroactive wave).
+ *
+ * Returns `true` on success, `false` on any handled failure (network,
+ * DB write miss). Unwinds the Slack post if the activity write fails
+ * so no orphan review card survives without an idempotency row.
+ */
+async function processAnnounceCandidate(
+  candidate: AnnounceCandidate,
+  options: { reviewChannel: string; backfill?: boolean },
+): Promise<boolean> {
+  const { reviewChannel, backfill = false } = options;
+  try {
+    const draft = await draftAnnouncement({
+      orgName: candidate.org_name,
+      membershipTier: candidate.membership_tier,
+      displayName: candidate.display_name,
+      tagline: candidate.tagline,
+      description: candidate.description,
+      offerings: candidate.offerings ?? [],
+      primaryBrandDomain: candidate.primary_brand_domain,
+      agents: summarizeAgents(candidate.brand_manifest),
+      profileSlug: candidate.slug,
+    });
+
+    const visual = await resolveAnnouncementVisual({
+      workosOrganizationId: candidate.workos_organization_id,
+      membershipTier: candidate.membership_tier,
+      primaryBrandDomain: candidate.primary_brand_domain,
+      displayName: candidate.display_name,
+    });
+
+    const { text, blocks } = buildReviewBlocks({
+      orgName: candidate.org_name,
+      workosOrganizationId: candidate.workos_organization_id,
+      slackText: draft.slackText,
+      linkedinText: draft.linkedinText,
+      visual,
+      profileSlug: candidate.slug,
+      backfill,
+    });
+
+    const post = await sendChannelMessage(
+      reviewChannel,
+      { text, blocks },
+      { requirePrivate: true },
+    );
+    if (!post.ok || !post.ts) {
+      logger.error(
+        {
+          orgId: candidate.workos_organization_id,
+          error: post.error,
+          skipped: post.skipped,
+        },
+        'Failed to post announcement draft to editorial channel',
+      );
+      return false;
+    }
+
+    try {
+      await recordDraftPosted(candidate.workos_organization_id, {
+        review_channel_id: reviewChannel,
+        review_message_ts: post.ts,
+        slack_text: draft.slackText,
+        linkedin_text: draft.linkedinText,
+        visual_url: visual.url,
+        visual_alt_text: visual.altText,
+        visual_source: visual.source,
+        org_name: candidate.org_name,
+        profile_slug: candidate.slug,
+        backfill,
+      });
+    } catch (recordErr) {
+      logger.error(
+        { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
+        'Activity write failed after posting draft — unwinding Slack message',
+      );
+      try {
+        const undo = await deleteChannelMessage(reviewChannel, post.ts);
+        if (!undo.ok) {
+          logger.error(
+            {
+              orgId: candidate.workos_organization_id,
+              ts: post.ts,
+              undoError: undo.error,
+            },
+            'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
+          );
+        }
+      } catch (undoErr) {
+        logger.error(
+          { err: undoErr, orgId: candidate.workos_organization_id, ts: post.ts },
+          'CRITICAL: Slack unwind threw — orphan review card, no idempotency row',
+        );
+      }
+      return false;
+    }
+
+    logger.info(
+      {
+        orgId: candidate.workos_organization_id,
+        reviewTs: post.ts,
+        visualSource: visual.source,
+        backfill,
+      },
+      'Posted announcement draft for editorial review',
+    );
+    return true;
+  } catch (err) {
+    logger.error(
+      { err, orgId: candidate.workos_organization_id, backfill },
+      backfill
+        ? 'Failed to draft/post announcement'
+        : 'Failed to draft/post announcement — will retry next run',
+    );
+    return false;
+  }
 }
 
 export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
@@ -289,110 +432,87 @@ export async function runAnnouncementTriggerJob(): Promise<TriggerResult> {
       );
       break;
     }
-
-    try {
-      const draft = await draftAnnouncement({
-        orgName: candidate.org_name,
-        membershipTier: candidate.membership_tier,
-        displayName: candidate.display_name,
-        tagline: candidate.tagline,
-        description: candidate.description,
-        offerings: candidate.offerings ?? [],
-        primaryBrandDomain: candidate.primary_brand_domain,
-        agents: summarizeAgents(candidate.brand_manifest),
-        profileSlug: candidate.slug,
-      });
-
-      const visual = await resolveAnnouncementVisual({
-        workosOrganizationId: candidate.workos_organization_id,
-        membershipTier: candidate.membership_tier,
-        primaryBrandDomain: candidate.primary_brand_domain,
-        displayName: candidate.display_name,
-      });
-
-      const { text, blocks } = buildReviewBlocks({
-        orgName: candidate.org_name,
-        workosOrganizationId: candidate.workos_organization_id,
-        slackText: draft.slackText,
-        linkedinText: draft.linkedinText,
-        visual,
-        profileSlug: candidate.slug,
-      });
-
-      const post = await sendChannelMessage(
-        reviewChannel,
-        { text, blocks },
-        { requirePrivate: true },
-      );
-      if (!post.ok || !post.ts) {
-        logger.error(
-          {
-            orgId: candidate.workos_organization_id,
-            error: post.error,
-            skipped: post.skipped,
-          },
-          'Failed to post announcement draft to editorial channel',
-        );
-        result.failed++;
-        continue;
-      }
-
-      try {
-        await recordDraftPosted(candidate.workos_organization_id, {
-          review_channel_id: reviewChannel,
-          review_message_ts: post.ts,
-          slack_text: draft.slackText,
-          linkedin_text: draft.linkedinText,
-          visual_url: visual.url,
-          visual_alt_text: visual.altText,
-          visual_source: visual.source,
-          org_name: candidate.org_name,
-          profile_slug: candidate.slug,
-        });
-      } catch (recordErr) {
-        logger.error(
-          { err: recordErr, orgId: candidate.workos_organization_id, ts: post.ts },
-          'Activity write failed after posting draft — unwinding Slack message',
-        );
-        try {
-          const undo = await deleteChannelMessage(reviewChannel, post.ts);
-          if (!undo.ok) {
-            logger.error(
-              {
-                orgId: candidate.workos_organization_id,
-                ts: post.ts,
-                undoError: undo.error,
-              },
-              'CRITICAL: Slack message left without idempotency row — editor will see a duplicate next run',
-            );
-          }
-        } catch (undoErr) {
-          logger.error(
-            { err: undoErr, orgId: candidate.workos_organization_id, ts: post.ts },
-            'CRITICAL: Slack unwind threw — orphan review card, no idempotency row',
-          );
-        }
-        result.failed++;
-        continue;
-      }
-
-      result.drafted++;
-      logger.info(
-        {
-          orgId: candidate.workos_organization_id,
-          reviewTs: post.ts,
-          visualSource: visual.source,
-        },
-        'Posted announcement draft for editorial review',
-      );
-    } catch (err) {
-      logger.error(
-        { err, orgId: candidate.workos_organization_id },
-        'Failed to draft/post announcement — will retry next run',
-      );
-      result.failed++;
-    }
+    const ok = await processAnnounceCandidate(candidate, { reviewChannel });
+    if (ok) result.drafted++;
+    else result.failed++;
   }
 
+  return result;
+}
+
+export interface BackfillOptions {
+  /** Editorial channel id to post drafts into. Required. */
+  reviewChannel: string;
+  /** Hard cap on how many drafts this run will post. Default 15. */
+  limit?: number;
+  /** When true, print what would happen without posting or writing. */
+  dryRun?: boolean;
+}
+
+export interface BackfillResult extends TriggerResult {
+  dryRun: boolean;
+  /** When dryRun, the orgs that would have been drafted. */
+  wouldDraft?: Array<{ workos_organization_id: string; org_name: string }>;
+}
+
+/**
+ * One-shot retroactive announcement wave (Workflow B Stage 4 spec).
+ *
+ * Queries announce-ready orgs including those without a
+ * `profile_published` event (orgs that went public before Workflow A
+ * Stage 2 added the event emit), caps at `limit`, and posts each
+ * through the same pipeline as the live trigger job with a `[BACKFILL]`
+ * header tag. Editorial team spaces them out via the normal approval
+ * flow.
+ */
+export async function runBackfillAnnouncements(
+  options: BackfillOptions,
+): Promise<BackfillResult> {
+  const limit = Math.max(1, options.limit ?? 15);
+  const dryRun = options.dryRun ?? false;
+
+  const result: BackfillResult = {
+    candidates: 0,
+    drafted: 0,
+    failed: 0,
+    dryRun,
+  };
+
+  let candidates: AnnounceCandidate[];
+  try {
+    candidates = await findAnnounceCandidates({ requireProfilePublished: false });
+  } catch (err) {
+    logger.error({ err }, 'backfill: failed to load announce candidates');
+    return result;
+  }
+
+  result.candidates = candidates.length;
+  const picked = candidates.slice(0, limit);
+
+  if (dryRun) {
+    result.wouldDraft = picked.map((c) => ({
+      workos_organization_id: c.workos_organization_id,
+      org_name: c.org_name,
+    }));
+    logger.info(
+      { totalEligible: candidates.length, limit, wouldDraft: result.wouldDraft.length },
+      'backfill dry-run: no posts, no activity writes',
+    );
+    return result;
+  }
+
+  for (const candidate of picked) {
+    const ok = await processAnnounceCandidate(candidate, {
+      reviewChannel: options.reviewChannel,
+      backfill: true,
+    });
+    if (ok) result.drafted++;
+    else result.failed++;
+  }
+
+  logger.info(
+    { drafted: result.drafted, failed: result.failed, totalEligible: candidates.length, limit },
+    'backfill complete',
+  );
   return result;
 }
