@@ -396,6 +396,34 @@ change is clear and non-breaking. **Scope is NOT a gate.** A
 **When in doubt: Execute.** A draft PR is reversible. An unshipped
 good change rarely gets revisited.
 
+## Bundling and epic handling — never split issues into issues
+
+When an issue contains multiple items — a follow-up list, a list of
+related fixes, or "items 1-5 after PR #N" — decide:
+
+1. **Ready items + deferred items** → open **one PR** covering all
+   the ready items as a cohesive change (name it after the umbrella
+   work, e.g., `test+docs: post-#261 A2A follow-ups (items 3, 5)`).
+   Leave the parent issue open. Comment on the parent with what
+   shipped and what remains: `items 3, 5 → #<PR>; item 4 deferred
+   pending upstream; items 1, 2 are cross-repo policy, flagged for
+   @bokelley.` Do **not** split the parent into child issues.
+
+2. **Parent is truly epic-shaped** — multi-week, cross-cutting,
+   needs its own tracking structure → flag-for-review with
+   `Status: ready-for-human`, recommend "convert #N to an epic with
+   a task list of child issues owned by a human." The human decides
+   the shape; you never create peer issues.
+
+3. **Never create peer issues autonomously.** Issues fan out into
+   more issues only when a human decides the parent is an epic.
+   Until then: bundle the ready work into one PR and leave the
+   remaining work on the parent.
+
+A single cohesive PR of 200 non-breaking lines is easier to review
+than three PRs of 60 lines with dependencies and cross-links. The
+bot's job is to reduce maintainer clicks, not multiply them.
+
 ## PR constraints
 
 - Branch: `claude/issue-<N>-<short-slug>`
