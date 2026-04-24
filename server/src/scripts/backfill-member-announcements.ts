@@ -44,6 +44,7 @@ import { initializeDatabase, closeDatabase } from '../db/client.js';
 import { getDatabaseConfig } from '../config.js';
 import {
   runBackfillAnnouncements,
+  resolveEditorialChannel,
   BACKFILL_SOFT_CAP,
   BACKFILL_ABSOLUTE_MAX,
   type BackfillPreviewRow,
@@ -139,12 +140,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const reviewChannel = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL ?? '';
-  if (!args.dryRun && !reviewChannel) {
-    console.error('SLACK_EDITORIAL_REVIEW_CHANNEL is required unless --dry-run');
-    process.exit(1);
-  }
-
   if (args.limit > BACKFILL_SOFT_CAP && !args.force) {
     console.error(
       `--limit ${args.limit} exceeds the soft cap of ${BACKFILL_SOFT_CAP}. Pass --force to override (max ${BACKFILL_ABSOLUTE_MAX}).`,
@@ -153,6 +148,17 @@ async function main(): Promise<void> {
   }
 
   initializeDatabase(dbConfig);
+
+  // DB first (admin UI), env fallback. Only required on live runs —
+  // dry-run just wants to enumerate candidates.
+  const reviewChannel = (await resolveEditorialChannel()) ?? '';
+  if (!args.dryRun && !reviewChannel) {
+    console.error(
+      'Editorial channel not configured. Set it at /admin/settings (or SLACK_EDITORIAL_REVIEW_CHANNEL env).',
+    );
+    await closeDatabase();
+    process.exit(1);
+  }
 
   try {
     const result = await runBackfillAnnouncements({
