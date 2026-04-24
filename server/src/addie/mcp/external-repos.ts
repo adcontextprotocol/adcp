@@ -115,7 +115,7 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
     url: 'https://github.com/adcontextprotocol/adcp-go',
     name: 'AdCP Go SDK',
     description: 'Official Go SDK for AdCP — types, request parsing, response builders, TMP client/server, and reference router implementation',
-    indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md', '**/*.md'],
+    indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
     branch: 'main',
   },
 
