@@ -377,6 +377,25 @@
           </div>
         </div>
 
+      <!-- Recent changes audit log -->
+      <div class="card" id="auditCard">
+        <h2>Recent changes</h2>
+        <p class="subtitle">Last 50 system settings changes across all admins.</p>
+        <div id="auditLoading" style="padding: var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm);">Loading...</div>
+        <table id="auditTable" style="display:none; width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding: var(--space-3); border-bottom: 2px solid var(--color-gray-200); font-size: var(--text-xs); color: var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Setting</th>
+              <th style="text-align:left; padding: var(--space-3); border-bottom: 2px solid var(--color-gray-200); font-size: var(--text-xs); color: var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Changed by</th>
+              <th style="text-align:left; padding: var(--space-3); border-bottom: 2px solid var(--color-gray-200); font-size: var(--text-xs); color: var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.5px;">When</th>
+              <th style="text-align:left; padding: var(--space-3); border-bottom: 2px solid var(--color-gray-200); font-size: var(--text-xs); color: var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.5px;">New value</th>
+            </tr>
+          </thead>
+          <tbody id="auditBody"></tbody>
+        </table>
+        <div id="auditEmpty" style="display:none; padding: var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm);">No changes recorded yet.</div>
+      </div>
+
       </div>
     </div>
   </div>
@@ -629,6 +648,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Billing channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -678,6 +698,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Escalation channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -740,6 +761,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Admin channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -802,6 +824,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Prospect channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -864,6 +887,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Error channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -945,6 +969,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Editorial channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -995,6 +1020,7 @@
         saveBtn.textContent = 'Saved!';
         saveBtn.classList.add('btn-success');
         showStatusMessage('Announcement channel updated successfully', 'success');
+loadAuditHistory();
 
         setTimeout(() => {
           saveBtn.textContent = 'Save';
@@ -1091,6 +1117,53 @@
 
     // Initialize
     loadSettings();
+    loadAuditHistory();
+    // Load and render the audit history table
+    async function loadAuditHistory() {
+      const loadingEl = document.getElementById('auditLoading');
+      const tableEl = document.getElementById('auditTable');
+      const emptyEl = document.getElementById('auditEmpty');
+      const bodyEl = document.getElementById('auditBody');
+
+      loadingEl.style.display = 'block';
+      tableEl.style.display = 'none';
+      emptyEl.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/admin/settings/audit');
+        if (response.status === 401) {
+          window.AdminSidebar.redirectToLogin();
+          return;
+        }
+        if (!response.ok) throw new Error('Failed to load audit history');
+        const { entries } = await response.json();
+
+        loadingEl.style.display = 'none';
+
+        if (!entries || entries.length === 0) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        bodyEl.innerHTML = entries.map(entry => {
+          const when = new Date(entry.changed_at).toLocaleString();
+          const newVal = entry.new_value ? JSON.stringify(entry.new_value) : '\u2014';
+          const changedBy = entry.changed_by ? escapeHtml(entry.changed_by) : '<em>system</em>';
+          return `<tr>
+            <td style="padding:var(--space-3); border-bottom:1px solid var(--color-gray-200); font-size:var(--text-sm); font-family:monospace;">${escapeHtml(entry.key)}</td>
+            <td style="padding:var(--space-3); border-bottom:1px solid var(--color-gray-200); font-size:var(--text-sm);">${changedBy}</td>
+            <td style="padding:var(--space-3); border-bottom:1px solid var(--color-gray-200); font-size:var(--text-sm); white-space:nowrap;">${escapeHtml(when)}</td>
+            <td style="padding:var(--space-3); border-bottom:1px solid var(--color-gray-200); font-size:var(--text-xs); font-family:monospace; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(newVal)}">${escapeHtml(newVal)}</td>
+          </tr>`;
+        }).join('');
+
+        tableEl.style.display = 'table';
+      } catch (error) {
+        console.error('Error loading audit history:', error);
+        loadingEl.textContent = 'Failed to load recent changes.';
+      }
+    }
+
   </script>
 </body>
 </html>
