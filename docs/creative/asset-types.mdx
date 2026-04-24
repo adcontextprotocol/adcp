@@ -248,7 +248,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 
 ### VAST Tracker Asset
 
-A single URL bound to a VAST `<TrackingEvents>` event. Use this when the creative agent emits decomposed per-event URLs and the sales agent is responsible for assembling the VAST `<TrackingEvents>` block at serve time — as an alternative to shipping a complete VAST tag.
+A single URL bound to a VAST `TrackingEvents` event. Use this when the creative agent emits decomposed per-event URLs and the sales agent is responsible for assembling the VAST `TrackingEvents` block at serve time — as an alternative to shipping a complete VAST tag.
 
 **Example:**
 ```json
@@ -323,7 +323,7 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 
 ### DAAST Tracker Asset
 
-Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `<TrackingEvents>` event.
+Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEvents` event.
 
 **Example:**
 ```json
@@ -358,7 +358,7 @@ A creative manifest MAY emit VAST trackers in **one** of two shapes. The creativ
 }
 ```
 
-**Decomposed trackers** — the creative agent emits per-event URLs; the sales agent assembles the `<TrackingEvents>` block:
+**Decomposed trackers** — the creative agent emits per-event URLs; the sales agent assembles the `TrackingEvents` block:
 
 ```json
 [
@@ -372,8 +372,8 @@ A creative manifest MAY emit VAST trackers in **one** of two shapes. The creativ
 
 ### Normative rules
 
-1. **Wrapper ownership.** The **sales agent** is responsible for constructing the VAST `<Wrapper>` / `<InLine>` envelope and any `<AdVerifications>` block. The **creative agent** MUST NOT emit pre-wrapped VAST. When the creative agent hands off a `vast` asset with `delivery_type: "url"`, the sales agent treats that URL as the wrapper target.
-2. **Impression vs `<TrackingEvents>` split.** The VAST `<Impression>` URL is **not** a tracking event. It MUST be modeled as a `url` asset with `url_type: "tracker_pixel"`. A `vast_tracker` asset MUST NOT have `vast_event: "impression"`. The same rule applies to DAAST.
+1. **Wrapper ownership.** The **sales agent** is responsible for constructing the VAST `Wrapper` / `InLine` envelope and any `AdVerifications` block. The **creative agent** MUST NOT emit pre-wrapped VAST. When the creative agent hands off a `vast` asset with `delivery_type: "url"`, the sales agent treats that URL as the wrapper target.
+2. **Impression vs `TrackingEvents` split.** The VAST `Impression` URL is **not** a tracking event. It MUST be modeled as a `url` asset with `url_type: "tracker_pixel"`. A `vast_tracker` asset MUST NOT have `vast_event: "impression"`. The same rule applies to DAAST.
 3. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression) assets — the sales agent merges them into one VAST document at serve time.
 
 ### SSAI caveat

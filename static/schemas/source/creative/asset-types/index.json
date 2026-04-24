@@ -32,12 +32,12 @@
       "typical_use": "Third-party served audio ads with DAAST 1.0-1.1"
     },
     "vast_tracker": {
-      "description": "A single URL bound to a VAST `<TrackingEvents>` event (start, quartile, complete, etc.). Assembled into the VAST `<TrackingEvents>` block by the sales agent. For `<Impression>` URLs, use `url` asset with `url_type: \"tracker_pixel\"` instead.",
+      "description": "A single URL bound to a VAST `TrackingEvents` event (start, quartile, complete, etc.). Assembled into the VAST `TrackingEvents` block by the sales agent. For `Impression` URLs, use `url` asset with `url_type: \"tracker_pixel\"` instead.",
       "schema": "/schemas/core/assets/vast-tracker-asset.json",
       "typical_use": "Decomposed VAST event trackers on CTV/video formats where the creative agent emits per-event URLs rather than a complete VAST tag"
     },
     "daast_tracker": {
-      "description": "Audio-side analogue of vast_tracker: a single URL bound to a DAAST `<TrackingEvents>` event.",
+      "description": "Audio-side analogue of vast_tracker: a single URL bound to a DAAST `TrackingEvents` event.",
       "schema": "/schemas/core/assets/daast-tracker-asset.json",
       "typical_use": "Decomposed DAAST event trackers on audio formats"
     },
@@ -108,7 +108,7 @@
       ]
     },
     "nested_discriminator_pattern": {
-      "description": "Asset schemas with internal variants (e.g., VAST and DAAST support both URL-delivery and inline XML) use a two-level discriminator rather than splitting each variant into a separate top-level asset_type. The outer discriminator (`asset_type` on the composite map) selects the asset schema; an inner `oneOf` + `discriminator` inside that schema selects the variant. Future asset types with internal variants should follow this pattern — do not introduce sibling entries like `vast_url` and `vast_inline` at the registry level.",
+      "description": "Asset schemas with internal variants (e.g., VAST and DAAST support both URL-delivery and inline XML) use a two-level discriminator rather than splitting each variant into a separate top-level asset_type. The outer discriminator (`asset_type` on the composite map) selects the asset schema; an inner `oneOf` + `discriminator` inside that schema selects the variant. Future asset types with internal variants should follow this pattern \u2014 do not introduce sibling entries like `vast_url` and `vast_inline` at the registry level.",
       "examples": [
         "vast-asset.json: outer asset_type='vast', inner delivery_type='url'|'inline'",
         "daast-asset.json: outer asset_type='daast', inner delivery_type='url'|'inline'"
@@ -117,7 +117,7 @@
   },
   "usage_notes": {
     "format_specs": "Format specifications define what asset_ids are required (e.g., 'hero_image', 'logo'). Each defines its asset type and constraints (dimensions, file size, etc.).",
-    "creative_manifests": "Creative manifests provide actual asset content, keyed by asset_id from the format. Each asset value carries an `asset_type` discriminator (one of the registry keys) so validators can select the matching asset schema and report errors against only that branch. The format specification also defines what asset_type each asset_id should have — payload and format should agree.",
+    "creative_manifests": "Creative manifests provide actual asset content, keyed by asset_id from the format. Each asset value carries an `asset_type` discriminator (one of the registry keys) so validators can select the matching asset schema and report errors against only that branch. The format specification also defines what asset_type each asset_id should have \u2014 payload and format should agree.",
     "example_flow": "Format says 'hero_image' must be type 'image' with width 1200, height 627. Manifest provides hero_image: {url: '...', width: 1200, height: 627}. The format spec tells us it's an image type."
   }
 }
