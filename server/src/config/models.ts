@@ -37,7 +37,7 @@ export const ModelConfig = {
    * Depth model for multi-step reasoning, expert consultation, and long-
    * context synthesis. Same model powers the AdCP triage routines so
    * Addie's deep-question answers stay consistent with GitHub triage.
-   * Default: claude-opus-4-7[1m] (newer, larger context)
+   * Default: claude-opus-4-7
    * Override: CLAUDE_MODEL_DEPTH
    *
    * Use this when the turn requires reasoning across many docs, multi-
@@ -45,8 +45,42 @@ export const ModelConfig = {
    * (billing accuracy) — depth is about thinking, precision is about
    * "don't hallucinate this number."
    */
-  depth: process.env.CLAUDE_MODEL_DEPTH || 'claude-opus-4-7[1m]',
+  depth: process.env.CLAUDE_MODEL_DEPTH || 'claude-opus-4-7',
 } as const;
+
+/**
+ * Anthropic beta flag that unlocks the 1M-token context window on
+ * supported Claude models. Passed via the `betas` array on the
+ * `/v1/messages` beta endpoint (NOT as a suffix on the model ID).
+ */
+export const CONTEXT_1M_BETA = 'context-1m-2025-08-07';
+
+/**
+ * Models that currently support the 1M context beta. Opus 4.7 is the
+ * depth-tier default; Sonnet 4.6 supports it too. Extend this list as
+ * Anthropic enables 1M on additional models.
+ */
+const MODELS_SUPPORTING_1M_CONTEXT = new Set<string>([
+  'claude-opus-4-7',
+  'claude-sonnet-4-6',
+]);
+
+/**
+ * Returns additional Anthropic `betas` flags that should be enabled for
+ * the given model. Currently: 1M context on depth-tier models.
+ *
+ * Opt out per-model with `CLAUDE_DISABLE_1M_CONTEXT=true`.
+ */
+export function getModelBetas(model: string): string[] {
+  const betas: string[] = [];
+  if (
+    process.env.CLAUDE_DISABLE_1M_CONTEXT !== 'true' &&
+    MODELS_SUPPORTING_1M_CONTEXT.has(model)
+  ) {
+    betas.push(CONTEXT_1M_BETA);
+  }
+  return betas;
+}
 
 /**
  * Addie-specific model configuration
