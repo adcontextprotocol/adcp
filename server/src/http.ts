@@ -3521,22 +3521,26 @@ export class HTTPServer {
                     }, 'Using fallback email for subscription - customer has no email address');
                   }
 
-                  // Org-level agreement update runs regardless of user resolution:
-                  // the org clicked the checkbox and paid, so the membership-level
-                  // attestation is known. The user-level record is a companion that
-                  // may fail if the WorkOS user can't be resolved — in which case
-                  // we alert loudly and admin backfills.
-                  await orgDb.updateOrganization(org.workos_organization_id, {
-                    agreement_signed_at: agreementAcceptedAt,
-                    agreement_version: agreementVersion,
-                  });
-
+                  // Resolve the user BEFORE clearing pending_* on the org row —
+                  // otherwise the pending_agreement_user_id source would be
+                  // wiped out in the same pass.
                   const resolved = await resolveWorkosUserForSubscription({
                     subscription,
                     customer,
                     organizationId: org.workos_organization_id,
+                    pendingAgreementUserId: org.pending_agreement_user_id,
                     workos: workos!,
                     logger,
+                  });
+
+                  // Org-level agreement update runs regardless of user
+                  // resolution: the org clicked the checkbox and paid, so the
+                  // membership-level attestation is known. pending_* fields
+                  // are NOT cleared here — if the user-level insert fails,
+                  // we want Stripe's retry to still have them available.
+                  await orgDb.updateOrganization(org.workos_organization_id, {
+                    agreement_signed_at: agreementAcceptedAt,
+                    agreement_version: agreementVersion,
                   });
 
                   // Fetch product details for Slack/activity notifications (user-independent).
@@ -3572,6 +3576,19 @@ export class HTTPServer {
                         // IP and user-agent not available in webhook context
                       });
                       userAgreementRecorded = true;
+
+                      // Clear pending_* now that the user-level record is in.
+                      // If this update fails, the user row still exists and
+                      // the pending_* fields will just be lazily cleared on a
+                      // subsequent webhook — non-blocking.
+                      await orgDb.updateOrganization(org.workos_organization_id, {
+                        pending_agreement_version: null,
+                        pending_agreement_accepted_at: null,
+                        pending_agreement_user_id: null,
+                      }).catch(err => logger.warn({
+                        err,
+                        orgId: org.workos_organization_id,
+                      }, 'Failed to clear pending_agreement fields after successful recording (non-critical)'));
                     } catch (agreementError) {
                       // Alert loudly but do not throw — the rest of the webhook
                       // (subscription DB sync, tier change detection, directory

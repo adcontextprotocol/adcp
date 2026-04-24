@@ -304,6 +304,7 @@ export function createPublicBillingRouter(): Router {
       await orgDb.updateOrganization(orgId, {
         pending_agreement_version: pendingVersion,
         pending_agreement_accepted_at: new Date(),
+        pending_agreement_user_id: user.id,
         billing_address: sanitizedAddress,
       });
 
