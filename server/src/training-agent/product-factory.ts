@@ -882,6 +882,18 @@ export function buildCatalog(): CatalogProduct[] {
       // create_media_buy step resolves.
       pricingAliases: ['cpm_guaranteed'],
     },
+    {
+      id: 'outdoor_ctv_q2',
+      name: 'Outdoor CTV Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_standard'],
+    },
+    {
+      id: 'local_display_dynamic',
+      name: 'Local Display Dynamic (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === firstPublisher.id),
+      pricingAliases: ['cpm_standard'],
+    },
   ];
   for (const alias of aliases) {
     if (!alias.source) continue;
