@@ -3594,6 +3594,7 @@ export function createMemberToolHandlers(
       output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
+      let anyHints = false;
       for (const phase of result.phases) {
         output += `### ${phase.phase_title} ${phase.passed ? '[PASS]' : '[FAIL]'}\n\n`;
 
@@ -3608,12 +3609,17 @@ export function createMemberToolHandlers(
             for (const v of step.validations.filter(v => !v.passed)) {
               output += `  Failed: ${v.description}${v.error ? ` — ${v.error}` : ''}\n`;
             }
+            for (const h of ((step as { hints?: Array<{ message: string }> }).hints ?? [])) {
+              output += `  Hint: ${sanitizeAgentField(h.message, 400)}\n`;
+              anyHints = true;
+            }
           }
         }
         output += '\n';
       }
 
       output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
+      if (anyHints) output += ` Hint lines identify the upstream root cause — treat them as the primary explanation and reference validation failures as supporting evidence.`;
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
 
       return output;
@@ -3701,6 +3707,12 @@ export function createMemberToolHandlers(
 
         if (result.error) {
           output += `\n**Error:** ${result.error}\n`;
+        }
+
+        if (!result.passed) {
+          for (const h of ((result as { hints?: Array<{ message: string }> }).hints ?? [])) {
+            output += `\n**Hint:** ${sanitizeAgentField(h.message, 400)}\n`;
+          }
         }
 
         if (result.response) {
