@@ -188,6 +188,51 @@ Each skill includes variant storyboards for different business models — non-gu
 
 See **[Validate Your Agent](/docs/building/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
 
+## Request signing
+
+If your seller agent receives signed requests from buyers, use `requireSignatureWhenPresent` to compose signature verification with your existing bearer or API key authentication. When signature headers are present, only signature auth runs; when absent, the fallback runs. This prevents bypass attacks where an invalid signature falls through to weaker auth.
+
+```typescript
+import { createAdcpServer, serve } from '@adcp/client';
+import { verifySignatureAsAuthenticator, verifyApiKey, requireSignatureWhenPresent } from '@adcp/client/server';
+import { BrandJsonJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing/server';
+
+const signatureAuth = verifySignatureAsAuthenticator({
+  capability: {
+    supported: true,
+    required_for: ['create_media_buy', 'update_media_buy'],
+    covers_content_digest: 'either',
+  },
+  jwks: new BrandJsonJwksResolver(),
+  replayStore: new InMemoryReplayStore(),
+  revocationStore: new InMemoryRevocationStore(),
+  resolveOperation: req => {
+    try {
+      const body = JSON.parse(req.rawBody ?? '');
+      if (body.method === 'tools/call') return body.params?.name;
+    } catch {}
+    return undefined;
+  },
+});
+
+serve(() => createAdcpServer({ name: 'My Seller', version: '1.0.0', mediaBuy: { /* ... */ } }), {
+  authenticate: requireSignatureWhenPresent(signatureAuth, verifyApiKey({ keys: { /* ... */ } })),
+});
+```
+
+For outbound webhook signing, pass a `signerKey` to `createAdcpServer`:
+
+```typescript
+createAdcpServer({
+  webhooks: {
+    signerKey: { keyid: 'my-webhook-key-2026', alg: 'ed25519', privateKey: webhookPrivateJwk },
+  },
+  // ...
+});
+```
+
+See **[Request Signing Guide](/docs/building/implementation/request-signing)** for the full walkthrough: key generation, JWKS publication, brand.json setup, buyer-side signing, and conformance testing.
+
 ## Additional resources
 
 The JS/TS SDK includes documentation designed for both humans and coding agents:
