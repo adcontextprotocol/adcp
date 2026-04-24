@@ -270,14 +270,10 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Agent returns a media_buy_id for the initial request"
-          # NOTE: intentionally NO assertion on `replayed` here. Per
-          # `protocol-envelope.json`, fresh execution MAY omit the field,
-          # and `@adcp/client` >= 5.14 omits it (see adcp-client#859).
-          # The replay step below asserts `replayed: true` on the
-          # cached replay, which is the real regression surface. A
-          # fresh-path `field_value allowed_values: [false]` assertion
-          # has no `field_absent`-tolerant form today and would fail
-          # spec-correct agents.
+          - check: field_value_or_absent
+            path: "replayed"
+            allowed_values: [false]
+            description: "If replayed is present on fresh execution, it must be false"
 
           - check: field_present
             path: "context"
