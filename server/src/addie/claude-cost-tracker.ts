@@ -263,6 +263,50 @@ export function resolveUserTier(opts: {
 }
 
 /**
+ * Resolve the right tier for a scope-key userId by looking up the
+ * subscription status of a bare WorkOS user id. Non-WorkOS scope keys
+ * (`slack:...`, `email:...`, etc.) can't resolve a real subscription
+ * at call time, so they stay `member_free` regardless of the underlying
+ * person's membership — upgrading those paths would need the caller to
+ * have already mapped to a WorkOS id and passed *that* here. DB errors
+ * fall back to `member_free` so a transient outage doesn't accidentally
+ * grant the $25/day ceiling to unverified callers.
+ *
+ * The SQL predicate here (`subscription_status = 'active' AND
+ * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
+ * `db/org-filters.ts` — the two must stay in sync so admin views and
+ * the cap agree on who counts as a paying member. Trialing / past_due /
+ * comped-$0 states all correctly fall through to `member_free`; if
+ * future policy promotes any of those, update `MEMBER_FILTER` first.
+ *
+ * This is the async, DB-touching counterpart to the pure
+ * `resolveUserTier` above — the `FromDb` suffix is deliberate so a
+ * call site can tell at a glance that this one awaits the database.
+ */
+export async function resolveUserTierFromDb(userId: string | null | undefined): Promise<UserTier> {
+  if (!userId || !userId.startsWith('user_')) return 'member_free';
+  try {
+    const { rows } = await query<{ exists: 1 }>(
+      `SELECT 1 AS exists
+         FROM organization_memberships om
+         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+        WHERE om.workos_user_id = $1
+          AND o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+        LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0 ? 'member_paid' : 'member_free';
+  } catch (err) {
+    logger.warn(
+      { err, userId },
+      'Failed to resolve user tier — defaulting to member_free',
+    );
+    return 'member_free';
+  }
+}
+
+/**
  * Test-only: swap the store implementation. Tests pass an
  * InMemoryStore so they don't need a DB connection.
  */
