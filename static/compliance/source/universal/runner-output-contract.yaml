@@ -71,9 +71,9 @@ validation_result:
   required_fields:
     - check                   # Validation kind from storyboard-schema.yaml:
                               # response_schema | field_present | field_value |
-                              # status_code | http_status | http_status_in |
-                              # error_code | on_401_require_header |
-                              # resource_equals_agent_url | any_of
+                              # field_value_or_absent | status_code | http_status |
+                              # http_status_in | error_code | on_401_require_header |
+                              # resource_equals_agent_url | any_of | refs_resolve
     - passed                  # boolean
     - description             # human-readable description copied from the
                               # storyboard validation entry (so the implementor
@@ -86,21 +86,26 @@ validation_result:
                               # failures. Null only when the failure is
                               # transport-level and no payload was returned.
     - expected                # machine-readable expected value:
-                              #   response_schema → schema $id that was applied
-                              #   field_value     → expected value (any JSON type)
-                              #   field_present   → the path that should resolve
-                              #   status_code     → expected status
-                              #   error_code      → expected error code
-                              #   any_of          → array of acceptable forms
+                              #   response_schema        → schema $id that was applied
+                              #   field_value            → expected value (any JSON type)
+                              #   field_value_or_absent  → allowed_values array from
+                              #                            the validation entry
+                              #   field_present          → the path that should resolve
+                              #   status_code            → expected status
+                              #   error_code             → expected error code
+                              #   any_of                 → array of acceptable forms
     - actual                  # machine-readable actual value observed:
-                              #   response_schema → array of schema errors
-                              #                     (each { instance_path,
-                              #                     schema_path, keyword,
-                              #                     message })
-                              #   field_value     → actual value (any JSON type)
-                              #   field_present   → null (the field was missing)
-                              #                     or the observed non-object
-                              #                     value
+                              #   response_schema        → array of schema errors
+                              #                            (each { instance_path,
+                              #                            schema_path, keyword,
+                              #                            message })
+                              #   field_value            → actual value (any JSON type)
+                              #   field_value_or_absent  → actual value (any JSON type);
+                              #                            null when check is emitted for
+                              #                            a present-but-disallowed value
+                              #   field_present          → null (the field was missing)
+                              #                            or the observed non-object
+                              #                            value
     - schema_id               # $id of the response schema applied. Required
                               # when check == response_schema, null otherwise.
     - schema_url              # Resolvable URL the implementor can fetch to
