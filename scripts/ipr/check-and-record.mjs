@@ -98,16 +98,40 @@ function configureGitIdentity() {
   git(['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
 }
 
+// LEDGER_REMOTE_PATTERN guards the push target. GitHub Actions concurrency is
+// per-repo, so the rebase-retry loop is the actual serialization mechanism
+// against contention from sibling AAO repos all writing to the same ledger.
+// Asserting the remote URL here removes a class of "future workflow edit
+// changes which checkout backs LEDGER_DIR" footguns.
+const LEDGER_REMOTE_PATTERN = /^https:\/\/[^/@]+@?github\.com\/adcontextprotocol\/adcp(\.git)?\/?$/;
+
+function assertLedgerRemote() {
+  let url;
+  try {
+    url = git(['remote', 'get-url', 'origin']).trim();
+  } catch (err) {
+    throw new Error(`LEDGER_DIR ${LEDGER_DIR} has no \`origin\` remote: ${err.message ?? err}`);
+  }
+  if (!LEDGER_REMOTE_PATTERN.test(url)) {
+    throw new Error(
+      `Refusing to push: LEDGER_DIR origin (${url}) is not adcontextprotocol/adcp.`,
+    );
+  }
+}
+
 function commitSignaturesChange(message, branch = 'main') {
   if (!gitStatusPorcelain('signatures/ipr-signatures.json')) return false;
+  assertLedgerRemote();
   git(['add', 'signatures/ipr-signatures.json']);
   git(['commit', '-m', message]);
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // Five attempts handles realistic contention from up to ~5 AAO repos
+  // writing to the same JSON file with no cross-repo concurrency lock.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       git(['push', 'origin', `HEAD:refs/heads/${branch}`], { stdio: 'inherit' });
       return true;
     } catch (pushErr) {
-      if (attempt === 2) throw pushErr;
+      if (attempt === 4) throw pushErr;
       // Rebase onto a newer main and retry. Rebase failures are not recoverable
       // here (conflict on an append-only JSON means something upstream wrote an
       // incompatible shape) — rethrow immediately.

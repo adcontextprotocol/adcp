@@ -12,8 +12,11 @@ permissions:
   statuses: write
 
 concurrency:
-  # Shared with the cross-repo callable workflow so signatures from any
-  # AAO repo serialize against signatures coming from adcp itself.
+  # Per-repo serialization for adcp's own signature writes. GitHub Actions
+  # concurrency is scoped per-repo, so this does NOT cross-serialize against
+  # downstream AAO repos using the cross-repo callable workflow — that
+  # contention is handled by the rebase-retry loop in
+  # `scripts/ipr/check-and-record.mjs`.
   group: adcp-ipr-signature-write
   cancel-in-progress: false
 

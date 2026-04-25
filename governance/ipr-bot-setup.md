@@ -66,7 +66,7 @@ Each downstream repo has a tiny caller workflow (~15 lines) that invokes the reu
 3. Runs `scripts/ipr/check-and-record.mjs` with `LEDGER_DIR=.ipr-ledger`. The script reads/writes signatures there; `git push` from inside the directory uses the installation token configured by the checkout step.
 4. API calls back to the event repo (comments, status check) use the caller repo's default `GITHUB_TOKEN` — no cross-repo write required for those.
 
-A repo-wide concurrency group (`adcp-ipr-signature-write`) serializes signature writes across all repos so two PRs can't race on the JSON file.
+Per-repo concurrency groups (`adcp-ipr-signature-write` in each repo) serialize signature writes within each repo. GitHub Actions concurrency is scoped per-repo, so the cross-repo race is handled by a rebase-retry loop in the script — when a push fails because adcp's main moved, the script pulls with `--rebase` and retries up to 5 times.
 
 ## Rotation
 
@@ -93,7 +93,7 @@ The signatures committed historically remain valid; only the future signing path
 ## Adoption checklist for a new downstream repo
 
 1. Confirm the repo is in the App's installation scope (org settings → Installed GitHub Apps → AAO IPR Bot → Configure).
-2. Confirm `IPR_APP_ID` and `IPR_APP_PRIVATE_KEY` org secrets are accessible to that repo (they should be by default if scoped to the org or to that specific repo).
+2. Confirm `IPR_APP_ID` and `IPR_APP_PRIVATE_KEY` org secrets are accessible to that repo. If the secrets use selected-repository visibility, the new repo must be explicitly added to the selected list (org settings → Secrets and variables → Actions → click the secret → "Repository access").
 3. Add this caller workflow at `.github/workflows/ipr-agreement.yml` in the new repo:
 
    ```yaml

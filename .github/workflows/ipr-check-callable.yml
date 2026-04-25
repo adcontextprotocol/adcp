@@ -38,9 +38,10 @@ on:
         required: true
         description: 'PEM private key for the AAO IPR Bot (org-level secret)'
 
-# Serialize signature writes across all repos that share the central ledger.
-# The group key is the ledger repo, not the caller — so two PRs in different
-# downstream repos can't race on the same JSON file.
+# Per-repo serialization. GitHub Actions concurrency is scoped per-repo, so
+# this group only serializes signatures landing from THIS caller repo. The
+# rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles contention
+# across sibling AAO repos pushing to the same JSON file.
 concurrency:
   group: adcp-ipr-signature-write
   cancel-in-progress: false
@@ -55,6 +56,12 @@ jobs:
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
        contains(github.event.comment.body, 'I have read the IPR Policy'))
+    # SECURITY: do not add a checkout of the caller repo to this job. The
+    # App token + caller's GITHUB_TOKEN both live in this job's env; a step
+    # that runs PR-head code (e.g. `npm ci`, build scripts, anything that
+    # executes from a caller-repo workspace) would expose them to attacker-
+    # controlled code. The script we run is fetched from `.ipr-ledger/`,
+    # which is the ledger repo only.
     steps:
       - name: Mint AAO IPR Bot installation token (scoped to adcp)
         id: app-token
