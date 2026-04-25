@@ -407,6 +407,51 @@ Before creating or updating a PR, always:
 4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
 5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
 
+## Triage Routine — Manual Nudge
+
+The `Claude Issue Triage` routine fires automatically when an issue
+opens or reopens, when a member comments `/triage` (slash-command), or
+when a non-bot, non-self, non-`/triage`, non-PR-conversation comment
+lands on an open issue. To poke the routine yourself:
+
+| What you want | How |
+|---|---|
+| Re-trigger triage on a missed issue | Comment `/triage` |
+| Bias toward Execute on a borderline issue | Comment `/triage execute` |
+| Force a clarifying-question comment | Comment `/triage clarify` |
+| Force defer | Comment `/triage defer` |
+| Add new info / refine a stuck Clarify | Plain comment with the new info — fires the routine in `comment.created` mode |
+
+**What does NOT trigger triage:**
+
+- Prose pings like "Pinging triage" or "@claude can you take this?"
+  without the literal `/triage` slash command — the slash-command
+  workflow only matches the `/triage` token. Plain comments DO fire
+  the routine via the `issue_comment.created` path, but only if the
+  comment is substantive (the routine itself filters "+1", emoji,
+  "thanks!", and bare pings as non-substantive).
+- Comments on **PR conversations** (review threads or general PR
+  comments) — those route to the **auto-fix** feature, not triage.
+  PR feedback handling is a different role.
+- Comments by bots, the routine itself (anything containing the
+  `Triaged by Claude Code` footer), or anyone with `[bot]` suffix —
+  filtered at the workflow level to prevent loops.
+
+**How to know if triage is on it:**
+
+- Label `claude-triaging` on the issue → routine is actively working
+  on it right now (1–3 minutes typical). Do not start a parallel PR.
+- Label `claude-triaged` (without `claude-triaging`) → routine has
+  finished. The triage comment, draft PR link, or silent-defer
+  state is the outcome.
+- Neither label, no `## Triage` comment, **and** the issue is more
+  than a few minutes old → triage didn't fire. Webhook miss is the
+  usual cause. Comment `/triage` to recover.
+
+If `claude-triaging` is stuck on an issue for >30 minutes with no
+visible progress, the routine errored mid-run. Remove the label
+manually and re-fire with `/triage`.
+
 ## Cross-Agent Integration
 
 - **Role definitions** live in `.agents/roles/*.md` (markdown with frontmatter).
