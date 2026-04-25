@@ -546,11 +546,11 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       if (JSON.stringify(existing) !== JSON.stringify(stored)) {
         return { success: false, error: 'INVALID_STATE', error_detail: `format_id "${formatId}" was already seeded with a different fixture — seed_creative_format is idempotent` };
       }
-      return { success: true };
+      return { success: true, message: `format_id "${formatId}" already seeded with the same fixture` };
     }
     enforceMapCap(session.complyExtensions.seededCreativeFormats, formatId, 'seeded creative formats');
     session.complyExtensions.seededCreativeFormats.set(formatId, stored);
-    return { success: true };
+    return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats in this session will use the seeded catalog` };
   }
 
   const store = createStore(session);

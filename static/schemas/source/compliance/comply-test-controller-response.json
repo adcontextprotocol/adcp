@@ -114,6 +114,20 @@
       "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }] }
     },
     {
+      "title": "SeedSuccess",
+      "description": "A seed_* scenario successfully pre-populated a fixture in the seller's test state",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": true },
+        "message": { "type": "string", "description": "Human-readable acknowledgement." },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["success"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }, { "required": ["forced"] }] }
+    },
+    {
       "title": "ControllerError",
       "description": "The scenario failed — invalid transition, unknown entity, unsupported scenario, or invalid params",
       "type": "object",

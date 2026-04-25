@@ -1205,7 +1205,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  const session = await getSession(sessionKeyFromArgs(req as Parameters<typeof sessionKeyFromArgs>[0], ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(sessionKeyFromArgs(args as Parameters<typeof sessionKeyFromArgs>[0], ctx.mode, ctx.userId, ctx.moduleId));
 
   // When comply_test_controller.seed_creative_format has pre-populated
   // formats, use them as the catalog for this session. This gives storyboards
