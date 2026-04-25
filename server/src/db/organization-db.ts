@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import { getPool, query } from './client.js';
-import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
+import { getStripeSubscriptionInfo, listCustomersWithOrgIds, listAllCustomersWithDetails } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
@@ -1280,30 +1280,118 @@ export class OrganizationDatabase {
     org_id: string;
     org_name: string;
     db_customer_id: string;
-    stripe_metadata_customer_id: string;
+    orphan_customer_id: string;
+    match_reason: 'metadata' | 'email' | 'name';
   }>> {
-    const mismatches: Array<{
+    type Mismatch = {
       org_id: string;
       org_name: string;
       db_customer_id: string;
-      stripe_metadata_customer_id: string;
-    }> = [];
+      orphan_customer_id: string;
+      match_reason: 'metadata' | 'email' | 'name';
+    };
 
-    // Get all Stripe customers with org metadata
-    const stripeCustomers = await listCustomersWithOrgIds();
+    const mismatches: Mismatch[] = [];
+    // Single Stripe scan — used for all three detection strategies
+    const allCustomers = await listAllCustomersWithDetails();
 
-    for (const { stripeCustomerId, workosOrgId } of stripeCustomers) {
-      const localOrg = await this.getOrganization(workosOrgId);
+    const seen = new Set<string>();
+    const pairKey = (a: string, b: string) => [a, b].sort().join(':');
 
-      // Check if org exists and has a DIFFERENT customer ID than Stripe metadata suggests
-      if (localOrg && localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
-        // Mismatch: Org has cus_X in DB, but Stripe customer cus_Y claims to belong to this org
-        mismatches.push({
-          org_id: workosOrgId,
-          org_name: localOrg.name,
-          db_customer_id: localOrg.stripe_customer_id,
-          stripe_metadata_customer_id: stripeCustomerId,
-        });
+    // Build reverse map: stripe customer ID → org (from DB)
+    const customerToOrg = new Map<string, string>();
+    const pool = getPool();
+    const orgRows = await pool.query<{ workos_organization_id: string; stripe_customer_id: string }>(
+      `SELECT workos_organization_id, stripe_customer_id FROM organizations WHERE stripe_customer_id IS NOT NULL`
+    );
+    for (const row of orgRows.rows) {
+      customerToOrg.set(row.stripe_customer_id, row.workos_organization_id);
+    }
+
+    // --- Strategy 1: metadata-based ---
+    // Flag any Stripe customer whose metadata points at an org that has a *different* DB customer.
+    for (const c of allCustomers) {
+      if (!c.workosOrgId) continue;
+      const localOrg = await this.getOrganization(c.workosOrgId);
+      if (localOrg && localOrg.stripe_customer_id && localOrg.stripe_customer_id !== c.id) {
+        const key = pairKey(localOrg.stripe_customer_id, c.id);
+        if (!seen.has(key)) {
+          seen.add(key);
+          mismatches.push({
+            org_id: c.workosOrgId,
+            org_name: localOrg.name,
+            db_customer_id: localOrg.stripe_customer_id,
+            orphan_customer_id: c.id,
+            match_reason: 'metadata',
+          });
+        }
+      }
+    }
+
+    // --- Strategies 2 & 3: email and name+active-sub matching ---
+
+    // Build a map from email (lowercase) → customer IDs
+    const byEmail = new Map<string, string[]>();
+    for (const c of allCustomers) {
+      if (c.email) {
+        const key = c.email.toLowerCase();
+        const group = byEmail.get(key) ?? [];
+        group.push(c.id);
+        byEmail.set(key, group);
+      }
+    }
+
+    // Build a map from name (lowercase) → customer IDs, only those with active subs
+    const byNameActiveSub = new Map<string, string[]>();
+    for (const c of allCustomers) {
+      if (c.name && c.hasActiveSubscription) {
+        const key = c.name.toLowerCase();
+        const group = byNameActiveSub.get(key) ?? [];
+        group.push(c.id);
+        byNameActiveSub.set(key, group);
+      }
+    }
+
+    const addEmailOrNameMismatch = async (
+      linkedId: string,
+      orphanId: string,
+      reason: 'email' | 'name'
+    ) => {
+      const key = pairKey(linkedId, orphanId);
+      if (seen.has(key)) return;
+      const orgId = customerToOrg.get(linkedId);
+      if (!orgId) return;
+      const localOrg = await this.getOrganization(orgId);
+      if (!localOrg) return;
+      seen.add(key); // only mark seen after successful resolution
+      mismatches.push({
+        org_id: orgId,
+        org_name: localOrg.name,
+        db_customer_id: linkedId,
+        orphan_customer_id: orphanId,
+        match_reason: reason,
+      });
+    };
+
+    for (const [, group] of byEmail) {
+      if (group.length < 2) continue;
+      const linked = group.filter((id) => customerToOrg.has(id));
+      const orphans = group.filter((id) => !customerToOrg.has(id));
+      for (const linkedId of linked) {
+        for (const orphanId of orphans) {
+          await addEmailOrNameMismatch(linkedId, orphanId, 'email');
+        }
+      }
+    }
+
+    for (const [, group] of byNameActiveSub) {
+      if (group.length < 2) continue;
+      const linked = group.filter((id) => customerToOrg.has(id));
+      const orphans = group.filter((id) => !customerToOrg.has(id));
+      for (const linkedId of linked) {
+        for (const orphanId of orphans) {
+          await addEmailOrNameMismatch(linkedId, orphanId, 'name');
+        }
       }
     }
 

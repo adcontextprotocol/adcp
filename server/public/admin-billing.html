@@ -384,16 +384,16 @@
         <button class="btn btn-secondary" id="auto-resolve-btn" style="display: none;" onclick="autoResolveAll()">Auto-Resolve Safe</button>
       </div>
       <div class="conflict-info-box">
-        A mismatch occurs when an organization has a Stripe customer in our database, but a <strong>different</strong> Stripe customer's metadata claims to belong to that same organization. This typically means the org has multiple Stripe customers (duplicate accounts).<br><br>
+        A mismatch occurs when an organization has a Stripe customer in our database, but a second duplicate customer exists in Stripe for the same org — detected by matching metadata, email address, or customer name with an active subscription. This typically means the org has multiple Stripe customers (duplicate accounts).<br><br>
         <strong>Auto-resolve:</strong> If only one customer has activity (invoices/subscriptions), the inactive one can be safely archived.
       </div>
       <table class="conflicts-table">
         <thead>
           <tr>
             <th>Organization</th>
-            <th>DB Customer</th>
-            <th>Metadata Customer</th>
-            <th>Suggested Action</th>
+            <th>Linked customer</th>
+            <th>Orphan customer</th>
+            <th>Suggested action</th>
           </tr>
         </thead>
         <tbody id="mismatches-body">
@@ -955,14 +955,15 @@
 
       tbody.innerHTML = allMismatches.map((mismatch, index) => {
         const dbActivity = mismatch.db_customer;
-        const metadataActivity = mismatch.metadata_customer;
+        const orphanActivity = mismatch.orphan_customer;
         const suggestedAction = mismatch.suggested_action;
         const canAutoResolve = mismatch.can_auto_resolve;
 
-        // Determine which customer should be highlighted as "keep" vs "remove"
         const dbIsKeep = suggestedAction === 'use_db';
-        const metadataIsKeep = suggestedAction === 'use_stripe_metadata';
+        const orphanIsKeep = suggestedAction === 'use_stripe_metadata';
         const needsManualReview = suggestedAction === 'manual_review';
+
+        const matchReasonLabel = { metadata: 'Matched by metadata', email: 'Matched by email', name: 'Matched by name' }[mismatch.match_reason] || escapeHtml(String(mismatch.match_reason ?? ''));
 
         let actionHtml = '';
         if (needsManualReview) {
@@ -971,19 +972,19 @@
               Manual review required
             </div>
             <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: 8px;">
-              Both customers have activity. Review in Stripe to decide.
+              Both customers have activity. In Stripe: cancel the subscription on the customer you want to remove, void any open invoices, then retry.
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="resolveMismatch(${index}, 'use_db', false)" title="Keep DB customer">
-              Keep DB
+            <button class="btn btn-secondary btn-sm" onclick="resolveMismatch(${index}, 'use_db', false)" title="Keep linked customer">
+              Keep linked
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="resolveMismatch(${index}, 'use_stripe_metadata', false)" title="Keep Metadata customer">
-              Keep Metadata
+            <button class="btn btn-secondary btn-sm" onclick="resolveMismatch(${index}, 'use_stripe_metadata', false)" title="Keep orphan customer">
+              Keep orphan
             </button>
           `;
         } else if (canAutoResolve) {
           const action = suggestedAction;
-          const keepId = action === 'use_db' ? mismatch.db_customer_id : mismatch.stripe_metadata_customer_id;
-          const deleteId = action === 'use_db' ? mismatch.stripe_metadata_customer_id : mismatch.db_customer_id;
+          const keepId = action === 'use_db' ? mismatch.db_customer_id : mismatch.orphan_customer_id;
+          const deleteId = action === 'use_db' ? mismatch.orphan_customer_id : mismatch.db_customer_id;
           actionHtml = `
             <div style="color: var(--color-success-600); font-weight: 500; margin-bottom: 8px;">
               Safe to auto-resolve
@@ -992,10 +993,10 @@
               Keep ${keepId.slice(-8)}, delete ${deleteId.slice(-8)}
             </div>
             <button class="btn btn-primary btn-sm" onclick="resolveMismatch(${index}, '${action}', true)" title="Keep active customer, delete inactive one">
-              Resolve & Delete
+              Resolve &amp; delete
             </button>
             <button class="btn btn-secondary btn-sm" onclick="resolveMismatch(${index}, '${action}', false)" title="Keep active customer, just clear metadata from other">
-              Resolve Only
+              Resolve only
             </button>
           `;
         } else {
@@ -1009,14 +1010,15 @@
         return `
           <tr data-index="${index}" style="${canAutoResolve ? 'background: var(--color-success-50);' : needsManualReview ? 'background: var(--color-error-50);' : ''}">
             <td>
-              <div><strong>${mismatch.org_name}</strong></div>
-              <div style="font-size: 11px; color: var(--color-text-muted);">${mismatch.org_id}</div>
+              <div><strong>${escapeHtml(mismatch.org_name)}</strong></div>
+              <div style="font-size: 11px; color: var(--color-text-muted);">${escapeHtml(mismatch.org_id)}</div>
+              <div style="font-size: 11px; margin-top: 4px;"><span class="badge badge-gray">${matchReasonLabel}</span></div>
             </td>
             <td style="border-left: 3px solid ${dbIsKeep ? 'var(--color-success-500)' : 'var(--color-gray-200)'};">
               <div style="margin-bottom: 4px;">
                 <strong>${mismatch.db_customer_id}</strong>
                 <span class="badge badge-success">Linked</span>
-                ${dbActivity?.has_activity ? '<span class="badge badge-warning">Has Activity</span>' : ''}
+                ${dbActivity?.has_activity ? '<span class="badge badge-warning">Has activity</span>' : ''}
               </div>
               <div style="font-size: 11px; margin-bottom: 4px;">
                 ${renderCustomerActivity(dbActivity, dbActivity?.has_activity)}
@@ -1027,17 +1029,17 @@
                 </a>
               </div>
             </td>
-            <td style="border-left: 3px solid ${metadataIsKeep ? 'var(--color-success-500)' : 'var(--color-gray-200)'};">
+            <td style="border-left: 3px solid ${orphanIsKeep ? 'var(--color-success-500)' : 'var(--color-gray-200)'};">
               <div style="margin-bottom: 4px;">
-                <strong>${mismatch.stripe_metadata_customer_id}</strong>
-                <span class="badge badge-gray">Metadata</span>
-                ${metadataActivity?.has_activity ? '<span class="badge badge-warning">Has Activity</span>' : ''}
+                <strong>${mismatch.orphan_customer_id}</strong>
+                <span class="badge badge-gray">Orphan</span>
+                ${orphanActivity?.has_activity ? '<span class="badge badge-warning">Has activity</span>' : ''}
               </div>
               <div style="font-size: 11px; margin-bottom: 4px;">
-                ${renderCustomerActivity(metadataActivity, metadataActivity?.has_activity)}
+                ${renderCustomerActivity(orphanActivity, orphanActivity?.has_activity)}
               </div>
               <div style="font-size: 11px;">
-                <a href="https://dashboard.stripe.com/customers/${mismatch.stripe_metadata_customer_id}" target="_blank" rel="noopener" style="color: var(--color-brand);">
+                <a href="https://dashboard.stripe.com/customers/${mismatch.orphan_customer_id}" target="_blank" rel="noopener" style="color: var(--color-brand);">
                   View in Stripe &rarr;
                 </a>
               </div>
@@ -1052,8 +1054,8 @@
 
     async function resolveMismatch(index, action, deleteInactive = false) {
       const mismatch = allMismatches[index];
-      const keepCustomer = action === 'use_db' ? mismatch.db_customer_id : mismatch.stripe_metadata_customer_id;
-      const removeCustomer = action === 'use_db' ? mismatch.stripe_metadata_customer_id : mismatch.db_customer_id;
+      const keepCustomer = action === 'use_db' ? mismatch.db_customer_id : mismatch.orphan_customer_id;
+      const removeCustomer = action === 'use_db' ? mismatch.orphan_customer_id : mismatch.db_customer_id;
 
       const confirmMsg = deleteInactive
         ? `Keep ${keepCustomer} for "${mismatch.org_name}"?\n\nThe inactive customer (${removeCustomer}) will be DELETED from Stripe.`
@@ -1071,7 +1073,7 @@
             org_id: mismatch.org_id,
             action: action,
             delete_inactive: deleteInactive,
-            stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
+            orphan_customer_id: mismatch.orphan_customer_id,
           }),
         });
 
@@ -1117,14 +1119,14 @@
               org_id: mismatch.org_id,
               action: mismatch.suggested_action,
               delete_inactive: true,
-              stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
+              orphan_customer_id: mismatch.orphan_customer_id,
             }),
           });
 
           if (response.ok) {
             resolved++;
             // Remove from array
-            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id && m.stripe_metadata_customer_id === mismatch.stripe_metadata_customer_id);
+            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id && m.orphan_customer_id === mismatch.orphan_customer_id);
             if (idx !== -1) allMismatches.splice(idx, 1);
           } else {
             console.error('Auto-resolve failed for', mismatch.org_name, await response.text());

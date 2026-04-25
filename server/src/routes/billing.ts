@@ -1171,26 +1171,23 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       // Enrich each mismatch with activity data from Stripe
       const mismatches = await Promise.all(
         baseMismatches.map(async (mismatch) => {
-          const [dbCustomerActivity, metadataCustomerActivity] = await Promise.all([
+          const [dbCustomerActivity, orphanCustomerActivity] = await Promise.all([
             getCustomerActivity(mismatch.db_customer_id),
-            getCustomerActivity(mismatch.stripe_metadata_customer_id),
+            getCustomerActivity(mismatch.orphan_customer_id),
           ]);
 
           // Determine suggested action based on activity
           let suggested_action: 'use_db' | 'use_stripe_metadata' | 'manual_review' | null = null;
           let can_auto_resolve = false;
 
-          if (dbCustomerActivity && metadataCustomerActivity) {
-            if (dbCustomerActivity.has_activity && !metadataCustomerActivity.has_activity) {
-              // DB customer has activity, metadata customer doesn't - archive metadata customer
+          if (dbCustomerActivity && orphanCustomerActivity) {
+            if (dbCustomerActivity.has_activity && !orphanCustomerActivity.has_activity) {
               suggested_action = 'use_db';
               can_auto_resolve = true;
-            } else if (!dbCustomerActivity.has_activity && metadataCustomerActivity.has_activity) {
-              // Metadata customer has activity, DB customer doesn't - use metadata customer
+            } else if (!dbCustomerActivity.has_activity && orphanCustomerActivity.has_activity) {
               suggested_action = 'use_stripe_metadata';
               can_auto_resolve = true;
-            } else if (dbCustomerActivity.has_activity && metadataCustomerActivity.has_activity) {
-              // Both have activity - needs manual review
+            } else if (dbCustomerActivity.has_activity && orphanCustomerActivity.has_activity) {
               suggested_action = 'manual_review';
               can_auto_resolve = false;
             } else {
@@ -1203,7 +1200,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           return {
             ...mismatch,
             db_customer: dbCustomerActivity,
-            metadata_customer: metadataCustomerActivity,
+            orphan_customer: orphanCustomerActivity,
             suggested_action,
             can_auto_resolve,
           };
@@ -1231,18 +1228,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   /**
    * POST /api/admin/stripe-mismatches/resolve
    * Resolve a Stripe customer mismatch by choosing which customer to keep for an org.
-   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean, stripe_metadata_customer_id?: string }
+   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean, orphan_customer_id?: string }
    *
    * - use_db: Keep the customer currently in DB, archive/delete the other customer
-   * - use_stripe_metadata: Use the customer from Stripe metadata, archive/delete the DB customer
+   * - use_stripe_metadata: Use the orphan customer from Stripe, archive/delete the DB customer
    * - delete_inactive: If true, delete the inactive customer in Stripe (only if it has no activity)
-   * - stripe_metadata_customer_id: Target a specific metadata customer (needed when org has 3+ Stripe customers)
+   * - orphan_customer_id: Target a specific orphan customer (needed when org has 3+ Stripe customers)
    *
    * Safety: Will refuse to proceed if both customers have activity (open invoices, subscriptions, paid invoices)
    */
   apiRouter.post("/stripe-mismatches/resolve", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { org_id, action, delete_inactive, stripe_metadata_customer_id } = req.body;
+      const { org_id, action, delete_inactive, orphan_customer_id } = req.body;
 
       if (!org_id || !action) {
         return res.status(400).json({
@@ -1275,10 +1272,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
-      // Find the specific mismatch for this org (and specific metadata customer if provided)
+      // Find the specific mismatch for this org (and specific orphan customer if provided)
       const mismatches = await orgDb.findStripeCustomerMismatches();
-      const mismatch = stripe_metadata_customer_id
-        ? mismatches.find(m => m.org_id === org_id && m.stripe_metadata_customer_id === stripe_metadata_customer_id)
+      const mismatch = orphan_customer_id
+        ? mismatches.find(m => m.org_id === org_id && m.orphan_customer_id === orphan_customer_id)
         : mismatches.find(m => m.org_id === org_id);
 
       if (!mismatch) {
@@ -1289,25 +1286,25 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       // Get activity data for both customers
-      const [dbCustomerActivity, metadataCustomerActivity] = await Promise.all([
+      const [dbCustomerActivity, orphanCustomerActivity] = await Promise.all([
         getCustomerActivity(mismatch.db_customer_id),
-        getCustomerActivity(mismatch.stripe_metadata_customer_id),
+        getCustomerActivity(mismatch.orphan_customer_id),
       ]);
 
       // Safety check: refuse if both have activity
-      if (dbCustomerActivity?.has_activity && metadataCustomerActivity?.has_activity) {
+      if (dbCustomerActivity?.has_activity && orphanCustomerActivity?.has_activity) {
         return res.status(400).json({
           error: "Both customers have activity",
-          message: "Both Stripe customers have activity (invoices/subscriptions). Manual review required - resolve in Stripe dashboard.",
+          message: `Both Stripe customers have activity. To proceed: (1) In the Stripe dashboard, cancel the subscription on the customer you want to remove and void or collect any open invoices. (2) Return here and retry. Linked customer: ${mismatch.db_customer_id}, orphan customer: ${mismatch.orphan_customer_id}.`,
           db_customer: dbCustomerActivity,
-          metadata_customer: metadataCustomerActivity,
+          orphan_customer: orphanCustomerActivity,
         });
       }
 
       // Determine which customer to keep and which to remove
-      const keepCustomerId = action === "use_db" ? mismatch.db_customer_id : mismatch.stripe_metadata_customer_id;
-      const removeCustomerId = action === "use_db" ? mismatch.stripe_metadata_customer_id : mismatch.db_customer_id;
-      const removeCustomerActivity = action === "use_db" ? metadataCustomerActivity : dbCustomerActivity;
+      const keepCustomerId = action === "use_db" ? mismatch.db_customer_id : mismatch.orphan_customer_id;
+      const removeCustomerId = action === "use_db" ? mismatch.orphan_customer_id : mismatch.db_customer_id;
+      const removeCustomerActivity = action === "use_db" ? orphanCustomerActivity : dbCustomerActivity;
 
       // Safety check: if requesting deletion, ensure we could fetch activity data
       if (delete_inactive && !removeCustomerActivity) {

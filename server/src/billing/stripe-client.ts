@@ -657,6 +657,46 @@ export async function listCustomersWithOrgIds(): Promise<
   }
 }
 
+export interface CustomerDetail {
+  id: string;
+  email: string | null;
+  name: string | null;
+  workosOrgId: string | undefined;
+  hasActiveSubscription: boolean;
+}
+
+/**
+ * List all Stripe customers with details needed for duplicate detection by email/name.
+ * Unlike listCustomersWithOrgIds, returns every customer regardless of metadata.
+ */
+export async function listAllCustomersWithDetails(): Promise<CustomerDetail[]> {
+  if (!stripe) {
+    return [];
+  }
+
+  const results: CustomerDetail[] = [];
+
+  try {
+    for await (const customer of stripe.customers.list({ limit: 100, expand: ['data.subscriptions'] })) {
+      if ('deleted' in customer && customer.deleted) continue;
+      const cust = customer as Stripe.Customer;
+      const hasActiveSubscription =
+        cust.subscriptions?.data.some((s: Stripe.Subscription) => s.status === 'active' || s.status === 'trialing') ?? false;
+      results.push({
+        id: cust.id,
+        email: cust.email ?? null,
+        name: cust.name ?? null,
+        workosOrgId: cust.metadata?.workos_organization_id || undefined,
+        hasActiveSubscription,
+      });
+    }
+    return results;
+  } catch (error) {
+    logger.error({ err: error }, 'Error listing all Stripe customers');
+    return [];
+  }
+}
+
 export interface RevenueEvent {
   workos_organization_id: string;
   stripe_invoice_id: string;
