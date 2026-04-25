@@ -1995,6 +1995,104 @@ describe('get_media_buys handler', () => {
     const pkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(pkgs[0].snapshot_unavailable_reason).toBe('SNAPSHOT_UNSUPPORTED');
   });
+
+  it('paginates broad-scope queries: first page → cursor → terminal page', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'paginationmb.example' }, operator: 'paginationmb.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (let i = 1; i <= 3; i++) {
+      await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'paginationmb.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 1000 * i,
+        }],
+      });
+    }
+
+    // First page: 3 buys, max_results=2 → non-terminal
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page1 } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { max_results: 2 },
+    });
+    const page1Buys = page1.media_buys as Array<Record<string, unknown>>;
+    expect(page1Buys).toHaveLength(2);
+    const pg1 = page1.pagination as Record<string, unknown>;
+    expect(pg1.has_more).toBe(true);
+    expect(typeof pg1.cursor).toBe('string');
+    expect(pg1.total_count).toBe(3);
+
+    // Terminal page: follow cursor → one remaining buy, no cursor
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page2 } = await simulateCallTool(server3, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { cursor: pg1.cursor as string, max_results: 2 },
+    });
+    const page2Buys = page2.media_buys as Array<Record<string, unknown>>;
+    expect(page2Buys).toHaveLength(1);
+    const pg2 = page2.pagination as Record<string, unknown>;
+    expect(pg2.has_more).toBe(false);
+    expect(pg2.cursor).toBeUndefined();
+    expect(pg2.total_count).toBe(3);
+  });
+
+  it('returns INVALID_REQUEST on malformed cursor', async () => {
+    const account = { brand: { domain: 'badcursor.example' }, operator: 'badcursor.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      status_filter: ['active'],
+      pagination: { cursor: 'not-a-valid-cursor' },
+    });
+    expect(Array.isArray(result.errors)).toBe(true);
+    const errors = result.errors as Array<Record<string, unknown>>;
+    expect(errors[0].code).toBe('INVALID_REQUEST');
+  });
+
+  it('media_buy_ids bypasses pagination — returns all requested IDs regardless of max_results', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'idlookup.example' }, operator: 'idlookup.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'idlookup.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 1000 * i,
+        }],
+      });
+      ids.push(result.media_buy_id as string);
+    }
+
+    // Fetch all 3 by ID with max_results=2 — pagination should be bypassed
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: ids,
+      pagination: { max_results: 2 },
+    });
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys).toHaveLength(3);
+    expect(result.pagination).toBeUndefined();
+  });
 });
 
 // ── list_creatives handler ─────────────────────────────────────────

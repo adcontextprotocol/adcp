@@ -72,6 +72,7 @@ type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
   include_history?: number;
   include_snapshot?: boolean;
+  pagination?: { max_results?: number; cursor?: string };
 };
 
 type UpdateMediaBuyArgs = UpdateMediaBuyRequest & ToolArgs & {
@@ -1705,8 +1706,32 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const includeSnapshot = req.include_snapshot === true;
   const includeHistory = Number(req.include_history) || 0;
 
+  // media_buy_ids is a direct lookup — callers expect all requested IDs back, no
+  // pagination. Broad-scope list queries (no IDs) paginate via cursor.
+  let pageBuys = buys;
+  let paginationBlock: Record<string, unknown> | undefined;
+
+  if (!filterIds?.length) {
+    const requestedMax = req.pagination?.max_results;
+    const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+    const offset = decodeMediaBuyCursor(req.pagination?.cursor);
+    if (offset === null) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+      };
+    }
+    const pageEnd = Math.min(offset + maxResults, buys.length);
+    pageBuys = buys.slice(offset, pageEnd);
+    const hasMore = pageEnd < buys.length;
+    paginationBlock = {
+      has_more: hasMore,
+      total_count: buys.length,
+      ...(hasMore && { cursor: encodeMediaBuyCursor(pageEnd) }),
+    };
+  }
+
   return {
-    media_buys: buys.map(mb => {
+    media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const buy = {
@@ -1768,6 +1793,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       };
       return buy;
     }),
+    ...(paginationBlock && { pagination: paginationBlock }),
   };
 }
 
@@ -2153,6 +2179,28 @@ function encodeCreativeCursor(offset: number): string {
 
 function decodeCreativeCursor(cursor: string | undefined): number | null {
   return decodeOffsetCursor('creatives', cursor);
+}
+
+// Cursor codec for get_media_buys pagination. Namespaced with "mb:" so a token
+// issued by this handler is rejected by decodeCreativeCursor (and vice versa),
+// preventing silent wrong-offset reads if a caller passes the wrong cursor.
+// Same offset-based approach as the creative codec — acceptable for the in-memory
+// training agent; will be unified with a shared encodeOffsetCursor once #3109 merges.
+function encodeMediaBuyCursor(offset: number): string {
+  return Buffer.from(`mb:offset:${offset}`).toString('base64url');
+}
+
+function decodeMediaBuyCursor(cursor: string | undefined): number | null {
+  if (!cursor) return 0;
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const m = /^mb:offset:(\d+)$/.exec(decoded);
+    if (!m) return null;
+    const n = Number.parseInt(m[1], 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
