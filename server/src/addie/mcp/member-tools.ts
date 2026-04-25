@@ -322,6 +322,20 @@ function sanitizeAgentField(value: unknown, maxLen = 200): string {
 }
 
 /**
+ * Length cap for runner-emitted / agent-emitted error and narrative
+ * strings rendered into MCP tool output. This is an explicit prompt-
+ * injection budget — not a UX choice. It bounds how much agent-
+ * controlled prose can compete with the surrounding tool-output
+ * structure for LLM attention. Don't raise without thinking about the
+ * blast radius; mirrors the per-cap rationale in
+ * `storyboard-fix-plan.ts` (`MAX_VALUE_LEN`, `MAX_REQUEST_FIELD_LEN`,
+ * etc.). 400 chars covers legitimate AdCP error envelopes (`code` +
+ * `message` + a short `details` reference) with margin; legitimate
+ * storyboard step narratives are typically under 200.
+ */
+const RUNNER_ERROR_MAX_LEN = 400;
+
+/**
  * Wrap an untrusted agent-reported value in quotes, explicitly marking it as
  * agent-provided so the LLM is less likely to treat it as authoritative.
  * Returns the empty string if the value is empty after sanitization.
@@ -3382,7 +3396,7 @@ export function createMemberToolHandlers(
               output += `  - FAILED: ${scenario.scenario}\n`;
               const failedSteps = (scenario.steps ?? []).filter(s => !s.passed);
               for (const step of failedSteps.slice(0, 3)) {
-                output += `    - ${step.step}${step.error ? `: ${step.error}` : ''}\n`;
+                output += `    - ${step.step}${step.error ? `: ${sanitizeAgentField(step.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
               }
               if (failedSteps.length > 3) {
                 output += `    - ... and ${failedSteps.length - 3} more\n`;
@@ -3658,12 +3672,12 @@ export function createMemberToolHandlers(
     output += `**Track:** ${sb.track || 'general'}\n`;
     output += `**Summary:** ${sb.summary}\n\n`;
     if (sb.narrative) {
-      output += `${sb.narrative}\n\n`;
+      output += `${sanitizeAgentField(sb.narrative, RUNNER_ERROR_MAX_LEN)}\n\n`;
     }
 
     for (const phase of sb.phases) {
       output += `### ${phase.title}\n`;
-      if (phase.narrative) output += `${phase.narrative}\n`;
+      if (phase.narrative) output += `${sanitizeAgentField(phase.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
       output += '\n';
 
       for (const step of phase.steps) {
@@ -3671,7 +3685,7 @@ export function createMemberToolHandlers(
         output += `  Task: \`${step.task}\`\n`;
         if (step.requires_tool) output += `  Requires: \`${step.requires_tool}\`\n`;
         if (step.expect_error) output += `  Expects: error response\n`;
-        if (step.narrative) output += `  ${step.narrative}\n`;
+        if (step.narrative) output += `  ${sanitizeAgentField(step.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
         if (step.expected) output += `  Expected: ${step.expected}\n`;
         if (step.validations?.length) {
           output += `  Validations:\n`;
@@ -3729,10 +3743,10 @@ export function createMemberToolHandlers(
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
-              output += `  Error: ${step.error}\n`;
+              output += `  Error: ${sanitizeAgentField(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
             }
             for (const v of step.validations.filter(v => !v.passed)) {
-              output += `  Failed: ${v.description}${v.error ? ` — ${v.error}` : ''}\n`;
+              output += `  Failed: ${v.description}${v.error ? ` — ${sanitizeAgentField(v.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
@@ -3840,12 +3854,12 @@ export function createMemberToolHandlers(
         if (result.validations.length > 0) {
           output += `\n**Validations:**\n`;
           for (const v of result.validations) {
-            output += `- ${v.passed ? 'PASS' : 'FAIL'}: ${v.description}${v.error ? ` — ${v.error}` : ''}\n`;
+            output += `- ${v.passed ? 'PASS' : 'FAIL'}: ${v.description}${v.error ? ` — ${sanitizeAgentField(v.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
           }
         }
 
         if (result.error) {
-          output += `\n**Error:** ${result.error}\n`;
+          output += `\n**Error:** ${sanitizeAgentField(result.error, RUNNER_ERROR_MAX_LEN)}\n`;
         }
 
         // Hints are diagnostic-only and don't flip pass/fail per the
@@ -3875,7 +3889,7 @@ export function createMemberToolHandlers(
       if (result.next) {
         output += `\n### Next step\n`;
         output += `**${result.next.title}** (\`${result.next.step_id}\`) — \`${result.next.task}\`\n`;
-        if (result.next.narrative) output += `${result.next.narrative}\n`;
+        if (result.next.narrative) output += `${sanitizeAgentField(result.next.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
         output += `\nTo continue, call \`run_storyboard_step\` with \`step_id: "${result.next.step_id}"\` and pass the context below.\n`;
       } else {
         output += `\nThis was the last step in the storyboard.\n`;
@@ -4096,7 +4110,7 @@ export function createMemberToolHandlers(
       output += `### Per-brief results\n\n`;
       for (const br of briefResults) {
         if (br.error) {
-          output += `- **${br.name}:** ERROR — ${br.error}\n`;
+          output += `- **${br.name}:** ERROR — ${sanitizeAgentField(br.error, RUNNER_ERROR_MAX_LEN)}\n`;
         } else {
           output += `- **${br.name}:** ${br.products_count} products`;
           if (br.channels_found.length > 0) output += ` | channels: ${br.channels_found.join(', ')}`;
@@ -4703,7 +4717,7 @@ export function createMemberToolHandlers(
           output += `**Success** — Media buy created: ${executeResult.media_buy_id}\n`;
           output += `**Status:** ${executeResult.status} | **Packages:** ${executeResult.packages_created}\n\n`;
         } else {
-          output += `**Failed** — ${executeResult.error}\n\n`;
+          output += `**Failed** — ${sanitizeAgentField(executeResult.error, RUNNER_ERROR_MAX_LEN)}\n\n`;
         }
       }
 
