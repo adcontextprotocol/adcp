@@ -268,13 +268,8 @@
                   }
                 },
                 "snapshot_unavailable_reason": {
-                  "type": "string",
-                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package.",
-                  "enum": [
-                    "SNAPSHOT_UNSUPPORTED",
-                    "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
-                    "SNAPSHOT_PERMISSION_DENIED"
-                  ]
+                  "$ref": "/schemas/enums/snapshot-unavailable-reason.json",
+                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package."
                 },
                 "snapshot": {
                   "type": "object",

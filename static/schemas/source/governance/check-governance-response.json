@@ -12,13 +12,7 @@
       "x-entity": "governance_check"
     },
     "status": {
-      "type": "string",
-      "enum": [
-        "approved",
-        "denied",
-        "conditions"
-      ],
-      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters."
+      "$ref": "/schemas/enums/governance-decision.json"
     },
     "plan_id": {
       "type": "string",

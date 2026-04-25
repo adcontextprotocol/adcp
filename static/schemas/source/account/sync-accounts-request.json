@@ -36,13 +36,8 @@
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
-            "type": "string",
-            "enum": [
-              "operator",
-              "agent",
-              "advertiser"
-            ],
-            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The seller must either accept this billing model or reject the request."
+            "$ref": "/schemas/enums/billing-party.json",
+            "description": "Who should be invoiced. The seller must either accept this billing model or reject the request."
           },
           "billing_entity": {
             "$ref": "/schemas/core/business-entity.json",
