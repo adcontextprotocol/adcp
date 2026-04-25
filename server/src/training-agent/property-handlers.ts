@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from './types.js';
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -46,6 +47,13 @@ export const PROPERTY_TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         name_contains: { type: 'string', description: 'Filter to lists whose name contains this string' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100, description: 'Max lists per page (default 50, cap 100).' },
+            cursor: { type: 'string', description: 'Continuation token from a previous list_property_lists response.' },
+          },
+        },
       },
     },
   },
@@ -233,7 +241,10 @@ export async function handleListPropertyLists(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { name_contains?: string };
+  const req = args as {
+    name_contains?: string;
+    pagination?: { max_results?: number; cursor?: string };
+  };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let lists = [...session.propertyLists.values()];
@@ -243,8 +254,24 @@ export async function handleListPropertyLists(
     lists = lists.filter(l => l.name.toLowerCase().includes(lowerFilter));
   }
 
+  const totalMatching = lists.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeOffsetCursor('property_lists', req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageLists = lists.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
   return {
-    lists: lists.map(toListResponse),
+    lists: pageLists.map(toListResponse),
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeOffsetCursor('property_lists', pageEnd) }),
+    },
   };
 }
 

@@ -428,6 +428,10 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     account: ACCOUNT_REF,
     brand: BRAND_REF,
     context: CONTEXT_REF,
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().optional(),
+    }).optional(),
   };
 
   const DELETE_COLLECTION_LIST_SCHEMA = {
