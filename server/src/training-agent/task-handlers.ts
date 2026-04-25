@@ -72,6 +72,7 @@ type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
   include_history?: number;
   include_snapshot?: boolean;
+  pagination?: { max_results?: number; cursor?: string };
 };
 
 type UpdateMediaBuyArgs = UpdateMediaBuyRequest & ToolArgs & {
@@ -1705,8 +1706,42 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const includeSnapshot = req.include_snapshot === true;
   const includeHistory = Number(req.include_history) || 0;
 
+  // Always emit a pagination block — per the cursor↔has_more invariant
+  // (universal/get-media-buys-pagination-integrity, schema/core/pagination-response.json).
+  // The SDK's storyboard request-builder injects `media_buy_ids: ["unknown"]`
+  // whenever context.media_buy_id is empty, so a "broad list query" reaches
+  // the agent as an ID-lookup. We honor the slice on broad queries (no
+  // filterIds) and emit a terminal pagination block on ID lookups (where
+  // pagination is semantically a no-op but a missing block is dishonest).
+  // Cursor/max_results are ignored on ID-lookup paths — direct lookup wins.
+  let pageBuys = buys;
+  let paginationBlock: Record<string, unknown>;
+
+  if (!filterIds?.length) {
+    const requestedMax = req.pagination?.max_results;
+    const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+    const offset = decodeOffsetCursor('media_buys', req.pagination?.cursor);
+    if (offset === null) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+      };
+    }
+    const pageEnd = Math.min(offset + maxResults, buys.length);
+    pageBuys = buys.slice(offset, pageEnd);
+    const hasMore = pageEnd < buys.length;
+    paginationBlock = {
+      has_more: hasMore,
+      total_count: buys.length,
+      ...(hasMore && { cursor: encodeOffsetCursor('media_buys', pageEnd) }),
+    };
+  } else {
+    // ID lookup: direct match, no pagination. Emit terminal block so the
+    // wire shape is honest (`has_more: false`, no cursor).
+    paginationBlock = { has_more: false, total_count: buys.length };
+  }
+
   return {
-    media_buys: buys.map(mb => {
+    media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const buy = {
@@ -1768,6 +1803,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       };
       return buy;
     }),
+    pagination: paginationBlock,
   };
 }
 
