@@ -197,6 +197,22 @@ export interface ComplyExtensions {
    * giving storyboards a deterministic, size-controlled result set for
    * pagination-integrity assertions. Keyed by the format's id string. */
   seededCreativeFormats: Map<string, Record<string, unknown>>;
+  /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
+   * Consumed by the next create_media_buy call from this session and cleared. A second
+   * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
+   * idempotency_key replay still wins — the seller's request idempotency cache replays
+   * the cached response without re-evaluating against an empty directive slot.
+   *
+   * Only `arm: 'submitted'` is modeled today. `arm: 'input-required'` is reserved in
+   * the spec but cannot be expressed on a conformant create-media-buy response — there
+   * is no INPUT_REQUIRED value in the canonical error-code enum (it's a task-status)
+   * and the response schema has no fourth oneOf branch for an input-required envelope.
+   * The controller rejects that arm with INVALID_PARAMS until the spec resolves it. */
+  forcedCreateMediaBuyArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
 }
 
 export interface SessionState {

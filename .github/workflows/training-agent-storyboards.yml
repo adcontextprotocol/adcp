@@ -40,12 +40,15 @@ jobs:
             # refactor exposed training-agent catalog gaps; aliased
             # outdoor_ctv_q2/local_display_dynamic products and renamed
             # two prism signal pricing ids to match the spec test-kit).
+            # 380→384 / 52→53 after implementing force_create_media_buy_arm
+            # in the training-agent: the create_media_buy_async storyboard
+            # (#3081) now passes 4 steps instead of grading not_applicable.
             # Passing-step asymmetry with framework mode is intentional:
             # the two modes declare different capabilities, so the
             # storyboard runner skips a different subset of steps in each.
             # Both modes pass every step they run.
-            min_clean_storyboards: 52
-            min_passing_steps: 380
+            min_clean_storyboards: 53
+            min_passing_steps: 384
           - mode: framework
             flag_value: '1'
             # 390→393 after bumping @adcp/client to 5.15 + seller catalog
@@ -56,8 +59,10 @@ jobs:
             # own request schemas now reject (sync_plans, list_property_lists,
             # delete_property_list). Tracked at adcontextprotocol/adcp-client#940.
             # Restore to 52 / 393 once the upstream fix lands (5.17.1+).
-            min_clean_storyboards: 41
-            min_passing_steps: 370
+            # 370→374 / 41→42 after implementing force_create_media_buy_arm
+            # (#3081 follow-up) — same +1 storyboard / +4 steps as legacy.
+            min_clean_storyboards: 42
+            min_passing_steps: 374
     steps:
       - uses: actions/checkout@v6
 
@@ -77,9 +82,18 @@ jobs:
         # compliance cache, which is a snapshot synced from this repo's
         # static/compliance/source/ on each SDK publish. To validate
         # spec changes in this PR before waiting for an SDK republish,
-        # overlay the current source tree onto the cache. Overlays only
-        # files that exist in both trees; new top-level additions to
-        # source/ still require a sync-schemas cycle on the SDK side.
+        # mirror the current source tree onto the cache — both edits to
+        # existing files AND new files added in this PR. mkdir -p creates
+        # any new subdirectories the source introduces so the cache stays
+        # in sync with whatever lands here.
+        #
+        # Caveat: this overlay does NOT regenerate the SDK's cache index
+        # (e.g., index.json bundles enumerated at build time). New files
+        # under existing protocols are picked up via directory walk, but
+        # adding a brand-new top-level bundle (a new specialism / universal
+        # file) may need a sync-schemas cycle on the SDK side before the
+        # runner enumerates it. New files under existing scenarios/ dirs
+        # are the common case and work fine.
         run: |
           SRC="static/compliance/source"
           # 5.13 moved the cache dir from `latest` to the AdCP version
@@ -92,13 +106,13 @@ jobs:
             exit 0
           fi
           echo "Overlaying onto $DST"
-          # Copy every file that already exists in the cache. `cp -u` is
-          # not used because we want the overlay to always win for the
-          # files we maintain here.
+          # Mirror every source file onto the cache. New files (storyboards,
+          # specialisms) get added; existing files are overwritten so the
+          # branch's edits always win.
           (cd "$SRC" && find . -type f) | while read -r rel; do
-            if [ -f "$DST/${rel#./}" ]; then
-              cp "$SRC/${rel#./}" "$DST/${rel#./}"
-            fi
+            target="$DST/${rel#./}"
+            mkdir -p "$(dirname "$target")"
+            cp "$SRC/${rel#./}" "$target"
           done
           echo "Overlay complete."
 

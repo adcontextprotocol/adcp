@@ -1272,6 +1272,35 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
+  // Consume any single-shot directive registered by
+  // comply_test_controller.force_create_media_buy_arm. Runs before all other
+  // gates so the storyboard's wire-shape probe is not confounded by governance
+  // or account-status checks; the directive is sandbox-only and the runner
+  // explicitly opted into this response shape. Cleared after read — a second
+  // create_media_buy from the same session resumes default behavior.
+  // Idempotency_key replay is unaffected: the SDK's request-idempotency cache
+  // wraps this handler, so a replayed request returns the cached submitted
+  // response without re-evaluating the (now-empty) directive slot.
+  const directive = session.complyExtensions.forcedCreateMediaBuyArm;
+  if (
+    directive
+    && directive.arm === 'submitted'
+    && typeof directive.taskId === 'string'
+    && directive.taskId.length > 0
+    && directive.taskId.length <= 128
+  ) {
+    session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    const responseMessage =
+      typeof directive.message === 'string' && directive.message.length <= 2000
+        ? directive.message
+        : undefined;
+    return {
+      status: 'submitted',
+      task_id: directive.taskId,
+      ...(responseMessage && { message: responseMessage }),
+    };
+  }
+
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
   if (accountId?.account_id) {
