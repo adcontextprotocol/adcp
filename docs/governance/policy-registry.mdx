@@ -119,7 +119,7 @@ This means brands can reference upcoming regulations before they take effect. Th
 
 ### Worked example: informational-to-enforced transition
 
-Suppose you reference `eu_ai_act_article_50`, which carries `effective_date: "2026-08-02"`. Before that date, every `check_governance` call evaluates the policy and returns findings at `info` severity -- no campaign is blocked. Buying teams see _what would be flagged_ and can clean up creatives before enforcement begins. On and after 2026-08-02, the same findings are emitted at blocking severity and campaigns that trigger them are rejected.
+Suppose you reference `eu_ai_act_article_50`, which carries `effective_date: "2026-08-02"`. Before that date, every `check_governance` call evaluates the policy and returns findings at `info` severity -- no campaign is blocked. Buying teams see _what would be flagged_ and can clean up creatives before enforcement begins. On and after 2026-08-02, the policy is enforced at its declared level — `must`-enforcement findings reject campaigns, `should`-enforcement findings produce warnings.
 
 No re-syncing the plan. No policy-configuration change. The governance agent reads the date on each evaluation call and shifts enforcement automatically.
 
