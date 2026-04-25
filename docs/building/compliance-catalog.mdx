@@ -15,15 +15,23 @@ This page is the human-readable index of that taxonomy. The machine-readable equ
 
 ## Universal storyboards
 
-Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. Failing a universal storyboard fails overall compliance.
+Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance.
+
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (kebab-case slug) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
 
 | Storyboard | Purpose |
 |-----------|---------|
-| `capability-discovery` | `get_adcp_capabilities` shape and version declaration |
-| `schema-validation` | Response schema conformance and temporal constraints |
-| `error-compliance` | Structured errors with correct codes and transport binding |
-| `deterministic-testing` | `comply_test_controller` state-machine verification (skipped if unsupported) |
+| `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
+| `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
+| `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/integration/authentication). |
+| `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
+| `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
+| `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
+| `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
+
+Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation.
 
 ## Protocols
 

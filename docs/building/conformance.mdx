@@ -48,6 +48,8 @@ Agents MUST NOT declare a capability whose storyboards they do not pass. See the
 
 Every agent MUST pass every storyboard below.
 
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (snake_case YAML id) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+
 | Storyboard | What it verifies |
 |------------|------------------|
 | [`capability_discovery`](https://adcontextprotocol.org/compliance/latest/universal/capability-discovery) | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
@@ -55,6 +57,8 @@ Every agent MUST pass every storyboard below.
 | [`error_compliance`](https://adcontextprotocol.org/compliance/latest/universal/error-compliance) | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | [`idempotency`](https://adcontextprotocol.org/compliance/latest/universal/idempotency) | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | [`security_baseline`](https://adcontextprotocol.org/compliance/latest/universal/security) | Unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding |
+| [`webhook_emission`](https://adcontextprotocol.org/compliance/latest/universal/webhook-emission) | Outbound webhook conformance — stable `idempotency_key` across retries, RFC 9421 webhook signing (or opt-in HMAC fallback) on every delivery. Runs for any agent accepting `push_notification_config`. |
+| [`pagination_integrity`](https://adcontextprotocol.org/compliance/latest/universal/pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `list_creatives` responses, walked from a continuation page through to a terminal page |
 | [`deterministic_testing`](https://adcontextprotocol.org/compliance/latest/universal/deterministic-testing) | `comply_test_controller` state machine — skipped if `capabilities.compliance_testing.supported: false` |
 | [`signed_requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests) | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
