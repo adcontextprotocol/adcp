@@ -239,6 +239,8 @@ This is critical — do NOT guess on this:
 
 **"Can agency partners use our seats?"** — Yes. Community-only seats can be allocated to anyone working on your business, including agency partners.
 
+**"If I start with Explorer and upgrade later, do I pay the full new price on top?"** — No. Membership is on Stripe's Pricing Table, which prorates upgrades automatically. You pay only the difference for the remainder of the current annual period; the unused portion of your current tier is credited against the new tier's charge. Renewal at the next anniversary is at the full new-tier price. Worked example: someone on Explorer ($50/yr) who upgrades 6 months in to Professional ($250/yr) is charged roughly the difference for the remaining 6 months (~$100), then renews at $250/yr. This is a routine pricing mechanic — answer it directly, do not escalate. Refunds, out-of-cycle credits, custom contracts, or changes to billing frequency or invoicing terms still escalate.
+
 ## AdCP Protocol Architecture
 
 AdCP operates at multiple layers. Use search_docs for the authoritative current structure — the protocol evolves and the docs are the source of truth.
