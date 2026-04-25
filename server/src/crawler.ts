@@ -611,15 +611,15 @@ export class CrawlerService {
   }
 
   /**
-   * Cache an adagents.json manifest into the publishers overlay (PR 2 of #3177)
-   * and project its properties into the property catalog. Runs in a single
-   * transaction so the publishers cache and the catalog projection are
-   * consistent. The legacy discovered_properties / agent_property_authorizations
-   * writes still happen separately via recordPropertiesForAgent — both run
-   * during the same release as a fallback before PR 5 drops the old tables.
+   * Cache a validated adagents.json manifest into the publishers overlay and
+   * project its properties into the property catalog. The writer runs as one
+   * transaction with per-property savepoints, so a malformed property is
+   * skipped without losing the rest of the manifest.
    *
-   * Failure here is logged but does not abort the rest of the crawl: the
-   * existing tables remain the source of truth until the reader swap in PR 4.
+   * Failure of the entire transaction is logged but does not abort the crawl:
+   * the legacy discovered_properties / agent_property_authorizations writes
+   * happen separately via recordPropertiesForAgent and remain authoritative
+   * until catalog readers take over.
    */
   private async cacheAdagentsManifest(domain: string, manifest: AdagentsManifest): Promise<void> {
     try {
@@ -853,6 +853,8 @@ export class CrawlerService {
         return;
       }
 
+      await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
         if (!authorizedAgent.url) continue;
@@ -1019,6 +1021,8 @@ export class CrawlerService {
   private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
     const validation = await this.adAgentsManager.validateDomain(domain);
     if (!validation.valid || !validation.raw_data?.authorized_agents) return;
+
+    await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       if (!authorizedAgent.url) continue;

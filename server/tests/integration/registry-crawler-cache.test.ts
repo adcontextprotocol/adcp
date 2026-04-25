@@ -22,6 +22,9 @@ import type { Pool } from 'pg';
 
 const TEST_DOMAIN = 'crawler-cache.example.com';
 const TEST_AGENT = 'https://agent.crawler-cache.example.com/mcp';
+// Cross-publisher fixtures used by the tenant-isolation tests.
+const VICTIM_DOMAIN = 'victim.crawler-cache.example.com';
+const ATTACKER_DOMAIN = 'attacker.crawler-cache.example.com';
 
 const FIXTURE_MANIFEST = {
   $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
@@ -69,30 +72,46 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
 
   // Scope cleanup tightly so parallel runs of other tests sharing the
   // .example.com pattern don't trample our fixtures.
+  const TEST_CREATED_BY = [
+    `adagents_json:${TEST_DOMAIN}`,
+    `adagents_json:${VICTIM_DOMAIN}`,
+    `adagents_json:${ATTACKER_DOMAIN}`,
+    'test:tenant-isolation-seed',
+  ];
+  const TEST_DOMAINS = [TEST_DOMAIN, VICTIM_DOMAIN, ATTACKER_DOMAIN];
+
   async function clearTestFixtures() {
+    // Identifiers must clear before properties — catalog_identifiers FKs to
+    // catalog_properties. Delete via the property_rid join so any identifier
+    // value (including ones the tests didn't list explicitly) gets caught.
     await pool.query(
-      `DELETE FROM catalog_identifiers WHERE identifier_value = $1
-                                          OR identifier_value = $2
-                                          OR identifier_value = $3`,
-      [TEST_DOMAIN, `news.${TEST_DOMAIN}`, 'com.example.crawlercache']
+      `DELETE FROM catalog_identifiers
+         WHERE property_rid IN (
+           SELECT property_rid FROM catalog_properties
+            WHERE created_by = ANY($1::text[])
+         )`,
+      [TEST_CREATED_BY]
     );
     await pool.query(
-      `DELETE FROM catalog_properties WHERE created_by = $1`,
-      [`adagents_json:${TEST_DOMAIN}`]
+      `DELETE FROM catalog_properties WHERE created_by = ANY($1::text[])`,
+      [TEST_CREATED_BY]
     );
-    await pool.query('DELETE FROM publishers WHERE domain = $1', [TEST_DOMAIN]);
+    await pool.query(
+      `DELETE FROM publishers WHERE domain = ANY($1::text[])`,
+      [TEST_DOMAINS]
+    );
     await pool.query(
       'DELETE FROM agent_property_authorizations WHERE agent_url = $1',
       [TEST_AGENT]
     );
     await pool.query(
-      'DELETE FROM discovered_properties WHERE publisher_domain = $1',
-      [TEST_DOMAIN]
+      `DELETE FROM discovered_properties WHERE publisher_domain = ANY($1::text[])`,
+      [TEST_DOMAINS]
     );
     await pool.query('DELETE FROM discovered_agents WHERE agent_url = $1', [TEST_AGENT]);
     await pool.query(
-      'DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1',
-      [TEST_DOMAIN]
+      `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = ANY($1::text[])`,
+      [TEST_DOMAINS]
     );
   }
 
@@ -240,6 +259,35 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       expect(rows).toHaveLength(1);
     });
 
+    it('lowercases rss_url path so chk_identifier_lowercase doesn\'t silently roll back', async () => {
+      // normalizeRssUrl preserves URL path case ("Feed.xml" stays mixed). Without
+      // the writer's defensive lowercase, this triggers a 23514 check_violation
+      // mid-transaction and the entire crawl is silently rolled back.
+      const rssManifest = {
+        ...FIXTURE_MANIFEST,
+        properties: [
+          {
+            property_id: 'feed_main',
+            property_type: 'podcast',
+            name: 'Crawler Cache Feed',
+            identifiers: [{ type: 'rss_url', value: `https://${TEST_DOMAIN}/Feed.xml` }],
+          },
+        ],
+      };
+
+      await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: rssManifest });
+
+      const { rows } = await pool.query<{ identifier_value: string }>(
+        `SELECT identifier_value FROM catalog_identifiers
+          WHERE identifier_type = 'rss_url' AND property_rid IN (
+            SELECT property_rid FROM catalog_properties WHERE created_by = $1
+          )`,
+        [`adagents_json:${TEST_DOMAIN}`]
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].identifier_value).toBe(`https://${TEST_DOMAIN}/feed.xml`);
+    });
+
     it('reuses property_rid on re-crawl rather than forking identity', async () => {
       await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST });
       const first = await pool.query<{ property_rid: string }>(
@@ -267,6 +315,206 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
         [`adagents_json:${TEST_DOMAIN}`]
       );
       expect(propCount.rows[0].c).toBe('2');
+    });
+  });
+
+  describe('tenant isolation', () => {
+    it('refuses to rebind a victim\'s identifier when another publisher claims it', async () => {
+      // Victim claims its own domain.
+      await publisherDb.upsertAdagentsCache({
+        domain: VICTIM_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'victim_site',
+              property_type: 'website',
+              name: 'Victim Site',
+              identifiers: [{ type: 'domain', value: VICTIM_DOMAIN }],
+            },
+          ],
+        },
+      });
+
+      const beforeAttacker = await pool.query<{ property_rid: string; created_by: string | null }>(
+        `SELECT cp.property_rid, cp.created_by
+           FROM catalog_identifiers ci
+           JOIN catalog_properties cp ON cp.property_rid = ci.property_rid
+          WHERE ci.identifier_type = 'domain' AND ci.identifier_value = $1`,
+        [VICTIM_DOMAIN]
+      );
+      expect(beforeAttacker.rows).toHaveLength(1);
+      const victimRid = beforeAttacker.rows[0].property_rid;
+      expect(beforeAttacker.rows[0].created_by).toBe(`adagents_json:${VICTIM_DOMAIN}`);
+
+      // Attacker publishes a manifest naming the victim's domain alongside its own.
+      await publisherDb.upsertAdagentsCache({
+        domain: ATTACKER_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'attacker_bundle',
+              property_type: 'website',
+              name: 'Attacker Bundle',
+              identifiers: [
+                { type: 'domain', value: VICTIM_DOMAIN },
+                { type: 'domain', value: ATTACKER_DOMAIN },
+              ],
+            },
+          ],
+        },
+      });
+
+      // Victim's identifier still points at the victim's rid; not rebound.
+      const victimIdentifier = await pool.query<{ property_rid: string }>(
+        `SELECT property_rid FROM catalog_identifiers
+          WHERE identifier_type = 'domain' AND identifier_value = $1`,
+        [VICTIM_DOMAIN]
+      );
+      expect(victimIdentifier.rows[0].property_rid).toBe(victimRid);
+
+      // Attacker's own identifier was NOT bound to the victim's rid (refusal
+      // skipped the whole projection — neither side of the merge lands).
+      const attackerIdentifier = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_identifiers
+          WHERE identifier_type = 'domain' AND identifier_value = $1`,
+        [ATTACKER_DOMAIN]
+      );
+      expect(attackerIdentifier.rows[0].count).toBe('0');
+
+      // Victim's catalog property is still authored by the victim, not the attacker.
+      const victimProperty = await pool.query<{ created_by: string | null; adagents_url: string | null }>(
+        `SELECT created_by, adagents_url FROM catalog_properties WHERE property_rid = $1`,
+        [victimRid]
+      );
+      expect(victimProperty.rows[0].created_by).toBe(`adagents_json:${VICTIM_DOMAIN}`);
+      expect(victimProperty.rows[0].adagents_url).toBe(
+        `https://${VICTIM_DOMAIN}/.well-known/adagents.json`
+      );
+    });
+
+    it('refuses to silently merge two existing properties when a manifest spans both', async () => {
+      // Seed two distinct properties from a non-adagents source (community/seed),
+      // each with its own identifier. A later manifest that names BOTH identifiers
+      // in one property would silently merge them without this guard.
+      await pool.query(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, created_by)
+         VALUES
+           ('11111111-1111-7111-9111-111111111111', 'alpha', 'property', 'contributed', 'active', 'test:tenant-isolation-seed'),
+           ('22222222-2222-7222-9222-222222222222', 'beta',  'property', 'contributed', 'active', 'test:tenant-isolation-seed')`,
+      );
+      await pool.query(
+        `INSERT INTO catalog_identifiers
+           (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+         VALUES
+           (gen_random_uuid(), '11111111-1111-7111-9111-111111111111', 'ios_bundle', 'com.example.alpha', 'member_resolve', 'medium'),
+           (gen_random_uuid(), '22222222-2222-7222-9222-222222222222', 'ios_bundle', 'com.example.beta',  'member_resolve', 'medium')`,
+      );
+
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'wants_to_merge',
+              property_type: 'mobile_app',
+              name: 'Tries To Merge Alpha and Beta',
+              identifiers: [
+                { type: 'ios_bundle', value: 'com.example.alpha' },
+                { type: 'ios_bundle', value: 'com.example.beta' },
+              ],
+            },
+          ],
+        },
+      });
+
+      // Both seed properties survive untouched; no third property was minted
+      // for this manifest's claim.
+      const seedRids = await pool.query<{ property_rid: string }>(
+        `SELECT property_rid FROM catalog_identifiers
+          WHERE identifier_value IN ('com.example.alpha', 'com.example.beta')
+          ORDER BY identifier_value`
+      );
+      expect(seedRids.rows.map((r) => r.property_rid).sort()).toEqual(
+        [
+          '11111111-1111-7111-9111-111111111111',
+          '22222222-2222-7222-9222-222222222222',
+        ].sort()
+      );
+
+      const newProps = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_properties WHERE created_by = $1`,
+        [`adagents_json:${TEST_DOMAIN}`]
+      );
+      expect(newProps.rows[0].count).toBe('0');
+    });
+
+    it('does not abort the rest of the manifest when one property is refused', async () => {
+      // Pre-claim an identifier from a different publisher, so when our manifest
+      // tries to bind it the projection is refused for that property only. The
+      // other (clean) property in the same manifest should still land.
+      await publisherDb.upsertAdagentsCache({
+        domain: ATTACKER_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'attacker_app',
+              property_type: 'mobile_app',
+              name: 'Attacker App',
+              identifiers: [{ type: 'ios_bundle', value: 'com.example.victimapp' }],
+            },
+          ],
+        },
+      });
+
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'clean_site',
+              property_type: 'website',
+              name: 'Clean Site',
+              identifiers: [{ type: 'domain', value: TEST_DOMAIN }],
+            },
+            {
+              property_id: 'collides',
+              property_type: 'mobile_app',
+              name: 'Collides With Attacker',
+              identifiers: [{ type: 'ios_bundle', value: 'com.example.victimapp' }],
+            },
+          ],
+        },
+      });
+
+      // Clean property landed.
+      const cleanProp = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_properties
+          WHERE created_by = $1 AND property_id = 'clean_site'`,
+        [`adagents_json:${TEST_DOMAIN}`]
+      );
+      expect(cleanProp.rows[0].count).toBe('1');
+
+      // Collides property did NOT land (refused — attacker still owns the rid).
+      const collidesProp = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_properties
+          WHERE created_by = $1 AND property_id = 'collides'`,
+        [`adagents_json:${TEST_DOMAIN}`]
+      );
+      expect(collidesProp.rows[0].count).toBe('0');
+
+      // Publishers cache for the original domain still updated (the manifest
+      // body cache write isn't gated on per-property success).
+      const cache = await pool.query<{ source_type: string }>(
+        `SELECT source_type FROM publishers WHERE domain = $1`,
+        [TEST_DOMAIN]
+      );
+      expect(cache.rows[0].source_type).toBe('adagents_json');
     });
   });
 

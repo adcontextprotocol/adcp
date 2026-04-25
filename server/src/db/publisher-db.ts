@@ -1,7 +1,10 @@
 import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
+import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
+
+const log = createLogger('publisher-db');
 
 /**
  * Property as it appears inside an adagents.json file. The manifest body is
@@ -29,24 +32,29 @@ export interface UpsertAdagentsCacheInput {
   expiresAt?: Date;
 }
 
+const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
+
+function adagentsCreatedBy(publisherDomain: string): string {
+  return `${ADAGENTS_CREATED_BY_PREFIX}${publisherDomain}`;
+}
+
 /**
  * Database operations for the publisher overlay (migration 432).
  *
  * Caches the source-of-truth adagents.json file body and projects the parsed
- * manifest into the property catalog (catalog_properties + catalog_identifiers)
- * in the same transaction. Mirrors brand registry's writer pattern (brand-db.ts
- * upsertDiscoveredBrand + crawler.ts upsertBrandProperties), keeping the cache
- * write and the catalog projection atomic so the catalog never has a partial
- * view of a successful crawl.
+ * manifest into the property catalog (catalog_properties + catalog_identifiers).
+ * The cache write and the per-property projections share one transaction;
+ * each property is wrapped in a savepoint so a constraint violation on one
+ * malformed property does not lose the rest of the manifest.
  */
 export class PublisherDatabase {
   /**
    * Cache an adagents.json manifest and project its properties into the
-   * catalog. Run as a single transaction so a successful crawl always lands
-   * both the cache and the catalog rows together (or neither).
+   * catalog.
    *
-   * ON CONFLICT preserves org/ownership metadata; the manifest body itself is
-   * always overwritten because the crawler is authoritative for it.
+   * ON CONFLICT for the publishers row only touches the manifest body and the
+   * crawl-tracking columns; org/ownership and review state are preserved so a
+   * later org claim isn't wiped by a routine re-crawl.
    */
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
     const domain = input.domain.toLowerCase();
@@ -67,8 +75,24 @@ export class PublisherDatabase {
       );
 
       const properties = Array.isArray(input.manifest.properties) ? input.manifest.properties : [];
-      for (const prop of properties) {
-        await this.projectPropertyToCatalog(client, domain, prop);
+      for (let i = 0; i < properties.length; i += 1) {
+        const savepoint = `prop_${i}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
+        try {
+          await this.projectPropertyToCatalog(client, domain, properties[i]);
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        } catch (err) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          log.warn(
+            {
+              domain,
+              propertyId: properties[i]?.property_id,
+              propertyIndex: i,
+              err: err instanceof Error ? err.message : err,
+            },
+            'Catalog projection failed for property; skipping'
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -82,13 +106,27 @@ export class PublisherDatabase {
 
   /**
    * Project a single adagents.json property into catalog_properties +
-   * catalog_identifiers. Reuses an existing property_rid when one of this
-   * property's identifiers is already in the catalog (so re-crawls don't
-   * fork identity), otherwise mints a new rid.
+   * catalog_identifiers. Catalog rows are tagged
+   * evidence='adagents_json' / confidence='authoritative' so a property
+   * crawled now is indistinguishable from one seeded by migration 336.
    *
-   * evidence='adagents_json' / confidence='authoritative' matches the seed
-   * migration (336_catalog_seed_from_existing.sql) so a property crawled now
-   * is indistinguishable from one seeded earlier.
+   * Identity reuse rules — load-bearing for tenant isolation:
+   *
+   *  - If any of this property's identifiers already point at a property_rid
+   *    that was authored by *another* publisher's adagents.json, the
+   *    projection is refused. Without this, a malicious manifest can name a
+   *    victim's identifier (e.g. domain:cnn.com) alongside its own and
+   *    rebind the victim's property_rid; ON CONFLICT DO NOTHING on the
+   *    insert path doesn't protect against attacker-owned identifiers
+   *    landing on the victim's rid.
+   *
+   *  - If the identifier set spans multiple distinct rids that we *do* own
+   *    (or that came from seed/community sources), the projection is
+   *    refused. Silent merging of two existing properties needs human
+   *    review through the dispute layer (catalog_disputes).
+   *
+   *  - Otherwise, reuse the single matching rid (re-crawls don't fork
+   *    identity) or mint a new one when nothing matches.
    */
   private async projectPropertyToCatalog(
     client: PoolClient,
@@ -100,7 +138,14 @@ export class PublisherDatabase {
       .filter((i): i is { type: string; value: string } =>
         typeof i?.type === 'string' && typeof i?.value === 'string' && i.type.length > 0 && i.value.length > 0
       )
-      .map((i) => normalizeIdentifier(i.type, i.value));
+      .map((i) => {
+        const norm = normalizeIdentifier(i.type, i.value);
+        // catalog_identifiers.chk_identifier_lowercase requires the entire value
+        // to be lowercase. normalizeRssUrl preserves URL path case, and any
+        // future identifier type may also leak case; lowercase defensively to
+        // match the migration 336 seed and avoid silent rollbacks.
+        return { type: norm.type, value: norm.value.toLowerCase() };
+      });
 
     if (identifiers.length === 0) return;
 
@@ -112,18 +157,51 @@ export class PublisherDatabase {
       })
       .join(', ');
 
-    const existing = await client.query<{ property_rid: string }>(
-      `SELECT property_rid FROM catalog_identifiers
-        WHERE (identifier_type, identifier_value) IN (${tuplePlaceholders})
-        LIMIT 1`,
+    // ORDER BY for determinism: when multiple distinct rids match, the same
+    // input always picks the same one (oldest first), so re-runs converge.
+    const existing = await client.query<{ property_rid: string; created_by: string | null }>(
+      `SELECT DISTINCT cp.property_rid, cp.created_by
+         FROM catalog_identifiers ci
+         JOIN catalog_properties cp ON cp.property_rid = ci.property_rid
+        WHERE (ci.identifier_type, ci.identifier_value) IN (${tuplePlaceholders})
+        ORDER BY cp.created_by, cp.property_rid`,
       tupleParams
     );
+
+    const expectedCreatedBy = adagentsCreatedBy(publisherDomain);
+    const conflicting = existing.rows.filter((r) =>
+      typeof r.created_by === 'string'
+      && r.created_by.startsWith(ADAGENTS_CREATED_BY_PREFIX)
+      && r.created_by !== expectedCreatedBy
+    );
+
+    if (conflicting.length > 0) {
+      log.warn(
+        {
+          publisherDomain,
+          propertyId: property.property_id,
+          conflictingCreatedBy: conflicting.map((r) => r.created_by),
+          conflictingRids: conflicting.map((r) => r.property_rid),
+        },
+        'Catalog projection refused: property identifiers are claimed by another publisher manifest'
+      );
+      return;
+    }
+
+    const ownRids = Array.from(new Set(existing.rows.map((r) => r.property_rid)));
+    if (ownRids.length > 1) {
+      log.warn(
+        { publisherDomain, propertyId: property.property_id, rids: ownRids },
+        'Catalog projection refused: identifier set spans multiple existing properties (merge requires moderation)'
+      );
+      return;
+    }
 
     const adagentsUrl = `https://${publisherDomain}/.well-known/adagents.json`;
     let propertyRid: string;
 
-    if (existing.rows.length > 0) {
-      propertyRid = existing.rows[0].property_rid;
+    if (ownRids.length === 1) {
+      propertyRid = ownRids[0];
       await client.query(
         `UPDATE catalog_properties SET
            source_updated_at = NOW(),
@@ -139,7 +217,7 @@ export class PublisherDatabase {
         `INSERT INTO catalog_properties
            (property_rid, property_id, classification, source, status, adagents_url, created_by)
          VALUES ($1, $2, 'property', 'authoritative', 'active', $3, $4)`,
-        [propertyRid, property.property_id ?? null, adagentsUrl, `adagents_json:${publisherDomain}`]
+        [propertyRid, property.property_id ?? null, adagentsUrl, expectedCreatedBy]
       );
     }
 
@@ -154,5 +232,3 @@ export class PublisherDatabase {
     }
   }
 }
-
-export const publisherDb = new PublisherDatabase();
