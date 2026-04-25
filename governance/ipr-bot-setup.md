@@ -36,13 +36,14 @@ Install on these repos only:
 - `adcontextprotocol/adcp-client`
 - `adcontextprotocol/adcp-client-python`
 - `adcontextprotocol/adcp-go`
-- `adcontextprotocol/creative-agent`
+
+`adcontextprotocol/creative-agent` is **archived** and read-only — no PR workflow is needed there since the repo can't accept contributions. If it ever gets unarchived, add the workflow at that point.
 
 `prebid/salesagent` lives in a different organization. If we want it covered, install a separate App in the `prebid` org or add the repo to a future cross-org strategy.
 
 ## Secrets
 
-Two organization-level secrets are required, scoped to the same five repos:
+Two organization-level secrets are required, scoped to the same four repos:
 
 | Secret | Source |
 |---|---|
