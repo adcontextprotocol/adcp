@@ -568,6 +568,11 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
     // because the webhook doesn't know the user's adopt-vs-fresh decision
     // and would otherwise clobber a manifest the inline /verify route
     // intentionally adopted seconds earlier.
+    //
+    // For dashboard-flipped domains (admin marked verified directly in the
+    // WorkOS console, no inline /verify call), this path is the ONLY writer.
+    // A failure here means the brand row will lag the WorkOS state until the
+    // next event for this domain — investigate logs if it surfaces.
     if (domainData.state === 'verified') {
       try {
         const brandDb = new BrandDatabase();
@@ -577,8 +582,8 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
           domain: normalizedDomain,
         }, 'Synced verified domain to brand registry');
       } catch (err) {
-        // Don't block the webhook on brand-registry sync errors. The verify
-        // route's inline write covers the common case; this is a backstop.
+        // Don't block the webhook on brand-registry sync errors — webhook
+        // idempotency is the whole point. Subsequent events will retry.
         logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
       }
     }

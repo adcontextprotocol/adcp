@@ -26,7 +26,7 @@ import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
-import { canonicalizeBrandDomain, assertValidBrandDomain, assertClaimableBrandDomain } from "../services/identifier-normalization.js";
+import { canonicalizeBrandDomain, assertClaimableBrandDomain } from "../services/identifier-normalization.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
@@ -35,6 +35,18 @@ import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../service
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 const logger = createLogger("member-profile-routes");
+
+/**
+ * The WorkOS SDK narrows OrganizationDomainState differently across surfaces:
+ * `getOrganization().domains[i].state` is typed as Pending|Failed, while
+ * `verify()` returns the wider union including Verified|LegacyVerified.
+ * Casting through string lets the brand-claim verify route accept either
+ * shape without re-implementing the SDK's internal narrowing.
+ */
+function isVerifiedDomainState(state: unknown): boolean {
+  const s = String(state);
+  return s === 'verified' || s === 'legacy_verified';
+}
 
 /**
  * Validate slug format and check against reserved keywords
@@ -1348,12 +1360,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       let verified;
       let alreadyVerified = false;
-      // Cast through string: the SDK's getOrganization() narrows domain.state
-      // to Pending|Failed (verified entries get listed via verifyOrganizationDomain
-      // and arrive on a different branch), but we accept the wider union here
-      // because the data CAN reach this path on legacy/already-verified domains.
-      const existingState = String(existingDomain.state);
-      if (existingState === 'verified' || existingState === 'legacy_verified') {
+      if (isVerifiedDomainState(existingDomain.state)) {
         verified = existingDomain;
         alreadyVerified = true;
       } else {
@@ -1374,16 +1381,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      // String-cast the comparison: the SDK's Pending/Failed narrowing in the
-      // verify-call branch would otherwise drop 'legacy_verified' as
-      // unreachable, but we need to accept it from the early-return path too.
-      const verifiedState = String(verified.state);
-      if (verifiedState !== 'verified' && verifiedState !== 'legacy_verified') {
+      if (!isVerifiedDomainState(verified.state)) {
         return res.status(400).json({
           error: 'Domain still pending',
           message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take a few minutes — try again.',
           domain,
-          state: verifiedState,
+          state: String(verified.state),
         });
       }
 

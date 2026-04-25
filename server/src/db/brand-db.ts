@@ -491,8 +491,8 @@ export class BrandDatabase {
    * Without this separation, a webhook arriving after `adoptPriorManifest:true`
    * would reset the just-adopted manifest to {}.
    *
-   * Also a no-op if the row is already verified by the same org —
-   * avoids needless updated_at churn on retries.
+   * Idempotent — repeated calls produce the same end state. Always returns
+   * the current row.
    */
   async markBrandDomainVerified(
     domain: string,
@@ -512,10 +512,6 @@ export class BrandDatabase {
          manifest_orphaned = FALSE,
          prior_owner_org_id = NULL,
          updated_at = NOW()
-       WHERE
-         brands.workos_organization_id IS DISTINCT FROM $2
-         OR brands.domain_verified IS DISTINCT FROM TRUE
-         OR brands.manifest_orphaned IS DISTINCT FROM FALSE
        RETURNING ${HOSTED_BRAND_COLUMNS}`,
       [canonicalDomain, workosOrganizationId]
     );

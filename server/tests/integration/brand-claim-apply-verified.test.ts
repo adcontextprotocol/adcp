@@ -161,21 +161,13 @@ describe('applyVerifiedBrandClaim', () => {
     expect(result!.domain_verified).toBe(true);
   });
 
-  it('webhook sync is a no-op when the row is already verified to the same org', async () => {
-    await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
-    const before = await pool.query<{ updated_at: Date }>(
-      'SELECT updated_at FROM brands WHERE domain = $1',
-      [TEST_DOMAIN]
-    );
-    // Wait briefly so a redundant UPDATE would tick updated_at.
-    await new Promise(r => setTimeout(r, 10));
+  it('webhook sync is idempotent — repeated calls converge to the same end state', async () => {
+    const first = await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
     const second = await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
-    expect(second).toBeNull(); // RETURNING fires no rows because WHERE filtered the redundant update
-    const after = await pool.query<{ updated_at: Date }>(
-      'SELECT updated_at FROM brands WHERE domain = $1',
-      [TEST_DOMAIN]
-    );
-    expect(after.rows[0].updated_at.getTime()).toBe(before.rows[0].updated_at.getTime());
+    expect(first?.workos_organization_id).toBe(ORG_A);
+    expect(second?.workos_organization_id).toBe(ORG_A);
+    expect(first?.domain_verified).toBe(true);
+    expect(second?.domain_verified).toBe(true);
   });
 
   it('preserves the prior manifest when adoptPriorManifest is true', async () => {
