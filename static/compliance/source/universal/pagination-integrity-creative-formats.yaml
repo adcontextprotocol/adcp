@@ -108,6 +108,8 @@ phases:
         expected: |
           Return success: true.
         sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
           scenario: "seed_creative_format"
           params:
             format_id: "pagination_integrity_format_1"
@@ -132,6 +134,8 @@ phases:
         expected: |
           Return success: true.
         sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
           scenario: "seed_creative_format"
           params:
             format_id: "pagination_integrity_format_2"
@@ -176,6 +180,8 @@ phases:
           - pagination.cursor present (an opaque continuation token)
 
         sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
           pagination:
             max_results: 1
           context:
@@ -221,6 +227,8 @@ phases:
           - pagination.cursor absent
 
         sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 1

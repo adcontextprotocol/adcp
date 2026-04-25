@@ -30,6 +30,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
 | `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial catalog, page 2 follows the cursor. |
 | `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
+| `pagination-integrity-creative-formats` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creative_formats` response — storyboard seeds two creative formats via `seed_creative_format`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 

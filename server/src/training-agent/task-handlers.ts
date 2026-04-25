@@ -233,6 +233,7 @@ import {
   handleComplyTestController,
   getDeliverySimulation,
   getAccountStatus,
+  getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 import {
@@ -1203,23 +1204,26 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
+export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  const session = await getSession(sessionKeyFromArgs(args as Parameters<typeof sessionKeyFromArgs>[0], ctx.mode, ctx.userId, ctx.moduleId));
 
-  // When comply_test_controller.seed_creative_format has pre-populated
-  // formats, use them as the catalog for this session. This gives storyboards
-  // a size-controlled, deterministic result set so pagination-integrity
-  // assertions can pin has_more and cursor values reliably. The seeded set
-  // replaces (not augments) the static catalog so total_count is knowable at
-  // storyboard-author time. When no formats have been seeded, fall back to the
-  // static catalog so normal (non-compliance) callers are unaffected.
+  // When comply_test_controller.seed_creative_format has pre-populated formats,
+  // use the seeded catalog so pagination-integrity storyboards can pin
+  // has_more / cursor / total_count against a known set size. The seed pool is
+  // process-global (not session-scoped) because list_creative_formats has no
+  // tenant identity in its request schema — every call is a global catalog
+  // read. Other seed_* scenarios (seed_creative, seed_media_buy) target
+  // entities the listing call carries identity for and stay session-scoped.
+  // Falls back to the static catalog when the seed pool is empty so normal
+  // (non-compliance) callers are unaffected.
   let formats: ReturnType<typeof getFormats>;
-  const seeded = session.complyExtensions.seededCreativeFormats;
+  const seeded = getSeededCreativeFormats();
   if (seeded.size > 0) {
-    // agent_url is stamped at seed time by comply-test-controller, so each
-    // stored entry already carries a schema-valid format_id.
-    formats = Array.from(seeded.values()) as ReturnType<typeof getFormats>;
+    // Seeded entries are stored as Record<string, unknown> with the format_id
+    // stamped at seed time. Storyboards seed complete TrainingFormat-shaped
+    // fixtures (name/description/renders/assets); the cast through unknown
+    // matches that contract without re-validating at read time.
+    formats = Array.from(seeded.values()) as unknown as ReturnType<typeof getFormats>;
   } else {
     formats = getFormats();
 

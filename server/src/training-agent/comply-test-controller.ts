@@ -541,16 +541,26 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ...fixture,
       format_id: { agent_url: getAgentUrl(), id: formatId },
     };
-    const existing = session.complyExtensions.seededCreativeFormats.get(formatId);
+    // Process-global pool (not session-scoped) — list_creative_formats has no
+    // tenant identity in its request schema, so a session-scoped seed cannot
+    // reliably reach the listing call. The training agent is sandbox-only and
+    // the controller is process-scoped anyway, so global scope is correct
+    // here. Other seed_* scenarios (seed_creative, seed_media_buy) target
+    // entities the listing call carries identity for and stay session-scoped.
+    const existing = SEEDED_CREATIVE_FORMATS.get(formatId);
     if (existing) {
       if (JSON.stringify(existing) !== JSON.stringify(stored)) {
         return { success: false, error: 'INVALID_STATE', error_detail: `format_id "${formatId}" was already seeded with a different fixture — seed_creative_format is idempotent` };
       }
       return { success: true, message: `format_id "${formatId}" already seeded with the same fixture` };
     }
-    enforceMapCap(session.complyExtensions.seededCreativeFormats, formatId, 'seeded creative formats');
+    if (SEEDED_CREATIVE_FORMATS.size >= MAX_SEEDED_CREATIVE_FORMATS) {
+      return { success: false, error: 'INVALID_STATE', error_detail: `seeded creative formats cap reached (${MAX_SEEDED_CREATIVE_FORMATS})` };
+    }
+    SEEDED_CREATIVE_FORMATS.set(formatId, stored);
+    // Mirror into session state so existing tests/inspection paths still see it.
     session.complyExtensions.seededCreativeFormats.set(formatId, stored);
-    return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats in this session will use the seeded catalog` };
+    return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
   const store = createStore(session);
@@ -561,3 +571,21 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
 // fixture rejection rule across all seed calls in the process. Scoping per-
 // process keeps it aligned with the CONTROLLER_SCENARIOS list being static.
 const SEED_CACHE = createSeedFixtureCache();
+
+// Process-global pool for seed_creative_format. list_creative_formats has no
+// tenant identity in its request schema (it's a global catalog read), so a
+// session-scoped seed pool cannot reliably reach the listing call. Mirrored
+// into session state so any test that reads complyExtensions.seededCreativeFormats
+// still sees it. Test-only — sandbox controller is process-scoped by design.
+const SEEDED_CREATIVE_FORMATS = new Map<string, Record<string, unknown>>();
+const MAX_SEEDED_CREATIVE_FORMATS = 100;
+
+/** Test-only: clear the process-global seeded creative formats pool. */
+export function clearSeededCreativeFormats(): void {
+  SEEDED_CREATIVE_FORMATS.clear();
+}
+
+/** Test-only: read the process-global seeded creative formats pool. */
+export function getSeededCreativeFormats(): ReadonlyMap<string, Record<string, unknown>> {
+  return SEEDED_CREATIVE_FORMATS;
+}
