@@ -668,11 +668,11 @@
 #       on_out_of_scope: warn
 #
 # A2A wire-shape — use `check: a2a_submitted_artifact`:
-#   Verifies the cross-transport invariants for AdCP `submitted` arms over A2A:
-#   `Task.state === 'completed'`, `Task.id` /
-#   `Task.contextId` non-empty, `artifact.metadata.adcp_task_id` carries the
-#   handle, `artifact.parts[0].data.status === 'submitted'` preserves the AdCP
-#   discriminator. The check self-skips with `not_applicable` on non-A2A
+#   Asserts the A2A envelope invariants for AdCP `submitted` arms: `Task.id` /
+#   `Task.contextId` non-empty, `Task.state` normalised to `completed` (A2A 0.3
+#   wire value `"completed"`; A2A 1.0 enum `"TASK_STATE_COMPLETED"`), and the
+#   last non-null, object-typed DataPart's `data.status === 'submitted'`
+#   preserving the AdCP discriminator. Grades `not_applicable` on non-A2A
 #   transports so storyboards can include it alongside MCP-shape assertions
 #   without forking by transport.
 #
