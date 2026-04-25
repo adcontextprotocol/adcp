@@ -4611,7 +4611,6 @@
           alert(`Success! ${data.rules.length} rules created.${versionMsg}`);
           closeSynthesisModal();
           loadInsights();
-          loadRules();
           loadStats(); // Refresh config version banner
         } else {
           const error = await response.json();
