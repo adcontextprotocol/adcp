@@ -162,6 +162,19 @@ test('isNegativeStep detects error-path tests via validations and explicit flag'
   assert.equal(isNegativeStep({}), false);
 });
 
+test('isNegativeStep branches on negative_path for expect_error steps', () => {
+  // Default (no negative_path): expect_error: true skips validation
+  assert.equal(isNegativeStep({ expect_error: true }), true);
+  // schema_invalid (explicit): skips validation
+  assert.equal(isNegativeStep({ expect_error: true, negative_path: 'schema_invalid' }), true);
+  // business_rule: validates schema even though expect_error is set
+  assert.equal(isNegativeStep({ expect_error: true, negative_path: 'business_rule' }), false);
+  // sample_request_skip_schema wins over business_rule
+  assert.equal(isNegativeStep({ expect_error: true, negative_path: 'business_rule', sample_request_skip_schema: true }), true);
+  // expect_error: false with negative_path: business_rule is a no-op (no expect_error gate)
+  assert.equal(isNegativeStep({ expect_error: false, negative_path: 'business_rule' }), false);
+});
+
 test('normalizeSubstitutions replaces every live substitution dialect', () => {
   const stringSchema = { type: 'string' };
   // $-prefix forms

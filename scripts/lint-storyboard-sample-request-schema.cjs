@@ -321,18 +321,28 @@ async function validateStep({ schemaRef, payload }) {
 }
 
 /**
- * Detect whether a step is a negative/error-path test. These intentionally
- * send malformed payloads to verify the agent's error response, so their
- * sample_request is not expected to validate.
+ * Detect whether a step is a negative/error-path test whose sample_request
+ * should be skipped by schema validation.
  *
  * Detection is structural, in priority order:
  *   1. Explicit opt-out: `sample_request_skip_schema: true`
- *   2. Canonical negative-path marker: `expect_error: true`
+ *   2. Canonical negative-path marker `expect_error: true`, qualified by
+ *      `negative_path`:
+ *        - `negative_path: schema_invalid` (default when absent) — payload is
+ *          intentionally malformed; skip schema validation.
+ *        - `negative_path: business_rule` — payload is schema-valid but violates
+ *          a semantic rule; VALIDATE the sample_request even though expect_error
+ *          is set.
  *   3. Validations that assert error codes or 4xx/5xx HTTP statuses
  */
 function isNegativeStep(step) {
   if (step?.sample_request_skip_schema === true) return true;
-  if (step?.expect_error === true) return true;
+  if (step?.expect_error === true) {
+    // business_rule steps send schema-valid payloads — validate them
+    if (step.negative_path === 'business_rule') return false;
+    // schema_invalid (default) — payload is intentionally malformed, skip
+    return true;
+  }
   const validations = Array.isArray(step?.validations) ? step.validations : [];
   for (const v of validations) {
     if (v?.check === 'error_code') return true;

@@ -164,6 +164,7 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expect_error: true
+        negative_path: business_rule
         expected: |
           The buy is rejected because governance denied — the $50K buy exceeds
           the plan's $10K budget. The seller propagates the denial with findings.
@@ -175,6 +176,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
+          idempotency_key: "$generate:uuid_v4#governance_denied_create_media_buy"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

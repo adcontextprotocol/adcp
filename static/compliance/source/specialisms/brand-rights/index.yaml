@@ -144,6 +144,7 @@ phases:
         doc_ref: "/brand-protocol/tasks/get_brand_identity"
         stateful: false
         expect_error: true
+        negative_path: business_rule
         expected: |
           Reject the request with an error:
           - Error indicates the brand was not found
@@ -315,6 +316,7 @@ phases:
         doc_ref: "/brand-protocol/tasks/acquire_rights"
         stateful: true
         expect_error: true
+        negative_path: business_rule
         expected: |
           Reject the request:
           - Campaign dates are in the past
