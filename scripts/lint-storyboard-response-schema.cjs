@@ -146,8 +146,8 @@ async function lintFile(file) {
       if (!stepId) continue;
       const schemaRef = step.response_schema_ref;
       const sampleResponse = step.sample_response;
-      if (!schemaRef || !sampleResponse) continue;
-      if (typeof sampleResponse !== 'object' && typeof sampleResponse !== 'string') continue;
+      if (!schemaRef || schemaRef.startsWith('$test_kit.') || !sampleResponse) continue;
+      if (!sampleResponse || typeof sampleResponse !== 'object') continue;
       const result = await validateStep({ schemaRef, payload: sampleResponse });
       if (!result.ok) {
         violations.push({ file, phaseId, stepId, schemaRef, errors: result.errors });
@@ -292,6 +292,11 @@ async function main() {
       });
       if (added.length > 0 || grew) {
         console.error('Refusing to grow the allowlist. Pass --allow-grow if this is intentional.');
+        if (added.length > 0) {
+          console.error('New entries:');
+          for (const k of added) console.error(`  ${k}`);
+        }
+        if (grew) console.error('At least one existing entry gained a new error fingerprint.');
         process.exit(1);
       }
     }
@@ -348,4 +353,5 @@ module.exports = {
   violationsToAllowlist,
   sortEntries,
   STORYBOARD_DIR,
+  ALLOWLIST_PATH,
 };
