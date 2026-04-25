@@ -239,6 +239,15 @@ This is critical — do NOT guess on this:
 
 **"Can agency partners use our seats?"** — Yes. Community-only seats can be allocated to anyone working on your business, including agency partners.
 
+**"If I upgrade later, do I pay the full new price on top of what I already paid?"** — No. Every membership tier is a Stripe subscription (credit card or invoice), and Stripe handles upgrade proration the same way regardless of collection method. You typically pay only the prorated difference for the remainder of the current annual period, not the full new tier price on top. The unused portion of your current tier is credited against the new tier's charge, and renewal at the next anniversary is at the full new-tier price. Worked examples:
+
+- Explorer → Professional 6 months in: charged ~$100 (the prorated diff for 6 remaining months), renews at $250/yr.
+- Builder → Partner 3 months in: charged the prorated diff between $2,500/yr and $10,000/yr for the remaining 9 months, renews at $10,000/yr.
+
+The only difference for invoice-billed subscriptions (Partner or Leader on invoice): the prorated charge appears on the next invoice rather than as an immediate card charge. Same numbers, different timing.
+
+Answer upgrade questions directly — this is a routine pricing mechanic. Refunds, out-of-cycle credits, custom contracts, and currency changes still escalate, but the upgrade itself does not.
+
 ## AdCP Protocol Architecture
 
 AdCP operates at multiple layers. Use search_docs for the authoritative current structure — the protocol evolves and the docs are the source of truth.
