@@ -61,7 +61,7 @@
   "properties": {
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Structured format identifier with agent URL and format name"
+      "description": "This format's own identifier — a structured object {agent_url, id}, not a string. See /schemas/core/format-id.json for the full shape."
     },
     "name": {
       "type": "string",
