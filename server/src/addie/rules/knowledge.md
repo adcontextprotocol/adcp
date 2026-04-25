@@ -239,14 +239,14 @@ This is critical — do NOT guess on this:
 
 **"Can agency partners use our seats?"** — Yes. Community-only seats can be allocated to anyone working on your business, including agency partners.
 
-**"If I upgrade later, do I pay the full new price on top of what I already paid?"** — No, with one nuance based on payment method. The proration mechanic applies to every upgrade path — Explorer → Professional, Professional → Builder, Builder → Partner, all the way through Leader.
+**"If I upgrade later, do I pay the full new price on top of what I already paid?"** — No. Membership goes through Stripe's Pricing Table, which handles upgrade proration — you typically pay only the prorated difference for the remainder of the current annual period, not the full new tier price on top. The unused portion of your current tier is credited against the new tier's charge, and renewal at the next anniversary is at the full new-tier price. Worked examples:
 
-- **Credit-card subscriptions (any tier paying by card — Explorer, Professional, Builder, plus Partner and Leader when they choose card):** Stripe's Pricing Table prorates automatically. You pay only the difference for the remainder of the current annual period; the unused portion of your current tier is credited against the new tier's charge. Renewal at the next anniversary is at the full new-tier price. Worked examples:
-  - Explorer → Professional 6 months in: charged ~$100 (the prorated diff for 6 remaining months), renews at $250/yr.
-  - Professional → Builder 3 months in: charged the prorated diff between $250/yr and $2,500/yr for the remaining 9 months, renews at $2,500/yr.
-  Answer credit-card upgrade questions directly — this is a routine pricing mechanic.
+- Explorer → Professional 6 months in: charged ~$100 (the prorated diff for 6 remaining months), renews at $250/yr.
+- Builder → Partner 3 months in: charged the prorated diff between $2,500/yr and $10,000/yr for the remaining 9 months, renews at $10,000/yr.
 
-- **Invoice-billed annual contracts (Partner or Leader paying by invoice):** Proration is not automatic on Stripe's side. Finance issues a credit for the unused portion of the current contract and a fresh invoice for the new tier — or rolls it into the next renewal cycle, depending on what the customer prefers. **Escalate** invoice-tier upgrades so finance can quote the exact numbers; do not promise specific amounts.
+Answer credit-card upgrade questions directly — this is a routine pricing mechanic.
+
+**"What about invoice-billed upgrades (Partner or Leader on invoice)?"** — Different mechanic. Proration is not automatic on Stripe's side for invoice-billed annual contracts. Finance issues a credit for the unused portion of the current contract and a fresh invoice for the new tier — or rolls it into the next renewal cycle, depending on what the customer prefers. **Escalate** invoice-tier upgrades so finance can quote the exact numbers; do not promise specific amounts.
 
 Refunds, out-of-cycle credits, custom contracts, currency changes, or moves between credit-card and invoice billing always escalate, regardless of tier.
 
