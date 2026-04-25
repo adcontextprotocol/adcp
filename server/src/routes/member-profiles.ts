@@ -28,7 +28,6 @@ import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain, assertValidBrandDomain } from "../services/identifier-normalization.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
-import { fetchAndMatchClaimToken, placementUrlFor } from "../services/brand-claim-challenge.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
@@ -1182,9 +1181,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
-  // POST /api/me/member-profile/brand-claim/issue — issue a file-placement
-  // domain ownership challenge (#3176). Returns the token + the URL where it
-  // must be published; the caller publishes the file and then calls /verify.
+  // POST /api/me/member-profile/brand-claim/issue — start a WorkOS-backed
+  // domain ownership challenge (#3176). Defers to the WorkOS Domain Verification
+  // API, which generates the DNS TXT record and runs the lookup. We avoid
+  // rolling our own challenge primitive: WorkOS already enforces "one verified
+  // domain per org" and emits webhooks on state change, both of which we want.
   router.post('/brand-claim/issue', requireAuth, async (req, res) => {
     try {
       const userRow = await query<{ primary_organization_id: string | null }>(
@@ -1194,6 +1195,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = userRow.rows[0]?.primary_organization_id;
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with this account' });
+      }
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       }
 
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
@@ -1205,23 +1209,68 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid brand domain' });
       }
 
-      const { token, expiresAt } = await brandDb.issueBrandClaimChallenge(domain, orgId);
-      return res.json({
-        domain,
-        token,
-        placement_url: placementUrlFor(domain, token),
-        expires_at: expiresAt.toISOString(),
-        instructions: `Publish the token (just the token text, no quotes or whitespace) at the placement_url, then call POST /api/me/member-profile/brand-claim/verify. Token expires in 7 days.`,
-      });
+      // If the domain is already attached to this caller's org, surface its
+      // current state instead of erroring — idempotent re-issue.
+      try {
+        const existing = await workos.organizations.getOrganization(orgId);
+        const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
+        if (existingDomain) {
+          return res.json({
+            domain,
+            workos_domain_id: existingDomain.id,
+            state: existingDomain.state,
+            verification_strategy: existingDomain.verificationStrategy ?? null,
+            verification_token: existingDomain.verificationToken ?? null,
+            verification_prefix: existingDomain.verificationPrefix ?? null,
+            instructions: existingDomain.state === 'verified'
+              ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
+              : 'Domain is pending. Publish the DNS TXT record (verification_prefix.{domain} = verification_token), then call POST /brand-claim/verify.',
+          });
+        }
+      } catch (err) {
+        logger.debug({ err, orgId }, 'brand-claim/issue: org pre-check failed, will attempt create');
+      }
+
+      try {
+        const created = await workos.organizationDomains.create({
+          organizationId: orgId,
+          domain,
+        });
+        return res.json({
+          domain,
+          workos_domain_id: created.id,
+          state: created.state,
+          verification_strategy: created.verificationStrategy ?? 'dns',
+          verification_token: created.verificationToken ?? null,
+          verification_prefix: created.verificationPrefix ?? null,
+          instructions: 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+        });
+      } catch (err: any) {
+        // WorkOS returns a 422 / 409 with a "domain already exists" body when
+        // another org has the same domain registered. Surface as 409 so the
+        // member can route through the dispute path; don't leak which org.
+        const status = err?.status ?? err?.response?.status;
+        if (status === 422 || status === 409) {
+          return res.status(409).json({
+            error: 'Domain already registered',
+            message: 'This domain is already registered to another organization. Open a brand-ownership escalation if the assignment is wrong.',
+            domain,
+          });
+        }
+        logger.error({ err, orgId, domain }, 'workos.organizationDomains.create failed');
+        return res.status(500).json({ error: 'Failed to issue domain verification challenge' });
+      }
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
       return res.status(500).json({ error: 'Failed to issue brand claim challenge' });
     }
   });
 
-  // POST /api/me/member-profile/brand-claim/verify — fetch the placement URL,
-  // confirm the body matches the issued token, and (when the cross-org / orphan
-  // rules allow) atomically claim ownership.
+  // POST /api/me/member-profile/brand-claim/verify — ask WorkOS to run the
+  // DNS lookup against its issued challenge. On success WorkOS marks the
+  // domain Verified, emits an organization_domain.verified webhook, and we
+  // reflect the result into the brand registry inline (for immediate effect)
+  // — the webhook handler also writes through, idempotently.
   router.post('/brand-claim/verify', requireAuth, async (req, res) => {
     try {
       const userRow = await query<{ primary_organization_id: string | null }>(
@@ -1232,70 +1281,69 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with this account' });
       }
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      }
 
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
       if (!rawDomain) return res.status(400).json({ error: 'domain is required' });
       const domain = canonicalizeBrandDomain(rawDomain);
-
-      const challenge = await brandDb.getBrandClaimChallenge(domain);
-      if (!challenge) {
-        return res.status(404).json({ error: 'No outstanding claim challenge for this domain. Call /brand-claim/issue first.' });
-      }
-      if (challenge.orgId !== orgId) {
-        // Don't reveal that another org is claiming this domain — same shape
-        // as a missing challenge. The actual claim conflict surfaces only if
-        // both verify successfully and we land in the cross-org branch below.
-        return res.status(404).json({ error: 'No outstanding claim challenge for this domain.' });
-      }
-      if (challenge.expired) {
-        return res.status(410).json({ error: 'Claim challenge expired. Call /brand-claim/issue to issue a new one.' });
-      }
-
-      const fetchResult = await fetchAndMatchClaimToken(domain, challenge.token);
-      if (!fetchResult.ok) {
-        return res.status(400).json({ error: 'Claim challenge verification failed', message: fetchResult.reason });
-      }
-
-      // Re-read the brand row to apply ownership rules atomically with the
-      // verified-claim conclusion. Verified > unverified — if there's a
-      // current owner that isn't us AND they're verified, we don't transfer;
-      // we file an escalation so an admin can adjudicate. Otherwise the
-      // claim is applied (claim, transfer-from-unverified, or claim-of-orphan).
-      const hosted = await brandDb.getHostedBrandByDomain(domain);
-      if (hosted && hosted.workos_organization_id && hosted.workos_organization_id !== orgId && hosted.domain_verified) {
-        // Both parties have proven control. Don't auto-resolve; route to humans.
-        const callerName = [req.user!.firstName, req.user!.lastName].filter(Boolean).join(' ') || req.user!.email;
-        const incumbentOrg = await orgDb.getOrganization(hosted.workos_organization_id).catch(() => null);
-        const incumbentName = incumbentOrg?.name ?? hosted.workos_organization_id;
-        const escalation = await createEscalation({
-          workos_user_id: req.user!.id,
-          user_email: req.user!.email,
-          user_display_name: callerName,
-          category: 'sensitive_topic',
-          priority: 'normal',
-          summary: `Verified domain claim conflict: ${domain} — ${incumbentName} (incumbent) vs ${callerName}'s org`,
-          original_request: `${callerName} passed file-placement domain verification for ${domain}, but ${incumbentName} also has verified ownership.`,
-          addie_context: `Both parties have proven control of ${domain} via the file-placement challenge. Incumbent: ${hosted.workos_organization_id} (${incumbentName}). Claimant: ${orgId}. Resolve via transfer_brand_ownership after confirming the legitimate next owner out of band.`,
-        }).catch(escalErr => {
-          logger.error({ err: escalErr, domain }, 'Failed to file verified-claim escalation');
-          return null;
-        });
-        return res.status(409).json({
-          error: 'Verified incumbent — claim filed for review',
-          message: 'Domain ownership is currently verified by another organization. We filed a ticket so the team can review.',
-          domain,
-          escalation_id: escalation?.id ?? null,
-          verified: true,
-          transferred: false,
-        });
-      }
-
-      // Apply the claim: assert ownership, mark verified, clear orphan flag,
-      // clear the challenge token. By default starts fresh — the caller can
-      // adopt the prior manifest separately via PUT /brand-identity.
       const adoptPriorManifest = req.body?.adopt_prior_manifest === true;
+
+      // Look up the WorkOS domain id for this org+domain.
+      const existing = await workos.organizations.getOrganization(orgId);
+      const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
+      if (!existingDomain) {
+        return res.status(404).json({ error: 'No outstanding domain challenge for this organization. Call /brand-claim/issue first.' });
+      }
+
+      let verified;
+      // Cast through string: the SDK's getOrganization() narrows domain.state
+      // to Pending|Failed (verified entries get listed via verifyOrganizationDomain
+      // and arrive on a different branch), but we accept the wider union here
+      // because the data CAN reach this path on legacy/already-verified domains.
+      const existingState = String(existingDomain.state);
+      if (existingState === 'verified' || existingState === 'legacy_verified') {
+        verified = existingDomain;
+      } else {
+        try {
+          // Some SDK shapes accept a string id; older shapes use { domainId }.
+          // Pass the id directly which is the modern signature.
+          verified = await (workos.organizationDomains as { verify: (id: string) => Promise<{ state: string }> })
+            .verify(existingDomain.id);
+        } catch (err: any) {
+          const status = err?.status ?? err?.response?.status;
+          // WorkOS returns 422 when the DNS record isn't found / doesn't match.
+          if (status === 422 || status === 400) {
+            return res.status(400).json({
+              error: 'Domain verification failed',
+              message: 'WorkOS could not find a matching DNS TXT record. Make sure verification_prefix.{domain} is published with the value verification_token, then retry.',
+              domain,
+            });
+          }
+          logger.error({ err, orgId, domain }, 'workos.organizationDomains.verify failed');
+          return res.status(500).json({ error: 'Failed to verify domain' });
+        }
+      }
+
+      // String-cast the comparison: the SDK's Pending/Failed narrowing in the
+      // verify-call branch would otherwise drop 'legacy_verified' as
+      // unreachable, but we need to accept it from the early-return path too.
+      const verifiedState = String(verified.state);
+      if (verifiedState !== 'verified' && verifiedState !== 'legacy_verified') {
+        return res.status(400).json({
+          error: 'Domain still pending',
+          message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take a few minutes — try again.',
+          domain,
+          state: verifiedState,
+        });
+      }
+
+      // Mirror the verified state into the brand registry. The webhook will
+      // also do this; both writes are idempotent so whichever lands first wins.
       const updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
-      logger.info({ domain, orgId, transferredFrom: hosted?.workos_organization_id ?? null, adoptPriorManifest }, 'Brand claim verified and applied');
+      logger.info({ domain, orgId, adoptPriorManifest }, 'Brand claim verified via WorkOS and applied to registry');
+
       return res.json({
         domain,
         verified: true,

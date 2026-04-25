@@ -560,6 +560,27 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
     }, 'Upserted organization domain');
+
+    // Sync the brand registry: if WorkOS just confirmed the domain is owned
+    // by this org, mirror that into the brands row (#3176). This is the
+    // back half of the WorkOS-driven brand-claim flow — the verify route
+    // already wrote inline for immediate effect; this catches webhook-only
+    // verifications (e.g., admins flipping state via the WorkOS dashboard).
+    if (domainData.state === 'verified') {
+      try {
+        const { BrandDatabase } = await import('../db/brand-db.js');
+        const brandDb = new BrandDatabase();
+        await brandDb.applyVerifiedBrandClaim(normalizedDomain, domainData.organization_id);
+        logger.info({
+          orgId: domainData.organization_id,
+          domain: normalizedDomain,
+        }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        // Don't block the webhook on brand-registry sync errors. The verify
+        // route's inline write covers the common case; this is a backstop.
+        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
