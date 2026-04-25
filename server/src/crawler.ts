@@ -4,6 +4,7 @@ import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
+import { PublisherDatabase, type AdagentsManifest } from "./db/publisher-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
@@ -27,6 +28,7 @@ export class CrawlerService {
   private adAgentsManager: AdAgentsManager;
   private brandManager: BrandManager;
   private brandDb: BrandDatabase;
+  private publisherDb: PublisherDatabase;
   private memberDb: MemberDatabase;
   private capabilityDiscovery: CapabilityDiscovery;
   private healthChecker: HealthChecker;
@@ -40,6 +42,7 @@ export class CrawlerService {
     this.adAgentsManager = new AdAgentsManager();
     this.brandManager = new BrandManager();
     this.brandDb = new BrandDatabase();
+    this.publisherDb = new PublisherDatabase();
     this.memberDb = new MemberDatabase();
     this.capabilityDiscovery = new CapabilityDiscovery();
     this.healthChecker = new HealthChecker();
@@ -378,6 +381,8 @@ export class CrawlerService {
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
+            await this.cacheAdagentsManifest(pubConfig.domain, validation.raw_data as AdagentsManifest);
+
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
@@ -429,6 +434,8 @@ export class CrawlerService {
           if (validation.valid && validation.raw_data?.authorized_agents && !processedDomains.has(domain)) {
             await this.federatedIndex.markPublisherHasValidAdagents(domain);
             processedDomains.add(domain);
+
+            await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
@@ -601,6 +608,25 @@ export class CrawlerService {
    */
   getFederatedIndex(): FederatedIndexService {
     return this.federatedIndex;
+  }
+
+  /**
+   * Cache an adagents.json manifest into the publishers overlay (PR 2 of #3177)
+   * and project its properties into the property catalog. Runs in a single
+   * transaction so the publishers cache and the catalog projection are
+   * consistent. The legacy discovered_properties / agent_property_authorizations
+   * writes still happen separately via recordPropertiesForAgent — both run
+   * during the same release as a fallback before PR 5 drops the old tables.
+   *
+   * Failure here is logged but does not abort the rest of the crawl: the
+   * existing tables remain the source of truth until the reader swap in PR 4.
+   */
+  private async cacheAdagentsManifest(domain: string, manifest: AdagentsManifest): Promise<void> {
+    try {
+      await this.publisherDb.upsertAdagentsCache({ domain, manifest });
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+    }
   }
 
   /**
