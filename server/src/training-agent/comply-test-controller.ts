@@ -453,9 +453,21 @@ function createStore(session: SessionState): TestControllerStore {
   };
 }
 
+// ── Local scenarios (not in SDK's CONTROLLER_SCENARIOS yet) ───────
+
+/** Scenarios this wrapper handles before delegating to the SDK dispatcher. The SDK's
+ * `CONTROLLER_SCENARIOS` enum is closed; new scenarios from spec PRs land here until
+ * the SDK adopts them. Listed in the tool's input enum and merged into list_scenarios
+ * responses so storyboards can detect support. */
+const LOCAL_SCENARIOS = ['force_create_media_buy_arm'] as const;
+
 // ── Tool definition ───────────────────────────────────────────────
 
-const SCENARIO_ENUM = ['list_scenarios', ...Object.values(CONTROLLER_SCENARIOS)] as const;
+const SCENARIO_ENUM = [
+  'list_scenarios',
+  ...Object.values(CONTROLLER_SCENARIOS),
+  ...LOCAL_SCENARIOS,
+] as const;
 
 // JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
 // top-level `account` (sandbox gate) and `brand` (session keying) — both
@@ -520,8 +532,118 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  // Pre-dispatch local scenarios the SDK doesn't know about yet. The SDK's
+  // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before
+  // we delegate. New scenarios from spec PRs land here until adopted upstream.
+  const scenario = rawArgs.scenario;
+  if (scenario === 'force_create_media_buy_arm') {
+    return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+
   const store = createStore(session);
-  return handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+  const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+
+  // Augment list_scenarios with our local scenarios so storyboards detect support.
+  // The SDK answers from store-method presence, which doesn't see the local handlers.
+  if (
+    scenario === 'list_scenarios'
+    && sdkResponse
+    && typeof sdkResponse === 'object'
+    && (sdkResponse as { success?: boolean }).success === true
+    && Array.isArray((sdkResponse as { scenarios?: unknown }).scenarios)
+  ) {
+    const r = sdkResponse as { success: true; scenarios: string[] } & Record<string, unknown>;
+    return { ...r, scenarios: [...r.scenarios, ...LOCAL_SCENARIOS] };
+  }
+
+  return sdkResponse;
+}
+
+/**
+ * Register a single-shot directive that shapes the next create_media_buy call from
+ * this session into a specific arm. Spec: `force_create_media_buy_arm` in
+ * `comply-test-controller-request.json` and `docs/building/implementation/comply-test-controller.mdx`.
+ *
+ * Implements `arm: 'submitted'` only. `arm: 'input-required'` is reserved in the
+ * spec but cannot be modeled today: there's no `INPUT_REQUIRED` value in the
+ * canonical error-code enum (it's a task-status), and `create-media-buy-response.json`
+ * does not yet have a fourth oneOf branch for the input-required envelope. Resolving
+ * either of those is a spec change tracked separately; until then the training-agent
+ * rejects the arm with INVALID_PARAMS so callers see a clear failure rather than an
+ * off-spec response shape.
+ *
+ * The directive is consumed by `handleCreateMediaBuy` on the next call and cleared.
+ * A second `force_create_media_buy_arm` before consumption overwrites the prior
+ * directive — matches the spec's "the next call" semantics. Buyer-side
+ * `idempotency_key` replay still wins for the submitted arm: the SDK's request-
+ * idempotency cache wraps the handler, so a replayed create_media_buy returns the
+ * cached submitted response without re-evaluating the empty directive slot.
+ */
+function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'force_create_media_buy_arm requires params',
+    };
+  }
+
+  const arm = params.arm;
+  if (arm === 'input-required') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail:
+        "arm: 'input-required' is reserved in the spec but not yet implementable on a conformant response shape. "
+        + "Use arm: 'submitted' or omit force_create_media_buy_arm.",
+    };
+  }
+  if (arm !== 'submitted') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `Invalid arm: ${String(arm)}. Must be 'submitted'.`,
+    };
+  }
+
+  const taskId = params.task_id;
+  if (typeof taskId !== 'string' || taskId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: "task_id is required when arm = 'submitted'",
+    };
+  }
+  if (taskId.length > 128) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id exceeds maxLength 128',
+    };
+  }
+
+  const message = params.message;
+  if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'message must be a string up to 2000 characters',
+    };
+  }
+
+  session.complyExtensions.forcedCreateMediaBuyArm = {
+    arm,
+    taskId,
+    message: typeof message === 'string' ? message : undefined,
+  };
+
+  return {
+    success: true,
+    forced: { arm, task_id: taskId },
+    message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
 }
 
 // Module-level seed-fixture cache enforces the spec's same-ID-different-

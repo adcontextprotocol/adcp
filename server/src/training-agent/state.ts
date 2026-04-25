@@ -282,6 +282,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       budgetSimulations: asMap(hydratedComply.budgetSimulations, fresh.complyExtensions.budgetSimulations),
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
+      forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
     createdAt: hydrated.createdAt instanceof Date ? hydrated.createdAt : fresh.createdAt,
