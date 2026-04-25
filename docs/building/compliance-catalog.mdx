@@ -140,6 +140,10 @@ The storyboard runner:
 3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
 4. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
 
+<Warning>
+**Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
+</Warning>
+
 If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/validate-your-agent) for how to run the suite locally.
 
 ## Naming conventions
