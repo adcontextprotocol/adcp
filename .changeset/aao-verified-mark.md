@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
 spec(conformance): AAO Verified mark via continuous delivery observability (transitional)
