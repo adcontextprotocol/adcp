@@ -43,26 +43,32 @@ jobs:
             # 380→384 / 52→53 after implementing force_create_media_buy_arm
             # in the training-agent: the create_media_buy_async storyboard
             # (#3081) now passes 4 steps instead of grading not_applicable.
+            # 384→388 after bumping @adcp/client to 5.18.0 (#3191) and
+            # implementing force_task_completion (#3194).
             # Passing-step asymmetry with framework mode is intentional:
             # the two modes declare different capabilities, so the
             # storyboard runner skips a different subset of steps in each.
             # Both modes pass every step they run.
             min_clean_storyboards: 53
-            min_passing_steps: 384
+            min_passing_steps: 388
           - mode: framework
             flag_value: '1'
             # 390→393 after bumping @adcp/client to 5.15 + seller catalog
             # alignment (see legacy-mode comment).
             # 393→370 / 52→41 after bumping @adcp/client to 5.17.0: the
             # framework dispatch tightened request-side schema validation
-            # and the bundled storyboards send additional properties their
-            # own request schemas now reject (sync_plans, list_property_lists,
+            # and the bundled storyboards sent additional properties their
+            # own request schemas rejected (sync_plans, list_property_lists,
             # delete_property_list). Tracked at adcontextprotocol/adcp-client#940.
-            # Restore to 52 / 393 once the upstream fix lands (5.17.1+).
             # 370→374 / 41→42 after implementing force_create_media_buy_arm
             # (#3081 follow-up) — same +1 storyboard / +4 steps as legacy.
-            min_clean_storyboards: 42
-            min_passing_steps: 374
+            # 374→401 / 42→53 after bumping @adcp/client to 5.18.0 (#3191)
+            # which brought in adcp-client#943's schema-aware brand/account
+            # injection — the upstream fix for #940. Framework parity with
+            # legacy fully restored; passing-step asymmetry remains because
+            # framework declares more capabilities (more steps run, all pass).
+            min_clean_storyboards: 53
+            min_passing_steps: 401
     steps:
       - uses: actions/checkout@v6
 
