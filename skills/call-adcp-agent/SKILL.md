@@ -25,7 +25,7 @@ Walk these in order on first contact:
 1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool NAMES. AdCP MCP servers no longer publish per-tool parameter schemas in `tools/list` — everything shows `{type: 'object', properties: {}}`. Don't try to infer shape from here.
 2. **`get_adcp_capabilities`**: returns supported protocols (`media_buy`, `signals`, `creative`, …), AdCP major versions, feature flags. Tells you WHICH tools this agent supports, not how to call them.
 3. **`get_schema(tool_name)`** *(when the agent exposes it — pending standardization in [#3057](https://github.com/adcontextprotocol/adcp/issues/3057), not yet universal)*: returns the JSON Schema for a tool's request/response. Preferred over reading bundled schemas when available.
-4. **Bundled schemas** (offline, authoritative): every SDK ships the AdCP JSON Schemas locally, but the path differs by SDK — `@adcp/client` puts them at `schemas/cache/<adcp-version>/bundled/`, the spec repo source at `dist/schemas/<adcp-version>/bundled/`, and Python/Go SDKs use their own conventions. **Don't hardcode a path** — let the SDK's loader find them, or ask the developer. Each schema is `<protocol>/<tool>-{request,response}.json` once you locate the bundle. SDKs run a sync command (`npm run sync-schemas` in `@adcp/client`, equivalents elsewhere) that pulls the canonical bundle from `https://adcontextprotocol.org/protocol/<version>.tgz`.
+4. **Bundled schemas** (offline, authoritative): every SDK ships the AdCP JSON Schemas locally. Path differs by SDK — spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/client` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. **Don't hardcode a path** — let the SDK's loader find them, or ask the developer. Each schema is `<protocol>/<tool>-{request,response}.json` once you locate the bundle. The canonical source for every SDK is `https://adcontextprotocol.org/protocol/<version>.tgz`.
 
 ## Non-obvious rules every buyer must follow
 
@@ -244,7 +244,7 @@ Priority order:
 
 1. Re-read the failure's `issues[]`. The pointer list plus this skill covers 80% of cases.
 2. Call `get_schema(tool_name)` if the agent exposes it (see [#3057](https://github.com/adcontextprotocol/adcp/issues/3057) for the pending standard).
-3. Read the bundled JSON Schema for `<protocol>/<tool>-request.json` from your SDK's local schema cache (path differs by SDK — `@adcp/client` uses `schemas/cache/<version>/bundled/`, others use their own conventions; let the SDK's loader find it).
+3. Read the bundled JSON Schema for `<protocol>/<tool>-request.json` — see Discovery chain step 4 for path resolution. If you can't locate the SDK's schema cache, ask the developer or fall back to `get_schema()`.
 4. Consult the per-protocol skill (`adcp-media-buy`, `adcp-creative`, …) for specialism-specific patterns.
 
 ## Related
@@ -252,4 +252,4 @@ Priority order:
 - [Calling an agent (docs)](https://adcontextprotocol.org/docs/protocol/calling-an-agent) — human-readable narrative form of this skill
 - `skills/adcp-media-buy/`, `skills/adcp-creative/`, `skills/adcp-signals/`, `skills/adcp-governance/`, `skills/adcp-si/`, `skills/adcp-brand/` — per-protocol task skills (layered on top of this one)
 - `@adcp/client/skills/build-seller-agent/SKILL.md` — building agents on the other side of the call
-- Bundled JSON Schemas — canonical for every tool, version-pinned. Spec repo: `dist/schemas/<version>/bundled/`. `@adcp/client` after sync: `schemas/cache/<version>/bundled/`. Other SDKs: see their docs. Pulled from the protocol tarball (`/protocol/<version>.tgz`).
+- Bundled JSON Schemas — canonical for every tool, version-pinned. Path differs by SDK (see Discovery chain step 4). Pulled from the protocol tarball at `/protocol/<version>.tgz`.
