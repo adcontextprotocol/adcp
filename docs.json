@@ -366,6 +366,7 @@
                           "docs/governance/campaign/index",
                           "docs/governance/campaign/safety-model",
                           "docs/governance/campaign/specification",
+                          "docs/governance/campaign/audit-trail",
                           {
                             "group": "Tasks",
                             "pages": [
@@ -861,6 +862,7 @@
                       "docs/governance/campaign/index",
                       "docs/governance/campaign/safety-model",
                       "docs/governance/campaign/specification",
+                      "docs/governance/campaign/audit-trail",
                       {
                         "group": "Tasks",
                         "pages": [

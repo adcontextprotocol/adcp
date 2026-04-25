@@ -477,12 +477,20 @@ function extractSmartExcerpt(content: string, query: string, maxLength: number =
 /**
  * Tool handlers
  * @param slackUserId - Optional Slack user ID for access control on private channels
+ * @param options.anonymous - When true, restrict resource sources to curated/rss
+ *   and strip Addie-generated notes. Anonymous web/MCP callers should pass true
+ *   so attacker-controlled URLs queued via `bookmark_resource` (Slack-authenticated
+ *   path) cannot become a prompt-injection vector for unauthenticated sessions.
  */
-export function createKnowledgeToolHandlers(slackUserId?: string): Map<
+export function createKnowledgeToolHandlers(
+  slackUserId?: string,
+  options: { anonymous?: boolean } = {}
+): Map<
   string,
   (input: Record<string, unknown>) => Promise<string>
 > {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  const anonymous = options.anonymous === true;
 
   handlers.set('search_docs', async (input) => {
     const startTime = Date.now();
@@ -790,6 +798,7 @@ ${formatted}
         limit,
         tags,
         minQuality,
+        excludeUserSubmitted: anonymous,
       });
 
       if (results.length === 0) {
@@ -805,6 +814,12 @@ ${formatted}
             ? resource.relevance_tags.join(', ')
             : 'No tags';
 
+          // Anonymous callers don't see addie_notes — those are LLM-generated from
+          // arbitrary fetched URL content and could carry prompt-injection text.
+          const addieNotesBlock = !anonymous && resource.addie_notes
+            ? `**Addie's Take:** ${resource.addie_notes}`
+            : '';
+
           return `### ${i + 1}. ${resource.title}
 **Quality:** ${qualityStars}
 **Tags:** ${tagsDisplay}
@@ -812,7 +827,7 @@ ${formatted}
 
 ${resource.summary || resource.headline}
 
-${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
+${addieNotesBlock}`;
         })
         .join('\n\n---\n\n');
 
@@ -875,6 +890,7 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
         topic,
         tags,
         minQuality: 3, // Only show quality content
+        excludeUserSubmitted: anonymous,
       });
 
       if (results.length === 0) {
@@ -897,6 +913,12 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
             year: 'numeric',
           });
 
+          // Anonymous callers don't see addie_notes — those are LLM-generated from
+          // arbitrary fetched URL content and could carry prompt-injection text.
+          const addieNotesBlock = !anonymous && article.addie_notes
+            ? `**Addie's Take:** ${article.addie_notes}`
+            : '';
+
           return `### ${i + 1}. ${article.title}
 **Date:** ${dateStr} | **Quality:** ${qualityStars}
 **Tags:** ${tagsDisplay}
@@ -904,7 +926,7 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
 
 ${article.summary || 'No summary available.'}
 
-${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
+${addieNotesBlock}`;
         })
         .join('\n\n---\n\n');
 

@@ -1,17 +1,17 @@
 ---
 name: adcp-governance
-description: Execute AdCP Governance Protocol operations with governance agents - manage property lists, collection lists, and content standards for brand safety and campaign compliance. Use when users want to create include/exclude lists, set up brand safety rules, or validate content delivery.
+description: Execute AdCP Governance Protocol operations with governance agents - manage property lists, collection lists, content standards, and campaign governance (plans, checks, outcomes, audit trail). Use when users want to create include/exclude lists, set up brand safety rules, validate content delivery, register campaign plans, validate actions against policy, or produce internal/shareable audit trails.
 ---
 
 # AdCP Governance Protocol
 
-This skill enables you to execute the AdCP Governance Protocol with governance agents. Covers three areas: property lists (site-level targeting), collection lists (program-level targeting), and content standards (brand safety rules).
+This skill enables you to execute the AdCP Governance Protocol with governance agents. Covers four areas: property lists (site-level targeting), collection lists (program-level targeting), content standards (brand safety rules), and campaign governance (plans, checks, outcomes, audit trail).
 
 > **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
 
 ## Overview
 
-The Governance Protocol provides 17 standardized tasks across three areas:
+The Governance Protocol provides 21 standardized tasks across four areas:
 
 ### Property Lists
 | Task | Purpose | Response Time |
@@ -42,6 +42,16 @@ The Governance Protocol provides 17 standardized tasks across three areas:
 | `get_media_buy_artifacts` | Get creatives for compliance review | ~5s |
 | `validate_content_delivery` | Audit delivery compliance | ~10-60s |
 
+### Campaign Governance
+| Task | Purpose | Response Time |
+|------|---------|---------------|
+| `sync_plans` | Push or update a campaign plan with budget authority and policies | ~1s |
+| `check_governance` | Validate an action (intent or execution) against the plan | ~1-5s |
+| `report_plan_outcome` | Report a completed action so plan budget state advances | ~1s |
+| `get_plan_audit_logs` | Retrieve governance state, budget tracking, and audit trail | ~1-5s |
+
+> **Experimental in 3.0.** Campaign governance may change between 3.x releases with at least 6 weeks' notice. Sellers MUST declare `governance.campaign` in `experimental_features` to participate. See [experimental status](/docs/reference/experimental-status).
+
 ## Typical Workflow
 
 ### Property Lists (site-level)
@@ -59,6 +69,13 @@ The Governance Protocol provides 17 standardized tasks across three areas:
 1. **Create standards**: `create_content_standards` with rules
 2. **Calibrate**: `calibrate_content` with test samples to validate configuration
 3. **Monitor**: `get_media_buy_artifacts` + `validate_content_delivery` for ongoing compliance
+
+### Campaign Governance
+1. **Sync governance agents** to seller accounts via `sync_governance` (lives in the Accounts protocol)
+2. **Register the plan**: `sync_plans` with budget authority, channel allocation, and resolved policy IDs
+3. **Validate actions**: `check_governance` on intent (pre-discovery) and execution (pre-buy). Returns an opaque `governance_context` token the seller echoes on subsequent checks.
+4. **Report outcomes**: `report_plan_outcome` so committed/remaining budget advances
+5. **Audit and produce shareable views**: `get_plan_audit_logs` filtered by `governance_contexts` for the requesting party. See [audit trail: internal vs shareable views](/docs/governance/campaign/audit-trail).
 
 ---
 
@@ -416,6 +433,99 @@ Validate delivered content against content standards.
 
 ---
 
+### sync_plans
+
+Register or update a campaign plan that defines authorized parameters (budget, channels, policies) for an orchestrator's autonomous action.
+
+**Request:**
+```json
+{
+  "plan_id": "plan_q1_2026_launch",
+  "plan_version": 1,
+  "budget": { "authorized": 500000, "currency": "USD" },
+  "channel_allocation": { "olv": 0.55, "display": 0.30, "audio": 0.15 },
+  "policies": ["us_coppa", "alcohol_advertising"],
+  "human_review_required": false
+}
+```
+
+**Key fields:**
+- `plan_id` (string, required): Stable plan identifier
+- `plan_version` (integer, required): Increment on every modification — checks bind to a version
+- `budget.authorized` (number, required): Total spend authority across all governed actions on this plan
+- `policies` (array, optional): Registry policy IDs that govern this plan. Inline `custom_policies` may add restrictions but cannot relax registry policies.
+- `human_review_required` (boolean, optional): Force human review on all actions. Auto-set true when any resolved policy has `requires_human_review: true`.
+
+---
+
+### check_governance
+
+Validate an action against the plan. Called twice in the lifecycle: once on intent (pre-discovery), once on execution (pre-buy). Sellers MUST call execution checks independently using credentials synced via `sync_governance`.
+
+**Request (execution check):**
+```json
+{
+  "plan_id": "plan_q1_2026_launch",
+  "plan_version": 1,
+  "purchase_type": "media_buy",
+  "tool": "create_media_buy",
+  "payload": { "...": "the create_media_buy request body" },
+  "governance_context": "gc_mb_seller_456"
+}
+```
+
+**Key fields:**
+- `purchase_type` (enum, required): `media_buy`, `rights_license`, `signal_activation`, or `creative_services`
+- `governance_context` (string, optional): Echoed on subsequent checks for the same governed action. The agent issues this on the first check and the buyer attaches it to the action envelope.
+- `tool` (string, required): Which AdCP tool is being authorized
+- `payload` (object, required): The full request body the orchestrator/seller would otherwise send
+
+**Response status:** `approved`, `denied`, or `conditions`. On `denied`, read `governance_context.findings[]` to locate the failed rule and correct the payload.
+
+---
+
+### report_plan_outcome
+
+Report the result of a governed action so plan budget and state advance.
+
+**Request:**
+```json
+{
+  "plan_id": "plan_q1_2026_launch",
+  "governance_context": "gc_mb_seller_456",
+  "outcome": "completed",
+  "committed_budget": 150000
+}
+```
+
+**Key fields:**
+- `governance_context` (string, required): The token issued on the original check
+- `outcome` (enum, required): `completed`, `cancelled`, `failed`, or `delivery` (for ongoing pacing reports)
+- `committed_budget` (number, required for `completed`): Net budget committed by this action
+
+---
+
+### get_plan_audit_logs
+
+Retrieve governance state, budget tracking, and audit trail for one or more plans.
+
+**Request:**
+```json
+{
+  "plan_ids": ["plan_q1_2026_launch"],
+  "governance_contexts": ["gc_mb_seller_456"],
+  "include_entries": true
+}
+```
+
+**Key fields:**
+- `plan_ids` / `portfolio_plan_ids` / `governance_contexts` (at least one required): Scope the query
+- `include_entries` (boolean, optional): Return the full audit trail. Default `false` returns summary only.
+
+**Producing a shareable view:** filter `governance_contexts` to the requesting party's actions and strip plan-level aggregates (`budget.*`, `channel_allocation.*`, `summary.drift_metrics`) before forwarding. See [audit trail: internal vs shareable views](/docs/governance/campaign/audit-trail).
+
+---
+
 ## Key Concepts
 
 ### Property Lists vs Collection Lists
@@ -432,6 +542,16 @@ Validate delivered content against content standards.
 
 Property and collection lists combine static selections with dynamic filters. Use `resolve: true` on get operations to see the final resolved set of properties or collections.
 
+### Three invariants for audit and disclosure decisions
+
+These three properties of campaign governance shape what an orchestrator can disclose, can rely on a counterparty having, and cannot work around. Surface them when audit-trail design or counterparty disclosure decisions come up.
+
+1. **Inline policies are additive-only over registry policies.** A buyer's bespoke `custom_policies` (or inline `policy` entries on a plan) may add restrictions on top of registry-sourced policies. They MUST NOT relax, override, or disable registry policies. Counterparties who see `policies_evaluated: ["us_coppa"]` can trust the registry version of `us_coppa` was applied at its declared `enforcement` level.
+2. **`governance_context` is the seller-visible correlation token; full plan/budget data is buyer-side.** The seller sees the opaque token they were issued and the entries scoped to it. Plan-level totals (`budget.authorized`, `channel_allocation`, `drift_metrics`) belong to the buyer's internal view and are never shared by default.
+3. **`plan_hash` is the cryptographic attestation surface.** `base64url_no_pad(SHA-256(JCS(plan_payload)))` over the plan revision the check evaluated. Any party with the plan revision can recompute and byte-compare. This is what makes a four-field shareable attestation (`governance_context`, `status`, `plan_hash`, `policies_evaluated`) cryptographically meaningful — counterparties don't have to trust the buyer's summary.
+
+> A related working-group adoption pattern — `effective_date` enabling informational-before-enforcement of new policies — lives in [Policy Registry](/docs/governance/policy-registry); it shapes registry rollout rather than per-check disclosure decisions.
+
 ---
 
 ## Error Handling
@@ -442,3 +562,5 @@ Common error codes:
 - `STANDARDS_NOT_FOUND`: Invalid standards_id
 - `UNAUTHORIZED`: Not authorized to access this resource
 - `VALIDATION_ERROR`: Invalid filter or rule configuration
+- `PLAN_NOT_FOUND`: No plan with this ID, or the principal is not authorized for it. Returned indistinguishably from the unauthorized case to prevent plan-ID enumeration.
+- `GOVERNANCE_DENIED`: `check_governance` rejected the action. Read `governance_context.findings[]` to identify the failed rule, correct the payload, and retry.
