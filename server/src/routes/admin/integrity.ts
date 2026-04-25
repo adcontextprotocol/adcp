@@ -57,10 +57,25 @@ function detectEnvMismatch(): string | null {
 
   const isLiveKey = stripeKey.startsWith('sk_live_');
   const isTestKey = stripeKey.startsWith('sk_test_');
+
+  // Parse the URL and inspect its host explicitly. Substring checks against
+  // the raw URL string would match a hostile path/query like
+  // postgres://user@evil.example/?aao-prod=1, which is exactly what CodeQL's
+  // js/incomplete-url-substring-sanitization rule warns about.
+  let host = '';
+  try {
+    host = new URL(databaseUrl).hostname.toLowerCase();
+  } catch {
+    // DATABASE_URL is malformed; treat as "looks like development" so live
+    // keys against an unparsable URL are still refused below.
+    host = '';
+  }
+
   const looksProd =
-    databaseUrl.includes('agenticadvertising.org') ||
-    databaseUrl.includes('aao-prod') ||
-    /\.fly\.dev/.test(databaseUrl);
+    host.endsWith('.agenticadvertising.org') ||
+    host === 'agenticadvertising.org' ||
+    host.startsWith('aao-prod') ||
+    host.endsWith('.fly.dev');
 
   if (looksProd && isTestKey) {
     return 'STRIPE_SECRET_KEY is sk_test_* but DATABASE_URL points at production. Refusing to run integrity checks against this mismatched configuration.';
@@ -115,7 +130,7 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
       res.json(report);
     } catch (err) {
       logger.error({ err }, 'Integrity check failed');
-      res.status(500).json({ error: 'Integrity check failed', message: err instanceof Error ? err.message : String(err) });
+      res.status(500).json({ error: 'Integrity check failed', message: 'See server logs for details.' });
     }
   });
 
@@ -149,7 +164,7 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
       res.json(report);
     } catch (err) {
       logger.error({ err, invariant: invariant.name }, 'Single invariant check failed');
-      res.status(500).json({ error: 'Integrity check failed', message: err instanceof Error ? err.message : String(err) });
+      res.status(500).json({ error: 'Integrity check failed', message: 'See server logs for details.' });
     }
   });
 }
