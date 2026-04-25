@@ -222,6 +222,20 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 - Legal agreements
 - Compliance monitoring
 
+## Authenticating to AAO Platform Services
+
+The mechanisms above govern **agent-to-agent** auth (buyer ↔ sales agent). Authenticating to **AAO-hosted services** — the registry write API, the AAO MCP endpoint, the member dashboard — is a separate surface.
+
+AAO runs an OAuth 2.1 + OIDC authorization server. Clients discover it via standard well-knowns:
+
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` (REST API) and `/.well-known/oauth-protected-resource/mcp` (MCP). Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST https://agenticadvertising.org/register`.
+- **Server-to-server:** there is no `client_credentials` grant. Backend services should use a WorkOS organization API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys), not the OAuth `/token` endpoint.
+
+A user JWT obtained from AAO is **not** an AdCP credential. Calls to a sales agent still use that agent's bearer / 9421 / mTLS credentials per the table above. Full reference: [AAO registry — Authentication](/docs/registry#authentication).
+
 ## Error Responses
 
 ### Unauthenticated Request to Protected Operation
