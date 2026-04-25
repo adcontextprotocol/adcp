@@ -43,7 +43,7 @@ async function isRegistryModerator(userId: string): Promise<boolean> {
   }
 }
 
-async function isVerifiedBrandOwner(userId: string, domain: string, brandDb: BrandDatabase): Promise<boolean> {
+export async function isVerifiedBrandOwner(userId: string, domain: string, brandDb: BrandDatabase): Promise<boolean> {
   try {
     const hosted = await brandDb.getHostedBrandByDomain(domain);
     if (!hosted || !hosted.domain_verified) return false;
