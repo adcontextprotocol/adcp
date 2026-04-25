@@ -14,7 +14,7 @@
  * hints to format.
  */
 
-import type { ContextValueRejectedHint } from '@adcp/client/testing';
+import type { ContextValueRejectedHint, StoryboardStepHint } from '@adcp/client/testing';
 
 export type { ContextValueRejectedHint };
 
@@ -208,9 +208,15 @@ function formatAcceptedList(values: unknown[]): string {
  * Convenience: render every hint on a step result as fix plans, joined
  * by horizontal rules. Returns `null` when there are no actionable
  * hints (lets callers omit the section entirely).
+ *
+ * Accepts the broader `StoryboardStepHint[]` union the SDK now emits and
+ * filters to `context_value_rejected` internally — other hint kinds
+ * (shape_drift, missing_required_field, format_mismatch, monotonic_violation)
+ * will get their own fix-plan templates as they're added; until then they're
+ * silently dropped here.
  */
 export function renderAllHintFixPlans(
-  hints: ContextValueRejectedHint[] | undefined,
+  hints: StoryboardStepHint[] | undefined,
   ctx: { current_step_id: string; current_task: string; surface: 'step' | 'full' }
 ): string | null {
   if (!hints || !hints.length) return null;
@@ -222,10 +228,12 @@ export function renderAllHintFixPlans(
   const seen = new Set<string>();
   const blocks: string[] = [];
   for (const h of hints) {
-    const key = `${h.source_step_id}::${h.context_key}::${stableStringify(h.rejected_value)}`;
+    if (h.kind !== 'context_value_rejected') continue;
+    const cvr = h as ContextValueRejectedHint;
+    const key = `${cvr.source_step_id}::${cvr.context_key}::${stableStringify(cvr.rejected_value)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    blocks.push(renderHintFixPlan({ hint: h, ...ctx }));
+    blocks.push(renderHintFixPlan({ hint: cvr, ...ctx }));
   }
   return blocks.length ? blocks.join('\n\n---\n\n') : null;
 }
