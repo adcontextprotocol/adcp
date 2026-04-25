@@ -28,6 +28,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/integration/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
+| `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial catalog, page 2 follows the cursor. |
 | `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 

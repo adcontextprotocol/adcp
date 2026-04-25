@@ -2105,29 +2105,41 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   };
 }
 
-// Opaque offset-encoded cursor for in-memory list_creatives pagination.
-// Real backends would carry stable resource keys; an offset is sufficient
-// for the training agent because creatives.values() iterates in stable
-// insertion order. base64url keeps the token URL-safe and visibly opaque.
-function encodeCreativeCursor(offset: number): string {
-  return Buffer.from(`offset:${offset}`).toString('base64url');
+// Opaque offset-encoded cursors for in-memory paginated reads. Real backends
+// would carry stable resource keys; an offset is sufficient for the training
+// agent because the underlying iteration order is stable for every read this
+// powers (Map insertion order, static catalog order). base64url keeps the
+// token URL-safe and visibly opaque. The `kind` prefix scopes a cursor to a
+// specific list endpoint so a caller can't move a list_creatives cursor onto
+// list_creative_formats and accidentally land at a meaningful offset.
+function encodeOffsetCursor(kind: string, offset: number): string {
+  return Buffer.from(`${kind}:offset:${offset}`).toString('base64url');
 }
 
-// Returns null when the cursor is present but malformed. The caller MUST
-// surface INVALID_REQUEST in that case — silently restarting from offset 0
-// would teach a sloppy pattern (corrupt cursors duplicate items the caller
-// already saw). An absent cursor returns 0 (start of pagination).
-function decodeCreativeCursor(cursor: string | undefined): number | null {
+// Returns null when the cursor is present but malformed (or scoped to a
+// different list endpoint). The caller MUST surface INVALID_REQUEST in that
+// case — silently restarting from offset 0 would teach a sloppy pattern
+// (corrupt cursors duplicate items the caller already saw). An absent
+// cursor returns 0 (start of pagination).
+function decodeOffsetCursor(kind: string, cursor: string | undefined): number | null {
   if (!cursor) return 0;
   try {
     const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
-    const m = /^offset:(\d+)$/.exec(decoded);
+    const m = new RegExp(`^${kind}:offset:(\\d+)$`).exec(decoded);
     if (!m) return null;
     const n = Number.parseInt(m[1], 10);
     return Number.isFinite(n) && n >= 0 ? n : null;
   } catch {
     return null;
   }
+}
+
+function encodeCreativeCursor(offset: number): string {
+  return encodeOffsetCursor('creatives', offset);
+}
+
+function decodeCreativeCursor(cursor: string | undefined): number | null {
+  return decodeOffsetCursor('creatives', cursor);
 }
 
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
@@ -2484,11 +2496,37 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
+  const req = args as unknown as GetSignalsRequest & ToolArgs & {
+    brief?: string;
+    pagination?: { max_results?: number; cursor?: string };
+  };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
-  const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
+  // Pagination shape (pagination.max_results, schema cap 100) takes precedence
+  // over the legacy top-level `max_results` (no schema cap; this handler
+  // historically capped at 50 to keep semantic-search results focused). The two
+  // forms have different caps because they have different contracts —
+  // pagination.max_results is the standard envelope and matches the schema's
+  // documented 100 cap; top-level max_results is the predecessor and we
+  // preserve its tighter behavioral cap to avoid silently widening any caller
+  // currently relying on the 50 ceiling. Spec ambiguity on which form wins
+  // when both are present is tracked at adcontextprotocol/adcp#3113.
+  let maxResults: number;
+  const paginationMax = req.pagination?.max_results;
+  if (typeof paginationMax === 'number' && paginationMax >= 1) {
+    maxResults = Math.min(paginationMax, 100);
+  } else if (typeof req.max_results === 'number' && req.max_results >= 1) {
+    maxResults = Math.min(req.max_results, 50);
+  } else {
+    maxResults = MAX_SIGNAL_RESULTS;
+  }
+  const offset = decodeOffsetCursor('signals', req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   const allSignals = getAllSignals();
@@ -2541,8 +2579,13 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  // Cap results
-  results = results.slice(0, maxResults);
+  // Slice to the requested page after filters/sorts have settled. Iteration
+  // order is stable across calls within a session because getAllSignals()
+  // returns the static catalog and SYNONYM_MAP scoring is deterministic.
+  const totalMatching = results.length;
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  results = results.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
 
   // Build the training agent URL for deployment targets
   const agentUrl = getAgentUrl();
@@ -2605,7 +2648,21 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: { signals: SignalResponse[]; note?: string } = { signals };
+  const response: {
+    signals: SignalResponse[];
+    pagination: { has_more: boolean; total_count: number; cursor?: string };
+    note?: string;
+  } = {
+    signals,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      // Cursor MUST be present iff has_more is true — see
+      // static/schemas/source/core/pagination-response.json. universal/
+      // pagination-integrity catches stale tokens on terminal pages.
+      ...(hasMore && { cursor: encodeOffsetCursor('signals', pageEnd) }),
+    },
+  };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
