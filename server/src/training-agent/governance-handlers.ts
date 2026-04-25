@@ -1403,7 +1403,8 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           purchase_type: check.purchaseType || 'media_buy',
           ...(check.governanceContext && { governance_context: check.governanceContext }),
           status: check.status,
-          binding: check.binding,
+          check_type: check.binding === 'committed' ? 'execution' : 'intent',
+          ...(check.mode && { mode: check.mode }),
           explanation: check.explanation,
           policies_evaluated: check.policiesEvaluated,
           categories_evaluated: check.categoriesEvaluated,
@@ -1545,7 +1546,6 @@ function buildCheckResponse(check: GovernanceCheckState) {
   return {
     check_id: check.checkId,
     status: check.status,
-    binding: check.binding,
     plan_id: check.planId,
     explanation: check.explanation,
     mode: check.mode,

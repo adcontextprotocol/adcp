@@ -5998,7 +5998,7 @@ describe('governance audit logs by governance_context', () => {
     expect(plans[0].plan_id).toBe('plan-ctx-filter');
   });
 
-  it('infers binding from field presence', async () => {
+  it('infers check_type from field presence', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const plan = {
       plan_id: 'plan-infer',
@@ -6009,7 +6009,7 @@ describe('governance audit logs by governance_context', () => {
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
 
-    // Intent check: tool+payload, no binding field
+    // Intent check: tool+payload, no binding field — infers check_type: "intent"
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-infer',
       caller: 'https://buyer.example',
@@ -6018,7 +6018,16 @@ describe('governance audit logs by governance_context', () => {
     });
 
     expect(result.status).toBe('approved');
-    expect(result.binding).toBe('proposed');
+
+    // The inference is observable on the audit entry (canonical schema field).
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-infer'],
+      include_entries: true,
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const entries = plans[0].entries as Array<Record<string, unknown>>;
+    const checkEntry = entries.find(e => e.type === 'check');
+    expect(checkEntry?.check_type).toBe('intent');
   });
 });
 
