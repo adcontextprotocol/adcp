@@ -309,6 +309,10 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
+  /** Set by comply_test_controller after a forced status write. Consumed and
+   * cleared on the first deriveStatus read so subsequent real-workflow reads
+   * see the normal pending_creatives guard. Never set by production code paths. */
+  complyControllerForced?: boolean;
 }
 
 export interface PackageState {

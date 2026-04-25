@@ -488,7 +488,13 @@ export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
   const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
+  if (!hasCreatives && mb.status !== 'completed') {
+    if (mb.complyControllerForced) {
+      mb.complyControllerForced = false;
+    } else {
+      return 'pending_creatives';
+    }
+  }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
