@@ -2504,10 +2504,23 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
   // Pagination shape (pagination.max_results, schema cap 100) takes precedence
-  // over the legacy top-level `max_results` (default 10 to keep semantic-search
-  // results focused). When neither is supplied, fall back to MAX_SIGNAL_RESULTS.
-  const requestedMax = req.pagination?.max_results ?? req.max_results ?? MAX_SIGNAL_RESULTS;
-  const maxResults = Math.min(typeof requestedMax === 'number' && requestedMax >= 1 ? requestedMax : MAX_SIGNAL_RESULTS, 100);
+  // over the legacy top-level `max_results` (no schema cap; this handler
+  // historically capped at 50 to keep semantic-search results focused). The two
+  // forms have different caps because they have different contracts —
+  // pagination.max_results is the standard envelope and matches the schema's
+  // documented 100 cap; top-level max_results is the predecessor and we
+  // preserve its tighter behavioral cap to avoid silently widening any caller
+  // currently relying on the 50 ceiling. Spec ambiguity on which form wins
+  // when both are present is tracked at adcontextprotocol/adcp#3113.
+  let maxResults: number;
+  const paginationMax = req.pagination?.max_results;
+  if (typeof paginationMax === 'number' && paginationMax >= 1) {
+    maxResults = Math.min(paginationMax, 100);
+  } else if (typeof req.max_results === 'number' && req.max_results >= 1) {
+    maxResults = Math.min(req.max_results, 50);
+  } else {
+    maxResults = MAX_SIGNAL_RESULTS;
+  }
   const offset = decodeOffsetCursor('signals', req.pagination?.cursor);
   if (offset === null) {
     return {
