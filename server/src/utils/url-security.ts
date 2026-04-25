@@ -183,14 +183,14 @@ export async function safeFetch(
   const signal = options?.signal;
 
   // URL is validated above by validateFetchUrl (rejects private IPs, link-local, etc).
-  let response = await fetch(sanitizeUrl(parsedUrl), { method, headers, redirect: 'manual', signal }); // lgtm[js/request-forgery]
+  let response = await fetch(sanitizeUrl(parsedUrl), { method, headers, redirect: 'manual', signal });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     // validateRedirectTarget re-validates the resolved hop against the same private-IP rules.
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), { method, headers, redirect: 'manual', signal }); // lgtm[js/request-forgery]
+    response = await fetch(sanitizeUrl(redirectUrl), { method, headers, redirect: 'manual', signal });
   }
 
   return response;
