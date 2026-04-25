@@ -291,9 +291,7 @@ export function createInvitesRouter(): Router {
       if (intake.kind === 'block') {
         return res.status(intake.block.status).json(intake.block.body);
       }
-      const invoiceResult = intake.kind === 'success' ? intake.invoiceResult : null;
-
-      if (!invoiceResult) {
+      if (intake.kind === 'invoiceFailed') {
         logger.error({ orgId: org.workos_organization_id, lookupKey: invite.lookup_key },
           'createAndSendInvoice returned null on invite accept');
         return res.status(500).json({
@@ -302,7 +300,14 @@ export function createInvitesRouter(): Router {
             "We couldn't issue your invoice. Please contact finance@agenticadvertising.org.",
         });
       }
+      const invoiceResult = intake.invoiceResult;
 
+      // markMembershipInviteAccepted runs OUTSIDE the lock. That is safe
+      // only because the in-lock `blockIfActiveSubscription` re-check
+      // catches duplicate-sub attempts: a third concurrent click on the
+      // same invite will block when its lock-internal guard reads the
+      // Stripe-side sub this acceptance just minted. Do not remove the
+      // re-guard inside the lock without re-thinking this invariant.
       const accepted = await markMembershipInviteAccepted(
         token,
         user.id,

@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 describe('withOrgIntakeLock', () => {
-  it('takes a transaction, advisory-locks on hashtext(orgId), runs fn, commits, releases the connection', async () => {
+  it('takes a transaction, sets per-tx timeouts, advisory-locks on hashtext(orgId), runs fn, commits, releases the connection', async () => {
     const fn = vi.fn().mockResolvedValue('ok');
 
     const result = await withOrgIntakeLock('org_test_123', fn);
@@ -40,12 +40,14 @@ describe('withOrgIntakeLock', () => {
     expect(result).toBe('ok');
     expect(fn).toHaveBeenCalledOnce();
 
-    // Calls must be in order: BEGIN → lock → (fn) → COMMIT
+    // Calls must be in order: BEGIN → lock_timeout → statement_timeout → lock → (fn) → COMMIT
     const calls = mockClientQuery.mock.calls.map((c) => c[0]);
     expect(calls[0]).toBe('BEGIN');
-    expect(calls[1]).toBe('SELECT pg_advisory_xact_lock(hashtext($1))');
-    expect(mockClientQuery.mock.calls[1][1]).toEqual(['org_test_123']);
-    expect(calls[2]).toBe('COMMIT');
+    expect(calls[1]).toMatch(/^SET LOCAL lock_timeout = '\d+ms'$/);
+    expect(calls[2]).toMatch(/^SET LOCAL statement_timeout = '\d+ms'$/);
+    expect(calls[3]).toBe('SELECT pg_advisory_xact_lock(hashtext($1))');
+    expect(mockClientQuery.mock.calls[3][1]).toEqual(['org_test_123']);
+    expect(calls[4]).toBe('COMMIT');
     expect(mockClientRelease).toHaveBeenCalledOnce();
   });
 
@@ -56,11 +58,11 @@ describe('withOrgIntakeLock', () => {
     await expect(withOrgIntakeLock('org_x', fn)).rejects.toThrow('Stripe API down');
 
     const calls = mockClientQuery.mock.calls.map((c) => c[0]);
-    expect(calls).toEqual([
-      'BEGIN',
-      'SELECT pg_advisory_xact_lock(hashtext($1))',
-      'ROLLBACK',
-    ]);
+    expect(calls[0]).toBe('BEGIN');
+    expect(calls[1]).toMatch(/^SET LOCAL lock_timeout/);
+    expect(calls[2]).toMatch(/^SET LOCAL statement_timeout/);
+    expect(calls[3]).toBe('SELECT pg_advisory_xact_lock(hashtext($1))');
+    expect(calls[4]).toBe('ROLLBACK');
     expect(mockClientRelease).toHaveBeenCalledOnce();
   });
 
@@ -68,6 +70,8 @@ describe('withOrgIntakeLock', () => {
     const err = new Error('serialization failure');
     mockClientQuery
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [] }) // SET LOCAL lock_timeout
+      .mockResolvedValueOnce({ rows: [] }) // SET LOCAL statement_timeout
       .mockRejectedValueOnce(err);          // pg_advisory_xact_lock
 
     const fn = vi.fn();
@@ -76,10 +80,11 @@ describe('withOrgIntakeLock', () => {
 
     expect(fn).not.toHaveBeenCalled();
     const calls = mockClientQuery.mock.calls.map((c) => c[0]);
-    // BEGIN ran, lock query failed, then ROLLBACK best-effort
     expect(calls[0]).toBe('BEGIN');
-    expect(calls[1]).toBe('SELECT pg_advisory_xact_lock(hashtext($1))');
-    expect(calls[2]).toBe('ROLLBACK');
+    expect(calls[1]).toMatch(/^SET LOCAL lock_timeout/);
+    expect(calls[2]).toMatch(/^SET LOCAL statement_timeout/);
+    expect(calls[3]).toBe('SELECT pg_advisory_xact_lock(hashtext($1))');
+    expect(calls[4]).toBe('ROLLBACK');
     expect(mockClientRelease).toHaveBeenCalledOnce();
   });
 
@@ -87,12 +92,14 @@ describe('withOrgIntakeLock', () => {
     const fnErr = new Error('Stripe rejected');
     mockClientQuery
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // lock
+      .mockResolvedValueOnce({ rows: [] }) // SET LOCAL lock_timeout
+      .mockResolvedValueOnce({ rows: [] }) // SET LOCAL statement_timeout
+      .mockResolvedValueOnce({ rows: [] }) // pg_advisory_xact_lock
       .mockRejectedValueOnce(new Error('rollback failed')); // ROLLBACK
 
     const fn = vi.fn().mockRejectedValue(fnErr);
 
-    // Original fn error is preserved; rollback failure is swallowed.
+    // Original fn error is preserved; rollback failure is logged but swallowed.
     await expect(withOrgIntakeLock('org_x', fn)).rejects.toThrow('Stripe rejected');
 
     expect(mockClientRelease).toHaveBeenCalledOnce();
