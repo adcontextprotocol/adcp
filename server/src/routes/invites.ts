@@ -25,6 +25,7 @@ import {
   createCoupon,
 } from '../billing/stripe-client.js';
 import { sanitizeBillingAddress } from '../billing/billing-address.js';
+import { blockIfActiveSubscription } from '../billing/active-subscription-guard.js';
 import * as referralDb from '../db/referral-codes-db.js';
 
 const logger = createLogger('invites-routes');
@@ -151,6 +152,23 @@ export function createInvitesRouter(): Router {
           error: 'Tier no longer available',
           message: 'The membership tier in this invite is no longer available.',
         });
+      }
+
+      // Refuse if the org already has an active subscription. Accepting this
+      // invite would mint a duplicate sub on the same Stripe customer — the
+      // Triton Apr-2026 incident in literal form.
+      //
+      // We deliberately omit `customerPortalReturnUrl`: the invite recipient
+      // gets `member` role on the org (not `admin`), and a Stripe Customer
+      // Portal session would grant them admin-equivalent control over the
+      // existing subscription. The 409 message points them at the dashboard
+      // and finance@ instead.
+      const activeBlock = await blockIfActiveSubscription(
+        org.workos_organization_id,
+        orgDb,
+      );
+      if (activeBlock) {
+        return res.status(activeBlock.status).json(activeBlock.body);
       }
 
       // Ensure the accepting user is a member of the target org.
