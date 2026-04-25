@@ -39,6 +39,21 @@ function adagentsCreatedBy(publisherDomain: string): string {
 }
 
 /**
+ * Whether a domain/subdomain identifier lexically belongs to the publisher.
+ *
+ * Bundle IDs, RSS URLs, and other non-domain identifier types have no
+ * lexical relationship to the publisher's hostname, so they are never
+ * anchors. This is what stops a manifest hosted at attacker.example from
+ * legitimately claiming `domain:victim.example` — the anchor check rejects
+ * the cross-publisher domain claim before it can land in the catalog.
+ */
+function isPublisherDomainAnchor(publisherDomain: string, type: string, value: string): boolean {
+  if (type !== 'domain' && type !== 'subdomain') return false;
+  if (value === publisherDomain) return true;
+  return value.endsWith(`.${publisherDomain}`);
+}
+
+/**
  * Database operations for the publisher overlay (migration 432).
  *
  * Caches the source-of-truth adagents.json file body and projects the parsed
@@ -110,23 +125,34 @@ export class PublisherDatabase {
    * evidence='adagents_json' / confidence='authoritative' so a property
    * crawled now is indistinguishable from one seeded by migration 336.
    *
-   * Identity reuse rules — load-bearing for tenant isolation:
+   * Tenant isolation rules — load-bearing for catalog correctness:
    *
-   *  - If any of this property's identifiers already point at a property_rid
-   *    that was authored by *another* publisher's adagents.json, the
-   *    projection is refused. Without this, a malicious manifest can name a
-   *    victim's identifier (e.g. domain:cnn.com) alongside its own and
-   *    rebind the victim's property_rid; ON CONFLICT DO NOTHING on the
-   *    insert path doesn't protect against attacker-owned identifiers
-   *    landing on the victim's rid.
+   *  1. Cross-publisher domain claims are refused. A `domain` or `subdomain`
+   *     identifier in the property must lexically belong to the publisher
+   *     (equal to or a subdomain of publisherDomain). Otherwise the entire
+   *     property is dropped — a manifest at attacker.example cannot land an
+   *     authoritative claim for `domain:victim.example`.
    *
-   *  - If the identifier set spans multiple distinct rids that we *do* own
-   *    (or that came from seed/community sources), the projection is
-   *    refused. Silent merging of two existing properties needs human
-   *    review through the dispute layer (catalog_disputes).
+   *  2. Cross-publisher rid reuse is refused. If any matched rid was
+   *     authored by another publisher's adagents.json, refuse — even
+   *     ON CONFLICT DO NOTHING on the identifier insert wouldn't stop a
+   *     reuse-branch UPDATE from rebinding adagents_url.
    *
-   *  - Otherwise, reuse the single matching rid (re-crawls don't fork
-   *    identity) or mint a new one when nothing matches.
+   *  3. Multi-rid conflation is refused. If the identifier set spans
+   *     multiple distinct existing rids, silent merging requires human
+   *     review (catalog_disputes).
+   *
+   *  4. Foreign-rid reuse requires an anchor. If the matched rid was created
+   *     by a non-adagents source (system seed, community, brand_json, member
+   *     resolve), reuse is only allowed when the property carries at least
+   *     one publisher-anchored identifier. Without this, an unanchored
+   *     manifest can reach a seed rid via a bundle ID and overwrite its
+   *     adagents_url via COALESCE.
+   *
+   *  5. Otherwise, reuse the single matching own-rid (re-crawl) or mint
+   *     a new one. Identifiers go in with ON CONFLICT DO NOTHING so a
+   *     non-anchor identifier already claimed by another rid silently
+   *     drops rather than rebinding.
    */
   private async projectPropertyToCatalog(
     client: PoolClient,
@@ -149,6 +175,28 @@ export class PublisherDatabase {
 
     if (identifiers.length === 0) return;
 
+    // Rule 1 — refuse cross-publisher domain claims.
+    const crossPublisherClaims = identifiers.filter(
+      (i) =>
+        (i.type === 'domain' || i.type === 'subdomain')
+        && !isPublisherDomainAnchor(publisherDomain, i.type, i.value)
+    );
+    if (crossPublisherClaims.length > 0) {
+      log.warn(
+        {
+          publisherDomain,
+          propertyId: property.property_id,
+          crossPublisherClaims,
+        },
+        'Catalog projection refused: property declares domain identifiers outside the publisher\'s domain'
+      );
+      return;
+    }
+
+    const hasAnchor = identifiers.some((i) =>
+      isPublisherDomainAnchor(publisherDomain, i.type, i.value)
+    );
+
     const tupleParams: unknown[] = [];
     const tuplePlaceholders = identifiers
       .map((ident, i) => {
@@ -169,12 +217,13 @@ export class PublisherDatabase {
     );
 
     const expectedCreatedBy = adagentsCreatedBy(publisherDomain);
+
+    // Rule 2 — refuse cross-publisher rid reuse.
     const conflicting = existing.rows.filter((r) =>
       typeof r.created_by === 'string'
       && r.created_by.startsWith(ADAGENTS_CREATED_BY_PREFIX)
       && r.created_by !== expectedCreatedBy
     );
-
     if (conflicting.length > 0) {
       log.warn(
         {
@@ -188,6 +237,7 @@ export class PublisherDatabase {
       return;
     }
 
+    // Rule 3 — refuse multi-rid conflation.
     const ownRids = Array.from(new Set(existing.rows.map((r) => r.property_rid)));
     if (ownRids.length > 1) {
       log.warn(
@@ -201,6 +251,27 @@ export class PublisherDatabase {
     let propertyRid: string;
 
     if (ownRids.length === 1) {
+      const matchedCreatedBy = existing.rows[0].created_by;
+      const isOwnRecrawl = matchedCreatedBy === expectedCreatedBy;
+
+      // Rule 4 — foreign rid reuse requires an anchor. The publisher must
+      // produce a domain/subdomain identifier under their own domain to take
+      // ownership of (or update adagents_url on) a rid created by another
+      // source. Without this, a manifest declaring only a bundle ID could
+      // reach a seed rid via that bundle ID and rebind adagents_url.
+      if (!isOwnRecrawl && !hasAnchor) {
+        log.warn(
+          {
+            publisherDomain,
+            propertyId: property.property_id,
+            matchedCreatedBy,
+            matchedRid: ownRids[0],
+          },
+          'Catalog projection refused: cannot adopt a non-adagents rid without a publisher-anchored identifier'
+        );
+        return;
+      }
+
       propertyRid = ownRids[0];
       await client.query(
         `UPDATE catalog_properties SET

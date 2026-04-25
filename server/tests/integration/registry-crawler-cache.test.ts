@@ -452,6 +452,164 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       expect(newProps.rows[0].count).toBe('0');
     });
 
+    it('refuses cross-publisher domain claims regardless of crawl ordering (land-grab)', async () => {
+      // Attacker crawls FIRST, claiming the victim's domain alongside its own
+      // (attacker-first ordering — distinct from the victim-first rebind case).
+      // Without the anchor rule the attacker would mint a rid pointing
+      // domain:VICTIM_DOMAIN at the attacker's adagents_url, and the victim's
+      // later crawl would be the one refused.
+      await publisherDb.upsertAdagentsCache({
+        domain: ATTACKER_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'land_grab',
+              property_type: 'website',
+              name: 'Land Grab Attempt',
+              identifiers: [
+                { type: 'domain', value: ATTACKER_DOMAIN },
+                { type: 'domain', value: VICTIM_DOMAIN },
+              ],
+            },
+          ],
+        },
+      });
+
+      // Anchor rule refuses the entire property — neither identifier lands.
+      const anyAttackerProp = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_properties
+          WHERE created_by = $1`,
+        [`adagents_json:${ATTACKER_DOMAIN}`]
+      );
+      expect(anyAttackerProp.rows[0].count).toBe('0');
+
+      const victimIdentifier = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM catalog_identifiers
+          WHERE identifier_type = 'domain' AND identifier_value = $1`,
+        [VICTIM_DOMAIN]
+      );
+      expect(victimIdentifier.rows[0].count).toBe('0');
+
+      // Victim's own crawl (which only declares its own anchored domain) lands cleanly.
+      await publisherDb.upsertAdagentsCache({
+        domain: VICTIM_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'victim_site',
+              property_type: 'website',
+              name: 'Victim Site',
+              identifiers: [{ type: 'domain', value: VICTIM_DOMAIN }],
+            },
+          ],
+        },
+      });
+
+      const victimRid = await pool.query<{ property_rid: string; created_by: string | null }>(
+        `SELECT cp.property_rid, cp.created_by
+           FROM catalog_identifiers ci
+           JOIN catalog_properties cp ON cp.property_rid = ci.property_rid
+          WHERE ci.identifier_type = 'domain' AND ci.identifier_value = $1`,
+        [VICTIM_DOMAIN]
+      );
+      expect(victimRid.rows).toHaveLength(1);
+      expect(victimRid.rows[0].created_by).toBe(`adagents_json:${VICTIM_DOMAIN}`);
+    });
+
+    it('refuses to take over a seed-source rid without a publisher-anchored identifier', async () => {
+      // Seed the catalog with a rid created by a non-adagents source (mimicking
+      // migration 336 or a hosted_properties seed) — adagents_url is NULL, so
+      // a COALESCE-based reuse path would happily bind the attacker's URL.
+      await pool.query(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, adagents_url, created_by)
+         VALUES ('33333333-3333-7333-9333-333333333333', 'seeded', 'property', 'authoritative', 'active', NULL, 'test:tenant-isolation-seed')`
+      );
+      await pool.query(
+        `INSERT INTO catalog_identifiers
+           (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+         VALUES (gen_random_uuid(), '33333333-3333-7333-9333-333333333333', 'ios_bundle', 'com.example.victimapp', 'member_resolve', 'medium')`
+      );
+
+      // Attacker publishes a manifest claiming the seeded bundle ID with NO
+      // anchor identifier proving they're authoritative for it. Without the
+      // anchor rule the writer would reuse the seed rid and overwrite
+      // adagents_url via COALESCE(NULL, attacker_url).
+      await publisherDb.upsertAdagentsCache({
+        domain: ATTACKER_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'unanchored_claim',
+              property_type: 'mobile_app',
+              name: 'Unanchored Bundle Claim',
+              identifiers: [{ type: 'ios_bundle', value: 'com.example.victimapp' }],
+            },
+          ],
+        },
+      });
+
+      // Seed rid's adagents_url is still NULL — attacker did not take over.
+      const seedRow = await pool.query<{ adagents_url: string | null; created_by: string | null }>(
+        `SELECT adagents_url, created_by FROM catalog_properties
+          WHERE property_rid = '33333333-3333-7333-9333-333333333333'`
+      );
+      expect(seedRow.rows[0].adagents_url).toBeNull();
+      expect(seedRow.rows[0].created_by).toBe('test:tenant-isolation-seed');
+    });
+
+    it('lets a publisher adopt a seed-source rid when the manifest carries an anchor identifier', async () => {
+      // Same seed setup as above, but pre-link the publisher's own domain to
+      // the seed rid (modeling migration 336's case where a discovered_property
+      // had both a domain identifier and a bundle ID).
+      await pool.query(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, adagents_url, created_by)
+         VALUES ('44444444-4444-7444-9444-444444444444', NULL, 'property', 'authoritative', 'active', NULL, 'test:tenant-isolation-seed')`
+      );
+      await pool.query(
+        `INSERT INTO catalog_identifiers
+           (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+         VALUES
+           (gen_random_uuid(), '44444444-4444-7444-9444-444444444444', 'domain', $1, 'adagents_json', 'authoritative'),
+           (gen_random_uuid(), '44444444-4444-7444-9444-444444444444', 'ios_bundle', 'com.example.alpha', 'member_resolve', 'medium')`,
+        [VICTIM_DOMAIN]
+      );
+
+      // Legitimate publisher (matching the seeded domain) crawls, declaring
+      // the same domain and the same bundle ID. The anchor proves authority,
+      // so the publisher takes ownership and adagents_url is set.
+      await publisherDb.upsertAdagentsCache({
+        domain: VICTIM_DOMAIN,
+        manifest: {
+          authorized_agents: [],
+          properties: [
+            {
+              property_id: 'adopt_seed',
+              property_type: 'website',
+              name: 'Adopt Seed',
+              identifiers: [
+                { type: 'domain', value: VICTIM_DOMAIN },
+                { type: 'ios_bundle', value: 'com.example.alpha' },
+              ],
+            },
+          ],
+        },
+      });
+
+      const adopted = await pool.query<{ adagents_url: string | null; property_id: string | null }>(
+        `SELECT adagents_url, property_id FROM catalog_properties
+          WHERE property_rid = '44444444-4444-7444-9444-444444444444'`
+      );
+      expect(adopted.rows[0].adagents_url).toBe(
+        `https://${VICTIM_DOMAIN}/.well-known/adagents.json`
+      );
+      expect(adopted.rows[0].property_id).toBe('adopt_seed');
+    });
+
     it('does not abort the rest of the manifest when one property is refused', async () => {
       // Pre-claim an identifier from a different publisher, so when our manifest
       // tries to bind it the projection is refused for that property only. The
