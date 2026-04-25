@@ -20,6 +20,7 @@
               "force_account_status",
               "force_media_buy_status",
               "force_create_media_buy_arm",
+              "force_task_completion",
               "force_session_status",
               "simulate_delivery",
               "simulate_budget_spend",
