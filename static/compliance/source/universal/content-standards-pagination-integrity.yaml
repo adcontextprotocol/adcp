@@ -1,0 +1,294 @@
+id: pagination_integrity_content_standards
+version: "1.0.0"
+title: "Pagination cursor integrity — list_content_standards"
+category: schema_validation
+summary: "Validates the cursor↔has_more invariant by walking a paginated list_content_standards response from a continuation page to a terminal page."
+track: core
+required_tools:
+  - list_content_standards
+
+narrative: |
+  Pagination is cursor-based across AdCP. Every response carrying a
+  `pagination` block satisfies a single invariant: when `has_more` is true the
+  `cursor` MUST be present (callers need it to fetch the next page); when
+  `has_more` is false the `cursor` MUST be absent (a stale token on a terminal
+  page invites callers to follow it into undefined behavior).
+
+  The invariant is documented in prose on
+  `static/schemas/source/core/pagination-response.json` but JSON Schema does
+  not gate the two fields against each other. This storyboard exercises both
+  sides of the invariant on `list_content_standards` in a single run.
+
+  The runner bootstraps three content standards configurations via
+  `create_content_standards`, then lists them back with `max_results=2`. The
+  first page MUST cap at two standards and signal continuation with
+  `has_more=true` plus a cursor. The runner then follows that cursor; the
+  second call MUST return the terminal page with `has_more=false` and no
+  cursor. An agent that hides the third standard by reporting `has_more=false`
+  on the first page fails the first-page assertion. An agent that carries a
+  stale cursor onto the terminal page fails the second-page assertion.
+
+  The `total_count` field is allowed to be absent (some backends cannot
+  compute it cheaply per the pagination-response schema) but when an agent
+  volunteers it, the value MUST match the seeded count of three.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities: []
+  examples:
+    - "Any AdCP agent that exposes a paginated list_content_standards"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The storyboard bootstraps three content standards configurations in the
+    setup phase via `create_content_standards`. The seed-DAG does not include
+    content standards, so this storyboard uses the create-then-list pattern to
+    keep itself self-contained without extending the seed taxonomy.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent responds to get_adcp_capabilities before
+      exercising list_content_standards.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares supported protocols before
+          driving paginated list_content_standards.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: false
+        expected: |
+          Return capabilities declaring supported protocols.
+
+        sample_request:
+          context:
+            correlation_id: "pagination_integrity_content_standards--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_content_standards--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: setup
+    title: "Bootstrap three content standards configurations"
+    narrative: |
+      Create three content standards configurations so the pagination walk has
+      a deterministic set of three items to page through with max_results=2.
+    steps:
+      - id: create_standards_1
+        title: "Create first content standards configuration"
+        narrative: |
+          Create a content standards configuration scoped to English-language
+          display ads. The agent MUST accept this and return a standards_id.
+        task: create_content_standards
+        schema_ref: "content-standards/create-content-standards-request.json"
+        response_schema_ref: "content-standards/create-content-standards-response.json"
+        doc_ref: "/governance/task-reference/create_content_standards"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: true
+        expected: |
+          Accept the configuration and return a standards_id.
+
+        sample_request:
+          scope:
+            languages_any: ["en"]
+            channels_any: ["display"]
+          policy: "No alcohol, gambling, or tobacco content."
+          context:
+            correlation_id: "pagination_integrity_content_standards--setup_1"
+        validations:
+          - check: response_schema
+            description: "Response matches create-content-standards-response.json schema"
+          - check: field_present
+            path: "standards_id"
+            description: "Response contains standards_id"
+
+      - id: create_standards_2
+        title: "Create second content standards configuration"
+        narrative: |
+          Create a second content standards configuration scoped to Spanish-
+          language video ads.
+        task: create_content_standards
+        schema_ref: "content-standards/create-content-standards-request.json"
+        response_schema_ref: "content-standards/create-content-standards-response.json"
+        doc_ref: "/governance/task-reference/create_content_standards"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: true
+        expected: |
+          Accept the configuration and return a standards_id.
+
+        sample_request:
+          scope:
+            languages_any: ["es"]
+            channels_any: ["video"]
+          policy: "Family-friendly content only. No political advertising."
+          context:
+            correlation_id: "pagination_integrity_content_standards--setup_2"
+        validations:
+          - check: response_schema
+            description: "Response matches create-content-standards-response.json schema"
+          - check: field_present
+            path: "standards_id"
+            description: "Response contains standards_id"
+
+      - id: create_standards_3
+        title: "Create third content standards configuration"
+        narrative: |
+          Create a third content standards configuration for French-language
+          connected-TV placements.
+        task: create_content_standards
+        schema_ref: "content-standards/create-content-standards-request.json"
+        response_schema_ref: "content-standards/create-content-standards-response.json"
+        doc_ref: "/governance/task-reference/create_content_standards"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: true
+        expected: |
+          Accept the configuration and return a standards_id.
+
+        sample_request:
+          scope:
+            languages_any: ["fr"]
+            channels_any: ["ctv"]
+          policy: "No pharmaceutical or financial product advertising."
+          context:
+            correlation_id: "pagination_integrity_content_standards--setup_3"
+        validations:
+          - check: response_schema
+            description: "Response matches create-content-standards-response.json schema"
+          - check: field_present
+            path: "standards_id"
+            description: "Response contains standards_id"
+
+  - id: pagination_walk
+    title: "Walk pages with a small max_results"
+    narrative: |
+      With three standards seeded and `max_results: 2`, the first call MUST
+      return a continuation page (has_more=true with a cursor). The runner
+      then follows the cursor; the second call MUST return the terminal
+      page (has_more=false with no cursor).
+
+    steps:
+      - id: first_page
+        title: "Request the first page with max_results=2"
+        narrative: |
+          The buyer asks for up to two content standards. The agent has three
+          matching configurations, so the request is non-terminal: callers
+          expect `has_more=true` and a `cursor` they can follow to retrieve
+          the remaining standard.
+
+          The runner captures `pagination.cursor` into `$context.next_cursor`
+          for the follow-up step. If the agent reports `has_more=false` on
+          this page (hiding the seeded third standard behind a dishonest
+          terminal signal), the field_value check on `pagination.has_more`
+          fails — surfacing exactly the bug class this storyboard exists to
+          catch.
+        task: list_content_standards
+        schema_ref: "content-standards/list-content-standards-request.json"
+        response_schema_ref: "content-standards/list-content-standards-response.json"
+        doc_ref: "/governance/task-reference/list_content_standards"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: true
+        context_outputs:
+          - name: next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return up to two standards with:
+          - pagination.has_more = true
+          - pagination.cursor present (an opaque continuation token)
+
+        sample_request:
+          pagination:
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_content_standards--first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-content-standards-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "Three standards seeded with max_results=2 → first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor — without one the caller cannot continue"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "If volunteered, total_count MUST equal the seeded set size"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_content_standards--first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: terminal_page
+        title: "Follow the cursor to the terminal page"
+        narrative: |
+          The buyer follows the captured cursor. With at most one remaining
+          standard the agent MUST return a terminal page: `has_more=false`
+          with no `cursor` field. A cursor on `has_more=false` is a stale
+          token that invites callers to follow it past the end of results.
+        task: list_content_standards
+        schema_ref: "content-standards/list-content-standards-request.json"
+        response_schema_ref: "content-standards/list-content-standards-response.json"
+        doc_ref: "/governance/task-reference/list_content_standards"
+        comply_scenario: pagination_integrity_content_standards
+        stateful: true
+        expected: |
+          Return the remaining standard(s) with:
+          - pagination.has_more = false
+          - pagination.cursor absent (a stale cursor on a terminal page is a
+            dishonest pagination signal)
+
+        sample_request:
+          pagination:
+            cursor: "$context.next_cursor"
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_content_standards--terminal_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-content-standards-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "After two pages of two items the seeded set is exhausted"
+          - check: field_value_or_absent
+            path: "pagination.cursor"
+            allowed_values: [null]
+            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_content_standards--terminal_page"
+            description: "Context correlation_id returned unchanged"

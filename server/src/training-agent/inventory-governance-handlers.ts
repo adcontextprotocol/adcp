@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, CollectionListState } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -79,6 +80,13 @@ export const COLLECTION_LIST_TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         name_contains: { type: 'string' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100, description: 'Max lists per page (default 50, cap 100).' },
+            cursor: { type: 'string', description: 'Continuation token from a previous list_collection_lists response.' },
+          },
+        },
       },
     },
   },
@@ -125,6 +133,7 @@ interface UpdateCollectionListInput extends ToolArgs {
 
 interface ListInput extends ToolArgs {
   name_contains?: string;
+  pagination?: { max_results?: number; cursor?: string };
 }
 
 interface DeleteInput extends ToolArgs {
@@ -226,7 +235,26 @@ export async function handleListCollectionLists(args: ToolArgs, ctx: TrainingCon
   const filtered = input.name_contains
     ? lists.filter(l => l.name.toLowerCase().includes(input.name_contains!.toLowerCase()))
     : lists;
-  return { lists: filtered, pagination: { has_more: false } };
+
+  const totalMatching = filtered.length;
+  const requestedMax = input.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeOffsetCursor('collection_lists', input.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageLists = filtered.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    lists: pageLists,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeOffsetCursor('collection_lists', pageEnd) }),
+    },
+  };
 }
 
 export async function handleDeleteCollectionList(args: ToolArgs, ctx: TrainingContext) {

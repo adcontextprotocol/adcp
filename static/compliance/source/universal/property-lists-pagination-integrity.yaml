@@ -1,0 +1,287 @@
+id: pagination_integrity_property_lists
+version: "1.0.0"
+title: "Pagination cursor integrity — list_property_lists"
+category: schema_validation
+summary: "Validates the cursor↔has_more invariant by walking a paginated list_property_lists response from a continuation page to a terminal page."
+track: core
+required_tools:
+  - list_property_lists
+
+narrative: |
+  Pagination is cursor-based across AdCP. Every response carrying a
+  `pagination` block satisfies a single invariant: when `has_more` is true the
+  `cursor` MUST be present (callers need it to fetch the next page); when
+  `has_more` is false the `cursor` MUST be absent (a stale token on a terminal
+  page invites callers to follow it into undefined behavior).
+
+  The invariant is documented in prose on
+  `static/schemas/source/core/pagination-response.json` but JSON Schema does
+  not gate the two fields against each other. This storyboard exercises both
+  sides of the invariant on `list_property_lists` in a single run.
+
+  The runner bootstraps three property lists via `create_property_list`, then
+  lists them back with `max_results=2`. The first page MUST cap at two lists
+  and signal continuation with `has_more=true` plus a cursor. The runner then
+  follows that cursor; the second call MUST return the terminal page with
+  `has_more=false` and no cursor. An agent that hides the third list by
+  reporting `has_more=false` on the first page fails the first-page assertion.
+  An agent that carries a stale cursor onto the terminal page fails the
+  second-page assertion.
+
+  The `total_count` field is allowed to be absent (some backends cannot
+  compute it cheaply per the pagination-response schema) but when an agent
+  volunteers it, the value MUST match the seeded count of three.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities: []
+  examples:
+    - "Any AdCP agent that exposes a paginated list_property_lists"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The storyboard bootstraps three property lists in the setup phase via
+    `create_property_list`. The seed-DAG does not include property lists, so
+    this storyboard uses the create-then-list pattern to keep itself
+    self-contained without extending the seed taxonomy.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent responds to get_adcp_capabilities before
+      exercising list_property_lists.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares supported protocols before
+          driving paginated list_property_lists.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: false
+        expected: |
+          Return capabilities declaring supported protocols.
+
+        sample_request:
+          context:
+            correlation_id: "pagination_integrity_property_lists--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_property_lists--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: setup
+    title: "Bootstrap three property lists"
+    narrative: |
+      Create three property lists so the pagination walk has a deterministic
+      set of three items to page through with max_results=2.
+    steps:
+      - id: create_list_1
+        title: "Create first property list"
+        narrative: |
+          Create an inclusion property list for approved news publisher
+          domains. The agent MUST accept this and return a list.list_id.
+        task: create_property_list
+        schema_ref: "property/create-property-list-request.json"
+        response_schema_ref: "property/create-property-list-response.json"
+        doc_ref: "/governance/task-reference/create_property_list"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: true
+        expected: |
+          Accept the property list and return a list.list_id.
+
+        sample_request:
+          name: "Approved News Publishers"
+          description: "Inclusion list of brand-safe news publisher domains."
+          list_type: "inclusion"
+          context:
+            correlation_id: "pagination_integrity_property_lists--setup_1"
+        validations:
+          - check: response_schema
+            description: "Response matches create-property-list-response.json schema"
+          - check: field_present
+            path: "list.list_id"
+            description: "Response contains list.list_id"
+
+      - id: create_list_2
+        title: "Create second property list"
+        narrative: |
+          Create an exclusion property list for blocked gambling sites.
+        task: create_property_list
+        schema_ref: "property/create-property-list-request.json"
+        response_schema_ref: "property/create-property-list-response.json"
+        doc_ref: "/governance/task-reference/create_property_list"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: true
+        expected: |
+          Accept the property list and return a list.list_id.
+
+        sample_request:
+          name: "Gambling Sites Blocklist"
+          description: "Exclusion list of gambling and wagering domains."
+          list_type: "exclusion"
+          context:
+            correlation_id: "pagination_integrity_property_lists--setup_2"
+        validations:
+          - check: response_schema
+            description: "Response matches create-property-list-response.json schema"
+          - check: field_present
+            path: "list.list_id"
+            description: "Response contains list.list_id"
+
+      - id: create_list_3
+        title: "Create third property list"
+        narrative: |
+          Create an inclusion property list for premium entertainment
+          properties.
+        task: create_property_list
+        schema_ref: "property/create-property-list-request.json"
+        response_schema_ref: "property/create-property-list-response.json"
+        doc_ref: "/governance/task-reference/create_property_list"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: true
+        expected: |
+          Accept the property list and return a list.list_id.
+
+        sample_request:
+          name: "Premium Entertainment Properties"
+          description: "Inclusion list of tier-one entertainment publisher domains."
+          list_type: "inclusion"
+          context:
+            correlation_id: "pagination_integrity_property_lists--setup_3"
+        validations:
+          - check: response_schema
+            description: "Response matches create-property-list-response.json schema"
+          - check: field_present
+            path: "list.list_id"
+            description: "Response contains list.list_id"
+
+  - id: pagination_walk
+    title: "Walk pages with a small max_results"
+    narrative: |
+      With three property lists seeded and `max_results: 2`, the first call
+      MUST return a continuation page (has_more=true with a cursor). The runner
+      then follows the cursor; the second call MUST return the terminal page
+      (has_more=false with no cursor).
+
+    steps:
+      - id: first_page
+        title: "Request the first page with max_results=2"
+        narrative: |
+          The buyer asks for up to two property lists. The agent has three
+          matching lists, so the request is non-terminal: callers expect
+          `has_more=true` and a `cursor` they can follow to retrieve the
+          remaining list.
+
+          The runner captures `pagination.cursor` into `$context.next_cursor`
+          for the follow-up step. If the agent reports `has_more=false` on
+          this page (hiding the seeded third list behind a dishonest terminal
+          signal), the field_value check on `pagination.has_more` fails.
+        task: list_property_lists
+        schema_ref: "property/list-property-lists-request.json"
+        response_schema_ref: "property/list-property-lists-response.json"
+        doc_ref: "/governance/task-reference/list_property_lists"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: true
+        context_outputs:
+          - name: next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return up to two property lists with:
+          - pagination.has_more = true
+          - pagination.cursor present (an opaque continuation token)
+
+        sample_request:
+          pagination:
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_property_lists--first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-property-lists-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "Three lists seeded with max_results=2 → first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor — without one the caller cannot continue"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "If volunteered, total_count MUST equal the seeded set size"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_property_lists--first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: terminal_page
+        title: "Follow the cursor to the terminal page"
+        narrative: |
+          The buyer follows the captured cursor. With at most one remaining
+          list the agent MUST return a terminal page: `has_more=false` with no
+          `cursor` field. A cursor on `has_more=false` is a stale token that
+          invites callers to follow it past the end of results.
+        task: list_property_lists
+        schema_ref: "property/list-property-lists-request.json"
+        response_schema_ref: "property/list-property-lists-response.json"
+        doc_ref: "/governance/task-reference/list_property_lists"
+        comply_scenario: pagination_integrity_property_lists
+        stateful: true
+        expected: |
+          Return the remaining list(s) with:
+          - pagination.has_more = false
+          - pagination.cursor absent
+
+        sample_request:
+          pagination:
+            cursor: "$context.next_cursor"
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_property_lists--terminal_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-property-lists-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "After two pages of two items the seeded set is exhausted"
+          - check: field_value_or_absent
+            path: "pagination.cursor"
+            allowed_values: [null]
+            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_property_lists--terminal_page"
+            description: "Context correlation_id returned unchanged"
