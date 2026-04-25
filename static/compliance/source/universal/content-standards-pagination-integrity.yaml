@@ -110,10 +110,15 @@ phases:
           Accept the configuration and return a standards_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           scope:
             languages_any: ["en"]
             channels_any: ["display"]
           policy: "No alcohol, gambling, or tobacco content."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_content_standards_setup_create_standards_1"
           context:
             correlation_id: "pagination_integrity_content_standards--setup_1"
         validations:
@@ -138,10 +143,15 @@ phases:
           Accept the configuration and return a standards_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           scope:
             languages_any: ["es"]
-            channels_any: ["video"]
+            channels_any: ["olv"]
           policy: "Family-friendly content only. No political advertising."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_content_standards_setup_create_standards_2"
           context:
             correlation_id: "pagination_integrity_content_standards--setup_2"
         validations:
@@ -166,10 +176,15 @@ phases:
           Accept the configuration and return a standards_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           scope:
             languages_any: ["fr"]
             channels_any: ["ctv"]
           policy: "No pharmaceutical or financial product advertising."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_content_standards_setup_create_standards_3"
           context:
             correlation_id: "pagination_integrity_content_standards--setup_3"
         validations:
@@ -217,6 +232,10 @@ phases:
           - pagination.cursor present (an opaque continuation token)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           pagination:
             max_results: 2
 
@@ -264,6 +283,10 @@ phases:
             dishonest pagination signal)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

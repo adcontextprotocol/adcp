@@ -110,8 +110,13 @@ phases:
           Accept the collection list and return a list.list_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           name: "Primetime Drama Allowlist"
           description: "Collection of approved primetime drama programs."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_1"
           context:
             correlation_id: "pagination_integrity_collection_lists--setup_1"
         validations:
@@ -135,8 +140,13 @@ phases:
           Accept the collection list and return a list.list_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           name: "News Programs Allowlist"
           description: "Approved national news broadcast programs."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_2"
           context:
             correlation_id: "pagination_integrity_collection_lists--setup_2"
         validations:
@@ -160,8 +170,13 @@ phases:
           Accept the collection list and return a list.list_id.
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           name: "Sports Programs Allowlist"
           description: "Approved live sports broadcasts."
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_3"
           context:
             correlation_id: "pagination_integrity_collection_lists--setup_3"
         validations:
@@ -207,6 +222,10 @@ phases:
           - pagination.cursor present (an opaque continuation token)
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           pagination:
             max_results: 2
 
@@ -253,6 +272,10 @@ phases:
           - pagination.cursor absent
 
         sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2
