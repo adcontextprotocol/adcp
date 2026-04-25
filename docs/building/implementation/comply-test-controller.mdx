@@ -57,6 +57,7 @@ Sellers that implement compliance test controller MUST:
           "force_account_status",
           "force_media_buy_status",
           "force_create_media_buy_arm",
+          "force_task_completion",
           "force_session_status",
           "simulate_delivery",
           "simulate_budget_spend",
@@ -70,7 +71,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
       }
     },
     "required": ["scenario"]
@@ -200,6 +201,41 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 `forced.task_id` is present only when `arm: submitted`.
 
 **Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
+
+### `force_task_completion`
+
+Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to `force_create_media_buy_arm`: that scenario drives the seller into the submitted envelope; this one closes the loop by transitioning the task store entry from `submitted` to `completed` and stamping the result that subsequent [`tasks/get`](/docs/protocol/calling-an-agent#async-task-polling) calls return when `include_result: true`.
+
+The submitted → completed lifecycle is otherwise non-deterministic — real task completions ride on out-of-band signals (IO countersignature, batch processor cron, governance human review). Storyboards cannot wait. This scenario lets a runner pin the completion deterministically immediately after registering the directive, so the buyer-side polling assertion fires on the same wire shape buyers will observe in production.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `task_id` | string | Yes | Task to resolve. MUST match an existing task in the seller's store. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
+| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_task_completion",
+  "params": {
+    "task_id": "task_async_signed_io_q2",
+    "result": {
+      "media_buy_id": "mb_async_signed_io_q2",
+      "status": "active",
+      "packages": [
+        { "package_id": "pkg-0", "product_id": "async_signed_io_q2", "budget": 30000 }
+      ]
+    }
+  }
+}
+```
+
+**Response.** Returns the standard [`StateTransitionSuccess`](#state-transition-responses-force_) shape with `previous_state: "submitted"` and `current_state: "completed"`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `cancelled`).
+
+**Buyer-side observation.** After this scenario runs, a `tasks/get(task_id)` request with `include_result: true` MUST return `status: "completed"` and the registered `result` verbatim. Sellers that fail to surface the result (or surface a different value) break the round-trip contract and fail the `create_media_buy_async` storyboard's polling phase.
 
 ### `force_session_status`
 
