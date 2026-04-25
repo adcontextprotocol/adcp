@@ -45,7 +45,15 @@ async function buildApp() {
 }
 
 beforeEach(() => {
+  // Clears the module cache so each test's await import() inside buildApp()
+  // gets a fresh module instance. vi.clearAllMocks() resets call history but
+  // not the module registry — without this the cached instance from a prior
+  // test carries stale mock implementations into the next test.
+  vi.resetModules();
   vi.clearAllMocks();
+  // mockReset drains the mockResolvedValueOnce queue; clearAllMocks alone
+  // does not, so an unconsumed Once value from a failed test would bleed.
+  mockLoadAnnouncementBacklog.mockReset();
 });
 
 describe('GET /api/admin/announcements', () => {

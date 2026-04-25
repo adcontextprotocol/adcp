@@ -136,6 +136,11 @@ function queueDbReads(opts: {
 }
 
 beforeEach(() => {
+  // Clears the module cache so each test's loadModule() call gets a fresh
+  // module instance. vi.clearAllMocks() resets call history but not the module
+  // registry — without this the cached instance from a prior test carries stale
+  // mock implementations into the next test.
+  vi.resetModules();
   vi.clearAllMocks();
   // Reset mockQuery specifically so the `mockResolvedValueOnce` queue
   // from a previous test doesn't carry over. `clearAllMocks` clears

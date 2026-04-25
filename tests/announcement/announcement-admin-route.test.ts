@@ -71,6 +71,11 @@ async function buildApp() {
 const ORG_ID = 'org_ACME123';
 
 beforeEach(() => {
+  // Clears the module cache so each test's await import() inside buildApp()
+  // gets a fresh module instance. vi.clearAllMocks() resets call history but
+  // not the module registry — without this the cached instance from a prior
+  // test carries stale mock implementations into the next test.
+  vi.resetModules();
   vi.clearAllMocks();
   mockCurrentUser.id = 'user_wk_admin01';
   mockRefreshReviewCardForOrg.mockResolvedValue(undefined);

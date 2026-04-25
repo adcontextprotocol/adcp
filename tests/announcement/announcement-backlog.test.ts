@@ -20,6 +20,11 @@ vi.mock('../../server/src/db/client.js', () => ({
 }));
 
 beforeEach(() => {
+  // Clears the module cache so each test's await import() below gets a fresh
+  // module instance. vi.clearAllMocks() resets call history but not the module
+  // registry — without this the cached instance from a prior test carries stale
+  // mock implementations into the next test (timeout or TypeError under load).
+  vi.resetModules();
   vi.clearAllMocks();
   mockQuery.mockReset();
   // Safer default — without this a `mockResolvedValueOnce` consumed

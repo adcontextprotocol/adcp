@@ -96,6 +96,11 @@ const ORG_B = {
 };
 
 beforeEach(() => {
+  // Clears the module cache so each test's await import() below gets a fresh
+  // module instance. vi.clearAllMocks() resets call history but not the module
+  // registry — without this the cached instance from a prior test carries stale
+  // mock implementations into the next test.
+  vi.resetModules();
   vi.clearAllMocks();
   mockQuery.mockReset();
   lockHeld = false;
