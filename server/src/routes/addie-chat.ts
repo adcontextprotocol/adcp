@@ -28,8 +28,7 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
-// Note: ANONYMOUS_SAFE_KNOWLEDGE_TOOLS is used by the MCP chat-tool.ts (separate client).
-// Web chat anonymous users get directory tools only; knowledge tools require login.
+import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from "../mcp/chat-tool.js";
 import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
@@ -206,14 +205,34 @@ async function initializeChatClient(): Promise<void> {
     claudeClient.registerTool(searchMembersTool, searchMembersHandler);
   }
 
+  // Knowledge tool handlers — used both for the global anonymous-safe registration
+  // below and for the authenticated-only set further down. The same handler instance
+  // is fine for both surfaces; tier gating happens at registration, not at call time.
+  const knowledgeHandlers = createKnowledgeToolHandlers();
+
+  // Register anonymous-safe knowledge tools globally — search_docs, get_doc,
+  // search_repos, search_resources, get_recent_news. All read-only over public
+  // content. Without these the anonymous chat falls back to in-prompt knowledge
+  // and improvises when asked about specific spec mechanics. The MCP chat path
+  // already exposes the same set; this aligns the web chat path with it.
+  for (const tool of KNOWLEDGE_TOOLS) {
+    if (!ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
+    const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   // Build authenticated-only tools (cached, reused per request).
-  // Includes: all knowledge tools, billing, schema, brand, property.
+  // Includes: full knowledge surface, billing, schema, brand, property.
   const authTools: typeof KNOWLEDGE_TOOLS = [];
   const authHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // All knowledge tools require authentication (doc search needs Sonnet to synthesize well)
-  const knowledgeHandlers = createKnowledgeToolHandlers();
+  // Knowledge tools that require authentication: search_slack, get_channel_activity,
+  // bookmark_resource — anything touching Slack history or member-scoped writes.
+  // Anonymous-safe tools are registered globally above.
   for (const tool of KNOWLEDGE_TOOLS) {
+    if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
     const handler = knowledgeHandlers.get(tool.name);
     if (handler) {
       authTools.push(tool);
@@ -270,7 +289,7 @@ async function initializeChatClient(): Promise<void> {
 
   initialized = true;
   logger.info({
-    anonymousTools: DIRECTORY_TOOLS.length,
+    anonymousTools: DIRECTORY_TOOLS.length + ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.size + 1, // +1 for search_members
     authenticatedTools: authTools.length,
     anonymousModel: AddieModelConfig.anonymousChat,
     authenticatedModel: AddieModelConfig.chat,
