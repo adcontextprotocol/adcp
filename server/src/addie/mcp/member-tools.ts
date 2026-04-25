@@ -56,6 +56,8 @@ import {
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
+import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
@@ -636,8 +638,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'update_company_listing',
     description:
-      "Update the company's directory listing — how the organization appears in the member directory and to Addie. Can update tagline, description, contact info, social links, and headquarters. Only updates fields that are provided.",
-    usage_hints: 'use when user wants to update company tagline, description, contact info, or directory listing',
+      "Update the company's directory listing text fields — tagline, description, contact info, social links, and headquarters. Only updates fields that are provided. For logo or brand color, use update_company_logo instead.",
+    usage_hints: 'use when user wants to update company tagline, description, contact info, or directory listing. For logo or brand color, use update_company_logo instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -657,6 +659,26 @@ export const MEMBER_TOOLS: AddieTool[] = [
         linkedin_url: { type: 'string', description: 'LinkedIn company page URL' },
         twitter_url: { type: 'string', description: 'Twitter/X profile URL' },
         headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY")' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'update_company_logo',
+    description:
+      "Update the company logo or brand color on the directory listing. Use when a member wants to upload, change, or fix their company logo. The logo URL must be a publicly accessible HTTPS image (PNG, JPG, SVG, etc.) — file-viewer links like Google Drive don't work.",
+    usage_hints: 'Use when the user says "update our logo", "fix my company logo", "set the brand color", or shares a logo URL. Validates that the URL returns an actual image before saving.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        logo_url: {
+          type: 'string',
+          description: 'Public HTTPS URL to the logo image (PNG, JPG, SVG, WebP). Omit to leave unchanged.',
+        },
+        brand_color: {
+          type: 'string',
+          description: 'Primary brand color as a hex string (e.g., "#FF5733"). Omit to leave unchanged.',
+        },
       },
       required: [],
     },
@@ -2061,6 +2083,62 @@ export function createMemberToolHandlers(
 
     const updatedFields = Object.keys(updates).join(', ');
     return `Company listing updated! Updated: ${updatedFields}\n\nView at https://agenticadvertising.org/members/`;
+  });
+
+  handlers.set('update_company_logo', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to update your company logo. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const logoUrl = typeof input.logo_url === 'string' ? input.logo_url.trim() : undefined;
+    const brandColor = typeof input.brand_color === 'string' ? input.brand_color.trim() : undefined;
+    if (!logoUrl && !brandColor) {
+      return 'Provide a logo_url or brand_color to update.';
+    }
+
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return "Your account isn't linked to an organization yet. Visit https://agenticadvertising.org/member-profile to set up your company listing.";
+    }
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    if (!profile) {
+      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+    }
+
+    let fallbackDomainHint: string | undefined;
+    if (!profile.primary_brand_domain && !profile.contact_website && logoUrl) {
+      try {
+        fallbackDomainHint = canonicalizeBrandDomain(new URL(logoUrl).hostname);
+      } catch { /* validated below */ }
+    }
+
+    try {
+      const result = await updateBrandIdentity({
+        workosOrganizationId: orgId,
+        displayName: profile.display_name,
+        profile,
+        logoUrl,
+        brandColor,
+        fallbackDomainHint,
+      });
+      // Dynamic import: member-context.js transitively constructs a WorkOS
+      // client at module load, which would break tests that import this file
+      // without WORKOS_API_KEY in the env. Loading it here defers that until
+      // the handler actually runs.
+      const { invalidateMemberContextCache } = await import('../member-context.js');
+      invalidateMemberContextCache();
+      const parts: string[] = [];
+      if (logoUrl) parts.push(`logo set to ${logoUrl}`);
+      if (brandColor) parts.push(`brand color set to ${brandColor}`);
+      return `Done — ${parts.join(', ')} for ${profile.display_name} (${result.brandDomain}). It may take a moment for the change to appear in the member directory.`;
+    } catch (err) {
+      if (err instanceof BrandIdentityError) {
+        return err.message;
+      }
+      logger.error({ err, orgId }, 'update_company_logo: failed');
+      return 'Something went wrong updating your logo. Please try again, or edit directly at https://agenticadvertising.org/member-profile';
+    }
   });
 
   // ============================================

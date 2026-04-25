@@ -13,9 +13,28 @@ export interface NormalizeResult {
 }
 
 /**
- * Normalize a domain to its canonical form.
+ * Normalize a domain to its canonical form for the brand registry, member
+ * profiles, and other surfaces that key on the bare apex.
  * Strips protocol, path, query, fragment, trailing dot, www/m prefix. Lowercases.
  */
+export function canonicalizeBrandDomain(raw: string): string {
+  return normalizeDomain(raw).value;
+}
+
+const BRAND_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+/**
+ * Throw if the canonicalized value isn't a plausible domain (multi-label,
+ * RFC-1123-ish). Defends against polluting the brands.domain key with values
+ * like "localhost", empty strings, or unparseable garbage from upstream
+ * profile fields.
+ */
+export function assertValidBrandDomain(canonical: string): void {
+  if (!BRAND_DOMAIN_RE.test(canonical) || canonical.length > 253) {
+    throw new Error(`"${canonical}" is not a valid brand domain.`);
+  }
+}
+
 function normalizeDomain(raw: string): { value: string; reason: string | null } {
   let canonical = raw.trim();
   // Strip protocol

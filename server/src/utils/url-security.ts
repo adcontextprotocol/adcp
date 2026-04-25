@@ -172,21 +172,23 @@ export function validateExternalUrl(raw: string): string | null {
  */
 export async function safeFetch(
   url: string,
-  options?: { headers?: Record<string, string>; maxRedirects?: number },
+  options?: { headers?: Record<string, string>; maxRedirects?: number; method?: 'GET' | 'HEAD'; signal?: AbortSignal },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
   await validateFetchUrl(parsedUrl);
 
   const headers = options?.headers ?? {};
   const maxRedirects = options?.maxRedirects ?? 5;
+  const method = options?.method ?? 'GET';
+  const signal = options?.signal;
 
-  let response = await fetch(sanitizeUrl(parsedUrl), { headers, redirect: 'manual' });
+  let response = await fetch(sanitizeUrl(parsedUrl), { method, headers, redirect: 'manual', signal });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), { headers, redirect: 'manual' });
+    response = await fetch(sanitizeUrl(redirectUrl), { method, headers, redirect: 'manual', signal });
   }
 
   return response;

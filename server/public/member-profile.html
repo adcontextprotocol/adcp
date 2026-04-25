@@ -1514,13 +1514,19 @@
         const manageLink = document.getElementById('brand-manage-link');
         manageLink.href = '/brands?domain=' + encodeURIComponent(profile.primary_brand_domain);
 
-        // Show logo if available
+        // Show logo if available. If the URL fails to load (broken host,
+        // viewer page that returns HTML, expired link), restore the
+        // "No logo" placeholder so the section never renders empty.
         const logoPreview = document.getElementById('brand-logo-preview');
         if (profile.resolved_brand?.logo_url) {
+          const placeholderHtml = logoPreview.innerHTML;
           var img = document.createElement('img');
           img.src = profile.resolved_brand.logo_url;
           img.style.cssText = 'max-width: 76px; max-height: 56px; object-fit: contain;';
           img.alt = '';
+          img.onerror = function() {
+            logoPreview.innerHTML = placeholderHtml;
+          };
           logoPreview.textContent = '';
           logoPreview.appendChild(img);
         }

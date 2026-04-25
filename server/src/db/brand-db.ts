@@ -12,6 +12,14 @@ import type {
 /**
  * Extract logos and colors from a brand JSON structure, resolving both
  * light-background and dark-background logo URLs.
+ *
+ * Real brand.json files use several shapes for the logo field:
+ *  - brands[0].logos: [{url, ...}]   (per-brand array)
+ *  - logos: [{url, ...}]             (top-level array)
+ *  - logo: {url, ...}                (singular object — schema-valid at brand level)
+ * Colors may appear as `colors` or `brand_colors` at top level.
+ * Resolve all of them so a publisher who follows the spec but picks the
+ * shorter idiom doesn't silently lose their logo on member surfaces.
  */
 export function resolveBrandFromJson(
   domain: string,
@@ -20,8 +28,19 @@ export function resolveBrandFromJson(
 ): MemberBrandInfo {
   const brands = brandJson.brands as Array<Record<string, unknown>> | undefined;
   const primaryBrand = brands?.[0];
-  const logos = (primaryBrand?.logos ?? brandJson.logos) as Array<Record<string, unknown>> | undefined;
-  const colors = (primaryBrand?.colors ?? brandJson.colors) as Record<string, unknown> | undefined;
+
+  const collectLogos = (source: Record<string, unknown> | undefined): Array<Record<string, unknown>> | undefined => {
+    if (!source) return undefined;
+    if (Array.isArray(source.logos)) return source.logos as Array<Record<string, unknown>>;
+    if (source.logo && typeof source.logo === 'object') return [source.logo as Record<string, unknown>];
+    return undefined;
+  };
+
+  const logos = collectLogos(primaryBrand) ?? collectLogos(brandJson);
+  const colors = (primaryBrand?.colors
+    ?? brandJson.colors
+    ?? primaryBrand?.brand_colors
+    ?? brandJson.brand_colors) as Record<string, unknown> | undefined;
 
   const typedLogos: BrandLogo[] | undefined = logos
     ?.filter(l => typeof l.url === 'string' && l.url)
