@@ -439,15 +439,14 @@ export class BrandDatabase {
   }
 
   /**
-   * Apply a verified brand claim: ownership transfer, mark verified, clear
-   * orphan flag, default to fresh manifest (or adopt prior on opt-in).
-   * Idempotent — safe to call from the verify route and the
-   * organization_domain.verified webhook (whichever wins; they agree).
+   * Apply a verified brand claim from the inline /verify route.
+   * Sets ownership + verified + clears orphan, AND applies the manifest
+   * decision (`adoptPriorManifest`). Used by /api/me/member-profile/brand-claim/verify
+   * where the caller has explicitly chosen adopt-vs-fresh.
    *
-   * The actual proof of ownership lives in WorkOS — this is just the
-   * brand-registry-side bookkeeping triggered after WorkOS confirms the
-   * DNS challenge. See routes/member-profiles.ts /brand-claim/verify and
-   * routes/workos-webhooks.ts.
+   * Webhook handlers must use markBrandDomainVerified instead — that path
+   * doesn't know the user's adopt choice and would otherwise clobber a
+   * manifest the caller intentionally adopted seconds earlier.
    */
   async applyVerifiedBrandClaim(
     domain: string,
@@ -476,6 +475,47 @@ export class BrandDatabase {
          brand_manifest = ${manifestSet},
          has_brand_manifest = ${hasManifestSet},
          updated_at = NOW()
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [canonicalDomain, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * Mark a domain verified from a WorkOS webhook event.
+   * Sync-only: sets ownership, domain_verified, clears orphan state, but
+   * NEVER touches brand_manifest / has_brand_manifest. The verify route
+   * (applyVerifiedBrandClaim) is what the user-facing "adopt vs fresh"
+   * decision flows through; the webhook is a backstop in case the inline
+   * write was missed (or for state changes flipped via the WorkOS dashboard).
+   * Without this separation, a webhook arriving after `adoptPriorManifest:true`
+   * would reset the just-adopted manifest to {}.
+   *
+   * Also a no-op if the row is already verified by the same org —
+   * avoids needless updated_at churn on retries.
+   */
+  async markBrandDomainVerified(
+    domain: string,
+    workosOrganizationId: string,
+  ): Promise<HostedBrand | null> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const result = await query<HostedBrand>(
+      `INSERT INTO brands (
+         domain, workos_organization_id, brand_manifest, has_brand_manifest,
+         source_type, review_status, is_public, domain_verified, manifest_orphaned
+       )
+       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         updated_at = NOW()
+       WHERE
+         brands.workos_organization_id IS DISTINCT FROM $2
+         OR brands.domain_verified IS DISTINCT FROM TRUE
+         OR brands.manifest_orphaned IS DISTINCT FROM FALSE
        RETURNING ${HOSTED_BRAND_COLUMNS}`,
       [canonicalDomain, workosOrganizationId]
     );

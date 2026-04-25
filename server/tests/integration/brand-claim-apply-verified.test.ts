@@ -114,6 +114,70 @@ describe('applyVerifiedBrandClaim', () => {
     expect(row.rows[0].brand_manifest).toEqual({});
   });
 
+  it('webhook sync (markBrandDomainVerified) does NOT clobber a manifest the inline route adopted', async () => {
+    // Race the reviewer flagged: inline /verify writes adoptPriorManifest=true,
+    // preserving the prior manifest. Then the WorkOS webhook fires for the
+    // same verification and lands a second write. Without the split between
+    // applyVerifiedBrandClaim (manifest-aware) and markBrandDomainVerified
+    // (sync-only), the webhook would reset brand_manifest = '{}' and undo
+    // the user's choice.
+    await pool.query(
+      `INSERT INTO brands (
+         domain, brand_manifest, source_type, review_status,
+         is_public, has_brand_manifest, manifest_orphaned, prior_owner_org_id
+       ) VALUES ($1, $2, 'community', 'approved', FALSE, TRUE, TRUE, $3)`,
+      [
+        TEST_DOMAIN,
+        JSON.stringify({ brands: [{ id: 'prior', logos: [{ url: 'https://prior.example.com/logo.png' }] }] }),
+        ORG_A,
+      ]
+    );
+    // 1. Inline /verify with adopt
+    await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_B, { adoptPriorManifest: true });
+    // 2. Webhook backstop fires (sync only)
+    await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_B);
+
+    const row = await pool.query<{
+      manifest_orphaned: boolean;
+      brand_manifest: { brands?: Array<{ logos?: Array<{ url: string }> }> };
+      has_brand_manifest: boolean;
+    }>(
+      'SELECT manifest_orphaned, brand_manifest, has_brand_manifest FROM brands WHERE domain = $1',
+      [TEST_DOMAIN]
+    );
+    expect(row.rows[0].manifest_orphaned).toBe(false);
+    expect(row.rows[0].has_brand_manifest).toBe(true);
+    // Adopted manifest survives the webhook write.
+    expect(row.rows[0].brand_manifest.brands?.[0]?.logos?.[0]?.url).toBe('https://prior.example.com/logo.png');
+  });
+
+  it('webhook sync claims an unowned domain (admin flipped state in the WorkOS dashboard)', async () => {
+    // Path: no inline /verify call ever happened, but the webhook fires
+    // because an admin marked the domain Verified in the WorkOS console.
+    // markBrandDomainVerified should claim the brand on its own.
+    const result = await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
+    expect(result).toBeTruthy();
+    expect(result!.workos_organization_id).toBe(ORG_A);
+    expect(result!.domain_verified).toBe(true);
+  });
+
+  it('webhook sync is a no-op when the row is already verified to the same org', async () => {
+    await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
+    const before = await pool.query<{ updated_at: Date }>(
+      'SELECT updated_at FROM brands WHERE domain = $1',
+      [TEST_DOMAIN]
+    );
+    // Wait briefly so a redundant UPDATE would tick updated_at.
+    await new Promise(r => setTimeout(r, 10));
+    const second = await brandDb.markBrandDomainVerified(TEST_DOMAIN, ORG_A);
+    expect(second).toBeNull(); // RETURNING fires no rows because WHERE filtered the redundant update
+    const after = await pool.query<{ updated_at: Date }>(
+      'SELECT updated_at FROM brands WHERE domain = $1',
+      [TEST_DOMAIN]
+    );
+    expect(after.rows[0].updated_at.getTime()).toBe(before.rows[0].updated_at.getTime());
+  });
+
   it('preserves the prior manifest when adoptPriorManifest is true', async () => {
     await pool.query(
       `INSERT INTO brands (

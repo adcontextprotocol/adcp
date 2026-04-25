@@ -21,6 +21,7 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
@@ -562,15 +563,15 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
     }, 'Upserted organization domain');
 
     // Sync the brand registry: if WorkOS just confirmed the domain is owned
-    // by this org, mirror that into the brands row (#3176). This is the
-    // back half of the WorkOS-driven brand-claim flow — the verify route
-    // already wrote inline for immediate effect; this catches webhook-only
-    // verifications (e.g., admins flipping state via the WorkOS dashboard).
+    // by this org, mirror ownership + verified flags into the brands row
+    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
+    // because the webhook doesn't know the user's adopt-vs-fresh decision
+    // and would otherwise clobber a manifest the inline /verify route
+    // intentionally adopted seconds earlier.
     if (domainData.state === 'verified') {
       try {
-        const { BrandDatabase } = await import('../db/brand-db.js');
         const brandDb = new BrandDatabase();
-        await brandDb.applyVerifiedBrandClaim(normalizedDomain, domainData.organization_id);
+        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
         logger.info({
           orgId: domainData.organization_id,
           domain: normalizedDomain,

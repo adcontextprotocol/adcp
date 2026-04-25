@@ -26,7 +26,7 @@ import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
-import { canonicalizeBrandDomain, assertValidBrandDomain } from "../services/identifier-normalization.js";
+import { canonicalizeBrandDomain, assertValidBrandDomain, assertClaimableBrandDomain } from "../services/identifier-normalization.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
@@ -1181,6 +1181,49 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
+  /**
+   * Resolve the caller's primary org and verify they have admin/owner role —
+   * brand-claim is org-scoped state-mutation and shouldn't be reachable by
+   * rank-and-file members. Returns the orgId, or sends an appropriate error
+   * response and returns null. Both /issue and /verify gate through this.
+   */
+  async function resolveBrandClaimOrgOr401(req: import('express').Request, res: import('express').Response): Promise<string | null> {
+    const userRow = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [req.user!.id]
+    );
+    const orgId = userRow.rows[0]?.primary_organization_id;
+    if (!orgId) {
+      res.status(400).json({ error: 'No organization associated with this account' });
+      return null;
+    }
+    if (!workos) {
+      res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      return null;
+    }
+    // Role check: only org admins/owners can issue or verify a brand claim.
+    // Matches the same pattern used by member-profile creation upstream.
+    try {
+      const memberships = await workos.userManagement.listOrganizationMemberships({
+        userId: req.user!.id,
+        organizationId: orgId,
+      });
+      const role = memberships.data[0]?.role?.slug || 'member';
+      if (role !== 'admin' && role !== 'owner') {
+        res.status(403).json({
+          error: 'Not authorized',
+          message: 'Only organization admins or owners can issue or verify a brand-domain claim.',
+        });
+        return null;
+      }
+    } catch (err) {
+      logger.error({ err, orgId }, 'brand-claim role check failed');
+      res.status(500).json({ error: 'Failed to verify caller role' });
+      return null;
+    }
+    return orgId;
+  }
+
   // POST /api/me/member-profile/brand-claim/issue — start a WorkOS-backed
   // domain ownership challenge (#3176). Defers to the WorkOS Domain Verification
   // API, which generates the DNS TXT record and runs the lookup. We avoid
@@ -1188,31 +1231,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // domain per org" and emits webhooks on state change, both of which we want.
   router.post('/brand-claim/issue', requireAuth, async (req, res) => {
     try {
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
-      if (!orgId) {
-        return res.status(400).json({ error: 'No organization associated with this account' });
-      }
-      if (!workos) {
-        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
-      }
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
 
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
       if (!rawDomain) return res.status(400).json({ error: 'domain is required' });
       const domain = canonicalizeBrandDomain(rawDomain);
       try {
-        assertValidBrandDomain(domain);
+        // Reject syntactic garbage AND known shared-platform domains
+        // (vercel.app, github.io, co.uk, etc) so a single member can't
+        // steal the brand identity for a multi-tenant platform's apex.
+        assertClaimableBrandDomain(domain);
       } catch (err) {
-        return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid brand domain' });
+        logger.debug({ err, rawDomain, domain }, 'brand-claim/issue: rejected invalid or non-claimable domain');
+        return res.status(400).json({
+          error: 'Invalid brand domain',
+          message: 'The domain is either malformed or a shared platform / public-suffix domain that cannot be claimed.',
+          domain,
+        });
       }
 
       // If the domain is already attached to this caller's org, surface its
       // current state instead of erroring — idempotent re-issue.
       try {
-        const existing = await workos.organizations.getOrganization(orgId);
+        const existing = await workos!.organizations.getOrganization(orgId);
         const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
         if (existingDomain) {
           return res.json({
@@ -1228,11 +1270,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
       } catch (err) {
-        logger.debug({ err, orgId }, 'brand-claim/issue: org pre-check failed, will attempt create');
+        logger.warn({ err, orgId }, 'brand-claim/issue: org pre-check failed, will attempt create');
       }
 
       try {
-        const created = await workos.organizationDomains.create({
+        const created = await workos!.organizationDomains.create({
           organizationId: orgId,
           domain,
         });
@@ -1246,14 +1288,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           instructions: 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
         });
       } catch (err: any) {
-        // WorkOS returns a 422 / 409 with a "domain already exists" body when
-        // another org has the same domain registered. Surface as 409 so the
-        // member can route through the dispute path; don't leak which org.
+        // WorkOS returns 422 for both "domain already attached to another org"
+        // AND "domain syntactically invalid". Inspect the response body to
+        // disambiguate so a typo'd domain doesn't get told to "open an
+        // escalation" — that's the wrong advice.
         const status = err?.status ?? err?.response?.status;
-        if (status === 422 || status === 409) {
+        const responseBody = err?.response?.data ?? err?.rawResponse ?? null;
+        const code = responseBody?.code ?? '';
+        const message = String(responseBody?.message ?? err?.message ?? '');
+        const looksLikeCollision =
+          code === 'organization_domain_already_used'
+          || /already\s+(?:exists|used|associated|attached|registered)/i.test(message)
+          || /belongs\s+to\s+another/i.test(message);
+
+        if ((status === 422 || status === 409) && looksLikeCollision) {
           return res.status(409).json({
             error: 'Domain already registered',
             message: 'This domain is already registered to another organization. Open a brand-ownership escalation if the assignment is wrong.',
+            domain,
+          });
+        }
+        if (status === 422 || status === 400) {
+          return res.status(400).json({
+            error: 'Invalid domain',
+            message: 'WorkOS rejected the domain as malformed.',
             domain,
           });
         }
@@ -1273,17 +1331,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // — the webhook handler also writes through, idempotently.
   router.post('/brand-claim/verify', requireAuth, async (req, res) => {
     try {
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
-      if (!orgId) {
-        return res.status(400).json({ error: 'No organization associated with this account' });
-      }
-      if (!workos) {
-        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
-      }
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
 
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
       if (!rawDomain) return res.status(400).json({ error: 'domain is required' });
@@ -1291,13 +1340,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const adoptPriorManifest = req.body?.adopt_prior_manifest === true;
 
       // Look up the WorkOS domain id for this org+domain.
-      const existing = await workos.organizations.getOrganization(orgId);
+      const existing = await workos!.organizations.getOrganization(orgId);
       const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
       if (!existingDomain) {
         return res.status(404).json({ error: 'No outstanding domain challenge for this organization. Call /brand-claim/issue first.' });
       }
 
       let verified;
+      let alreadyVerified = false;
       // Cast through string: the SDK's getOrganization() narrows domain.state
       // to Pending|Failed (verified entries get listed via verifyOrganizationDomain
       // and arrive on a different branch), but we accept the wider union here
@@ -1305,12 +1355,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const existingState = String(existingDomain.state);
       if (existingState === 'verified' || existingState === 'legacy_verified') {
         verified = existingDomain;
+        alreadyVerified = true;
       } else {
         try {
-          // Some SDK shapes accept a string id; older shapes use { domainId }.
-          // Pass the id directly which is the modern signature.
-          verified = await (workos.organizationDomains as { verify: (id: string) => Promise<{ state: string }> })
-            .verify(existingDomain.id);
+          verified = await workos!.organizationDomains.verify(existingDomain.id);
         } catch (err: any) {
           const status = err?.status ?? err?.response?.status;
           // WorkOS returns 422 when the DNS record isn't found / doesn't match.
@@ -1339,15 +1387,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
-      // Mirror the verified state into the brand registry. The webhook will
-      // also do this; both writes are idempotent so whichever lands first wins.
+      // Mirror the verified state into the brand registry. Inline write
+      // captures the user's adopt-vs-fresh choice; the webhook backstop uses
+      // markBrandDomainVerified (sync-only, never touches manifest) so it
+      // can't clobber the adopted manifest if it lands second.
       const updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
-      logger.info({ domain, orgId, adoptPriorManifest }, 'Brand claim verified via WorkOS and applied to registry');
+      logger.info({ domain, orgId, adoptPriorManifest, alreadyVerified }, 'Brand claim verified via WorkOS and applied to registry');
 
       return res.json({
         domain,
         verified: true,
-        transferred: true,
+        // newly_verified=false when the domain was already in verified state
+        // before this call (e.g. webhook arrived first, or admin used the
+        // dashboard). Lets the caller distinguish a real transfer from a sync.
+        newly_verified: !alreadyVerified,
         adopted_prior_manifest: adoptPriorManifest,
         brand: updated ? { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified } : null,
       });
