@@ -72,6 +72,15 @@ vi.mock('../../server/src/services/announcement-visual.js', () => ({
   AAO_FALLBACK_VISUAL_URL: 'https://agenticadvertising.org/AAo-social.png',
 }));
 
+import {
+  findAnnounceCandidates,
+  buildReviewBlocks,
+  runBackfillAnnouncements,
+  BACKFILL_SOFT_CAP,
+  BACKFILL_ABSOLUTE_MAX,
+} from '../../server/src/addie/jobs/announcement-trigger.js';
+import { parseArgs } from '../../server/src/scripts/backfill-member-announcements.js';
+
 const ORG_A = {
   workos_organization_id: 'org_AAA',
   org_name: 'Alpha Co',
@@ -96,13 +105,13 @@ const ORG_B = {
 };
 
 beforeEach(() => {
-  // Clears the module cache so each test's await import() below gets a fresh
-  // module instance. vi.clearAllMocks() resets call history but not the module
-  // registry — without this the cached instance from a prior test carries stale
-  // mock implementations into the next test.
-  vi.resetModules();
-  vi.clearAllMocks();
+  // mockReset drains the mockResolvedValueOnce queue per mock; clearAllMocks
+  // alone clears history but leaves queued values (would bleed across tests).
   mockQuery.mockReset();
+  mockSendChannelMessage.mockReset();
+  mockDeleteChannelMessage.mockReset();
+  mockDraftAnnouncement.mockReset();
+  mockResolveVisual.mockReset();
   lockHeld = false;
   lockAcquireReturnsFalse = false;
   mockDraftAnnouncement.mockResolvedValue({
@@ -121,7 +130,6 @@ beforeEach(() => {
 describe('findAnnounceCandidates — requireProfilePublished option', () => {
   it('default: SQL includes the profile_published EXISTS clause', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { findAnnounceCandidates } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await findAnnounceCandidates();
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toMatch(/EXISTS\s*\(\s*SELECT 1 FROM org_activities[\s\S]+activity_type = 'profile_published'/);
@@ -129,7 +137,6 @@ describe('findAnnounceCandidates — requireProfilePublished option', () => {
 
   it('requireProfilePublished:false: SQL omits the profile_published EXISTS clause', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { findAnnounceCandidates } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await findAnnounceCandidates({ requireProfilePublished: false });
     const sql = mockQuery.mock.calls[0][0] as string;
     // The outer NOT EXISTS (for already-drafted/skipped) mentions the
@@ -142,7 +149,6 @@ describe('findAnnounceCandidates — requireProfilePublished option', () => {
 
   it('sort order: last_published_at DESC NULLS LAST, then created_at DESC', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { findAnnounceCandidates } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await findAnnounceCandidates({ requireProfilePublished: false });
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toMatch(/ORDER BY last_published_at DESC NULLS LAST,\s*o\.created_at DESC/);
@@ -151,7 +157,6 @@ describe('findAnnounceCandidates — requireProfilePublished option', () => {
 
 describe('buildReviewBlocks — backfill flag', () => {
   it('tags header with [BACKFILL] when backfill:true', async () => {
-    const { buildReviewBlocks } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const { text, blocks } = buildReviewBlocks({
       orgName: 'Alpha Co',
       workosOrganizationId: 'org_AAA',
@@ -167,7 +172,6 @@ describe('buildReviewBlocks — backfill flag', () => {
   });
 
   it('no tag when backfill:false (default)', async () => {
-    const { buildReviewBlocks } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const { blocks } = buildReviewBlocks({
       orgName: 'Alpha Co',
       workosOrganizationId: 'org_AAA',
@@ -185,7 +189,6 @@ describe('runBackfillAnnouncements', () => {
   test('dry-run: no Slack calls, no activity writes; reports candidates', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [ORG_A, ORG_B] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({
       reviewChannel: 'C0REVIEW01',
       dryRun: true,
@@ -209,7 +212,6 @@ describe('runBackfillAnnouncements', () => {
     // Draft + resolve mocks already set; INSERT activity write:
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({
       reviewChannel: 'C0REVIEW01',
       limit: 1,
@@ -239,7 +241,6 @@ describe('runBackfillAnnouncements', () => {
     // 15 successful INSERTs:
     for (let i = 0; i < 15; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({
       reviewChannel: 'C0REVIEW01',
     });
@@ -254,7 +255,6 @@ describe('runBackfillAnnouncements', () => {
     mockQuery.mockResolvedValueOnce({ rows: [ORG_A] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     const insertCall = mockQuery.mock.calls.find(
@@ -267,7 +267,6 @@ describe('runBackfillAnnouncements', () => {
   test('handles candidate-load failure without throwing', async () => {
     mockQuery.mockRejectedValueOnce(new Error('db down'));
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(result.candidates).toBe(0);
@@ -280,7 +279,6 @@ describe('runBackfillAnnouncements', () => {
     // INSERT fails:
     mockQuery.mockRejectedValueOnce(new Error('db write failed'));
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(mockSendChannelMessage).toHaveBeenCalledTimes(1);
@@ -296,7 +294,6 @@ describe('runBackfillAnnouncements', () => {
       rows: [{ ...ORG_A, membership_tier: 'builder', last_published_at: published }],
     });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({
       reviewChannel: 'C0REVIEW01',
       dryRun: true,
@@ -314,7 +311,6 @@ describe('runBackfillAnnouncements', () => {
   });
 
   test('--force off: --limit above soft cap gets clamped to BACKFILL_SOFT_CAP', async () => {
-    const { runBackfillAnnouncements, BACKFILL_SOFT_CAP } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await runBackfillAnnouncements({
@@ -327,7 +323,6 @@ describe('runBackfillAnnouncements', () => {
   });
 
   test('--force on: --limit above soft cap passes through but still capped at absolute max', async () => {
-    const { runBackfillAnnouncements, BACKFILL_ABSOLUTE_MAX } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await runBackfillAnnouncements({
@@ -342,7 +337,6 @@ describe('runBackfillAnnouncements', () => {
 
   test('advisory lock held by another run → refuses with lockedOut:true', async () => {
     lockAcquireReturnsFalse = true;
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({
       reviewChannel: 'C0REVIEW01',
       dryRun: true,
@@ -359,7 +353,6 @@ describe('runBackfillAnnouncements', () => {
     mockQuery.mockResolvedValueOnce({ rows: [ORG_A] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     const summaryCall = mockSendChannelMessage.mock.calls.find(
@@ -372,7 +365,6 @@ describe('runBackfillAnnouncements', () => {
   test('summary message: skipped when no drafts succeeded', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // zero candidates
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     const summaryCall = mockSendChannelMessage.mock.calls.find(
@@ -385,7 +377,6 @@ describe('runBackfillAnnouncements', () => {
     mockQuery.mockResolvedValueOnce({ rows: [ORG_A] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(result.drafted_orgs).toEqual([
@@ -417,7 +408,6 @@ describe('runBackfillAnnouncements', () => {
     mockQuery.mockResolvedValueOnce({ rows: [rich] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     const draftCall = mockDraftAnnouncement.mock.calls[0][0];
@@ -435,7 +425,6 @@ describe('runBackfillAnnouncements', () => {
     // Unwind reports failure:
     mockDeleteChannelMessage.mockResolvedValueOnce({ ok: false, error: 'message_not_found' });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(result.failed).toBe(1);
@@ -448,7 +437,6 @@ describe('runBackfillAnnouncements', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // ORG_B insert succeeds
     mockDeleteChannelMessage.mockRejectedValueOnce(new Error('slack 5xx')); // unwind throws
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(result.failed).toBe(1);
@@ -464,7 +452,6 @@ describe('runBackfillAnnouncements', () => {
     // Only one activity write (for the successful post):
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { runBackfillAnnouncements } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runBackfillAnnouncements({ reviewChannel: 'C0REVIEW01' });
 
     expect(result.drafted).toBe(1);
@@ -474,32 +461,26 @@ describe('runBackfillAnnouncements', () => {
 
 describe('parseArgs (backfill script CLI)', () => {
   test('defaults: limit=15 dry-run=false force=false', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs([])).toEqual({ limit: 15, dryRun: false, force: false });
   });
 
   test('--limit N', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs(['--limit', '5'])).toEqual({ limit: 5, dryRun: false, force: false });
   });
 
   test('--limit=N', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs(['--limit=7'])).toEqual({ limit: 7, dryRun: false, force: false });
   });
 
   test('--dry-run', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs(['--dry-run'])).toEqual({ limit: 15, dryRun: true, force: false });
   });
 
   test('--force', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs(['--force'])).toEqual({ limit: 15, dryRun: false, force: true });
   });
 
   test('combined', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(parseArgs(['--dry-run', '--limit', '3'])).toEqual({
       limit: 3,
       dryRun: true,
@@ -508,22 +489,18 @@ describe('parseArgs (backfill script CLI)', () => {
   });
 
   test('--limit with non-integer throws', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(() => parseArgs(['--limit', 'foo'])).toThrow(/positive integer/);
   });
 
   test('--limit with zero throws', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(() => parseArgs(['--limit', '0'])).toThrow(/positive integer/);
   });
 
   test('unknown flag throws', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(() => parseArgs(['--bogus'])).toThrow(/Unknown argument/);
   });
 
   test('--help throws a marker', async () => {
-    const { parseArgs } = await import('../../server/src/scripts/backfill-member-announcements.js');
     expect(() => parseArgs(['--help'])).toThrow(/--help/);
   });
 });

@@ -9,12 +9,11 @@ import express from 'express';
 import { Router } from 'express';
 import request from 'supertest';
 
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
-
-const { mockLoadAnnouncementBacklog } = vi.hoisted(() => ({
-  mockLoadAnnouncementBacklog: vi.fn<any>(),
-}));
+const { mockLoadAnnouncementBacklog } = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  return { mockLoadAnnouncementBacklog: vi.fn<any>() };
+});
 
 vi.mock('../../server/src/addie/jobs/announcement-handlers.js', () => ({
   loadAnnouncementBacklog: (...args: unknown[]) => mockLoadAnnouncementBacklog(...args),
@@ -33,8 +32,9 @@ vi.mock('../../server/src/db/client.js', () => ({
   getPool: () => ({ query: vi.fn() }),
 }));
 
-async function buildApp() {
-  const { setupAnnouncementsRoutes } = await import('../../server/src/routes/admin/announcements.js');
+import { setupAnnouncementsRoutes } from '../../server/src/routes/admin/announcements.js';
+
+function buildApp() {
   const app = express();
   app.use(express.json());
   const pageRouter = Router();
@@ -45,14 +45,8 @@ async function buildApp() {
 }
 
 beforeEach(() => {
-  // Clears the module cache so each test's await import() inside buildApp()
-  // gets a fresh module instance. vi.clearAllMocks() resets call history but
-  // not the module registry — without this the cached instance from a prior
-  // test carries stale mock implementations into the next test.
-  vi.resetModules();
-  vi.clearAllMocks();
-  // mockReset drains the mockResolvedValueOnce queue; clearAllMocks alone
-  // does not, so an unconsumed Once value from a failed test would bleed.
+  // mockReset drains the mockResolvedValueOnce queue; an unconsumed Once
+  // value from a failed test would otherwise bleed into the next.
   mockLoadAnnouncementBacklog.mockReset();
 });
 
@@ -86,7 +80,7 @@ describe('GET /api/admin/announcements', () => {
         slack_posted: false, linkedin_posted: false, skipped: true },
     ]);
 
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.status).toBe(200);
 
@@ -121,7 +115,7 @@ describe('GET /api/admin/announcements', () => {
       },
     ]);
 
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.body.rows[0].state).toBe('skipped');
   });
@@ -145,7 +139,7 @@ describe('GET /api/admin/announcements', () => {
       },
     ]);
 
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.body.rows[0].draft_posted_at).toBe('2026-04-01T12:00:00.000Z');
     expect(res.body.rows[0].slack_posted_at).toBe('2026-04-01T12:00:00.000Z');
@@ -171,21 +165,21 @@ describe('GET /api/admin/announcements', () => {
         skipped: false,
       },
     ]);
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.body.rows[0].org_created_at).toBeNull();
   });
 
   it('500 on backend failure', async () => {
     mockLoadAnnouncementBacklog.mockRejectedValueOnce(new Error('db down'));
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.status).toBe(500);
   });
 
   it('empty result returns zero counts + empty rows', async () => {
     mockLoadAnnouncementBacklog.mockResolvedValueOnce([]);
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app).get('/api/admin/announcements');
     expect(res.body).toEqual({
       counts: { all: 0, pending_review: 0, li_pending: 0, done: 0, skipped: 0 },
