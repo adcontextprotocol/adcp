@@ -28,6 +28,7 @@ import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
+import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
@@ -1242,6 +1243,29 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {
+          if (err.code === 'cross_org_ownership') {
+            // Convert the bare 403 into a routed escalation so an admin can
+            // resolve via transfer_brand_ownership instead of the user dead-ending.
+            const escalation = await createEscalation({
+              workos_user_id: user.id,
+              user_email: user.email,
+              user_display_name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+              category: 'needs_human_action',
+              priority: 'normal',
+              summary: `Brand ownership dispute: ${displayName} wants to claim ${err.meta.brandDomain}`,
+              original_request: `Update brand identity for ${err.meta.brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
+              addie_context: `Caller org: ${targetOrgId}. Current owner org: ${err.meta.currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
+            }).catch(escalErr => {
+              logger.error({ err: escalErr, brandDomain: err.meta.brandDomain }, 'Failed to file brand-ownership escalation');
+              return null;
+            });
+            return res.status(409).json({
+              error: 'Brand domain is managed by another organization',
+              message: 'We filed a ticket so the team can review.',
+              escalation_id: escalation?.id ?? null,
+              brand_domain: err.meta.brandDomain,
+            });
+          }
           return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
         }
         throw err;

@@ -293,12 +293,29 @@ export class BrandDatabase {
   }
 
   /**
-   * Delete a hosted brand
+   * Relinquish a hosted brand back to the discovered/community pool.
+   *
+   * Clears ownership AND the brand_manifest fields the prior org authored
+   * (logos, colors, agents, narrative copy). Without this, the next org to
+   * claim the domain silently inherits the prior org's visual identity —
+   * a real spoofing risk if the row gets re-claimed via the unverified
+   * soft-claim path. The row stays so the canonical-domain key is
+   * preserved and any external references survive.
    */
   async deleteHostedBrand(id: string): Promise<boolean> {
-    // Clear ownership fields rather than deleting the brand entirely
     const result = await query(
-      'UPDATE brands SET workos_organization_id = NULL, created_by_user_id = NULL, created_by_email = NULL, domain_verified = FALSE, verification_token = NULL, updated_at = NOW() WHERE id = $1',
+      `UPDATE brands SET
+         workos_organization_id = NULL,
+         created_by_user_id = NULL,
+         created_by_email = NULL,
+         domain_verified = FALSE,
+         verification_token = NULL,
+         brand_manifest = '{}'::jsonb,
+         has_brand_manifest = FALSE,
+         brand_name = NULL,
+         is_public = FALSE,
+         updated_at = NOW()
+       WHERE id = $1`,
       [id]
     );
     return result.rowCount !== null && result.rowCount > 0;

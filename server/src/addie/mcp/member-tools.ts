@@ -2134,6 +2134,28 @@ export function createMemberToolHandlers(
       return `Done — ${parts.join(', ')} for ${profile.display_name} (${result.brandDomain}). It may take a moment for the change to appear in the member directory.`;
     } catch (err) {
       if (err instanceof BrandIdentityError) {
+        if (err.code === 'cross_org_ownership') {
+          // Convert the cross-org dead-end into a routed escalation so an
+          // admin can resolve via transfer_brand_ownership.
+          const userId = memberContext.workos_user.workos_user_id;
+          const userEmail = memberContext.workos_user.email;
+          const displayName = [memberContext.workos_user.first_name, memberContext.workos_user.last_name].filter(Boolean).join(' ') || userEmail;
+          const escalation = await createEscalation({
+            workos_user_id: userId,
+            user_email: userEmail,
+            user_display_name: displayName,
+            category: 'needs_human_action',
+            priority: 'normal',
+            summary: `Brand ownership dispute: ${profile.display_name} wants to claim ${err.meta.brandDomain}`,
+            original_request: `Update brand identity for ${err.meta.brandDomain} (logo=${logoUrl ?? 'unchanged'}, color=${brandColor ?? 'unchanged'}).`,
+            addie_context: `Caller org: ${orgId}. Current owner org: ${err.meta.currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
+          }).catch(escalErr => {
+            logger.error({ err: escalErr, brandDomain: err.meta.brandDomain }, 'Failed to file brand-ownership escalation');
+            return null;
+          });
+          const ticket = escalation ? ` (ticket #${escalation.id})` : '';
+          return `That domain is currently registered to a different organization, so we can't apply the change directly. I've filed it for the team to review${ticket} — they'll resolve it and follow up with you at ${userEmail}.`;
+        }
         return err.message;
       }
       logger.error({ err, orgId }, 'update_company_logo: failed');

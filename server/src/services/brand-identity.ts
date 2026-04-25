@@ -42,8 +42,19 @@ export interface UpdateBrandIdentityResult {
   wasUpdate: boolean;
 }
 
+export type BrandIdentityErrorCode =
+  | 'invalid_input'        // 400-class: bad logo URL, invalid color, etc.
+  | 'invalid_domain'       // 400-class: domain canonicalizes to garbage
+  | 'no_brand_domain'      // 400-class: caller has no domain to write to
+  | 'cross_org_ownership'; // 403-class: domain owned by a different org
+
 export class BrandIdentityError extends Error {
-  constructor(public statusCode: number, message: string) {
+  constructor(
+    public statusCode: number,
+    message: string,
+    public code: BrandIdentityErrorCode = 'invalid_input',
+    public meta: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = 'BrandIdentityError';
   }
@@ -82,13 +93,13 @@ export async function updateBrandIdentity(
     brandDomain = fallbackDomainHint;
   }
   if (!brandDomain) {
-    throw new BrandIdentityError(400, 'No brand domain set. Add your website to your profile first.');
+    throw new BrandIdentityError(400, 'No brand domain set. Add your website to your profile first.', 'no_brand_domain');
   }
   brandDomain = canonicalizeBrandDomain(brandDomain);
   try {
     assertValidBrandDomain(brandDomain);
   } catch (err) {
-    throw new BrandIdentityError(400, err instanceof Error ? err.message : 'Invalid brand domain.');
+    throw new BrandIdentityError(400, err instanceof Error ? err.message : 'Invalid brand domain.', 'invalid_domain');
   }
 
   const pool = getPool();
@@ -104,9 +115,15 @@ export async function updateBrandIdentity(
     const existing = existingResult.rows[0] ?? null;
     wasUpdate = !!existing;
 
-    // Ownership boundary: don't let one org overwrite another's brand
+    // Ownership boundary: don't let one org overwrite another's brand. Callers
+    // can convert this into a brand-ownership escalation rather than a hard 403.
     if (existing && existing.workos_organization_id && existing.workos_organization_id !== workosOrganizationId) {
-      throw new BrandIdentityError(403, 'This brand domain is managed by another organization.');
+      throw new BrandIdentityError(
+        403,
+        'This brand domain is managed by another organization.',
+        'cross_org_ownership',
+        { brandDomain, currentOwnerOrgId: existing.workos_organization_id },
+      );
     }
 
     if (existing) {
