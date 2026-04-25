@@ -140,6 +140,10 @@
         "additionalProperties": true
       }
     },
+    "result": {
+      "$ref": "/schemas/core/async-response-data.json",
+      "description": "Task-specific completion payload. Present when status is 'completed' and include_result was true in the request; absent otherwise. For failed tasks, use the error field instead. Uses the same anyOf union as the push-notification webhook result field."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

@@ -67,6 +67,28 @@ A mutating tool can return one of three shapes:
 
 When you see `status: 'submitted'`, the work is **not** complete. Poll via `tasks/get` (A2A) or the MCP async task extension, using the returned `task_id`. Over A2A the AdCP `task_id` also rides on `artifact.metadata.adcp_task_id`.
 
+Pass `include_result: true` when polling so the seller includes the completion payload once status transitions to `completed`:
+
+```json
+// tasks/get request
+{ "task_id": "task_456", "include_result": true }
+
+// tasks/get response — completed
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "protocol": "media-buy",
+  "status": "completed",
+  "completed_at": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [{ "package_id": "pkg_001" }]
+  }
+}
+```
+
+The `result` field uses the same payload structure as the push-notification webhook `result` field for completed tasks — buyers who configure both polling and webhooks receive the same data shape either way.
+
 ## Error recovery — read `issues[]`
 
 Every validation failure produces an envelope shaped like:
