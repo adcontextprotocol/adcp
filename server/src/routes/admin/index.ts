@@ -24,3 +24,4 @@ export { setupAccountsBillingRoutes } from './accounts-billing.js';
 export { setupBrandEnrichmentRoutes } from './brand-enrichment.js';
 export { setupGeoRoutes } from './geo.js';
 export { setupAnnouncementsRoutes } from './announcements.js';
+export { setupIntegrityRoutes } from './integrity.js';
