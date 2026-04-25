@@ -1,12 +1,11 @@
 id: media_buy_seller/create_media_buy_async
-version: "1.1.0"
-title: "Seller returns submitted task envelope and resolves it via tasks/get when create_media_buy goes async"
+version: "1.0.0"
+title: "Seller returns submitted task envelope when create_media_buy goes async"
 category: media_buy_seller
-summary: "Verifies the full async create_media_buy roundtrip: the seller emits the submitted envelope (status='submitted', task_id present, no media_buy_id), the controller resolves the task to completed, and tasks/get with include_result returns the recorded media_buy_id verbatim."
+summary: "Verifies the AdCP-payload wire shape of the submitted-arm response from create_media_buy: status='submitted', task_id present, no media_buy_id and no packages on the envelope."
 track: media_buy
 required_tools:
   - create_media_buy
-  - tasks_get
   - comply_test_controller
 
 narrative: |
@@ -43,20 +42,6 @@ narrative: |
   storyboard catches sellers that fabricate a fresh task_id instead of honoring the
   registered directive.
 
-  Submitted → completed roundtrip. After the submitted-envelope shape is validated, the
-  controller force-completes the task with a buyer-supplied result payload (the
-  CreateMediaBuyResponse the seller would have emitted on a synchronous success). The
-  buyer then calls tasks/get(task_id, include_result: true) and asserts the seller
-  surfaces status='completed' plus the recorded result verbatim. This anchors three
-  invariants the spec just formalized in the tasks/get response (#3126):
-
-  1. tasks/get on a completed async task returns status='completed' (not still
-     'submitted', not 'working')
-  2. include_result: true makes the seller emit the typed result field; sellers MUST
-     NOT silently drop it
-  3. result.media_buy_id MUST equal the value the controller registered — sellers that
-     fabricate a fresh media_buy_id break the polling contract
-
   Out of scope (by design). Transport-level wire-shape assertions — A2A Task.state and
   artifact.metadata.adcp_task_id placement, MCP structuredContent envelope details — are
   runner-side concerns, not storyboard assertions. The runner exercises this scenario
@@ -64,10 +49,9 @@ narrative: |
   adcp-client#904 for the runner-side probes; this storyboard provides the deterministic
   driver.
 
-  Webhook delivery (push_notification_config) is not asserted by this storyboard. The
-  buyer either polls tasks/get (this scenario) or waits on a webhook; both are first-
-  class delivery mechanisms in the spec. Webhook conformance lives in the dedicated
-  webhook-receiver storyboards.
+  The submitted → completed transition (forcing the task to resolve and asserting the
+  completion artifact carries media_buy_id) is deferred to a follow-up scenario. It needs
+  a force_task_completion controller scenario that does not exist yet.
 
 agent:
   interaction_model: media_buy_seller
@@ -245,117 +229,4 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "create_media_buy_async--create_media_buy_submitted"
-            description: "Context correlation_id returned unchanged"
-
-  - id: force_task_completion
-    title: "Resolve the submitted task to completed via comply_test_controller"
-    narrative: |
-      The buyer's poll cannot test completion until the task actually completes,
-      and real completions ride on out-of-band signals (IO countersignature,
-      batch processor cron) the storyboard cannot wait for. Use
-      force_task_completion to pin the completion deterministically: register
-      the result payload (the CreateMediaBuyResponse the seller would have
-      emitted on a synchronous success) against the captured task_id. The next
-      tasks/get with include_result must surface this result verbatim.
-
-    steps:
-      - id: force_task_completed
-        title: "Force the task to completed with a CreateMediaBuyResponse result"
-        requires_tool: comply_test_controller
-        narrative: |
-          Mint a media_buy_id and a packages array, then register them as the
-          completion result. The seller MUST persist this result in its task
-          store and surface it on subsequent tasks/get(task_id, include_result)
-          calls. Sellers that fabricate a different media_buy_id or drop the
-          packages array fail the polling assertion in the next phase.
-        task: comply_test_controller
-        comply_scenario: create_media_buy
-        stateful: true
-        expected: |
-          Return a successful state transition:
-          - success: true
-          - previous_state: 'submitted'
-          - current_state: 'completed'
-
-        sample_request:
-          scenario: "force_task_completion"
-          params:
-            task_id: "$context.forced_task_id"
-            result:
-              media_buy_id: "mb_async_signed_io_q2"
-              status: "active"
-              packages:
-                - package_id: "pkg-0"
-                  product_id: "async_signed_io_q2"
-                  budget: 30000
-          context:
-            correlation_id: "create_media_buy_async--force_task_completed"
-        validations:
-          - check: field_value
-            path: "success"
-            allowed_values: [true]
-            description: "Controller accepts the completion directive"
-          - check: field_value
-            path: "current_state"
-            value: "completed"
-            description: "Task transitioned to completed"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "create_media_buy_async--force_task_completed"
-            description: "Context correlation_id returned unchanged"
-
-  - id: poll_task_completed
-    title: "tasks/get returns completed status and the recorded result"
-    narrative: |
-      The buyer polls tasks/get with the captured task_id and
-      include_result: true. The seller MUST surface status='completed' and
-      return the result payload registered by force_task_completion verbatim
-      — same media_buy_id, same packages. This anchors the spec invariant
-      formalized in #3126: include_result on a completed async task delivers
-      the typed result field, and the value mirrors what the seller would
-      have emitted on a synchronous success or a webhook callback.
-
-    steps:
-      - id: tasks_get_completed
-        title: "Poll tasks/get with include_result and observe the completion artifact"
-        task: tasks_get
-        schema_ref: "core/tasks-get-request.json"
-        response_schema_ref: "core/tasks-get-response.json"
-        doc_ref: "/protocol/calling-an-agent#async-task-polling"
-        comply_scenario: create_media_buy
-        stateful: true
-        expected: |
-          Return the completed task with the registered result:
-          - status: 'completed'
-          - result.media_buy_id: 'mb_async_signed_io_q2'
-          - result.packages[0].product_id: 'async_signed_io_q2'
-
-        sample_request:
-          task_id: "$context.forced_task_id"
-          include_result: true
-          context:
-            correlation_id: "create_media_buy_async--tasks_get_completed"
-        validations:
-          - check: response_schema
-            description: "Response matches tasks-get-response.json"
-          - check: field_value
-            path: "status"
-            value: "completed"
-            description: "Task status is 'completed' (not 'submitted', not 'working')"
-          - check: field_present
-            path: "result"
-            description: "result is present because include_result was true and status is completed"
-          - check: field_value
-            path: "result.media_buy_id"
-            value: "mb_async_signed_io_q2"
-            description: "result.media_buy_id matches the value registered by force_task_completion — sellers that fabricate a fresh media_buy_id break the polling contract"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "create_media_buy_async--tasks_get_completed"
             description: "Context correlation_id returned unchanged"
