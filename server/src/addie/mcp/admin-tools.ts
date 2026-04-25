@@ -72,11 +72,10 @@ import {
 } from '../../slack/client.js';
 import {
   getProductsForCustomer,
-  createCheckoutSession,
-  createAndSendInvoice,
-  createStripeCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
+import { createMembershipInvite } from '../../db/membership-invites-db.js';
+import { sendMembershipInviteEmail } from '../../notifications/email.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
@@ -457,25 +456,25 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'send_payment_request',
-    description: 'Send payment link or invoice to prospect. Finds/creates company, applies discounts, generates Stripe checkout URL or invoice. For invoices: use draft_invoice first, then send_invoice.',
+    description: `Find or create a prospect organization and either look up its products, draft an invoice for review, or send a membership invite. Admins cannot directly mint payment links or send invoices from this tool — those operations are only valid in the recipient's own authenticated session, after they accept the invite.
+
+Actions:
+- "lookup_only": find or create the org, list eligible products. Read-only.
+- "draft_invoice": preview what the invoice would look like (amount, discount). No Stripe write.
+- "send_invite": create a membership invite token and email it to the contact. This is NOT a direct invoice send — there is no admin path to issue invoices or payment links to non-signed-in recipients. The recipient signs in, accepts the agreement, and the invoice or checkout is then issued in their authenticated session — never under the admin's or a hallucinated email.`,
     input_schema: {
       type: 'object',
       properties: {
         company_name: { type: 'string', description: 'Company name' },
         domain: { type: 'string', description: 'Company domain' },
         contact_name: { type: 'string', description: 'Contact person name' },
-        contact_email: { type: 'string', description: 'Contact email (required for invoice)' },
+        contact_email: { type: 'string', description: 'Email of the human who will sign in to complete billing in their own session. Used only to deliver the invite — never used as a Stripe customer email or invoice recipient directly. Required for send_invite.' },
         contact_title: { type: 'string', description: 'Contact job title' },
-        action: { type: 'string', enum: ['payment_link', 'draft_invoice', 'send_invoice', 'lookup_only'], description: 'Action type (default: payment_link)' },
+        action: { type: 'string', enum: ['lookup_only', 'draft_invoice', 'send_invite'], description: 'Action type (default: lookup_only)' },
         lookup_key: { type: 'string', description: 'Product lookup_key from find_membership_products' },
-        billing_address: {
-          type: 'object',
-          description: 'Billing address (required for invoices)',
-          properties: { line1: { type: 'string' }, line2: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, postal_code: { type: 'string' }, country: { type: 'string' } },
-        },
-        discount_percent: { type: 'number', description: 'Percentage discount' },
-        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount' },
-        discount_reason: { type: 'string', description: 'Reason for discount' },
+        discount_percent: { type: 'number', description: 'Percentage discount (preview only in draft_invoice)' },
+        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount (preview only in draft_invoice)' },
+        discount_reason: { type: 'string', description: 'Reason for discount (required when applying one)' },
         use_existing_discount: { type: 'boolean', description: 'Use existing org discount (default: true)' },
       },
       required: ['company_name'],
@@ -2840,7 +2839,11 @@ export function createAdminToolHandlers(
     return response;
   });
 
-  // Send payment request - the unified tool for getting prospects to pay
+  // Send membership invite to a prospect — admin-side entry to the billing flow.
+  // The admin can look up products, draft an invoice for review, or send an
+  // invite. The invite recipient signs in and accepts in their own session,
+  // and only then is an invoice or checkout issued — under their authenticated
+  // identity, never under the admin's email or a hallucinated address.
   handlers.set('send_payment_request', async (input) => {
 
     const companyName = input.company_name as string;
@@ -2848,21 +2851,21 @@ export function createAdminToolHandlers(
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
-    const action = (input.action as string) || 'payment_link';
+    const action = (input.action as string) || 'lookup_only';
     const lookupKey = input.lookup_key as string | undefined;
-    const billingAddress = input.billing_address as {
-      line1?: string;
-      line2?: string;
-      city?: string;
-      state?: string;
-      postal_code?: string;
-      country?: string;
-    } | undefined;
-    // Discount parameters
+    // Discount parameters (preview-only — applied during draft_invoice)
     const discountPercent = input.discount_percent as number | undefined;
     const discountAmountDollars = input.discount_amount_dollars as number | undefined;
     const discountReason = input.discount_reason as string | undefined;
     const useExistingDiscount = input.use_existing_discount !== false; // default true
+
+    // The admin invoking this tool. Their identity is used as
+    // `invited_by_user_id` on the membership invite. We never propagate it as
+    // the Stripe customer email — that comes from the recipient at acceptance.
+    const adminUserId = memberContext?.workos_user?.workos_user_id;
+    const adminEmail = memberContext?.workos_user?.email;
+    const adminFirstName = memberContext?.workos_user?.first_name;
+    const adminLastName = memberContext?.workos_user?.last_name;
 
     const pool = getPool();
     let org: {
@@ -2958,8 +2961,12 @@ export function createAdminToolHandlers(
       return `❌ Could not find or create organization "${companyName}"`;
     }
 
-    // Update contact info if provided
-    if (contactName || contactEmail || contactTitle) {
+    // Update contact name/title on the org for visibility. We deliberately do
+    // NOT mirror contact_email into prospect_contact_email here — that field
+    // was the source of the cross-org contact leak. The admin must pass
+    // contact_email explicitly to send_invite each time, and the invite
+    // recipient's authenticated identity is what becomes the Stripe customer.
+    if (contactName || contactTitle) {
       const updates: string[] = [];
       const values: unknown[] = [];
       let paramIndex = 1;
@@ -2967,10 +2974,6 @@ export function createAdminToolHandlers(
       if (contactName) {
         updates.push(`prospect_contact_name = $${paramIndex++}`);
         values.push(contactName);
-      }
-      if (contactEmail) {
-        updates.push(`prospect_contact_email = $${paramIndex++}`);
-        values.push(contactEmail);
       }
       if (contactTitle) {
         updates.push(`prospect_contact_title = $${paramIndex++}`);
@@ -2984,9 +2987,7 @@ export function createAdminToolHandlers(
           `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
           values
         );
-        // Update local object
         if (contactName) org.prospect_contact_name = contactName;
-        if (contactEmail) org.prospect_contact_email = contactEmail;
       }
     }
 
@@ -3000,9 +3001,6 @@ export function createAdminToolHandlers(
       [org.workos_organization_id]
     );
     const members = membersResult.rows;
-
-    // Determine the email to use
-    const emailToUse = contactEmail || org.prospect_contact_email || members[0]?.email;
 
     // Get available products
     const customerType = org.is_personal ? 'individual' : 'company';
@@ -3056,10 +3054,10 @@ export function createAdminToolHandlers(
     // Build response
     let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
 
-    // Show contacts/users
+    // Show contacts/users (read-only inspection)
     response += `### Contacts\n`;
     if (org.prospect_contact_name || org.prospect_contact_email) {
-      response += `**Primary Contact:** ${org.prospect_contact_name || 'Unknown'}`;
+      response += `**Last known contact on file:** ${org.prospect_contact_name || 'Unknown'}`;
       if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
       response += `\n`;
     }
@@ -3072,12 +3070,10 @@ export function createAdminToolHandlers(
       if (members.length > 3) {
         response += `  _...and ${members.length - 3} more_\n`;
       }
-    } else if (!org.prospect_contact_email) {
-      response += `_No contacts on file - add a contact_email to proceed._\n`;
     }
     response += `\n`;
 
-    // If lookup only, stop here
+    // Lookup-only stops here
     if (action === 'lookup_only') {
       response += `### Available Products\n`;
       for (const p of products.slice(0, 5)) {
@@ -3086,134 +3082,125 @@ export function createAdminToolHandlers(
         response += `• **${p.display_name}** - ${amount}${suggested}\n`;
         response += `  lookup_key: \`${p.lookup_key}\`\n`;
       }
-      response += `\n_Use this tool again with action="payment_link" or action="invoice" and the lookup_key to proceed._`;
+      response += `\n_Use this tool again with action="draft_invoice" to preview pricing or action="send_invite" with a contact_email to send the membership invite._`;
       return response;
     }
 
-    // Generate payment link
-    if (action === 'payment_link') {
-      if (!finalProduct) {
-        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+    // Send invite — admin-side billing entry point.
+    // The recipient must click the invite link, sign in, accept the agreement,
+    // and only then is an invoice/subscription issued under their authenticated
+    // identity. The admin's email never becomes the Stripe customer.
+    if (action === 'send_invite') {
+      if (!finalProduct || !finalProduct.lookup_key) {
+        return response + `\n❌ Pick a product first (call again with action="lookup_only" or pass a lookup_key).`;
+      }
+      if (!contactEmail) {
+        return response + `\n❌ contact_email is required for action="send_invite". The invite link will be emailed to this address.`;
+      }
+      if (!adminUserId) {
+        return response + `\n❌ Cannot send invite — no signed-in admin context. Sign in to agenticadvertising.org and try again.`;
+      }
+      if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+        return response + `\n⚠️ Discount parameters are preview-only on send_invite. To attach a discount, set the org's stored discount first (separate tool), then send the invite.`;
       }
 
-      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      const normalizedEmail = contactEmail.trim().toLowerCase();
+      if (!emailRegex.test(normalizedEmail)) {
+        return response + `\n❌ Invalid contact_email: ${contactEmail}`;
+      }
 
       try {
-        // Handle discounts
-        let couponId: string | undefined;
-        let appliedDiscount: string | undefined;
-
-        // Check if a new discount was requested
-        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
-          if (!discountReason) {
-            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
-          }
-
-          // Create a new discount/coupon for this org
-          const grantedBy = memberContext?.workos_user?.email || 'Addie';
-          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
-            percent_off: discountPercent,
-            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
-            duration: 'forever',
-            reason: discountReason,
-          });
-
-          if (stripeDiscount) {
-            couponId = stripeDiscount.coupon_id;
-            // Also save to the org record
-            await orgDb.setDiscount(org.workos_organization_id, {
-              discount_percent: discountPercent ?? null,
-              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
-              reason: discountReason,
-              granted_by: grantedBy,
-              stripe_coupon_id: stripeDiscount.coupon_id,
-              stripe_promotion_code: stripeDiscount.promotion_code,
-            });
-            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
-            logger.info({
-              orgId: org.workos_organization_id,
-              discount: appliedDiscount,
-              reason: discountReason,
-            }, 'Created discount for payment link');
-          }
-        } else if (useExistingDiscount && org.stripe_coupon_id) {
-          // Use the org's existing discount
-          couponId = org.stripe_coupon_id;
-          appliedDiscount = org.discount_percent
-            ? `${org.discount_percent}% off`
-            : `$${(org.discount_amount_cents || 0) / 100} off`;
-        }
-
-        // Ensure a Stripe customer exists with org metadata before creating the
-        // checkout session. Without this, Stripe creates a new customer during
-        // checkout that has no workos_organization_id metadata, so the subscription
-        // webhook can't link the payment back to the organization.
-        let customerId: string | undefined;
-        if (emailToUse) {
-          customerId = await orgDb.getOrCreateStripeCustomer(org.workos_organization_id, () =>
-            createStripeCustomer({
-              email: emailToUse,
-              name: org.name,
-              metadata: { workos_organization_id: org.workos_organization_id },
-            })
-          ) || undefined;
-        } else {
-          customerId = org.stripe_customer_id;
-        }
-
-        const session = await createCheckoutSession({
-          priceId: finalProduct.price_id,
-          customerId: customerId || undefined,
-          customerEmail: customerId ? undefined : (emailToUse || undefined),
-          successUrl: `${baseUrl}/dashboard?payment=success`,
-          cancelUrl: `${baseUrl}/membership?payment=cancelled`,
-          workosOrganizationId: org.workos_organization_id,
-          isPersonalWorkspace: org.is_personal,
-          couponId, // Pre-apply the discount if available
+        const invite = await createMembershipInvite({
+          workos_organization_id: org.workos_organization_id,
+          lookup_key: finalProduct.lookup_key,
+          contact_email: normalizedEmail,
+          contact_name: contactName?.trim() || undefined,
+          invited_by_user_id: adminUserId,
         });
 
-        if (!session?.url) {
-          return response + `\n❌ Failed to generate payment link. Stripe may not be configured.`;
-        }
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const inviteUrl = `${baseUrl}/invite/${invite.token}`;
+        const priceDisplay = finalProduct.amount_cents
+          ? `$${(finalProduct.amount_cents / 100).toLocaleString()}`
+          : 'Custom';
 
-        response += `### 💳 Payment Link Generated\n\n`;
-        response += `**Product:** ${finalProduct.display_name}\n`;
-        if (finalProduct.amount_cents) {
-          const originalAmount = finalProduct.amount_cents / 100;
-          response += `**Amount:** $${originalAmount.toLocaleString()}/year\n`;
-        }
-        if (appliedDiscount) {
-          response += `**Discount:** ${appliedDiscount} (pre-applied)\n`;
-        }
-        response += `\n**Payment Link:**\n${session.url}\n`;
-        response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
+        const invitedByName =
+          [adminFirstName, adminLastName].filter(Boolean).join(' ') ||
+          adminEmail || 'AAO Admin';
+
+        const emailSent = await sendMembershipInviteEmail({
+          to: normalizedEmail,
+          contactName: contactName?.trim() || null,
+          orgName: org.name,
+          tierDisplayName: finalProduct.display_name || finalProduct.lookup_key,
+          priceDisplay,
+          inviteUrl,
+          invitedByName,
+          invitedByEmail: adminEmail || 'admin@agenticadvertising.org',
+          expiresAt: invite.expires_at,
+        });
+
+        // Stamp invoice_requested_at and a non-PII contact name (if supplied)
+        // for admin-dashboard visibility. We deliberately do NOT mirror the
+        // invite's contact_email back onto the org row — it's stored on the
+        // membership_invites row and any future code that re-reads
+        // prospect_contact_email for billing would re-introduce the cross-org
+        // contamination this lockdown closes.
+        await pool.query(
+          `UPDATE organizations SET
+             invoice_requested_at = NOW(),
+             prospect_contact_name = COALESCE($1, prospect_contact_name),
+             updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [contactName?.trim() || null, org.workos_organization_id]
+        );
+
+        response += `### ✉️ Membership Invite Sent\n\n`;
+        response += `**Tier:** ${finalProduct.display_name}\n`;
+        response += `**Price:** ${priceDisplay}/year\n`;
+        response += `**Sent to:** ${normalizedEmail}\n`;
+        response += `**Invite expires:** ${invite.expires_at.toISOString().slice(0, 10)}\n`;
+        response += `**Email delivered:** ${emailSent ? 'yes' : 'no (Resend not configured)'}\n`;
+        response += `\n**Invite URL:**\n${inviteUrl}\n`;
+        response += `\n_The recipient signs in, accepts the membership agreement, and the invoice/checkout is issued under their authenticated identity — never under your email._`;
 
         logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
-          'Addie generated payment link'
+          {
+            orgId: org.workos_organization_id,
+            orgName: org.name,
+            inviteToken: invite.token.slice(0, 8) + '...',
+            contactEmail: normalizedEmail,
+            lookupKey: finalProduct.lookup_key,
+            invitedBy: adminUserId,
+            emailSent,
+          },
+          'Addie sent membership invite (admin tool)',
         );
 
         return response;
       } catch (err) {
-        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to create checkout session');
-        return response + `\n❌ Failed to create payment link: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send membership invite');
+        return response + `\n❌ Failed to send membership invite: ${err instanceof Error ? err.message : 'Unknown error'}`;
       }
     }
 
-    // Draft invoice - prepare and show for review (TWO-STEP PROCESS: Step 1)
+    // Draft invoice — pricing preview only.
+    // No Stripe writes happen here. The recipient supplies their own contact
+    // email and billing address at invite-acceptance time, so we don't quote
+    // either of those here. Discount parameters are previewed but only become
+    // attached to the org via a separate explicit call.
     if (action === 'draft_invoice') {
       if (!finalProduct) {
         return response + `\n❌ No membership products available. Please check Stripe configuration.`;
       }
 
-      // Determine what discount would be applied
       let appliedDiscount: string | undefined;
       let finalAmount = finalProduct.amount_cents || 0;
 
-      // Check if a new discount is being requested
       if (discountPercent !== undefined || discountAmountDollars !== undefined) {
         if (!discountReason) {
-          return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          return response + `\n❌ Please provide a discount_reason when previewing a discount.`;
         }
         appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
         if (discountPercent) {
@@ -3222,7 +3209,6 @@ export function createAdminToolHandlers(
           finalAmount = Math.max(0, finalAmount - (discountAmountDollars * 100));
         }
       } else if (useExistingDiscount && (org.discount_percent || org.discount_amount_cents)) {
-        // Use existing org discount
         appliedDiscount = org.discount_percent
           ? `${org.discount_percent}% off`
           : `$${(org.discount_amount_cents || 0) / 100} off`;
@@ -3233,10 +3219,8 @@ export function createAdminToolHandlers(
         }
       }
 
-      response += `### 📋 Draft Invoice for Review\n\n`;
+      response += `### 📋 Draft Invoice (Preview Only)\n\n`;
       response += `---\n\n`;
-
-      // Company info
       response += `**Company:** ${org.name}\n`;
       if (org.revenue_tier) {
         const tierLabels: Record<string, string> = {
@@ -3245,29 +3229,12 @@ export function createAdminToolHandlers(
           '5m_50m': '$5M-$50M',
           '50m_250m': '$50M-$250M',
           '250m_1b': '$250M-$1B',
-          '1b_plus': 'Over $1B'
+          '1b_plus': 'Over $1B',
         };
         response += `**Revenue Tier:** ${tierLabels[org.revenue_tier] || org.revenue_tier}\n`;
       }
 
-      // Contact info
-      response += `\n**Contact:** ${org.prospect_contact_name || contactName || '_Not set_'}\n`;
-      response += `**Email:** ${emailToUse || '_Not set - required for invoice_'}\n`;
-
-      // Billing address
-      response += `\n**Billing Address:**\n`;
-      if (billingAddress?.line1) {
-        response += `${billingAddress.line1}\n`;
-        if (billingAddress.line2) response += `${billingAddress.line2}\n`;
-        response += `${billingAddress.city || ''}, ${billingAddress.state || ''} ${billingAddress.postal_code || ''}\n`;
-        response += `${billingAddress.country || 'US'}\n`;
-      } else {
-        response += `_Not provided - required for invoice_\n`;
-      }
-
-      // Product and pricing
-      response += `\n---\n\n`;
-      response += `**Product:** ${finalProduct.display_name}\n`;
+      response += `\n**Product:** ${finalProduct.display_name}\n`;
       if (finalProduct.amount_cents) {
         const listPrice = finalProduct.amount_cents / 100;
         const netPrice = finalAmount / 100;
@@ -3285,168 +3252,21 @@ export function createAdminToolHandlers(
       }
       response += `**Payment Terms:** NET 30\n`;
 
-      // What's missing
-      const missingFields: string[] = [];
-      if (!emailToUse) missingFields.push('contact_email');
-      if (!billingAddress?.line1) missingFields.push('billing_address');
-
-      if (missingFields.length > 0) {
-        response += `\n---\n\n`;
-        response += `⚠️ **Missing required fields:** ${missingFields.join(', ')}\n`;
-        response += `\n_Please provide these fields to proceed._\n`;
-      } else {
-        response += `\n---\n\n`;
-        response += `✅ **Ready to send!**\n\n`;
-        response += `To send this invoice, confirm with the admin then call this tool again with:\n`;
-        response += `- \`action: "send_invoice"\`\n`;
-        response += `- Same company_name and all other parameters\n`;
-        response += `\nOr if changes are needed, ask the admin what to modify.\n`;
-      }
+      response += `\n---\n\n`;
+      response += `_The contact email and billing address come from the recipient when they accept the invite. To deliver this invoice, call this tool again with:_\n`;
+      response += `- \`action: "send_invite"\`\n`;
+      response += `- \`contact_email: <recipient email>\`\n`;
+      response += `- Same lookup_key\n`;
 
       logger.info(
         { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
-        'Addie prepared draft invoice'
+        'Addie prepared draft invoice (preview only)',
       );
 
       return response;
     }
 
-    // Send invoice - actually send after review (TWO-STEP PROCESS: Step 2)
-    // Also support legacy 'invoice' action for backward compatibility
-    if (action === 'send_invoice' || action === 'invoice') {
-      if (!emailToUse) {
-        return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
-      }
-
-      if (!billingAddress?.line1 || !billingAddress?.city || !billingAddress?.postal_code || !billingAddress?.country) {
-        response += `### 📄 Invoice - Need Billing Address\n\n`;
-        response += `To send an invoice, I need the full billing address:\n`;
-        response += `• line1 (street address)\n`;
-        response += `• city\n`;
-        response += `• state (if applicable)\n`;
-        response += `• postal_code\n`;
-        response += `• country (two-letter code, e.g., "US")\n`;
-        response += `\n_Call this tool again with the billing_address to send the invoice._`;
-        return response;
-      }
-
-      if (!finalProduct) {
-        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
-      }
-
-      try {
-        // Handle discounts for invoices (similar to payment links)
-        let couponId: string | undefined;
-        let appliedDiscount: string | undefined;
-
-        // Check if a new discount was requested
-        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
-          if (!discountReason) {
-            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
-          }
-
-          // Create a new discount/coupon for this org
-          const grantedBy = memberContext?.workos_user?.email || 'Addie';
-          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
-            percent_off: discountPercent,
-            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
-            duration: 'forever',
-            reason: discountReason,
-          });
-
-          if (stripeDiscount) {
-            couponId = stripeDiscount.coupon_id;
-            // Also save to the org record
-            await orgDb.setDiscount(org.workos_organization_id, {
-              discount_percent: discountPercent ?? null,
-              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
-              reason: discountReason,
-              granted_by: grantedBy,
-              stripe_coupon_id: stripeDiscount.coupon_id,
-              stripe_promotion_code: stripeDiscount.promotion_code,
-            });
-            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
-            logger.info({
-              orgId: org.workos_organization_id,
-              discount: appliedDiscount,
-              reason: discountReason,
-            }, 'Created discount for invoice');
-          }
-        } else if (useExistingDiscount && org.stripe_coupon_id) {
-          // Use the org's existing discount
-          couponId = org.stripe_coupon_id;
-          appliedDiscount = org.discount_percent
-            ? `${org.discount_percent}% off`
-            : `$${(org.discount_amount_cents || 0) / 100} off`;
-        }
-
-        const invoiceResult = await createAndSendInvoice({
-          companyName: org.name,
-          contactName: org.prospect_contact_name || contactName || 'Billing',
-          contactEmail: emailToUse,
-          billingAddress: {
-            line1: billingAddress.line1,
-            line2: billingAddress.line2,
-            city: billingAddress.city || '',
-            state: billingAddress.state || '',
-            postal_code: billingAddress.postal_code || '',
-            country: billingAddress.country || 'US',
-          },
-          lookupKey: finalProduct.lookup_key || '',
-          workosOrganizationId: org.workos_organization_id,
-          couponId, // Apply discount if available
-        });
-
-        if (!invoiceResult) {
-          return response + `\n❌ Failed to create invoice. Stripe may not be configured.`;
-        }
-
-        response += `### 📧 Invoice Sent!\n\n`;
-        response += `**Product:** ${finalProduct.display_name}\n`;
-        if (finalProduct.amount_cents) {
-          const originalAmount = finalProduct.amount_cents / 100;
-          response += `**Amount:** $${originalAmount.toLocaleString()}`;
-          if (appliedDiscount && invoiceResult.discountApplied) {
-            // Calculate discounted amount for display
-            let discountedAmount = originalAmount;
-            if (discountPercent) {
-              discountedAmount = originalAmount * (1 - discountPercent / 100);
-            } else if (discountAmountDollars) {
-              discountedAmount = originalAmount - discountAmountDollars;
-            } else if (org.discount_percent) {
-              discountedAmount = originalAmount * (1 - org.discount_percent / 100);
-            } else if (org.discount_amount_cents) {
-              discountedAmount = originalAmount - (org.discount_amount_cents / 100);
-            }
-            response += ` → **$${discountedAmount.toLocaleString()}** (${appliedDiscount} applied)`;
-          }
-          response += `\n`;
-        }
-        response += `**Sent to:** ${emailToUse}\n`;
-        response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
-        if (invoiceResult.invoiceUrl) {
-          response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
-        }
-        response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
-
-        // Warn if discount was requested but not applied
-        if (invoiceResult.discountWarning) {
-          response += `\n\n⚠️ **Warning:** ${invoiceResult.discountWarning}`;
-        }
-
-        logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId, discount: appliedDiscount },
-          'Addie sent invoice'
-        );
-
-        return response;
-      } catch (err) {
-        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send invoice');
-        return response + `\n❌ Failed to send invoice: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      }
-    }
-
-    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "draft_invoice", "send_invoice", or "lookup_only".`;
+    return response + `\n❌ Unknown action: ${action}. Use "lookup_only", "draft_invoice", or "send_invite".`;
   });
 
   // Search Lusha for prospects
