@@ -29,11 +29,17 @@ narrative: |
   carries a stale cursor onto the terminal page fails the second-page
   assertion.
 
-  The `total_count` field is intentionally not checked. The schema permits
-  agents to omit it (some backends cannot compute it cheaply) and asserting
-  on it would conflate honesty about what's still on the wire with honesty
-  about an upstream platform's full result set — only the former is
-  observable from the caller's seat.
+  The `total_count` field is allowed to be absent (some backends cannot
+  compute it cheaply per the pagination-response schema) but when an agent
+  volunteers it, the value MUST match the seeded fixture count of three.
+  This is the count-honesty half of the invariant: an agent that returns
+  `total_count: 2` while three creatives are seeded is hiding inventory
+  the way `has_more: false` would, just on a different field.
+  `query_summary.total_matching` is required by the response schema and
+  asserted unconditionally; `query_summary.returned` MUST equal the size
+  of each page's slice (2 on the continuation page, 1 on the terminal
+  page) — drift here flags an agent whose summary numbers don't match
+  what it actually emitted.
 
 agent:
   interaction_model: stateful_preloaded
@@ -164,6 +170,18 @@ phases:
           - check: field_present
             path: "pagination.cursor"
             description: "has_more=true requires a cursor — without one the caller cannot continue"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 3
+            description: "Three fixtures seeded — total_matching MUST reflect the full result set, not just this page"
+          - check: field_value
+            path: "query_summary.returned"
+            value: 2
+            description: "max_results=2 capped this page at 2 items — query_summary.returned MUST match the slice"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "If volunteered, total_count MUST equal the seeded set size — under-reporting hides inventory the same way a dishonest has_more does"
 
           - check: field_present
             path: "context"
@@ -223,6 +241,18 @@ phases:
             path: "pagination.cursor"
             allowed_values: [null]
             description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 3
+            description: "total_matching MUST stay stable across pages — drift between pages is a query-summary bug"
+          - check: field_value
+            path: "query_summary.returned"
+            value: 1
+            description: "One creative left after the first page returned two — query_summary.returned MUST match the slice"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
 
           - check: field_present
             path: "context"
