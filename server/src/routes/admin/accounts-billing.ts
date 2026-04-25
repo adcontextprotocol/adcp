@@ -472,7 +472,7 @@ export function setupAccountsBillingRoutes(
 
         const org = orgResult.rows[0];
 
-        if (!reason || reason.trim().length < 10) {
+        if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
           return res.status(400).json({
             error: "Reason required",
             message:
@@ -490,7 +490,16 @@ export function setupAccountsBillingRoutes(
         }
 
         // Refuse if the org has live Stripe subscriptions — caller should /sync or cancel first.
-        if (org.stripe_customer_id && stripe) {
+        // If stripe_customer_id is set but Stripe is unconfigured we can't verify — block the reset.
+        if (org.stripe_customer_id) {
+          if (!stripe) {
+            return res.status(503).json({
+              error: "Stripe not configured",
+              message:
+                "Cannot verify live subscription status — Stripe is not configured. Unlink the customer first or configure Stripe.",
+            });
+          }
+
           const customer = await stripe.customers.retrieve(
             org.stripe_customer_id,
             { expand: ["subscriptions"] }
@@ -513,7 +522,11 @@ export function setupAccountsBillingRoutes(
           }
         }
 
+        // stripe_customer_id is intentionally not cleared — it is managed by the
+        // separate /stripe-customer/unlink endpoint. Included in beforeState for
+        // audit completeness only.
         const beforeState = {
+          stripe_customer_id: org.stripe_customer_id,
           subscription_status: org.subscription_status,
           stripe_subscription_id: org.stripe_subscription_id,
           subscription_amount: org.subscription_amount,
@@ -565,7 +578,7 @@ export function setupAccountsBillingRoutes(
         });
 
         logger.info(
-          { orgId, orgName: org.name, adminEmail: req.user?.email },
+          { orgId, orgName: org.name, adminEmail: req.user!.email },
           "Reset subscription state for organization"
         );
 
@@ -575,7 +588,7 @@ export function setupAccountsBillingRoutes(
           org_id: orgId,
           org_name: org.name,
           cleared_fields: Object.entries(beforeState)
-            .filter(([, v]) => v !== null)
+            .filter(([k, v]) => k !== 'stripe_customer_id' && v !== null)
             .map(([k]) => k),
         });
       } catch (error) {
