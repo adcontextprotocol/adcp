@@ -71,7 +71,7 @@ const mockCustomersRetrieve = vi.fn().mockResolvedValue({
 });
 const mockProductsRetrieve = vi.fn().mockResolvedValue({
   id: 'prod_backfill_test_001',
-  name: 'AgenticAdvertising.org Membership',
+  name: 'Pinnacle Media Annual Plan',
 });
 
 vi.mock('../../src/billing/stripe-client.js', () => ({

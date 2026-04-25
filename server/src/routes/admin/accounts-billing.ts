@@ -321,7 +321,9 @@ export function setupAccountsBillingRoutes(
                           : (invoice.subscription && 'id' in invoice.subscription
                             ? invoice.subscription.id : null),
                         typeof invoice.payment_intent === 'string'
-                          ? invoice.payment_intent : null,
+                          ? invoice.payment_intent
+                          : (invoice.payment_intent && 'id' in invoice.payment_intent
+                            ? invoice.payment_intent.id : null),
                         charge?.id || null,
                         invoice.amount_paid,
                         invoice.currency,
