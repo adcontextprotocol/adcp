@@ -236,11 +236,7 @@ async function createCampaign(packages, budget) {
 Polling is a backup for `submitted` operations when webhooks aren't configured or as a fallback. Don't poll for `working` — the server delivers the result on the open connection.
 
 ```javascript
-// Polling tracks status to a terminal value. The completion payload
-// (e.g. media_buy_id, packages) is delivered to the webhook configured
-// on the original request via push_notification_config — see #3123 for
-// the planned 3.1 typed-result projection on tasks/get.
-async function pollUntilTerminal(taskId, options = {}) {
+async function pollForResult(taskId, options = {}) {
   const { maxWait = 86_400_000, pollInterval = 30_000 } = options;
   const startTime = Date.now();
 
@@ -252,7 +248,8 @@ async function pollUntilTerminal(taskId, options = {}) {
     await sleep(pollInterval);
 
     const response = await adcp.call('tasks/get', {
-      task_id: taskId
+      task_id: taskId,
+      include_result: true
     });
 
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
@@ -316,7 +313,8 @@ async function onStartup() {
   for (const operation of pending) {
     // Check current status on server
     const response = await adcp.call('tasks/get', {
-      task_id: operation.task_id
+      task_id: operation.task_id,
+      include_result: true
     });
 
     // Update local state
