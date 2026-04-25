@@ -154,6 +154,8 @@
     "js-yaml": "^4.1.1",
     "axios": "^1.13.6",
     "@types/express-serve-static-core": "5.1.0",
-    "zod": "$zod"
+    "zod": "$zod",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }

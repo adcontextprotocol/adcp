@@ -159,7 +159,7 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
 
 ### `force_create_media_buy_arm`
 
-Shapes the next [`create_media_buy`](/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
+Shapes the next [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
 
 The submitted-arm wire shape is otherwise implementation-dependent: most sellers route most buys synchronously and no buyer-side request shape reliably triggers async. This scenario lets storyboards pin the arm so a regressed seller (e.g., emitting `media_buy_id` under `status: submitted`) cannot pass conformance silently.
 
@@ -169,7 +169,7 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 |-------|------|----------|-------------|
 | `arm` | `submitted` \| `input-required` | Yes | Target response arm for the next `create_media_buy` call |
 | `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent `tasks/get` polls. Sandbox task_ids are caller-opaque strings; production task-id format rules do not apply. |
-| `message` | string | No | Human-readable explanation surfaced verbatim on the seller's `create_media_buy` response. Plain text, max 2000 characters. Buyers consuming the resulting response MUST apply the prompt-injection sanitization documented for [`message` on the submitted envelope](/schemas/v3/media-buy/create-media-buy-response.json) — this scenario is the natural place for a runner to inject adversarial strings to test that buyer-side sanitization. |
+| `message` | string | No | Human-readable explanation surfaced verbatim on the seller's `create_media_buy` response. Plain text, max 2000 characters. Buyers consuming the resulting response MUST apply the prompt-injection sanitization documented for [`message` on the submitted envelope](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) — this scenario is the natural place for a runner to inject adversarial strings to test that buyer-side sanitization. |
 
 **Example:**
 
