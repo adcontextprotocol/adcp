@@ -26,6 +26,8 @@ import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
+import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
+import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
@@ -1175,32 +1177,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const requestedOrgId = req.query.org as string | undefined;
       const { logo_url, brand_color } = req.body;
 
-      // Validate inputs
-      if (!logo_url && !brand_color) {
-        return res.status(400).json({
-          error: 'Missing fields',
-          message: 'Provide at least one of logo_url or brand_color.',
-        });
-      }
-
-      if (logo_url) {
-        try {
-          const parsed = new URL(logo_url);
-          if (parsed.protocol !== 'https:') {
-            return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must use HTTPS.' });
-          }
-        } catch {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be a valid URL.' });
-        }
-        if (logo_url.length > 2000) {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be 2000 characters or less.' });
-        }
-      }
-
-      if (brand_color && !/^#[0-9a-fA-F]{6}$/.test(brand_color)) {
-        return res.status(400).json({ error: 'Invalid brand color', message: 'brand_color must be a hex color (e.g., #FF5733).' });
-      }
-
       // Auth: resolve target org (same pattern as /visibility route)
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
       let targetOrgId: string;
@@ -1229,7 +1205,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
 
-      // Resolve org name for brand_json (profile display_name if available, else org table)
+      // Resolve display name: profile if available, else org name
       let displayName: string;
       if (profile?.display_name) {
         displayName = profile.display_name;
@@ -1241,119 +1217,43 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         displayName = org.name;
       }
 
-      // Derive brand domain: profile fields first, then logo URL hostname
-      let brandDomain = profile?.primary_brand_domain;
-      if (!brandDomain && profile?.contact_website) {
-        try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
-      }
-      if (!brandDomain && logo_url) {
+      // If no brand domain on file, fall back to the logo URL hostname (only if
+      // the candidate domain isn't already owned by another org)
+      let fallbackDomainHint: string | undefined;
+      if (!profile?.primary_brand_domain && !profile?.contact_website && logo_url) {
         try {
-          const candidate = new URL(logo_url).hostname;
+          const candidate = canonicalizeBrandDomain(new URL(logo_url).hostname);
           const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
           if (!existingBrand || !existingBrand.workos_organization_id || existingBrand.workos_organization_id === targetOrgId) {
-            brandDomain = candidate;
+            fallbackDomainHint = candidate;
           }
         } catch { /* ignore */ }
       }
-      if (!brandDomain) {
-        return res.status(400).json({
-          error: 'No brand domain',
-          message: 'Provide a logo URL hosted on your own domain so we can determine your brand domain.',
-        });
-      }
-      brandDomain = brandDomain.toLowerCase();
 
-      // Transaction: update/create hosted brand + link profile if it exists
-      const pool = getPool();
-      const client = await pool.connect();
+      let result;
       try {
-        await client.query('BEGIN');
-
-        // Read inside transaction with row lock to prevent concurrent insert race
-        const existingResult = await client.query(
-          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
-          [brandDomain]
-        );
-        const existing = existingResult.rows[0] || null;
-
-        // Ownership check: don't let one org overwrite another org's brand
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== targetOrgId) {
-          throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
+        result = await updateBrandIdentity({
+          workosOrganizationId: targetOrgId,
+          displayName,
+          profile: profile ?? null,
+          logoUrl: logo_url,
+          brandColor: brand_color,
+          fallbackDomainHint,
+        });
+      } catch (err: any) {
+        if (err instanceof BrandIdentityError) {
+          return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
         }
-
-        if (existing) {
-          const bj = { ...(existing.brand_json as Record<string, unknown>) };
-          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
-          if (brands.length > 0) {
-            const primaryBrand = { ...brands[0] };
-            if (logo_url) {
-              const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
-              primaryBrand.logos = logos.length > 0
-                ? [{ ...logos[0], url: logo_url }, ...logos.slice(1)]
-                : [{ url: logo_url }];
-            }
-            if (brand_color) {
-              primaryBrand.colors = { ...(primaryBrand.colors as Record<string, unknown> || {}), primary: brand_color };
-            }
-            bj.brands = [primaryBrand, ...brands.slice(1)];
-          } else {
-            bj.brands = [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }];
-          }
-          await client.query(
-            'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id, targetOrgId]
-          );
-        } else {
-          const brandJson = {
-            house: { domain: brandDomain, name: displayName },
-            brands: [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }],
-          };
-          await client.query(
-            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
-             ON CONFLICT (domain) DO UPDATE SET
-               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
-               has_brand_manifest = true,
-               updated_at = NOW()`,
-            [targetOrgId, brandDomain, JSON.stringify(brandJson), true]
-          );
-        }
-
-        // Link brand domain back to profile if profile exists and doesn't have one
-        if (profile && !profile.primary_brand_domain) {
-          await client.query(
-            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-            [brandDomain, profile.id]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
+        throw err;
       }
 
-      const resolvedBrand = await resolveBrand(brandDb, brandDomain);
+      const resolvedBrand = await resolveBrand(brandDb, result.brandDomain);
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain, durationMs: duration }, 'Brand identity updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain: result.brandDomain, durationMs: duration }, 'Brand identity updated');
 
-      res.json({ brand: resolvedBrand, brand_domain: brandDomain });
+      res.json({ brand: resolvedBrand, brand_domain: result.brandDomain });
     } catch (error: any) {
       const duration = Date.now() - startTime;
       const statusCode = error?.statusCode || 500;

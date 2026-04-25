@@ -119,12 +119,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     // conversation. Duplicating them here caused Sonnet to hallucinate that
     // content submission/retrieval and outreach preferences were unavailable
     // when the router didn't pick `member`. See #2998.
-    description: 'Manage member profile, working groups, committees, and account settings. Includes listing working group documents and attaching assets to content.',
+    description: 'Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.',
     tools: [
       'get_my_profile',
       'update_my_profile',
       'get_company_listing',
       'update_company_listing',
+      'update_company_logo',
       'list_working_groups',
       'get_working_group',
       'join_working_group',
@@ -294,7 +295,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     // admins regardless of routing. Duplicating them here caused Sonnet to
     // hallucinate that escalation management was unavailable when `admin` wasn't
     // selected. See #2998.
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking, brand logo registry review queue (approve/reject pending logos), edit a member\'s directory profile or logo on their behalf (admin only)',
     tools: [
       // Event management (admin)
       'create_event',
@@ -356,6 +357,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'send_outreach',
       'lookup_person',
       'get_action_items',
+      'list_pending_brand_logos',
+      'list_brand_logos',
+      'review_brand_logo',
+      'update_member_logo',
+      'update_member_profile',
     ],
     adminOnly: true,
   },

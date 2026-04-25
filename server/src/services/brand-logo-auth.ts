@@ -68,15 +68,16 @@ async function isVerifiedBrandOwner(userId: string, domain: string, brandDb: Bra
 /**
  * Check if a user can review brand logos for the given domain.
  * Returns true if the user is a registry moderator or verified brand owner.
+ * The static ADMIN_API_KEY synthetic user (id: 'admin_api_key') always passes —
+ * internal tooling and platform admins authenticated via ADMIN_API_KEY review by definition.
  */
 export async function canReviewBrandLogos(
   userId: string,
   domain: string,
   brandDb: BrandDatabase,
 ): Promise<boolean> {
-  // Check moderator first (cheaper, cached)
+  if (userId === 'admin_api_key') return true;
   if (await isRegistryModerator(userId)) return true;
-  // Then check brand ownership
   return isVerifiedBrandOwner(userId, domain, brandDb);
 }
 

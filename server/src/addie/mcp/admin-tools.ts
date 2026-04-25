@@ -113,10 +113,16 @@ import { assessHistoricalBehavior } from '../services/outreach-simulator.js';
 import { getMemberCapabilities } from '../../db/outbound-db.js';
 import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
 import { captureEvent } from '../../utils/posthog.js';
+import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
+import { rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
+import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
 const slackDb = new SlackDatabase();
+const brandLogoDb = new BrandLogoDatabase();
+const brandDbForLogos = new BrandDatabase();
 const wgDb = new WorkingGroupDatabase();
 
 // The slug for the AAO admin working group
@@ -1503,6 +1509,71 @@ For logo changes, use update_member_logo instead.`,
         },
       },
       required: [],
+    },
+  },
+
+  // ============================================
+  // BRAND LOGO REVIEW TOOLS
+  // ============================================
+  {
+    name: 'list_pending_brand_logos',
+    description: 'List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"',
+    usage_hints: 'Pair with review_brand_logo to approve or reject from the queue. Pending logos block the company-listing display until reviewed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum logos to return (default 25, max 100)',
+        },
+        offset: {
+          type: 'number',
+          description: 'Pagination offset (default 0)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_brand_logos',
+    description: 'List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand\'s logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.',
+    usage_hints: 'Use when a member reports their logo is "disappearing" or stuck on a known domain. Pending status means an admin must approve via review_brand_logo.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain (e.g., "thehook.es")',
+        },
+      },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'review_brand_logo',
+    description: 'Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand\'s company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.',
+    usage_hints: 'Get the logo_id from list_pending_brand_logos or list_brand_logos. Always include a short note explaining the decision so the uploader gets useful feedback.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain the logo belongs to',
+        },
+        logo_id: {
+          type: 'string',
+          description: 'Logo UUID (from list_pending_brand_logos)',
+        },
+        action: {
+          type: 'string',
+          enum: ['approve', 'reject', 'delete'],
+          description: 'approve = publish, reject = hide with reason, delete = tombstone',
+        },
+        note: {
+          type: 'string',
+          description: 'Reviewer note (max 500 chars). Required for reject/delete; helpful on approve.',
+        },
+      },
+      required: ['domain', 'logo_id', 'action'],
     },
   },
 ];
@@ -7693,22 +7764,8 @@ Use add_committee_leader to assign a leader.`;
       return '❌ Provide either org_name or slug to identify the member.';
     }
 
-    // Validate the logo URL
-    try {
-      const parsed = new URL(logoUrl);
-      if (parsed.protocol !== 'https:') {
-        return '❌ logo_url must use HTTPS.';
-      }
-    } catch {
-      return `❌ Invalid logo_url: "${logoUrl}". Provide a fully-qualified HTTPS URL.`;
-    }
-    if (logoUrl.length > 2000) {
-      return '❌ logo_url must be 2000 characters or less.';
-    }
-
     try {
       const mDb = new MemberDatabase();
-      const bDb = new BrandDatabase();
 
       // Find the member profile
       let profile = null;
@@ -7734,111 +7791,24 @@ Use add_committee_leader to assign a leader.`;
         return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
       }
 
-      // Determine brand domain: use existing link or derive from contact_website
-      let brandDomain = profile.primary_brand_domain;
-      if (!brandDomain) {
-        if (profile.contact_website) {
-          try {
-            brandDomain = new URL(profile.contact_website).hostname;
-          } catch {
-            brandDomain = undefined;
-          }
-        }
-        if (!brandDomain) {
-          return `❌ No brand domain set for **${profile.display_name}**. Ask them to add their website to their profile first, or set primary_brand_domain manually.`;
-        }
-      }
-
-      // Use a transaction so both the brand update and profile link succeed or fail together
-      const pool = getPool();
-      const client = await pool.connect();
-      let wasUpdate = false;
       try {
-        await client.query('BEGIN');
-
-        // Read inside transaction with row lock to prevent concurrent insert race
-        const existingResult = await client.query(
-          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
-          [brandDomain]
-        );
-        const existing = existingResult.rows[0] || null;
-        wasUpdate = !!existing;
-
-        // Warn if admin tool is crossing org boundaries
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
-          logger.warn(
-            { brandDomain, existingOrgId: existing.workos_organization_id, targetOrgId: profile.workos_organization_id },
-            'Admin tool updating brand owned by a different organization'
-          );
+        const result = await updateBrandIdentity({
+          workosOrganizationId: profile.workos_organization_id,
+          displayName: profile.display_name,
+          profile,
+          logoUrl,
+        });
+        invalidateMemberContextCache();
+        const action = result.wasUpdate ? 'updated' : 'set';
+        logger.info({ profileId: profile.id, brandDomain: result.brandDomain, logoUrl, action }, 'Member logo updated');
+        return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${result.brandDomain}\n- Logo: ${logoUrl}`;
+      } catch (err) {
+        if (err instanceof BrandIdentityError) {
+          return `❌ ${err.message}`;
         }
-
-        if (existing) {
-          // Update logo in existing hosted brand
-          const bj = { ...(existing.brand_json as Record<string, unknown>) };
-          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
-          if (brands.length > 0) {
-            const primaryBrand = { ...brands[0] };
-            const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
-            primaryBrand.logos = logos.length > 0
-              ? [{ ...logos[0], url: logoUrl }, ...logos.slice(1)]
-              : [{ url: logoUrl }];
-            bj.brands = [primaryBrand, ...brands.slice(1)];
-          } else {
-            bj.brands = [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
-              logos: [{ url: logoUrl }],
-              colors: {},
-            }];
-          }
-          await client.query(
-            'UPDATE brands SET brand_manifest = $1, updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id]
-          );
-        } else {
-          // Create a new hosted brand entry
-          const brandJson = {
-            house: { domain: brandDomain, name: profile.display_name },
-            brands: [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
-              logos: [{ url: logoUrl }],
-              colors: {},
-            }],
-          };
-          await client.query(
-            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
-             ON CONFLICT (domain) DO UPDATE SET
-               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
-               has_brand_manifest = true,
-               updated_at = NOW()`,
-            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
-          );
-        }
-
-        // Link the profile to this brand domain if not already set
-        if (!profile.primary_brand_domain) {
-          await client.query(
-            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-            [brandDomain, profile.id]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
+        logger.error({ error: err, orgName, slug, logoUrl }, 'Error updating member logo');
+        return `❌ Failed to update logo: ${err instanceof Error ? err.message : 'Unknown error'}`;
       }
-
-      invalidateMemberContextCache();
-      const action = wasUpdate ? 'updated' : 'set';
-      logger.info({ profileId: profile.id, brandDomain, logoUrl, action }, 'Member logo updated');
-      return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${brandDomain}\n- Logo: ${logoUrl}`;
     } catch (error) {
       logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
       return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -8382,6 +8352,141 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error fetching action items');
       throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // ============================================
+  // BRAND LOGO REVIEW HANDLERS
+  // ============================================
+
+  handlers.set('list_pending_brand_logos', async (input) => {
+    const limit = Math.min(Math.max((input.limit as number) ?? 25, 1), 100);
+    const offset = Math.max((input.offset as number) ?? 0, 0);
+
+    try {
+      const pending = await brandLogoDb.getPendingLogos(limit, offset);
+      if (pending.length === 0) {
+        return JSON.stringify({ success: true, message: 'No brand logos pending review.', count: 0, logos: [] });
+      }
+
+      const now = Date.now();
+      const logos = pending.map(l => ({
+        logo_id: l.id,
+        domain: l.domain,
+        brand_name: l.brand_name ?? null,
+        content_type: l.content_type,
+        source: l.source,
+        tags: l.tags,
+        width: l.width,
+        height: l.height,
+        uploaded_by_email: l.uploaded_by_email,
+        upload_note: l.upload_note,
+        created_at: l.created_at,
+        age_hours: Math.round((now - new Date(l.created_at).getTime()) / 3_600_000),
+        preview_url: `/logos/brands/${l.domain}/${l.id}`,
+      }));
+
+      return JSON.stringify({ success: true, count: logos.length, logos }, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error listing pending brand logos');
+      throw new ToolError(`Failed to list pending brand logos: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('list_brand_logos', async (input) => {
+    const rawDomain = input.domain as string;
+    if (!rawDomain) throw new ToolError('domain is required');
+    const domain = canonicalizeBrandDomain(rawDomain);
+
+    try {
+      const logos = await brandLogoDb.listBrandLogos(domain, { include_all_statuses: true });
+      const summary = logos.map(l => ({
+        logo_id: l.id,
+        review_status: l.review_status,
+        source: l.source,
+        content_type: l.content_type,
+        tags: l.tags,
+        width: l.width,
+        height: l.height,
+        uploaded_by_email: l.uploaded_by_email,
+        upload_note: l.upload_note,
+        review_note: l.review_note,
+        reviewed_at: l.reviewed_at,
+        created_at: l.created_at,
+        preview_url: `/logos/brands/${domain}/${l.id}`,
+      }));
+
+      const counts = summary.reduce<Record<string, number>>((acc, l) => {
+        acc[l.review_status] = (acc[l.review_status] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      return JSON.stringify({ success: true, domain, total: summary.length, by_status: counts, logos: summary }, null, 2);
+    } catch (error) {
+      logger.error({ error, domain }, 'Error listing brand logos');
+      throw new ToolError(`Failed to list logos for ${domain}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('review_brand_logo', async (input) => {
+    const rawDomain = input.domain as string;
+    const logoId = input.logo_id as string;
+    const action = input.action as string;
+    const note = typeof input.note === 'string' ? input.note.slice(0, 500) : undefined;
+
+    if (!rawDomain) throw new ToolError('domain is required');
+    if (!logoId) throw new ToolError('logo_id is required');
+    if (!action) throw new ToolError('action is required');
+
+    const domain = canonicalizeBrandDomain(rawDomain);
+    const statusMap: Record<string, 'approved' | 'rejected' | 'deleted'> = {
+      approve: 'approved',
+      reject: 'rejected',
+      delete: 'deleted',
+    };
+    const status = statusMap[action];
+    if (!status) throw new ToolError(`Invalid action "${action}". Must be approve, reject, or delete.`);
+
+    if ((status === 'rejected' || status === 'deleted') && !note) {
+      throw new ToolError(`A note is required when you ${action} a logo so the uploader gets useful feedback.`);
+    }
+
+    const reviewerId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+
+    try {
+      const updated = await brandLogoDb.updateLogoReviewStatus(logoId, domain, status, reviewerId, note);
+      if (!updated) {
+        throw new ToolError(`Logo ${logoId} not found for domain ${domain}.`);
+      }
+
+      if (status === 'approved') {
+        const hosted = await brandDbForLogos.getHostedBrandByDomain(domain);
+        if (!hosted || !hosted.domain_verified) {
+          await rebuildManifestLogos(domain, brandLogoDb, brandDbForLogos);
+        }
+        try {
+          await brandDbForLogos.editDiscoveredBrand(domain, {
+            edit_summary: `Logo approved by ${reviewerId}`,
+            editor_user_id: reviewerId,
+            editor_email: memberContext?.workos_user?.email ?? 'addie@agenticadvertising.org',
+          });
+        } catch {
+          // Non-critical — approval succeeded regardless
+        }
+      }
+
+      logger.info({ logoId, domain, action, reviewerId }, 'Addie: brand logo reviewed');
+      return JSON.stringify({
+        success: true,
+        logo_id: logoId,
+        domain,
+        review_status: status,
+        note: note ?? null,
+      }, null, 2);
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      logger.error({ error, logoId, domain, action }, 'Error reviewing brand logo');
+      throw new ToolError(`Failed to ${action} logo: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
