@@ -1253,7 +1253,7 @@
 
     <!-- Tabs -->
     <div class="tabs">
-      <button class="tab active" data-tab="rules">Rules</button>
+      <button class="tab active" data-tab="system-prompt">System prompt</button>
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="insights">Insights</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
@@ -1263,31 +1263,19 @@
       <button class="tab" data-tab="images">Images</button>
     </div>
 
-    <!-- Rules Tab -->
-    <div class="tab-content active" id="tab-rules">
+    <!-- System Prompt Tab -->
+    <div class="tab-content active" id="tab-system-prompt">
       <div class="card">
         <div class="header-bar">
-          <div class="filter-row">
-            <select id="rule-type-filter">
-              <option value="">All Types</option>
-              <option value="system_prompt">System Prompt</option>
-              <option value="behavior">Behavior</option>
-              <option value="knowledge">Knowledge</option>
-              <option value="constraint">Constraint</option>
-              <option value="response_style">Response Style</option>
-            </select>
-            <label><input type="checkbox" id="active-rules-only" checked> Active only</label>
+          <div>
+            <h2 style="margin: 0;">System prompt</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Compiled from rule files at <code>server/src/addie/rules/*.md</code>
+            </p>
           </div>
-          <div style="display: flex; gap: var(--space-2);">
-            <button class="btn btn-secondary" onclick="viewSystemPrompt()">View System Prompt</button>
-            <button class="btn btn-primary" onclick="openRuleModal()">Add Rule</button>
-          </div>
+          <button class="btn btn-secondary" onclick="loadSystemPrompt()">Load system prompt</button>
         </div>
-        <div class="rules-list" id="rules-list">
-          <div class="empty-state">
-            <h3>Loading...</h3>
-          </div>
-        </div>
+        <pre id="system-prompt-display" style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-sm); max-height: 70vh; overflow-y: auto; display: none;"></pre>
       </div>
     </div>
 
@@ -2002,84 +1990,6 @@
 
   </div>
 
-  <!-- Rule Modal -->
-  <div class="modal-overlay" id="rule-modal">
-    <div class="modal">
-      <h2 id="rule-modal-title">Add Rule</h2>
-      <form id="rule-form">
-        <input type="hidden" id="rule-id">
-        <div class="form-group">
-          <label for="rule-name">Name</label>
-          <input type="text" id="rule-name" required placeholder="e.g., Knowledge Search First">
-        </div>
-        <div class="form-group">
-          <label for="rule-type">Type</label>
-          <select id="rule-type" required>
-            <option value="system_prompt">System Prompt</option>
-            <option value="behavior">Behavior</option>
-            <option value="knowledge">Knowledge</option>
-            <option value="constraint">Constraint</option>
-            <option value="response_style">Response Style</option>
-          </select>
-          <small>
-            <strong>System Prompt:</strong> Core identity and personality |
-            <strong>Behavior:</strong> Specific actions to take |
-            <strong>Knowledge:</strong> Domain facts |
-            <strong>Constraint:</strong> Things NOT to do |
-            <strong>Response Style:</strong> Formatting preferences
-          </small>
-        </div>
-        <div class="form-group">
-          <label for="rule-context">Context</label>
-          <select id="rule-context">
-            <option value="">Default (Main Prompt)</option>
-            <option value="engagement">Engagement (Should Respond)</option>
-            <option value="admin">Admin Users Only</option>
-            <option value="member">Members Only</option>
-            <option value="anonymous">Anonymous Users Only</option>
-          </select>
-          <small>
-            <strong>Default:</strong> Always in main system prompt |
-            <strong>Engagement:</strong> "Should I respond?" evaluation |
-            <strong>Admin/Member/Anonymous:</strong> User type specific rules
-          </small>
-        </div>
-        <div class="form-group">
-          <label for="rule-description">Description (optional)</label>
-          <input type="text" id="rule-description" placeholder="Brief description of what this rule does">
-        </div>
-        <div class="form-group">
-          <label for="rule-priority">Priority</label>
-          <input type="number" id="rule-priority" value="0" min="0" max="100">
-          <small>Higher priority rules are applied first (0-100)</small>
-        </div>
-        <div class="form-group">
-          <label for="rule-content">Content</label>
-          <textarea id="rule-content" required placeholder="Enter the rule content here..."></textarea>
-          <small>Use clear, direct language. This will be included in Addie's system prompt.</small>
-        </div>
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-secondary" onclick="closeRuleModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- System Prompt Modal -->
-  <div class="modal-overlay" id="system-prompt-modal">
-    <div class="modal" style="max-width: 1000px;">
-      <h2>Current System Prompt</h2>
-      <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
-        This is the compiled prompt sent to Claude, built from all active rules.
-      </p>
-      <div id="system-prompt-content" style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-sm); max-height: 60vh; overflow-y: auto;"></div>
-      <div class="modal-buttons">
-        <button type="button" class="btn btn-secondary" onclick="closeSystemPromptModal()">Close</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Suggestion Detail Modal -->
   <div class="modal-overlay" id="suggestion-modal">
     <div class="modal">
@@ -2128,7 +2038,7 @@
 
   <script>
     // Tab switching with lazy loading
-    const loadedTabs = new Set(['rules']); // Track which tabs have been loaded
+    const loadedTabs = new Set(['system-prompt']); // Track which tabs have been loaded
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -3034,145 +2944,20 @@
     });
 
     // =========================================================================
-    // RULES FUNCTIONS
+    // SYSTEM PROMPT FUNCTIONS
     // =========================================================================
 
-    async function loadRules() {
-      const activeOnly = document.getElementById('active-rules-only').checked;
-      const url = activeOnly ? '/api/admin/addie/rules?active_only=true' : '/api/admin/addie/rules';
-
+    async function loadSystemPrompt() {
       try {
-        const response = await fetch(url);
+        const response = await fetch('/api/admin/addie/system-prompt');
         const data = await response.json();
-
-        const list = document.getElementById('rules-list');
-        if (!data.rules || data.rules.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No rules found</h3><p>Add rules to customize Addie\'s behavior.</p></div>';
-          return;
-        }
-
-        list.innerHTML = data.rules.map(rule => `
-          <div class="rule-item ${rule.is_active ? '' : 'inactive'}">
-            <div class="rule-header">
-              <div class="rule-info">
-                <h3>${escapeHtml(rule.name)}</h3>
-                <div class="rule-meta">
-                  <span class="badge badge-${rule.rule_type}">${rule.rule_type.replace('_', ' ')}</span>
-                  <span class="badge ${rule.is_active ? 'badge-active' : 'badge-inactive'}">${rule.is_active ? 'Active' : 'Inactive'}</span>
-                  <span>Priority: ${rule.priority}</span>
-                  <span>v${rule.version}</span>
-                </div>
-                ${rule.description ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(rule.description)}</div>` : ''}
-              </div>
-              <div class="rule-actions">
-                <button class="btn btn-small btn-secondary" onclick="editRule(${rule.id})">Edit</button>
-                <button class="btn btn-small ${rule.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleRuleActive(${rule.id}, ${!rule.is_active})">
-                  ${rule.is_active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
-            </div>
-            <div class="rule-content-preview">${escapeHtml(rule.content)}</div>
-            <div class="rule-stats">
-              <span>Used ${rule.interactions_count} times</span>
-              ${rule.avg_rating ? `<span>Avg rating: ${rule.avg_rating.toFixed(1)}/5</span>` : ''}
-              <span>+${rule.positive_ratings || 0} / -${rule.negative_ratings || 0}</span>
-            </div>
-          </div>
-        `).join('');
-      } catch (error) {
-        console.error('Error loading rules:', error);
-        document.getElementById('rules-list').innerHTML =
-          '<div class="empty-state"><h3>Error loading rules</h3></div>';
-      }
-    }
-
-    function openRuleModal(rule = null) {
-      document.getElementById('rule-modal-title').textContent = rule ? 'Edit Rule' : 'Add Rule';
-      document.getElementById('rule-id').value = rule?.id || '';
-      document.getElementById('rule-name').value = rule?.name || '';
-      document.getElementById('rule-type').value = rule?.rule_type || 'behavior';
-      document.getElementById('rule-description').value = rule?.description || '';
-      document.getElementById('rule-priority').value = rule?.priority ?? 0;
-      document.getElementById('rule-content').value = rule?.content || '';
-      document.getElementById('rule-modal').style.display = 'flex';
-    }
-
-    function closeRuleModal() {
-      document.getElementById('rule-modal').style.display = 'none';
-      document.getElementById('rule-form').reset();
-    }
-
-    async function editRule(id) {
-      try {
-        const response = await fetch(`/api/admin/addie/rules/${id}`);
-        const rule = await response.json();
-        openRuleModal(rule);
-      } catch (error) {
-        console.error('Error loading rule:', error);
-        alert('Error loading rule');
-      }
-    }
-
-    async function toggleRuleActive(id, isActive) {
-      try {
-        await fetch(`/api/admin/addie/rules/${id}/active`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_active: isActive })
-        });
-        loadRules();
-        loadStats();
-      } catch (error) {
-        console.error('Error toggling rule:', error);
-        alert('Error updating rule');
-      }
-    }
-
-    document.getElementById('rule-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const id = document.getElementById('rule-id').value;
-      const data = {
-        rule_type: document.getElementById('rule-type').value,
-        name: document.getElementById('rule-name').value,
-        description: document.getElementById('rule-description').value || null,
-        priority: parseInt(document.getElementById('rule-priority').value, 10),
-        content: document.getElementById('rule-content').value
-      };
-
-      try {
-        const url = id ? `/api/admin/addie/rules/${id}` : '/api/admin/addie/rules';
-        const method = id ? 'PUT' : 'POST';
-
-        await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-
-        closeRuleModal();
-        loadRules();
-        loadStats();
-      } catch (error) {
-        console.error('Error saving rule:', error);
-        alert('Error saving rule');
-      }
-    });
-
-    async function viewSystemPrompt() {
-      try {
-        const response = await fetch('/api/admin/addie/rules/system-prompt');
-        const data = await response.json();
-        document.getElementById('system-prompt-content').textContent = data.system_prompt || '(No rules configured)';
-        document.getElementById('system-prompt-modal').style.display = 'flex';
+        const display = document.getElementById('system-prompt-display');
+        display.textContent = data.system_prompt || '(No system prompt available)';
+        display.style.display = 'block';
       } catch (error) {
         console.error('Error loading system prompt:', error);
         alert('Error loading system prompt');
       }
-    }
-
-    function closeSystemPromptModal() {
-      document.getElementById('system-prompt-modal').style.display = 'none';
     }
 
     // =========================================================================
@@ -3382,10 +3167,9 @@
         });
 
         // Ask if they want to apply immediately
-        if (confirm('Suggestion approved. Apply it now to create/update the rule?')) {
+        if (confirm('Suggestion approved. Apply it now to update the rule files?')) {
           await fetch(`/api/admin/addie/suggestions/${id}/apply`, { method: 'PUT' });
-          alert('Suggestion applied! The rule has been updated.');
-          loadRules();
+          alert('Suggestion applied.');
         }
 
         closeSuggestionModal();
@@ -3444,17 +3228,7 @@
       }
     }
 
-    // Event listeners for rules and suggestions
-    document.getElementById('active-rules-only').addEventListener('change', loadRules);
-    document.getElementById('rule-type-filter').addEventListener('change', loadRules);
-
     // Close modals on outside click
-    document.getElementById('rule-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) closeRuleModal();
-    });
-    document.getElementById('system-prompt-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) closeSystemPromptModal();
-    });
     document.getElementById('suggestion-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeSuggestionModal();
     });
@@ -4649,20 +4423,15 @@
 
     async function viewSynthesisRun(id) {
       try {
-        // Fetch synthesis run AND current rules in parallel
-        const [synthesisRes, rulesRes, configRes] = await Promise.all([
+        const [synthesisRes, configRes] = await Promise.all([
           fetch(`/api/admin/addie/synthesis/${id}`),
-          fetch('/api/admin/addie/rules?active_only=true'),
           fetch('/api/admin/addie/config/current')
         ]);
 
         const data = await synthesisRes.json();
-        const rulesData = await rulesRes.json();
         const configData = await configRes.json();
 
         currentSynthesisRun = data.run;
-        const currentRules = rulesData.rules || [];
-        const currentKnowledgeRules = currentRules.filter(r => r.rule_type === 'knowledge');
         const configVersion = configData.config_version;
 
         const content = document.getElementById('synthesis-review-content');
@@ -4698,67 +4467,31 @@
           </div>`;
         }
 
-        // SIDE BY SIDE COMPARISON
-        html += `
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
-            <!-- Current State -->
-            <div>
-              <h3 style="margin-bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2);">
-                <span style="display: inline-block; width: 12px; height: 12px; background: var(--color-gray-400); border-radius: 50%;"></span>
-                Current Knowledge Rules
-                <span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-secondary);">
-                  (v${configVersion?.version_id || '?'})
-                </span>
-              </h3>
-              <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3);">
-                ${currentKnowledgeRules.length === 0
-                  ? '<p style="color: var(--color-text-secondary); text-align: center;">No knowledge rules yet</p>'
-                  : currentKnowledgeRules.map(rule => `
-                    <div style="margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-gray-100);">
-                      <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">${escapeHtml(rule.name)}</div>
-                      <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;">${escapeHtml(rule.content.substring(0, 300))}${rule.content.length > 300 ? '...' : ''}</div>
-                    </div>
-                  `).join('')
-                }
-              </div>
-              <div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">
-                ${currentKnowledgeRules.length} knowledge rule${currentKnowledgeRules.length !== 1 ? 's' : ''} |
-                ${currentRules.length} total rules
-              </div>
-            </div>
-
-            <!-- After Synthesis -->
-            <div>
+        // Proposed rules (rules now live in server/src/addie/rules/*.md)
+        if ((run.proposed_rules || []).length > 0) {
+          html += `
+            <div style="margin-bottom: var(--space-4);">
               <h3 style="margin-bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2);">
                 <span style="display: inline-block; width: 12px; height: 12px; background: var(--color-success); border-radius: 50%;"></span>
-                After This Synthesis
+                Proposed rules
               </h3>
               <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--color-success); border-radius: var(--radius-sm); padding: var(--space-3); background: var(--color-success-bg, rgba(16, 185, 129, 0.05));">
-                ${(run.proposed_rules || []).length === 0
-                  ? '<p style="color: var(--color-text-secondary); text-align: center;">No new rules proposed</p>'
-                  : `
-                    <div style="margin-bottom: var(--space-3); padding: var(--space-2); background: var(--color-success-bg, rgba(16, 185, 129, 0.1)); border-radius: var(--radius-sm);">
-                      <strong style="color: var(--color-success);">+ ${run.proposed_rules.length} NEW RULE${run.proposed_rules.length !== 1 ? 'S' : ''}</strong>
+                <div style="margin-bottom: var(--space-3); padding: var(--space-2); background: var(--color-success-bg, rgba(16, 185, 129, 0.1)); border-radius: var(--radius-sm);">
+                  <strong style="color: var(--color-success);">${run.proposed_rules.length} RULE${run.proposed_rules.length !== 1 ? 'S' : ''} PROPOSED</strong>
+                </div>
+                ${run.proposed_rules.map(rule => `
+                  <div style="margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-gray-100);">
+                    <div style="font-weight: var(--font-semibold); color: var(--color-success);">
+                      ${escapeHtml(rule.name)}
+                      <span class="badge" style="margin-left: var(--space-2);">${Math.round(rule.confidence * 100)}%</span>
                     </div>
-                    ${run.proposed_rules.map(rule => `
-                      <div style="margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-gray-100);">
-                        <div style="font-weight: var(--font-semibold); color: var(--color-success);">
-                          + ${escapeHtml(rule.name)}
-                          <span class="badge" style="margin-left: var(--space-2);">${Math.round(rule.confidence * 100)}%</span>
-                        </div>
-                        <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;">${escapeHtml(rule.content.substring(0, 300))}${rule.content.length > 300 ? '...' : ''}</div>
-                      </div>
-                    `).join('')}
-                  `
-                }
-              </div>
-              <div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">
-                ${currentKnowledgeRules.length + (run.proposed_rules?.length || 0)} knowledge rules after |
-                ${currentRules.length + (run.proposed_rules?.length || 0)} total rules
+                    <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;">${escapeHtml(rule.content.substring(0, 300))}${rule.content.length > 300 ? '...' : ''}</div>
+                  </div>
+                `).join('')}
               </div>
             </div>
-          </div>
-        `;
+          `;
+        }
 
         // Source Materials (collapsible)
         if (data.sources && data.sources.length > 0) {
@@ -5080,7 +4813,6 @@
 
     // Initial load
     loadStats();
-    loadRules();
     loadSuggestions();
     loadInsights();
     loadKnowledge();

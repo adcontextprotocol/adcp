@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { AddieDatabase, type RuleType, type AddieRuleInput } from '../../src/db/addie-db.js';
+import { AddieDatabase } from '../../src/db/addie-db.js';
 import type { Pool } from 'pg';
 
 const TEST_PREFIX = 'addie_learning_test';
@@ -20,233 +20,15 @@ describe('Addie Learning System Integration Tests', () => {
   });
 
   afterAll(async () => {
-    // Clean up all test data
-    await pool.query('DELETE FROM addie_rules WHERE created_by = $1', [TEST_PREFIX]);
     await pool.query('DELETE FROM addie_interactions WHERE user_id LIKE $1', [`${TEST_PREFIX}%`]);
     await closeDatabase();
-  });
-
-  beforeEach(async () => {
-    // Clean up test data before each test
-    await pool.query('DELETE FROM addie_rules WHERE created_by = $1', [TEST_PREFIX]);
-  });
-
-  describe('Rules Management', () => {
-    describe('createRule', () => {
-      it('should create a rule with all fields', async () => {
-        const input: AddieRuleInput = {
-          rule_type: 'behavior',
-          name: 'Test Rule',
-          description: 'A test rule for testing',
-          content: 'Do something specific',
-          priority: 50,
-          created_by: TEST_PREFIX,
-        };
-
-        const rule = await db.createRule(input);
-
-        expect(rule.id).toBeDefined();
-        expect(rule.rule_type).toBe('behavior');
-        expect(rule.name).toBe('Test Rule');
-        expect(rule.description).toBe('A test rule for testing');
-        expect(rule.content).toBe('Do something specific');
-        expect(rule.priority).toBe(50);
-        expect(rule.is_active).toBe(true);
-        expect(rule.version).toBe(1);
-        expect(rule.interactions_count).toBe(0);
-        expect(rule.positive_ratings).toBe(0);
-        expect(rule.negative_ratings).toBe(0);
-      });
-
-      it('should create a rule with minimal fields', async () => {
-        const input: AddieRuleInput = {
-          rule_type: 'constraint',
-          name: 'Minimal Rule',
-          content: 'Never do this',
-          created_by: TEST_PREFIX,
-        };
-
-        const rule = await db.createRule(input);
-
-        expect(rule.id).toBeDefined();
-        expect(rule.rule_type).toBe('constraint');
-        expect(rule.name).toBe('Minimal Rule');
-        expect(rule.description).toBeNull();
-        expect(rule.priority).toBe(0);
-      });
-
-      it('should validate rule_type enum', async () => {
-        const input: AddieRuleInput = {
-          rule_type: 'invalid_type' as RuleType,
-          name: 'Invalid Rule',
-          content: 'Content',
-          created_by: TEST_PREFIX,
-        };
-
-        await expect(db.createRule(input)).rejects.toThrow();
-      });
-    });
-
-    describe('getRuleById', () => {
-      it('should retrieve a rule by ID', async () => {
-        const created = await db.createRule({
-          rule_type: 'knowledge',
-          name: 'Knowledge Rule',
-          content: 'Some knowledge',
-          created_by: TEST_PREFIX,
-        });
-
-        const retrieved = await db.getRuleById(created.id);
-
-        expect(retrieved).not.toBeNull();
-        expect(retrieved!.id).toBe(created.id);
-        expect(retrieved!.name).toBe('Knowledge Rule');
-      });
-
-      it('should return null for non-existent ID', async () => {
-        const retrieved = await db.getRuleById(999999);
-        expect(retrieved).toBeNull();
-      });
-    });
-
-    describe('getActiveRules', () => {
-      it('should return only active rules ordered by priority', async () => {
-        // Create multiple rules with different priorities
-        await db.createRule({
-          rule_type: 'behavior',
-          name: 'Low Priority',
-          content: 'Low',
-          priority: 10,
-          created_by: TEST_PREFIX,
-        });
-
-        await db.createRule({
-          rule_type: 'behavior',
-          name: 'High Priority',
-          content: 'High',
-          priority: 100,
-          created_by: TEST_PREFIX,
-        });
-
-        const rules = await db.getActiveRules();
-
-        // Find our test rules
-        const testRules = rules.filter(r => r.created_by === TEST_PREFIX);
-        expect(testRules.length).toBeGreaterThanOrEqual(2);
-
-        // Verify priority ordering (highest first)
-        const highIndex = testRules.findIndex(r => r.name === 'High Priority');
-        const lowIndex = testRules.findIndex(r => r.name === 'Low Priority');
-        expect(highIndex).toBeLessThan(lowIndex);
-      });
-
-      it('should not return inactive rules', async () => {
-        const rule = await db.createRule({
-          rule_type: 'behavior',
-          name: 'Soon Inactive',
-          content: 'Will be deactivated',
-          created_by: TEST_PREFIX,
-        });
-
-        await db.setRuleActive(rule.id, false);
-
-        const activeRules = await db.getActiveRules();
-        const found = activeRules.find(r => r.id === rule.id);
-        expect(found).toBeUndefined();
-      });
-    });
-
-    describe('updateRule', () => {
-      it('should create a new version when updating', async () => {
-        const original = await db.createRule({
-          rule_type: 'behavior',
-          name: 'Original Rule',
-          content: 'Original content',
-          created_by: TEST_PREFIX,
-        });
-
-        const updated = await db.updateRule(original.id, {
-          content: 'Updated content',
-        }, TEST_PREFIX);
-
-        expect(updated).not.toBeNull();
-        expect(updated!.id).not.toBe(original.id); // New ID
-        expect(updated!.version).toBe(2);
-        expect(updated!.supersedes_rule_id).toBe(original.id);
-        expect(updated!.content).toBe('Updated content');
-        expect(updated!.name).toBe('Original Rule'); // Preserved
-
-        // Original should now be inactive
-        const oldRule = await db.getRuleById(original.id);
-        expect(oldRule!.is_active).toBe(false);
-      });
-
-      it('should return null for non-existent rule', async () => {
-        const updated = await db.updateRule(999999, { content: 'New' }, TEST_PREFIX);
-        expect(updated).toBeNull();
-      });
-    });
-
-    describe('setRuleActive', () => {
-      it('should toggle rule active status', async () => {
-        const rule = await db.createRule({
-          rule_type: 'constraint',
-          name: 'Toggle Test',
-          content: 'Test',
-          created_by: TEST_PREFIX,
-        });
-
-        expect(rule.is_active).toBe(true);
-
-        const deactivated = await db.setRuleActive(rule.id, false);
-        expect(deactivated!.is_active).toBe(false);
-
-        const reactivated = await db.setRuleActive(rule.id, true);
-        expect(reactivated!.is_active).toBe(true);
-      });
-    });
-
-    describe('deleteRule', () => {
-      it('should soft delete a rule', async () => {
-        const rule = await db.createRule({
-          rule_type: 'behavior',
-          name: 'Delete Me',
-          content: 'To be deleted',
-          created_by: TEST_PREFIX,
-        });
-
-        const deleted = await db.deleteRule(rule.id);
-        expect(deleted).toBe(true);
-
-        // Should still exist but be inactive
-        const retrieved = await db.getRuleById(rule.id);
-        expect(retrieved).not.toBeNull();
-        expect(retrieved!.is_active).toBe(false);
-      });
-
-      it('should return false for non-existent rule', async () => {
-        const deleted = await db.deleteRule(999999);
-        // Since it's an UPDATE, it returns false when no rows affected
-        expect(deleted).toBe(false);
-      });
-    });
-
   });
 
   describe('Interaction Rating', () => {
     let testInteractionId: string;
 
     beforeEach(async () => {
-      // Create a test interaction
       testInteractionId = `${TEST_PREFIX}_${Date.now()}`;
-
-      // We need to create a rule first to test the rating propagation
-      const rule = await db.createRule({
-        rule_type: 'behavior',
-        name: 'Rating Test Rule',
-        content: 'Test content',
-        created_by: TEST_PREFIX,
-      });
 
       await pool.query(
         `INSERT INTO addie_interactions (
@@ -267,7 +49,7 @@ describe('Addie Learning System Integration Tests', () => {
           'claude-3',
           100,
           false,
-          JSON.stringify({ rule_ids: [rule.id] }),
+          JSON.stringify({ rule_ids: [] }),
         ]
       );
     });
