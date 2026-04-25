@@ -116,3 +116,12 @@ The signatures committed historically remain valid; only the future signing path
    ```
 
 4. Open a test PR from a fresh fork or unsigned account to verify the full path: comment fires, signature lands in `adcp@main:signatures/ipr-signatures.json`, status check goes green.
+
+## Verifying branch protection
+
+When `IPR Policy / Signature` is added as a required status check on a repo's `main` ruleset, run this smoke test:
+
+1. Open any tiny PR (e.g. a whitespace nudge in a doc).
+2. Confirm `IPR Policy / Signature` posts on the PR's commit.
+3. Try to merge without an approving review — GitHub should block with "Required check is missing" or "Required reviews not met".
+4. Once approved + merged, on adcp specifically, confirm the next signature event still pushes a `chore(ipr):` commit straight to `main`. If those start failing, the **AAO IPR Bot** is not in the ruleset's bypass list — fix that and re-test.
