@@ -63,11 +63,31 @@ function isVerifiedState(state: unknown): boolean {
 
 // In-process verify cooldown to stop autonomous LLM loops from polling. DNS
 // propagation is minutes-scale; a 60s floor between verify attempts costs
-// nothing for a real user but kills retry loops.
+// nothing for a real user but kills retry loops. Per-process — multi-instance
+// deployments get a softer guarantee but the goal is loop-killing, not a
+// hard rate limit. The route's auth gate is the trust boundary.
 const VERIFY_COOLDOWN_MS = 60_000;
+const VERIFY_COOLDOWN_MAX_ENTRIES = 10_000;
 const verifyAttemptTimes = new Map<string, number>();
 function cooldownKey(orgId: string, domain: string) {
   return `${orgId}:${domain}`;
+}
+// Bound the map so a buggy client (or attacker who clears the admin gate)
+// can't grow it without limit. Drop expired entries first; if still over
+// the cap, drop oldest. Cheap because the map is small in practice.
+function trimVerifyAttempts(now: number) {
+  if (verifyAttemptTimes.size < VERIFY_COOLDOWN_MAX_ENTRIES) return;
+  for (const [k, t] of verifyAttemptTimes) {
+    if (now - t >= VERIFY_COOLDOWN_MS) verifyAttemptTimes.delete(k);
+  }
+  if (verifyAttemptTimes.size < VERIFY_COOLDOWN_MAX_ENTRIES) return;
+  const overflow = verifyAttemptTimes.size - VERIFY_COOLDOWN_MAX_ENTRIES + 1;
+  let dropped = 0;
+  for (const k of verifyAttemptTimes.keys()) {
+    if (dropped >= overflow) break;
+    verifyAttemptTimes.delete(k);
+    dropped++;
+  }
 }
 
 export async function issueDomainChallenge(input: {
@@ -199,11 +219,12 @@ export async function verifyDomainChallenge(input: {
     return {
       ok: false,
       code: 'still_pending',
-      message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help and the LLM should not poll.`,
+      message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help.`,
       state: 'pending',
       retry_after_seconds: retryAfterSeconds,
     };
   }
+  trimVerifyAttempts(now);
   verifyAttemptTimes.set(key, now);
 
   let existing;
