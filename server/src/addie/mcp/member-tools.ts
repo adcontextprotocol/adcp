@@ -701,6 +701,42 @@ export const MEMBER_TOOLS: AddieTool[] = [
       required: [],
     },
   },
+  {
+    name: 'request_brand_domain_challenge',
+    description:
+      "Start a domain ownership challenge for a brand domain so the caller's organization can claim or verify it. Issues a DNS TXT record via WorkOS that the user must publish at the domain. Use when a member wants to claim a brand domain they actually control. Pair with verify_brand_domain_challenge once the DNS record is live.",
+    usage_hints: 'Use when the user says "claim acme.com for our brand" or "I want to verify my domain ownership" or hits a cross-org dispute on a domain they control. Returns DNS TXT instructions the user can publish.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'The brand domain to claim (e.g., "acme.com"). The caller must control DNS for this domain.',
+        },
+      },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'verify_brand_domain_challenge',
+    description:
+      "After the user publishes the DNS TXT record from request_brand_domain_challenge, ask WorkOS to verify it and apply the brand registry update. On success the caller's organization owns the brand domain. Returns verification status; if WorkOS hasn't found the record yet, advises retry.",
+    usage_hints: 'Use after the user confirms they published the DNS TXT record. Pass adopt_prior_manifest=true if a previous owner relinquished the brand and the user wants to keep their visual identity (acquisition/handoff case).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'The brand domain being verified.',
+        },
+        adopt_prior_manifest: {
+          type: 'boolean',
+          description: 'Set true if a prior owner relinquished this domain and the caller wants to inherit their brand manifest (logos, colors, agents). Default false starts fresh.',
+        },
+      },
+      required: ['domain'],
+    },
+  },
 
   // ============================================
   // PERSPECTIVES / POSTS (user-scoped write)
@@ -2200,6 +2236,121 @@ export function createMemberToolHandlers(
       logger.error({ err, orgId }, 'update_company_logo: failed');
       return 'Something went wrong updating your logo. Please try again, or edit directly at https://agenticadvertising.org/member-profile';
     }
+  });
+
+  /**
+   * Lookup the caller's role on their org via WorkOS. Brand-claim is org-state
+   * mutation and only admins/owners should run it (matches the same gate the
+   * /brand-claim/issue + /verify routes apply).
+   */
+  async function callerIsOrgAdmin(workosUserId: string, orgId: string): Promise<boolean> {
+    try {
+      const { getWorkos } = await import('../../auth/workos-client.js');
+      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
+        userId: workosUserId,
+        organizationId: orgId,
+      });
+      const role = memberships.data[0]?.role?.slug || 'member';
+      return role === 'admin' || role === 'owner';
+    } catch (err) {
+      logger.error({ err, workosUserId, orgId }, 'brand-claim chat tool: role lookup failed');
+      return false;
+    }
+  }
+
+  handlers.set('request_brand_domain_challenge', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to claim a brand domain. Please sign in at https://agenticadvertising.org and try again.';
+    }
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return 'Your account isn\'t linked to an organization yet. Set up your company on https://agenticadvertising.org/member-profile first.';
+    }
+    if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
+      return 'Only your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
+    }
+
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return 'Tell me the brand domain you want to claim (e.g., "acme.com").';
+
+    const { issueDomainChallenge } = await import('../../services/brand-claim.js');
+    const { getWorkos } = await import('../../auth/workos-client.js');
+    const result = await issueDomainChallenge({ workos: getWorkos(), orgId, rawDomain });
+
+    if (!result.ok) {
+      if (result.code === 'collision') {
+        return `${rawDomain} is already registered by another organization. If that's wrong (an acquisition or naming overlap), let me file a brand-ownership escalation for the team to review.`;
+      }
+      if (result.code === 'invalid_domain') {
+        return `I can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
+      }
+      return `Couldn't issue the domain challenge: ${result.message}`;
+    }
+
+    if (result.already_verified) {
+      return `${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
+    }
+
+    if (!result.verification_token || !result.verification_prefix) {
+      return `Issued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+    }
+
+    const recordName = `${result.verification_prefix}.${result.domain}`;
+    return [
+      `OK — I asked WorkOS to issue a domain ownership challenge for **${result.domain}**.`,
+      ``,
+      `**Publish this DNS TXT record:**`,
+      ``,
+      `- Name: \`${recordName}\``,
+      `- Type: \`TXT\``,
+      `- Value: \`${result.verification_token}\``,
+      ``,
+      `Once it's live (DNS propagation usually a few minutes, sometimes longer), tell me and I'll run \`verify_brand_domain_challenge\`. If a previous organization had this domain registered and you'd like to inherit their brand identity (logos, colors), mention "adopt prior identity" so I pass that flag through.`,
+    ].join('\n');
+  });
+
+  handlers.set('verify_brand_domain_challenge', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to verify a brand domain claim.';
+    }
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return 'Your account isn\'t linked to an organization yet.';
+    }
+    if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
+      return 'Only your organization\'s admin or owner can verify a brand domain claim.';
+    }
+
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return 'Which domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
+    const adoptPriorManifest = input.adopt_prior_manifest === true;
+
+    const { verifyDomainChallenge } = await import('../../services/brand-claim.js');
+    const { getWorkos } = await import('../../auth/workos-client.js');
+    const { BrandDatabase } = await import('../../db/brand-db.js');
+    const result = await verifyDomainChallenge({
+      workos: getWorkos(),
+      brandDb: new BrandDatabase(),
+      orgId,
+      rawDomain,
+      adoptPriorManifest,
+    });
+
+    if (!result.ok) {
+      if (result.code === 'no_challenge') {
+        return `I don't see an outstanding domain challenge for ${rawDomain}. Run \`request_brand_domain_challenge\` first to get the DNS TXT record to publish.`;
+      }
+      if (result.code === 'still_pending') {
+        return `WorkOS hasn't found the DNS TXT record yet. ${result.message} Try again in a few minutes — DNS propagation can take a while, especially after a fresh publish.`;
+      }
+      return `Verification failed: ${result.message}`;
+    }
+
+    const inherited = result.adopted_prior_manifest ? ' and inherited the prior brand identity' : '';
+    if (result.newly_verified) {
+      return `Verified — ${result.domain} is now owned by your organization${inherited}. The brand registry has been updated and the change should propagate within a few seconds.`;
+    }
+    return `${result.domain} was already verified${inherited}. Brand registry resynced just to be sure.`;
   });
 
   // ============================================
