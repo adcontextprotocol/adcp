@@ -1,0 +1,253 @@
+id: media_buy_seller/create_media_buy_async_submitted
+version: "1.0.0"
+title: "Seller creates buy returning async submitted state (cross-transport)"
+category: media_buy_seller
+summary: >
+  Verifies the submitted task envelope for create_media_buy: status: submitted with task_id
+  returned on the initial response, no media_buy_id until task completion, and the final
+  active buy confirmed via get_media_buys after the test controller drives the transition.
+  Documents the cross-transport wire-shape invariants established by adcp-client#899.
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+
+narrative: |
+  This scenario exercises the submitted async path for create_media_buy — the case where a
+  seller cannot confirm the buy before the HTTP response is emitted (for example, IO signing,
+  governance review queuing, or batch processing). The seller returns status: submitted with a
+  task_id instead of media_buy_id; the buy is not live until the task completes.
+
+  The invariants asserted here are protocol-level decisions established in the A2A serve adapter
+  (adcp-client#899). Cross-transport wire shapes:
+
+    MCP transport (asserted in validations below):
+      structuredContent.status === 'submitted'
+      structuredContent.task_id present
+
+    A2A transport (documented here; runner assertions pending adcp-client#904):
+      Task.state === 'completed'  (Task.state reflects HTTP-call completion, not AdCP task
+        completion — these are different layers. The HTTP call returned synchronously with a
+        submitted payload; the outer A2A task is therefore 'completed' even though the AdCP
+        task lifecycle is still pending.)
+      artifact.metadata.adcp_task_id === task_id  (AdCP async handle in A2A artifact metadata;
+        this is an AdCP adapter convention surfaced by adcp-client, not an A2A spec field)
+      artifact.parts[0].data.status === 'submitted'  (AdCP payload layer)
+
+  An agent that regresses to the pre-#899 shape (top-level Task.state: 'submitted' with
+  final: true, adcp_task_id in data instead of metadata) would still pass the MCP assertions
+  but fails the A2A wire-shape invariants; once adcp-client#904 lands those will be exercised.
+
+  After the initial submitted response the test controller drives the submitted → completed
+  transition. The buyer calls get_media_buys to confirm the buy is live — this mirrors what
+  a real buyer does when the push-notification webhook fires (or a tasks/get poll returns
+  completed) and the buyer queries the final state. The media_buy_id is issued by the seller
+  on task completion and is not present in the submitted envelope.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_guaranteed
+  examples:
+    - "Guaranteed seller requiring IO signing before a buy goes live"
+    - "Seller that queues create_media_buy for batch processing or internal approval"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller supports create_media_buy returning status: submitted with task_id when the buy
+    cannot be confirmed synchronously. The test controller seeds an async-returning responder
+    and drives the submitted → completed transition so the completion phase can assert the
+    final active state via get_media_buys.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "display_async_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "display_async_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 10.0
+
+phases:
+  - id: setup
+    title: "Discover products"
+    narrative: |
+      The buyer calls get_products to discover available inventory before creating a buy.
+      This phase confirms the seller advertises the product the scenario will purchase.
+    steps:
+      - id: get_products_brief
+        title: "Discover a display product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one display product with pricing options.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content. Q2 flight, $10K budget."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "create_media_buy_async_submitted--get_products_brief"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains at least one product"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "create_media_buy_async_submitted--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_submitted
+    title: "Create buy — seller returns submitted"
+    narrative: |
+      The buyer creates a media buy. The controller-seeded seller returns status: submitted
+      with a task_id rather than media_buy_id or packages. The buyer registers a
+      push_notification_config so the seller can call back on task completion.
+
+      MCP transport: the AdCP payload has status: submitted and task_id.
+      A2A transport (documented, not yet runnable — pending adcp-client#904):
+        Task.state must be 'completed' (not 'submitted') — Task.state reflects HTTP-call
+        completion, not AdCP task lifecycle. adcp_task_id must appear in artifact.metadata,
+        not in artifact.parts[0].data. artifact.parts[0].data.status must equal 'submitted'.
+
+    steps:
+      - id: create_media_buy
+        title: "Create buy (submitted task envelope)"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return the CreateMediaBuySubmitted envelope:
+          - status: submitted (discriminates this branch from the synchronous success branch)
+          - task_id: the handle the buyer polls or receives webhooks on (snake_case on the
+            AdCP payload wire; A2A adapters may surface it as taskId in the A2A task envelope,
+            but the field the agent emits in the AdCP payload is task_id)
+          - message (optional): human-readable advisory about approval timeline
+
+          Do NOT include media_buy_id or packages — those land on the task completion artifact
+          only. Do NOT use a MediaBuy.status of 'pending_approval' — that value is not in
+          MediaBuyStatus; approval workflows are modelled at the task layer.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-07-31T23:59:59Z"
+          packages:
+            - product_id: "display_async_q2"
+              budget: 10000
+              pricing_option_id: "cpm_standard"
+          push_notification_config:
+            url: "https://buyer.example/webhooks/adcp"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_create_submitted_create_media_buy"
+          context:
+            correlation_id: "create_media_buy_async_submitted--create_media_buy"
+        context_outputs:
+          - name: task_id
+            path: "task_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema (submitted branch)"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Response is the submitted task envelope, not the synchronous success branch"
+          - check: field_present
+            path: "task_id"
+            description: "task_id present for async polling or webhook correlation"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "create_media_buy_async_submitted--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: confirm_active
+    title: "Confirm buy is active after task completion"
+    narrative: |
+      The test controller drives the submitted → completed transition and the seller issues a
+      media_buy_id. The buyer calls get_media_buys to confirm the buy is live — this mirrors
+      the buyer's behavior after receiving a push-notification webhook (or a successful
+      tasks/get poll) that signals the task completed and a media_buy_id was assigned.
+
+      The media_buy_id is not present in the submitted response; it is issued by the seller on
+      task completion. The query here does not filter by media_buy_id — the controller-seeded
+      seller will have exactly one completed buy for this account at this point.
+
+    steps:
+      - id: get_media_buys_active
+        title: "Verify buy is active after task completes"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return at least one media buy with:
+          - media_buy_id: the ID issued when the task completed (this was not present in the
+            submitted response — task completion is the event that creates the MediaBuy resource)
+          - status: active, pending_creatives, or pending_start — the buy is now live
+          - packages: line items with reserved inventory
+
+          The buy must not be in any task-level state (submitted / working). Task completion
+          transitions the resource to an active MediaBuy; get_media_buys returns MediaBuy objects.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "create_media_buy_async_submitted--get_media_buys_active"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "At least one media buy returned — the task-completed buy is now queryable"
+          - check: field_present
+            path: "media_buys[0].media_buy_id"
+            description: "Completion artifact issued a media_buy_id; the task is complete"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Media buy has a live status after task completion"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "create_media_buy_async_submitted--get_media_buys_active"
+            description: "Context correlation_id returned unchanged"

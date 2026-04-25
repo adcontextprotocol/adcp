@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/create_media_buy_async_submitted
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
