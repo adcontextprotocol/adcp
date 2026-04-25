@@ -52,7 +52,7 @@ import {
   handleActivateSignal,
   handleReportUsage,
 } from './task-handlers.js';
-import { handleSyncAccounts, handleSyncGovernance } from './account-handlers.js';
+import { handleSyncAccounts, handleSyncGovernance, handleListAccounts } from './account-handlers.js';
 import {
   handleSyncCatalogs,
   handleSyncEventSources,
@@ -628,6 +628,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
     accounts: {
       syncAccounts: adapt('sync_accounts', handleSyncAccounts),
+      listAccounts: adapt('list_accounts', handleListAccounts),
       syncGovernance: adapt('sync_governance', handleSyncGovernance),
       reportUsage: adapt('report_usage', handleReportUsage),
     },
