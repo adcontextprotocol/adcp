@@ -80,6 +80,8 @@ const PUB_A = `${DOMAIN_PREFIX}acme${DOMAIN_SUFFIX}`;
 const PUB_B = `${DOMAIN_PREFIX}pinnacle${DOMAIN_SUFFIX}`;
 const AGENT_X = `${AGENT_PREFIX}sales-x.registry-baseline.example`;
 const AGENT_Y = `${AGENT_PREFIX}sales-y.registry-baseline.example`;
+const ORG_ID = 'org_endpoint_registry_baseline';
+const MEMBER_SLUG = 'endpoint-acme-baseline';
 
 describe('Registry reader baseline — public endpoints', () => {
   let server: HTTPServer;
@@ -117,6 +119,8 @@ describe('Registry reader baseline — public endpoints', () => {
       'DELETE FROM discovered_agents WHERE agent_url LIKE $1',
       [AGENT_LIKE]
     );
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [ORG_ID]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_ID]);
   }
 
   beforeAll(async () => {
@@ -335,6 +339,69 @@ describe('Registry reader baseline — public endpoints', () => {
       });
     });
 
+    it('GET /api/registry/operator projects the member profile + per-agent authorized_by array', async () => {
+      // Seed a profile claiming PUB_A as its primary brand domain. The
+      // operator endpoint pulls agents from the profile's public
+      // agents[] and enriches each with authorized_by drawn from
+      // getAuthorizationsForAgent. PR 4 swaps that reader, so the
+      // per-agent projection (publisher_domain, authorized_for, source)
+      // is exactly what the cutover must preserve. The seeded fixtures
+      // already have AGENT_X authorized to PUB_A via adagents_json.
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Baseline Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, primary_brand_domain, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents,
+           primary_brand_domain = EXCLUDED.primary_brand_domain,
+           is_public = EXCLUDED.is_public,
+           updated_at = NOW()`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
+          ]),
+          PUB_A,
+        ]
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(PUB_A)}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.domain).toBe(PUB_A);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Baseline Org',
+      });
+      expect(res.body.agents).toHaveLength(1);
+      expect(res.body.agents[0]).toMatchObject({
+        url: AGENT_X,
+        name: 'Endpoint Sales X',
+        type: 'sales',
+      });
+      // The authorized_by array shape is what publisher-ops UIs render
+      // and what PR 4 must not silently rename or drop.
+      expect(Array.isArray(res.body.agents[0].authorized_by)).toBe(true);
+      const pubAEntry = res.body.agents[0].authorized_by.find(
+        (a: { publisher_domain: string }) => a.publisher_domain === PUB_A
+      );
+      expect(pubAEntry).toMatchObject({
+        publisher_domain: PUB_A,
+        authorized_for: 'all',
+        source: 'adagents_json',
+      });
+    });
+
     // ── /registry/stats ────────────────────────────────────────────
 
     it('GET /api/registry/stats reflects at least our seeded counts', async () => {
@@ -354,7 +421,7 @@ describe('Registry reader baseline — public endpoints', () => {
 
     // ── /registry/agents ───────────────────────────────────────────
 
-    it('GET /api/registry/agents includes our seeded agents (no enrichment)', async () => {
+    it('GET /api/registry/agents includes our seeded agents with full DSP-discovery projection', async () => {
       const res = await request(app).get('/api/registry/agents');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.agents)).toBe(true);
@@ -369,6 +436,15 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(y).toBeTruthy();
       expect(x.source).toBe('discovered');
       expect(x.type).toBe('sales');
+      expect(x.protocol).toBe('mcp');
+      // discovered_from is the DSP-discovery breadcrumb — sourced from
+      // the bulk-auth join via discovered_agents.source_domain. PR 4
+      // must not drop or rename this field.
+      expect(x.discovered_from).toMatchObject({ publisher_domain: PUB_A });
+      // added_date is sourced from discovered_at; pin presence as a
+      // non-empty string but not an exact value.
+      expect(typeof x.added_date).toBe('string');
+      expect(x.added_date.length).toBeGreaterThan(0);
     });
 
     it('GET /api/registry/agents?properties=true enriches buying agents only', async () => {

@@ -219,6 +219,41 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
       expect(wrongValue).toEqual([]);
     });
 
+    it('findAgentsForPropertyIdentifier matches a property whose identifier carries extra fields beyond {type,value} (JSONB containment)', async () => {
+      // PR 4 may move identifiers from a JSONB array to a normalized
+      // (property_id, type, value) table. JSONB `@>` containment today
+      // is element-wise — `[{type, value}]` is contained by
+      // `[{type, value, region}]`. Pinning that the reader still surfaces
+      // a property whose stored identifier carries an extra key catches
+      // a normalization that silently drops extras.
+      const EXTRA_DOMAIN = `prop-extra${DOMAIN_SUFFIX}`;
+      await fedDb.upsertProperty({
+        property_id: 'extra-prop',
+        publisher_domain: EXTRA_DOMAIN,
+        property_type: 'website',
+        name: 'Extra-Field Site',
+        identifiers: [
+          // Cast through unknown to get past the PropertyIdentifier
+          // {type, value} type — the stored JSONB carries the extra key.
+          { type: 'domain', value: EXTRA_DOMAIN, region: 'us' } as unknown as {
+            type: string;
+            value: string;
+          },
+        ],
+      });
+      const props = await fedDb.getPropertiesForDomain(EXTRA_DOMAIN);
+      const propRow = props[0] as unknown as { id: string };
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_X,
+        property_id: propRow.id,
+      });
+
+      const matches = await fedDb.findAgentsForPropertyIdentifier('domain', EXTRA_DOMAIN);
+      expect(matches.length).toBe(1);
+      expect(matches[0].agent_url).toBe(AGENT_X);
+      expect(matches[0].publisher_domain).toBe(EXTRA_DOMAIN);
+    });
+
     it('findAgentsForPropertyIdentifier returns [] when the property has no agent_property_authorizations row (INNER JOIN contract)', async () => {
       // Insert a property with the same identifier under a *different*
       // publisher and no authorization. The current implementation uses
@@ -503,6 +538,43 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
       // total is the sum of all source buckets and must reconcile with
       // the per-bucket counts.
       expect(stats.total).toBeGreaterThanOrEqual(stats.community + stats.adagents_json);
+    });
+
+    it('a domain with both a public hosted row AND discovered_properties surfaces ONCE, sourced from hosted (precedence carve-out)', async () => {
+      // The current SQL carve-out (NOT IN public hosted_properties) is
+      // the single piece of non-trivial logic in this reader. PR 4 could
+      // remove or invert it — produce two rows, flip precedence to
+      // discovered, etc. — and a fixture with disjoint hosted+discovered
+      // domains would not catch the regression. Seed a third domain
+      // with both sides.
+      const DUAL = `${DOMAIN_PREFIX}dual${DOMAIN_SUFFIX}`;
+      await fedDb.upsertProperty({
+        property_id: 'dual-discovered',
+        publisher_domain: DUAL,
+        property_type: 'website',
+        name: 'Dual Discovered Site',
+        identifiers: [{ type: 'domain', value: DUAL }],
+      });
+      await propDb.createHostedProperty({
+        publisher_domain: DUAL,
+        adagents_json: {
+          authorized_agents: [{ url: AGENT_X }, { url: AGENT_Y }],
+          properties: [{ name: 'Dual Hosted Site', property_type: 'website' }],
+        },
+        source_type: 'community',
+        is_public: true,
+        review_status: 'approved',
+      });
+
+      const rows = await propDb.getAllPropertiesForRegistry({ search: DOMAIN_PREFIX });
+      const dualRows = rows.filter((r) => r.domain === DUAL);
+      expect(dualRows.length).toBe(1);
+      expect(dualRows[0].source).toBe('community');
+      // Hosted's agent_count comes from the adagents_json `authorized_agents`
+      // array length (2), not the discovered apa rows (0). Pinning this
+      // confirms the row was sourced from the hosted side, not the
+      // discovered side.
+      expect(dualRows[0].agent_count).toBe(2);
     });
   });
 

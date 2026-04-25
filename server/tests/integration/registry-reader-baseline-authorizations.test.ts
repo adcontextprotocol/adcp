@@ -230,9 +230,14 @@ describe('Registry reader baseline — agent + authorization reads', () => {
   // ──────────────────────────────────────────────────────────────────
 
   describe('bulkGetFirstAuthForAgents', () => {
-    it('prefers adagents_json over agent_claim for the same agent', async () => {
-      // Insert agent_claim first to verify the function does not use
-      // discovered_at to pick — only `ORDER BY source` matters.
+    it('prefers verified authorization (adagents_json) over an unverified claim (agent_claim) for the same agent', async () => {
+      // Verified-over-unverified is the load-bearing protocol invariant
+      // here. PR 4 may swap to a different priority mechanism (an
+      // explicit precedence column, an `adagents_authorization_overrides`
+      // join, etc.) and that's fine — but the contract that an
+      // adagents_json row wins over an agent_claim row for the same
+      // agent must hold. We insert agent_claim first to verify the
+      // priority is NOT discovered_at-based.
       await fedDb.upsertAuthorization({
         agent_url: AGENT_X,
         publisher_domain: PUB_B,
@@ -253,7 +258,7 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       expect(first!.authorized_for).toBe('all');
     });
 
-    it('returns one row per agent in the input batch and skips agents with no auth', async () => {
+    it('returns one row per agent in the input batch, with source preserved per agent, and skips agents with no auth', async () => {
       await fedDb.upsertAuthorization({
         agent_url: AGENT_X,
         publisher_domain: PUB_A,
@@ -268,7 +273,12 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       const map = await fedDb.bulkGetFirstAuthForAgents([AGENT_X, AGENT_Y, AGENT_Z]);
       expect(map.size).toBe(2);
       expect(map.get(AGENT_X)?.publisher_domain).toBe(PUB_A);
+      expect(map.get(AGENT_X)?.source).toBe('adagents_json');
+      // Pin the agent_claim source round-trip explicitly so PR 4 can't
+      // normalize source to 'verified'/'unverified' or filter unverified
+      // agents out of the bulk result.
       expect(map.get(AGENT_Y)?.publisher_domain).toBe(PUB_B);
+      expect(map.get(AGENT_Y)?.source).toBe('agent_claim');
       expect(map.has(AGENT_Z)).toBe(false);
     });
   });
@@ -362,6 +372,32 @@ describe('Registry reader baseline — agent + authorization reads', () => {
         authorized_count: 2,
         source: 'adagents_json',
       });
+      // The 'all' selector returns no per-item enumeration. PR 4 must
+      // not start emitting `unauthorized_items` for this selector type
+      // — that's a different field-shape contract from by_id (property
+      // ids) and by_tag (tag names).
+      expect(result.selectors[0].unauthorized_items).toBeUndefined();
+    });
+
+    it('selection_type=by_id with an empty property_ids array short-circuits to source=none', async () => {
+      // The by_id path explicitly short-circuits when property_ids=[]
+      // without consulting the publisher-level authorization graph.
+      // This is the only place source='none' is returned without a
+      // getAuthorizationSource lookup; PR 4 could unify the selector
+      // dispatch and break this without noticing.
+      const result = await fedDb.validateAgentForProduct(AGENT_X, [
+        { publisher_domain: PUB_A, selection_type: 'by_id', property_ids: [] },
+      ]);
+      expect(result.total_requested).toBe(0);
+      expect(result.total_authorized).toBe(0);
+      expect(result.selectors[0]).toMatchObject({
+        publisher_domain: PUB_A,
+        selection_type: 'by_id',
+        requested_count: 0,
+        authorized_count: 0,
+        unauthorized_items: [],
+        source: 'none',
+      });
     });
 
     it('selection_type=by_id flags unauthorized property ids', async () => {
@@ -436,14 +472,44 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       ]);
       expect(result.selectors[0].source).toBe('none');
     });
+
+    it('reports source=none even when the publisher has been crawled but the agent has no auth row', async () => {
+      // Distinct workflow signal vs. the empty-registry case: a buyer
+      // seeing source='none' when discovered_publishers has a row for
+      // the domain means "publisher is known to us, this agent just
+      // isn't authorized" rather than "publisher has not been observed
+      // yet". PR 4 introduces a publishers cache (#3195) and could
+      // accidentally fold the new cache row into source determination,
+      // upgrading source='none' to 'adagents_json' for an unauthorized
+      // agent. This pins that source is determined by
+      // agent_publisher_authorizations alone.
+      await fedDb.upsertPublisher({
+        domain: PUB_B,
+        discovered_by_agent: AGENT_X,
+        has_valid_adagents: false,
+      });
+      const result = await fedDb.validateAgentForProduct(AGENT_Z, [
+        { publisher_domain: PUB_B, selection_type: 'all' },
+      ]);
+      expect(result.selectors[0].source).toBe('none');
+      expect(result.total_authorized).toBe(0);
+      expect(result.authorized).toBe(false);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // Wildcard agent — '*' is a literal in the schema today (no implicit
-  // expansion at the SQL layer). PR 4 must preserve that.
+  // Wildcard agent — '*' is an internal storage convention, not an
+  // AdCP-protocol-defined value. The adagents.json schema (3.0) requires
+  // `authorized_agents[].url` to be `format: "uri"`, so the wire-level
+  // protocol does not admit '*' literally. The behavior pinned here is
+  // strictly that the storage layer round-trips a literal '*' through
+  // upsert + read on the same reader. Whether PR 4 keeps the literal,
+  // drops it, or replaces it with a sentinel column is an open design
+  // choice — we deliberately do NOT pin cross-reader expansion-prevention
+  // semantics that would lock that choice in.
   // ──────────────────────────────────────────────────────────────────
 
-  describe("wildcard agent ('*')", () => {
+  describe("wildcard agent ('*') — storage round-trip only", () => {
     beforeEach(async () => {
       await fedDb.upsertAuthorization({
         agent_url: AGENT_WILDCARD,
@@ -452,34 +518,10 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       });
     });
 
-    it('getAgentsForDomain returns the literal "*" row', async () => {
+    it('getAgentsForDomain round-trips the literal "*" row that was upserted', async () => {
       const auths = await fedDb.getAgentsForDomain(PUB_A);
       const urls = auths.map((a) => a.agent_url);
       expect(urls).toContain(AGENT_WILDCARD);
-    });
-
-    it('getDomainsForAgent("*") returns rows for the literal wildcard agent only', async () => {
-      const auths = await fedDb.getDomainsForAgent(AGENT_WILDCARD);
-      expect(auths.length).toBe(1);
-      expect(auths[0].agent_url).toBe(AGENT_WILDCARD);
-      expect(auths[0].publisher_domain).toBe(PUB_A);
-    });
-
-    it('a non-wildcard agent does not implicitly inherit the wildcard row', async () => {
-      // No row for AGENT_X — '*' must NOT expand at read time.
-      const auths = await fedDb.getDomainsForAgent(AGENT_X);
-      expect(auths).toEqual([]);
-    });
-
-    it('bulkGetFirstAuthForAgents treats "*" as a literal agent_url key', async () => {
-      // PR 4 must not special-case the wildcard inside the bulk path
-      // any differently from the single-agent reader.
-      const map = await fedDb.bulkGetFirstAuthForAgents([AGENT_WILDCARD]);
-      const first = map.get(AGENT_WILDCARD);
-      expect(first).toBeTruthy();
-      expect(first!.agent_url).toBe(AGENT_WILDCARD);
-      expect(first!.publisher_domain).toBe(PUB_A);
-      expect(first!.source).toBe('adagents_json');
     });
   });
 });
