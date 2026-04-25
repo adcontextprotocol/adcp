@@ -199,6 +199,7 @@
       "items": {
         "oneOf": [
           {
+            "title": "IndividualImageAsset",
             "description": "Image asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -208,6 +209,7 @@
             }
           },
           {
+            "title": "IndividualVideoAsset",
             "description": "Video asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -217,6 +219,7 @@
             }
           },
           {
+            "title": "IndividualAudioAsset",
             "description": "Audio asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -226,6 +229,7 @@
             }
           },
           {
+            "title": "IndividualTextAsset",
             "description": "Text asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -235,6 +239,7 @@
             }
           },
           {
+            "title": "IndividualMarkdownAsset",
             "description": "Markdown asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -244,6 +249,7 @@
             }
           },
           {
+            "title": "IndividualHtmlAsset",
             "description": "HTML asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -253,6 +259,7 @@
             }
           },
           {
+            "title": "IndividualCssAsset",
             "description": "CSS asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -262,6 +269,7 @@
             }
           },
           {
+            "title": "IndividualJavaScriptAsset",
             "description": "JavaScript asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -271,6 +279,7 @@
             }
           },
           {
+            "title": "IndividualVastAsset",
             "description": "VAST asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -280,6 +289,7 @@
             }
           },
           {
+            "title": "IndividualDaastAsset",
             "description": "DAAST asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -289,6 +299,7 @@
             }
           },
           {
+            "title": "IndividualUrlAsset",
             "description": "URL asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -298,6 +309,7 @@
             }
           },
           {
+            "title": "IndividualWebhookAsset",
             "description": "Webhook asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -307,6 +319,7 @@
             }
           },
           {
+            "title": "IndividualBriefAsset",
             "description": "Brief asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -315,6 +328,7 @@
             }
           },
           {
+            "title": "IndividualCatalogAsset",
             "description": "Catalog asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -324,6 +338,7 @@
             }
           },
           {
+            "title": "RepeatableGroupAsset",
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
             "type": "object",
             "properties": {
@@ -365,6 +380,7 @@
                 "items": {
                   "oneOf": [
                     {
+                      "title": "GroupImageAsset",
                       "description": "Image asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -373,6 +389,7 @@
                       }
                     },
                     {
+                      "title": "GroupVideoAsset",
                       "description": "Video asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -381,6 +398,7 @@
                       }
                     },
                     {
+                      "title": "GroupAudioAsset",
                       "description": "Audio asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -389,6 +407,7 @@
                       }
                     },
                     {
+                      "title": "GroupTextAsset",
                       "description": "Text asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -397,6 +416,7 @@
                       }
                     },
                     {
+                      "title": "GroupMarkdownAsset",
                       "description": "Markdown asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -405,6 +425,7 @@
                       }
                     },
                     {
+                      "title": "GroupHtmlAsset",
                       "description": "HTML asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -413,6 +434,7 @@
                       }
                     },
                     {
+                      "title": "GroupCssAsset",
                       "description": "CSS asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -421,6 +443,7 @@
                       }
                     },
                     {
+                      "title": "GroupJavaScriptAsset",
                       "description": "JavaScript asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -429,6 +452,7 @@
                       }
                     },
                     {
+                      "title": "GroupVastAsset",
                       "description": "VAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -437,6 +461,7 @@
                       }
                     },
                     {
+                      "title": "GroupDaastAsset",
                       "description": "DAAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -445,6 +470,7 @@
                       }
                     },
                     {
+                      "title": "GroupUrlAsset",
                       "description": "URL asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -453,6 +479,7 @@
                       }
                     },
                     {
+                      "title": "GroupWebhookAsset",
                       "description": "Webhook asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
