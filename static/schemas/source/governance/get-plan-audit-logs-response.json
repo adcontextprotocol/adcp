@@ -280,7 +280,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Registry policy IDs evaluated during this check (present for check entries)."
+                  "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`. Present for check entries."
                 },
                 "categories_evaluated": {
                   "type": "array",
