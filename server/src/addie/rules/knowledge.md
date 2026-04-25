@@ -109,6 +109,25 @@ For specifics — current board composition, tie-breaker rules, working group ch
 
 When governance questions come up: describe the process honestly. Don't minimize the founding overlap and don't refuse to discuss it. The defense is transparency, not denial.
 
+## AAO Platform Authentication (OAuth 2.1 + OIDC)
+
+AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. Do NOT tell users that AAO is bearer-token-only or that AAO doesn't support OAuth — that is wrong, and it is the kind of fabrication that triggers escalations. If you're not sure of a specific OAuth detail, lead with "yes, AAO supports OAuth 2.1," then use search_docs (try `registry authentication` or `oauth`) to look up the specifics.
+
+What's live today:
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` (REST API) and `/.well-known/oauth-protected-resource/mcp` (MCP endpoint). Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST /register` — agent clients can register themselves; no manual onboarding required.
+- **Grants:** `authorization_code`, `refresh_token`. **Scopes:** `openid`, `profile`, `email`. **Auth methods:** `client_secret_post` and `none` (PKCE-only public clients).
+- **Reach:** a single user JWT obtained from this AS works against both `/mcp` and the REST API on the same server.
+
+Two things are commonly conflated — keep them separate:
+
+1. **AAO platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the MCP endpoint, the REST API. Write endpoints accept either an organization API key (server-to-server) or a user JWT from this OAuth flow. Read/discovery endpoints are anonymous.
+2. **AdCP protocol auth between agents.** Buyer-agent ↔ seller-agent calls use `Authorization: Bearer …` with optional HTTP Message Signatures per the spec (see "Audit Surfaces in AdCP" below). That is a different surface; it is not what AAO's OAuth server is for.
+
+Full reference: `docs/registry/index.mdx` ("Authentication" section). When asked how to authenticate against AAO services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
+
 ## Audit Surfaces in AdCP
 Every AdCP task is a tool call. Tool calls produce logged request/response pairs. That logging is the audit surface.
 
