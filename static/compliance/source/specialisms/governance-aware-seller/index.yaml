@@ -52,10 +52,11 @@ narrative: |
   Sellers that do not claim this specialism are graded `not_applicable` on
   these scenarios rather than failed. This mirrors the pattern used by the
   other governance-* specialisms (`governance-spend-authority`,
-  `governance-delivery-monitor`) and by `measurement-verification` and
-  `signed-requests` — cross-cutting capabilities are gated behind explicit
-  specialism claims instead of being force-included under every sales-*
-  specialism.
+  `governance-delivery-monitor`) and by `measurement-verification` —
+  cross-cutting capabilities that involve campaign behavior are gated behind
+  explicit specialism claims instead of being force-included under every
+  sales-* specialism. (`signed-requests` was previously listed here; it was
+  reclassified in 3.1 to a universal capability-gated storyboard.)
 
   Composition means the seller:
   - accepts `sync_governance` to register the buyer's governance agent URL and

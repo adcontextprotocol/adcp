@@ -1,57 +1,50 @@
 id: signed_requests
 version: "1.0.0"
 title: "Signed requests — RFC 9421 transport-layer verification"
-protocol: media-buy
-status: deprecated
 category: signed_requests
-summary: "DEPRECATED — being reclassified from per-protocol specialism to a universal capability-gated storyboard. Agents that currently advertise `request_signing.supported: true` SHOULD NOT add `signed-requests` to their `specialisms` array; the universal storyboard at `/compliance/{version}/universal/signed-requests.yaml` (when published) covers the same conformance bar regardless of `supported_protocols`. See https://github.com/adcontextprotocol/adcp/issues/3075."
+summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the transport-layer profile. Universal capability-gated storyboard — runs for any agent advertising `request_signing.supported: true` regardless of `supported_protocols`. Graded against conformance vectors covering every checklist step and canonicalization-edge rule."
 track: security_transport
 required_tools:
   - get_adcp_capabilities
   # Additional tool families are exercised transport-layer only — the runner signs
   # requests targeting any mutating AdCP operation (create_media_buy, update_media_buy,
   # acquire_*, activate_signal, sync_creatives) and grades the verifier's response.
-  # See deprecation note in narrative below — this specialism is being reclassified as
-  # a universal capability-gated storyboard and will be removed from the specialism
-  # taxonomy in 4.0. Runner implementation tracked at adcontextprotocol/adcp#2331.
+  # The runner picks operations available given the agent's `supported_protocols`;
+  # operations the agent does not implement are skipped, not failed. Runner
+  # implementation tracked at adcontextprotocol/adcp#2331.
 
 narrative: |
-  **DEPRECATED** — this specialism is being reclassified as a universal capability-gated
-  storyboard. The signed-requests claim is a transport-layer concern that applies to every
-  AdCP agent regardless of `supported_protocols` — there is nothing media-buy-specific about
-  it. Classifying it as a media-buy specialism was a taxonomy error. The conformance bar
-  itself is unchanged; only the location moves. Tracked at
-  [#3075](https://github.com/adcontextprotocol/adcp/issues/3075).
+  Request signing is a transport-layer claim that applies to every AdCP agent regardless
+  of which protocols it speaks. RFC 9421 verification behavior is identical whether the
+  agent is a media-buy seller, a signals agent, a governance agent, a creative agent, or
+  a brand agent. This universal storyboard certifies that an agent correctly implements
+  the AdCP RFC 9421 request-signing verifier per
+  [`docs/building/implementation/security.mdx#signed-requests-transport-layer`](/docs/building/implementation/security#signed-requests-transport-layer).
 
-  **For agents:** do not add `signed-requests` to your `get_adcp_capabilities.specialisms`
-  array. Advertise `request_signing.supported: true` in the `request_signing` capability
-  block instead — that is the on-wire claim. Once the universal storyboard ships at
-  `/compliance/{version}/universal/signed-requests.yaml`, every agent advertising
-  `request_signing.supported: true` runs it automatically (same gating model as
-  `compliance_testing.supported`).
+  **Gating.** This storyboard runs for any agent advertising `request_signing.supported: true`
+  in `get_adcp_capabilities`. Agents that do not advertise support are not tested against
+  this storyboard — absence of advertisement is not a failure, it is a declaration that
+  the agent does not offer verified signed requests. Same gating model as
+  `deterministic_testing` (gated on `compliance_testing.supported: true`).
 
-  ---
+  **Backward-compatible specialism claims.** The deprecated `signed-requests` specialism
+  enum value remains in the schema for back-compat (see
+  [#3075](https://github.com/adcontextprotocol/adcp/issues/3075)). Agents that still
+  advertise `specialisms: ["signed-requests"]` are graded via this universal storyboard;
+  the runner SHOULD emit an informational notice (not a failure) advising the agent to
+  drop the now-redundant specialism claim and rely solely on `request_signing.supported: true`.
+  4.0 removes the enum value entirely — see
+  [#3078](https://github.com/adcontextprotocol/adcp/issues/3078).
 
-  *Original specialism description follows for historical reference; the conformance
-  content (vectors, contracts, runner harness) is unchanged and will move verbatim to
-  the universal storyboard location:*
+  **Composition with other storyboards.** This storyboard runs independently of any
+  specialism a seller also claims. A seller advertising `request_signing.supported: true`
+  AND `specialisms: ["sales-guaranteed"]` is graded on both — universal failure does not
+  exempt the specialism's pass, and a specialism pass does not paper over universal
+  failure. The overall AAO Verified verdict requires all gated storyboards to pass; the
+  runner reports per-storyboard outcomes so operators can isolate failures.
 
-  The signed-requests specialism certifies that an agent correctly implements the AdCP
-  RFC 9421 request-signing verifier per `docs/building/implementation/security.mdx#signed-requests-transport-layer`.
-
-  This is a transport-layer claim, not a protocol-specific one. A signed request can target
-  any mutating operation — most commonly `create_media_buy`, `update_media_buy`, `acquire_*`,
-  `activate_signal`, and `sync_creatives`. The claim is scoped to `media-buy` in this
-  preview specialism (a classification error fixed in #3075) — the verifier behavior is
-  the same across all mutating operations regardless of which protocols the agent supports.
-
-  The claim is certifiable only when the agent advertises `request_signing.supported: true`
-  in `get_adcp_capabilities`. An agent that does not advertise support is not tested against
-  this specialism — absence of advertisement is not a failure, it is a declaration that the
-  agent does not offer verified signed requests.
-
-  Grading is observable-behavior only. The runner constructs signed HTTP requests exactly
-  as documented in the conformance vectors at
+  **Grading.** Observable-behavior only. The runner constructs signed HTTP requests
+  exactly as documented in the conformance vectors at
   `/compliance/{version}/test-vectors/request-signing/` and sends them to the agent. The
   agent's responses are compared against the vectors' `expected_outcome`:
 
@@ -61,19 +54,20 @@ narrative: |
     The checklist step number is informational; grading is on the stable error code only.
 
   The runner supplies signed requests; the agent is the verifier. A separate signer-side
-  storyboard may follow but is out of scope for this specialism — signers are easier to get
-  right, and a signer that produces valid signatures is proven correct by a conformant
-  verifier accepting them.
+  storyboard may follow but is out of scope here — signers are easier to get right, and a
+  signer that produces valid signatures is proven correct by a conformant verifier
+  accepting them.
 
-  Three negative vectors — 016 (replayed nonce), 017 (key revoked), and 020 (per-keyid cap) —
-  assert verifier state the runner cannot set from the outside. Those vectors declare
-  `requires_contract` and are gated on the `signed_requests_runner` test-kit contract
-  at `test-kits/signed-requests-runner.yaml`, which specifies the runner's signing keyids,
-  a dedicated pre-revoked keyid (`test-revoked-2026`), and the grading-time per-keyid cap
-  the runner will target. Agents claiming the specialism MUST pre-configure their verifier
-  per that contract before the negative phase runs. If the agent does not satisfy the
-  contract (e.g., the runner can't coordinate the pre-state), the affected vectors grade
-  as FAIL, never as SKIP — the contract is a prerequisite for the claim, not an optional
+  **Stateful vectors.** Three negative vectors — 016 (replayed nonce), 017 (key revoked),
+  and 020 (per-keyid cap) — assert verifier state the runner cannot set from the outside.
+  Those vectors declare `requires_contract` and are gated on the `signed_requests_runner`
+  test-kit contract at `test-kits/signed-requests-runner.yaml`, which specifies the
+  runner's signing keyids, a dedicated pre-revoked keyid (`test-revoked-2026`), and the
+  grading-time per-keyid cap the runner will target. Agents advertising
+  `request_signing.supported: true` MUST pre-configure their verifier per that contract
+  before the negative phase runs. If the agent does not satisfy the contract (e.g., the
+  runner can't coordinate the pre-state), the affected vectors grade as FAIL, never as
+  SKIP — the contract is a prerequisite for the capability claim, not an optional
   extension.
 
 agent:
@@ -81,8 +75,7 @@ agent:
   capabilities:
     - verifies_request_signatures
   examples:
-    - "AdCP seller implementing request verification"
-    - "Any agent advertising `request_signing.supported: true`"
+    - "Any AdCP agent advertising `request_signing.supported: true` — sales agent, signals agent, governance agent, creative agent, or brand agent"
 
 caller:
   role: compliance_runner
@@ -109,9 +102,9 @@ phases:
         title: "Verify the agent declares request_signing.supported"
         narrative: |
           The runner calls `get_adcp_capabilities` and confirms that the agent declares
-          support for this specialism. Absence of `request_signing.supported: true` means
-          the agent has not opted into the claim; the runner SHOULD skip the remaining
-          phases.
+          support for the request-signing capability. Absence of `request_signing.supported: true`
+          means the agent has not opted into this storyboard; the runner SHOULD skip the
+          remaining phases.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -120,7 +113,7 @@ phases:
         stateful: false
         expected: |
           Return capabilities declaring request_signing.supported: true. If false or absent,
-          the specialism does not apply and grading skips to a non-applicable outcome.
+          this storyboard does not apply and grading skips to a non-applicable outcome.
         sample_request:
           context:
             correlation_id: "signed_requests--get_capabilities"
@@ -202,10 +195,10 @@ grading:
   pass_criteria: |
     All vectors in positive/ produce 2xx, and all vectors in negative/ produce 401 with
     the expected error code byte-for-byte. Any single vector's failure to produce its
-    expected outcome fails the specialism. Vectors that declare `requires_contract`
+    expected outcome fails the storyboard. Vectors that declare `requires_contract`
     whose contract the runner cannot satisfy grade as FAIL, never as SKIP — the
-    signed-requests-runner contract is a prerequisite for the claim, not an optional
-    extension.
+    signed-requests-runner contract is a prerequisite for the capability claim, not an
+    optional extension.
   report_format: |
     Pass/fail per vector, with the response's error code (if any) and a diff against
     the vector's expected_outcome. Operators receive specific per-vector diagnostics

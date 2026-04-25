@@ -780,6 +780,8 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 - Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
 - Resolves the identity-bootstrapping dependency in [Buyer identity resolution](#buyer-identity-resolution) for governance: a seller that verifies a request signature has a cryptographically established signing agent identity and MAY use the signing agent's operator domain as the brand.json resolution input for the governance verification step.
 
+**Conformance.** Verifier behavior is graded by the universal capability-gated storyboard at [`/compliance/latest/universal/signed-requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests), which runs for any agent advertising `request_signing.supported: true`. The storyboard exercises every step in the [verifier checklist](#verifier-checklist-requests) below and every canonicalization-edge rule in this profile, against the test vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/).
+
 #### Transport scope
 
 | Class | 3.0 | 4.0 |

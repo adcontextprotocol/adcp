@@ -56,8 +56,11 @@ Every agent MUST pass every storyboard below.
 | [`idempotency`](https://adcontextprotocol.org/compliance/latest/universal/idempotency) | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | [`security_baseline`](https://adcontextprotocol.org/compliance/latest/universal/security) | Unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding |
 | [`deterministic_testing`](https://adcontextprotocol.org/compliance/latest/universal/deterministic-testing) | `comply_test_controller` state machine — skipped if `capabilities.compliance_testing.supported: false` |
+| [`signed_requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests) | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
 Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/docs/building/implementation/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
+
+Agents that declare `request_signing.supported: true` MUST implement the full RFC 9421 verifier per the [request-signing profile](/docs/building/implementation/security#signed-requests-transport-layer); a partial verifier is non-conformant, so declare `false` rather than ship one.
 
 ## Protocol conformance
 
