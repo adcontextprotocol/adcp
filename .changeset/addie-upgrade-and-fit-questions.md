@@ -4,12 +4,14 @@
 Addie behavior updates driven by escalation #281 (Vladimir Houba),
 expanded after expert review.
 
-- **knowledge.md** — Two new FAQ rows covering upgrade pricing across
-  all tiers. Credit-card upgrades (any tier on card) are routine
-  Stripe Pricing Table proration — answer directly with worked
-  examples for Explorer → Professional and Builder → Partner.
-  Invoice-billed Partner/Leader contracts are a separate FAQ row:
-  proration is a finance touch, escalate.
+- **knowledge.md** — New FAQ row for upgrade pricing. Every tier is
+  a Stripe subscription (credit card or invoice); Stripe prorates
+  upgrades automatically regardless of collection method, so the
+  user typically pays only the prorated difference, not the full new
+  tier on top. Worked examples for Explorer → Professional and
+  Builder → Partner. Invoice-billed subscriptions see the prorated
+  charge on their next invoice instead of an immediate card charge —
+  same numbers, different timing.
 - **constraints.md** — "Do NOT escalate" list under Escalation
   Protocol calling out community-fit questions and routine
   credit-card pricing. Replaces the bundled-question one-liner with

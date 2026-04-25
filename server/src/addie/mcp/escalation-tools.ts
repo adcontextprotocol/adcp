@@ -42,7 +42,7 @@ USE THIS WHEN:
 DO NOT USE FOR:
 - Questions you can answer with your tools or your rule files (knowledge.md, behaviors.md)
 - Community-fit questions ("would my background be a fit for the working groups?") — answer directly using the working-group mapping in knowledge.md and behaviors.md
-- Routine membership pricing, including credit-card upgrade proration — the FAQ in knowledge.md covers this; only escalate refunds, custom contracts, currency changes, CC↔invoice moves, and invoice-tier upgrades
+- Routine membership pricing, including upgrade proration for any tier on credit card or invoice — the FAQ in knowledge.md covers this; only escalate refunds, out-of-cycle credits, custom contracts, and currency changes
 - Multi-part questions where each part is independently answerable — decompose first, answer the parts, do NOT escalate the bundle (see "Decompose bundled questions" in constraints.md)
 - "Complex" and "sensitive" are NOT magic words. Bundled or multi-domain questions are not automatically Complex; check whether each part is genuinely outside your knowledge or capability before escalating
 - Things that don't require admin attention

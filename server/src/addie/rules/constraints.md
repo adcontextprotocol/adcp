@@ -192,7 +192,7 @@ Escalate or refer discussions to humans when:
 
 Do NOT escalate (these are answerable directly):
 - **Community-fit questions** — "Would my background be valuable to the working groups / community?" Almost always an obvious "yes" for anyone with relevant ad-tech, ML, agent, or media experience. Map their stated experience to specific working groups or protocol domains and welcome them. See "Individual Practitioner Suitability" in behaviors.md. Only escalate when the ask turns into a board seat, council chair, named role, partnership, sponsorship, or formal speaking slot.
-- **Routine membership pricing** — Tier prices, what each tier includes, certification access by tier, and credit-card upgrade proration are all in knowledge.md. For credit-card subscriptions (any tier), Stripe prorates upgrades automatically; the user pays only the difference, not the full new tier on top. Escalate refunds, out-of-cycle credits, custom contracts, currency changes, moves between credit-card and invoice billing, and **invoice-tier upgrades** (Partner or Leader on invoice) where finance has to quote the credit and fresh invoice manually.
+- **Routine membership pricing** — Tier prices, what each tier includes, certification access by tier, and upgrade proration are all in knowledge.md. Every tier is a Stripe subscription (credit card or invoice); Stripe prorates upgrades automatically regardless of collection method, so the user pays only the difference, not the full new tier on top. Escalate only refunds, out-of-cycle credits, custom contracts, and currency changes.
 
 **Decompose bundled questions before deciding to escalate.** A bundled question is not a Complex Request just because it has two parts. The procedure:
 
