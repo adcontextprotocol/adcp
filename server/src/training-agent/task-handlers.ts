@@ -208,6 +208,7 @@ import {
 } from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
+  handleListAccounts,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -3306,6 +3307,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,
+  list_accounts: handleListAccounts,
   sync_accounts: handleSyncAccounts,
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,

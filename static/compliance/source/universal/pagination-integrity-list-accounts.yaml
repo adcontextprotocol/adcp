@@ -1,0 +1,256 @@
+id: pagination_integrity_list_accounts
+version: "1.0.0"
+title: "Pagination cursor integrity — list_accounts"
+category: schema_validation
+summary: "Validates the cursor↔has_more invariant by walking a paginated list_accounts response from a continuation page to a terminal page."
+track: core
+required_tools:
+  - list_accounts
+
+narrative: |
+  Pagination is cursor-based across AdCP. Every response carrying a
+  `pagination` block satisfies a single invariant: when `has_more` is true the
+  `cursor` MUST be present (callers need it to fetch the next page); when
+  `has_more` is false the `cursor` MUST be absent (a stale token on a terminal
+  page invites callers to follow it into undefined behavior).
+
+  The invariant is documented in prose on
+  `static/schemas/source/core/pagination-response.json` but JSON Schema does
+  not gate the two fields against each other. This storyboard exercises both
+  sides of the invariant on `list_accounts` in a single run.
+
+  The runner bootstraps three accounts via `sync_accounts`, then lists them
+  back with `max_results=2`. The first page MUST cap at two accounts and
+  signal continuation with `has_more=true` plus a cursor. The runner then
+  follows that cursor; the next page returns the remaining account and MUST
+  signal `has_more=false` with no cursor. An agent that hides the third
+  account by reporting `has_more=false` on the first page fails the
+  first-page assertion. An agent that carries a stale cursor onto the
+  terminal page fails the second-page assertion.
+
+  The `total_count` field is allowed to be absent (some backends cannot
+  compute it cheaply per the pagination-response schema) but when an agent
+  volunteers it, the value MUST match the seeded account count of three.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities: []
+  examples:
+    - "Any AdCP agent that exposes a paginated list_accounts"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The storyboard bootstraps three accounts in the setup phase via
+    sync_accounts. No controller seeding is required — the setup phase
+    is the first step group and runs before the pagination walk.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent responds to get_adcp_capabilities before
+      exercising list_accounts.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares supported protocols before
+          driving paginated list_accounts.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring supported protocols.
+
+        sample_request:
+          context:
+            correlation_id: "pagination_integrity_list_accounts--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_list_accounts--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: setup
+    title: "Bootstrap three test accounts"
+    narrative: |
+      Sync three sandbox accounts so the pagination walk has a
+      deterministic set of three items to page through with max_results=2.
+    steps:
+      - id: sync_three_accounts
+        title: "Sync three sandbox accounts"
+        narrative: |
+          Create three sandbox accounts — Acme c/o Pinnacle, Nova c/o Pinnacle,
+          and Pinnacle Direct. The agent MUST accept all three and respond with
+          account_id values that subsequent list_accounts calls surface.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/task-reference/sync_accounts"
+        comply_scenario: pagination_integrity_list_accounts
+        stateful: true
+        expected: |
+          Accept all three accounts and return account_id for each.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: acme-corp.com
+                name: Acme Corp
+              operator: pinnacle-media.com
+              billing: operator
+              sandbox: true
+            - brand:
+                domain: nova-brands.com
+                name: Nova Brands
+              operator: pinnacle-media.com
+              billing: operator
+              sandbox: true
+            - brand:
+                domain: pinnacle-media.com
+                name: Pinnacle Media
+              operator: pinnacle-media.com
+              billing: operator
+              sandbox: true
+          context:
+            correlation_id: "pagination_integrity_list_accounts--setup"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts"
+            description: "Response contains accounts array"
+
+  - id: pagination_walk
+    title: "Walk pages with a small max_results"
+    narrative: |
+      With three accounts seeded and `max_results: 2`, the first call MUST
+      return a continuation page (has_more=true with a cursor). The runner
+      then follows the cursor; the second call MUST return the terminal
+      page (has_more=false with no cursor).
+
+    steps:
+      - id: first_page
+        title: "Request the first page with max_results=2"
+        narrative: |
+          The buyer asks for up to two accounts. The agent has three matching
+          accounts, so the request is non-terminal: callers expect
+          `has_more=true` and a `cursor` they can follow to retrieve the
+          remaining account.
+
+          The runner captures `pagination.cursor` into `$context.next_cursor`
+          for the follow-up step. If the agent reports `has_more=false` on
+          this page (hiding the seeded third account behind a dishonest
+          terminal signal), the field_value check on `pagination.has_more`
+          fails — surfacing exactly the bug class this storyboard exists to
+          catch.
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: pagination_integrity_list_accounts
+        stateful: true
+        context_outputs:
+          - name: next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return up to two accounts with:
+          - pagination.has_more = true
+          - pagination.cursor present (an opaque continuation token)
+
+        sample_request:
+          pagination:
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_list_accounts--first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "Three accounts seeded with max_results=2 → first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor — without one the caller cannot continue"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "If volunteered, total_count MUST equal the seeded set size — under-reporting hides accounts the same way a dishonest has_more does"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_list_accounts--first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: terminal_page
+        title: "Follow the cursor to the terminal page"
+        narrative: |
+          The buyer follows the captured cursor. With at most one remaining
+          account the agent MUST return a terminal page: `has_more=false`
+          with no `cursor` field. A cursor on `has_more=false` is a stale
+          token that invites callers to follow it past the end of results.
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: pagination_integrity_list_accounts
+        stateful: true
+        expected: |
+          Return the remaining account(s) with:
+          - pagination.has_more = false
+          - pagination.cursor absent (a stale cursor on a terminal page is a
+            dishonest pagination signal)
+
+        sample_request:
+          pagination:
+            cursor: "$context.next_cursor"
+            max_results: 2
+
+          context:
+            correlation_id: "pagination_integrity_list_accounts--terminal_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "After two pages of two items the seeded set is exhausted"
+          - check: field_value_or_absent
+            path: "pagination.cursor"
+            allowed_values: [null]
+            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [3]
+            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_list_accounts--terminal_page"
+            description: "Context correlation_id returned unchanged"
