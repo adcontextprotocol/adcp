@@ -120,7 +120,7 @@ describe('Training Agent /mcp-strict route', () => {
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('request_signature_required');
       expect(res.body.error_description).toMatch(/create_media_buy.*signed/);
-      expect(res.headers['www-authenticate']).toMatch(/^Bearer /);
+      expect(res.headers['www-authenticate']).toMatch(/Signature error="request_signature_required"/);
     });
 
     it('unsigned create_media_buy on /mcp still accepted (bearer fallthrough)', async () => {
