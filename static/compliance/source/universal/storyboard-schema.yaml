@@ -556,7 +556,7 @@
 # check: string (what to validate: "response_schema", "field_present", "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
-#                "any_of", "refs_resolve")
+#                "any_of", "refs_resolve", "a2a_submitted_artifact")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
@@ -666,6 +666,15 @@
 #         key: agent_url
 #         equals: $agent_url
 #       on_out_of_scope: warn
+#
+# A2A wire-shape — use `check: a2a_submitted_artifact`:
+#   Verifies the cross-transport invariants for AdCP `submitted` arms over A2A:
+#   `Task.state === 'completed'`, `Task.id` /
+#   `Task.contextId` non-empty, `artifact.metadata.adcp_task_id` carries the
+#   handle, `artifact.parts[0].data.status === 'submitted'` preserves the AdCP
+#   discriminator. The check self-skips with `not_applicable` on non-A2A
+#   transports so storyboards can include it alongside MCP-shape assertions
+#   without forking by transport.
 #
 # --- Runner output ---
 #
