@@ -21,6 +21,7 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
@@ -560,6 +561,32 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
     }, 'Upserted organization domain');
+
+    // Sync the brand registry: if WorkOS just confirmed the domain is owned
+    // by this org, mirror ownership + verified flags into the brands row
+    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
+    // because the webhook doesn't know the user's adopt-vs-fresh decision
+    // and would otherwise clobber a manifest the inline /verify route
+    // intentionally adopted seconds earlier.
+    //
+    // For dashboard-flipped domains (admin marked verified directly in the
+    // WorkOS console, no inline /verify call), this path is the ONLY writer.
+    // A failure here means the brand row will lag the WorkOS state until the
+    // next event for this domain — investigate logs if it surfaces.
+    if (domainData.state === 'verified') {
+      try {
+        const brandDb = new BrandDatabase();
+        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+        logger.info({
+          orgId: domainData.organization_id,
+          domain: normalizedDomain,
+        }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        // Don't block the webhook on brand-registry sync errors — webhook
+        // idempotency is the whole point. Subsequent events will retry.
+        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
