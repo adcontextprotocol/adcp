@@ -119,22 +119,16 @@ export async function updateBrandIdentity(
       const bj = applyToBrandJson({
         house: { domain: brandDomain, name: displayName },
       }, displayName, logoUrl, brandColor);
-      // Attribute brand_owner source when the org has verified domain ownership
-      const hostedResult = await client.query<{ domain_verified: boolean }>(
-        'SELECT domain_verified FROM hosted_brands WHERE domain = $1 AND workos_organization_id = $2 LIMIT 1',
-        [brandDomain, workosOrganizationId]
-      );
-      const sourceType = hostedResult.rows[0]?.domain_verified ? 'brand_owner' : 'community';
       await client.query(
         `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-         VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), $5, 'approved', $4, true)
+         VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
          ON CONFLICT (domain) DO UPDATE SET
            brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
            workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
            is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
            has_brand_manifest = true,
            updated_at = NOW()`,
-        [workosOrganizationId, brandDomain, JSON.stringify(bj), true, sourceType]
+        [workosOrganizationId, brandDomain, JSON.stringify(bj), true]
       );
     }
 

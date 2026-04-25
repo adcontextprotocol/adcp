@@ -73,8 +73,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(403).json({ error: 'You are banned from this brand registry' });
         }
 
-        // Verified domain owners and admin API key auto-approve; community uploads queue for review
-        const isOwner = user.id === 'admin_api_key' || await isVerifiedBrandOwner(user.id, domain, brandDb);
+        // Verified domain owners auto-approve; community uploads queue for review
+        const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
         const uploadSource: 'brand_owner' | 'community' = isOwner ? 'brand_owner' : 'community';
         const uploadReviewStatus: 'approved' | 'pending' = isOwner ? 'approved' : 'pending';
 
@@ -145,16 +145,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(409).json({ error: 'Duplicate logo already exists for this brand' });
         }
 
-        // Auto-approved owner uploads: rebuild manifest only for non-verified-hosted brands
-        // (mirrors review endpoint — verified hosted brands manage their manifest via brand-identity)
-        if (isOwner) {
-          const hosted = await brandDb.getHostedBrandByDomain(domain);
-          if (!hosted || !hosted.domain_verified) {
-            await rebuildManifestLogos(domain, brandLogoDb, brandDb);
-          }
-        }
-
-        // If brand doesn't exist, create it
+        // If brand doesn't exist, create it (must run before manifest rebuild)
         const existing = await brandDb.getDiscoveredBrandByDomain(domain);
         if (!existing) {
           try {
@@ -172,6 +163,15 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           } catch (err) {
             // Brand may have been created concurrently — not an error
             logger.debug({ err, domain }, 'Brand creation skipped (may already exist)');
+          }
+        }
+
+        // Auto-approved owner uploads: rebuild manifest only for non-verified-hosted brands
+        // (mirrors review endpoint — verified hosted brands manage their manifest via brand-identity)
+        if (isOwner) {
+          const hosted = await brandDb.getHostedBrandByDomain(domain);
+          if (!hosted || !hosted.domain_verified) {
+            await rebuildManifestLogos(domain, brandLogoDb, brandDb);
           }
         }
 
