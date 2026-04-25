@@ -109,8 +109,7 @@
       "description": "Audio sampling rate in Hz (e.g., 44100, 48000)"
     },
     "audio_channels": {
-      "type": "string",
-      "enum": ["mono", "stereo", "5.1", "7.1"],
+      "$ref": "/schemas/enums/audio-channel-layout.json",
       "description": "Audio channel configuration"
     },
     "audio_bit_depth": {

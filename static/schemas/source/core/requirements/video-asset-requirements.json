@@ -132,8 +132,7 @@
     "audio_channels": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["mono", "stereo", "5.1", "7.1"]
+        "$ref": "/schemas/enums/audio-channel-layout.json"
       },
       "description": "Accepted audio channel configurations"
     },
