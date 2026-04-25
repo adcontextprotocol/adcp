@@ -45,7 +45,15 @@ async function buildApp() {
 }
 
 beforeEach(() => {
+  // Under pool:'threads' (see vitest.config.ts), the module registry is shared
+  // across concurrent test files. Without this, a cached module from another
+  // thread bleeds into this file's await import() calls — causing stale-mock
+  // TypeErrors that only appear under Conductor multi-workspace load.
+  vi.resetModules();
   vi.clearAllMocks();
+  // mockReset drains the mockResolvedValueOnce queue; clearAllMocks alone
+  // does not, so an unconsumed Once value from a failed test would bleed.
+  mockLoadAnnouncementBacklog.mockReset();
 });
 
 describe('GET /api/admin/announcements', () => {

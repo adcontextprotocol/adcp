@@ -71,6 +71,11 @@ async function buildApp() {
 const ORG_ID = 'org_ACME123';
 
 beforeEach(() => {
+  // Under pool:'threads' (see vitest.config.ts), the module registry is shared
+  // across concurrent test files. Without this, a cached module from another
+  // thread bleeds into this file's await import() calls — causing stale-mock
+  // TypeErrors that only appear under Conductor multi-workspace load.
+  vi.resetModules();
   vi.clearAllMocks();
   mockCurrentUser.id = 'user_wk_admin01';
   mockRefreshReviewCardForOrg.mockResolvedValue(undefined);

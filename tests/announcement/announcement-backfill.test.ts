@@ -96,6 +96,11 @@ const ORG_B = {
 };
 
 beforeEach(() => {
+  // Under pool:'threads' (see vitest.config.ts), the module registry is shared
+  // across concurrent test files. Without this, a cached module from another
+  // thread bleeds into this file's await import() calls — causing stale-mock
+  // TypeErrors that only appear under Conductor multi-workspace load.
+  vi.resetModules();
   vi.clearAllMocks();
   mockQuery.mockReset();
   lockHeld = false;

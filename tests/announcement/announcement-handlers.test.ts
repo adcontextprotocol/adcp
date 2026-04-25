@@ -136,6 +136,11 @@ function queueDbReads(opts: {
 }
 
 beforeEach(() => {
+  // Under pool:'threads' (see vitest.config.ts), the module registry is shared
+  // across concurrent test files. Without this, a cached module from another
+  // thread bleeds into this file's await import() calls — causing stale-mock
+  // TypeErrors that only appear under Conductor multi-workspace load.
+  vi.resetModules();
   vi.clearAllMocks();
   // Reset mockQuery specifically so the `mockResolvedValueOnce` queue
   // from a previous test doesn't carry over. `clearAllMocks` clears
