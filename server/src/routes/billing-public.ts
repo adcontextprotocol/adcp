@@ -24,6 +24,7 @@ import {
 } from "../billing/stripe-client.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { sanitizeBillingAddress } from "../billing/billing-address.js";
+import { blockIfActiveSubscription } from "../billing/active-subscription-guard.js";
 import {
   OrganizationDatabase,
   type CompanyType,
@@ -257,6 +258,17 @@ export function createPublicBillingRouter(): Router {
         }
       }
 
+      // Refuse if the org already has an active subscription. Tier changes go
+      // through the Stripe Customer Portal, not this intake route.
+      const activeBlock = await blockIfActiveSubscription(
+        orgId,
+        orgDb,
+        `${req.protocol}://${req.get('host')}/dashboard/membership`,
+      );
+      if (activeBlock) {
+        return res.status(activeBlock.status).json(activeBlock.body);
+      }
+
       // Product must be eligible for this org type (individual → personal
       // workspace, company → non-personal org).
       const customerType = org.is_personal ? 'individual' : 'company';
@@ -479,6 +491,17 @@ export function createPublicBillingRouter(): Router {
         const host = req.get("host");
         const protocol = req.protocol;
         const baseUrl = `${protocol}://${host}`;
+
+        // Refuse if the org already has an active subscription. Tier changes go
+        // through the Stripe Customer Portal, not this checkout intake.
+        const activeBlock = await blockIfActiveSubscription(
+          orgId,
+          orgDb,
+          `${baseUrl}/dashboard/membership`,
+        );
+        if (activeBlock) {
+          return res.status(activeBlock.status).json(activeBlock.body);
+        }
 
         // Determine referral discount to apply at checkout.
         // Priority 1: accepted referral (prospect already accepted invitation — use that discount)

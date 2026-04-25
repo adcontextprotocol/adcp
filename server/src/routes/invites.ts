@@ -25,6 +25,7 @@ import {
   createCoupon,
 } from '../billing/stripe-client.js';
 import { sanitizeBillingAddress } from '../billing/billing-address.js';
+import { blockIfActiveSubscription } from '../billing/active-subscription-guard.js';
 import * as referralDb from '../db/referral-codes-db.js';
 
 const logger = createLogger('invites-routes');
@@ -151,6 +152,19 @@ export function createInvitesRouter(): Router {
           error: 'Tier no longer available',
           message: 'The membership tier in this invite is no longer available.',
         });
+      }
+
+      // Refuse if the org already has an active subscription. Accepting this
+      // invite would mint a duplicate sub on the same Stripe customer — the
+      // Triton Apr-2026 incident in literal form.
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const activeBlock = await blockIfActiveSubscription(
+        org.workos_organization_id,
+        orgDb,
+        `${baseUrl}/dashboard/membership`,
+      );
+      if (activeBlock) {
+        return res.status(activeBlock.status).json(activeBlock.body);
       }
 
       // Ensure the accepting user is a member of the target org.
