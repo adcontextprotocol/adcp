@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/governance-mode.json",
   "title": "Governance Mode",
   "description": "Operating mode for a governance agent. Controls whether findings block execution.",
+  "x-status": "experimental",
   "type": "string",
   "enum": [
     "audit",
