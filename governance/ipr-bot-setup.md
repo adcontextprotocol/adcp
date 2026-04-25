@@ -3,7 +3,7 @@
 The IPR signature workflow exists in two forms:
 
 - **Local**: `adcontextprotocol/adcp` writes to its own `signatures/ipr-signatures.json` using the default `GITHUB_TOKEN`. No App needed for adcp itself.
-- **Cross-repo**: every other AAO repository (`adcp-client`, `adcp-client-python`, `adcp-go`, `creative-agent`) writes signatures back to the central ledger in adcp via a GitHub App installation token.
+- **Cross-repo**: every other active AAO repository (`adcp-client`, `adcp-client-python`, `adcp-go`) writes signatures back to the central ledger in adcp via a GitHub App installation token.
 
 This document describes how the App is configured and what to do when it needs to be rotated, replaced, or scoped.
 
