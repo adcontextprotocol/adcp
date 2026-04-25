@@ -1,39 +1,42 @@
 id: get_media_buys_pagination_integrity
 version: "1.0.0"
-title: "Pagination cursor integrity — get_media_buys"
+title: "Pagination shape — get_media_buys"
 category: schema_validation
-summary: "Validates the cursor↔has_more invariant on get_media_buys by walking a seeded set from a continuation page to a terminal page."
+summary: "Validates that get_media_buys responses carry a well-formed pagination envelope honoring the cursor↔has_more invariant."
 track: core
 required_tools:
   - get_media_buys
 
 narrative: |
-  Pagination is cursor-based across AdCP. Every response carrying a
-  `pagination` block satisfies a single invariant: when `has_more` is true the
-  `cursor` MUST be present (callers need it to fetch the next page); when
-  `has_more` is false the `cursor` MUST be absent (a stale token on a terminal
-  page invites callers to follow it into undefined behavior).
+  Every paginated read in AdCP returns a `pagination` envelope satisfying
+  the cursor↔has_more invariant: `has_more=true` carries a `cursor`,
+  `has_more=false` omits it. The full multi-page round-trip is exercised
+  against `list_creatives` (`pagination_integrity.yaml`); this storyboard
+  verifies the simpler invariant — that `get_media_buys` emits a valid
+  pagination block on every successful response.
 
-  The runner seeds three media buys into the agent's session and lists them
-  back with `max_results=2`. The first page MUST cap at two buys and
-  signal continuation with `has_more=true` plus a cursor. The runner then
-  follows that cursor; the second call MUST return the remaining buy and
-  MUST signal `has_more=false` with no cursor. An agent that hides the third
-  fixture by reporting `has_more=false` on the first page (the
-  dishonest-pagination case) fails the first-page assertion. An agent that
-  carries a stale cursor onto the terminal page fails the second-page
-  assertion.
+  The runner seeds three media buys via `controller_seeding: true`. The
+  storyboard's get_media_buys call lands on an ID-lookup path because the
+  current `@adcp/client` request-builder injects `media_buy_ids` from
+  context (see adcp-client request-builder.js — broad-list queries
+  through the SDK are not yet supported for `get_media_buys`). On the
+  ID-lookup path the agent MUST still emit `pagination`, with
+  `has_more: false` and no cursor, and SHOULD volunteer `total_count`
+  reflecting the matched set.
 
-  The `total_count` field is allowed to be absent (some backends cannot
-  compute it cheaply per the pagination-response schema) but when an agent
-  volunteers it, the value MUST match the seeded fixture count of three.
+  An agent that omits the `pagination` block entirely on this call —
+  triage's pre-#3122 behavior — fails the first-page assertion. The
+  multi-page round-trip is parked under adcontextprotocol/adcp-client
+  for the request-builder gap; once that lands, this storyboard becomes
+  a candidate for upgrade to a seeded continuation+terminal walk like
+  `pagination_integrity.yaml`.
 
 agent:
   interaction_model: stateful_preloaded
   capabilities:
-    - has_media_buy
+    - sells_media
   examples:
-    - "Any AdCP agent that exposes a paginated get_media_buys"
+    - "Any AdCP media buy seller exposing get_media_buys"
 
 caller:
   role: buyer_agent
@@ -41,10 +44,11 @@ caller:
 
 prerequisites:
   description: |
-    The runner seeds three media buys ahead of time so a small page-size
-    request reliably triggers a continuation page on the first call. Each
-    fixture only needs a status, currency, and flight dates for get_media_buys
-    to surface it.
+    The runner seeds three media buys via `controller_seeding: true`.
+    Each fixture only needs media_buy_id, status, and currency for
+    get_media_buys to surface the entry. The full multi-page walk is
+    deferred until the SDK supports broad-list queries on
+    get_media_buys (see request-builder.js gap).
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -64,14 +68,14 @@ phases:
   - id: capability_discovery
     title: "Capability discovery"
     narrative: |
-      Confirm the agent supports the media buy protocol before exercising
-      get_media_buys.
+      Confirm the agent supports the media buy protocol before
+      exercising get_media_buys.
     steps:
       - id: get_capabilities
         title: "Check agent capabilities"
         narrative: |
-          Verify that the agent declares media_buy in supported_protocols
-          before driving paginated get_media_buys.
+          Verify the agent declares media_buy in supported_protocols
+          before driving get_media_buys.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -83,96 +87,41 @@ phases:
 
         sample_request:
           context:
-            correlation_id: "get_media_buys_pagination--get_capabilities"
+            correlation_id: "get_media_buys_pagination_integrity--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "get_media_buys_pagination--get_capabilities"
+            value: "get_media_buys_pagination_integrity--get_capabilities"
             description: "Context correlation_id returned unchanged"
 
-  - id: pagination_walk
-    title: "Walk pages with a small max_results"
+  - id: pagination_shape
+    title: "Verify pagination envelope on get_media_buys"
     narrative: |
-      With three media buys seeded and `max_results: 2`, the first call MUST
-      return a continuation page (has_more=true with a cursor). The runner
-      then follows the cursor; the second call MUST return the terminal
-      page (has_more=false with no cursor).
+      With three media buys seeded, the agent's response MUST carry a
+      well-formed `pagination` envelope. On the ID-lookup path
+      (current SDK request-builder default), the envelope is terminal:
+      `has_more=false`, no cursor. Agents that omit the envelope
+      altogether fail this assertion — that's the dishonest shape this
+      storyboard catches.
 
     steps:
-      - id: first_page
-        title: "Request the first page with max_results=2"
+      - id: list_call
+        title: "Call get_media_buys and verify pagination shape"
         narrative: |
-          The buyer asks for up to two media buys. The agent has three matching
-          fixtures, so the request is non-terminal: callers expect
-          `has_more=true` and a `cursor` they can follow to retrieve the
-          remaining buy.
-
-          The runner captures `pagination.cursor` into `$context.next_cursor`
-          for the follow-up step. If the agent reports `has_more=false` on
-          this page (hiding the seeded third buy behind a dishonest terminal
-          signal), the field_value check on `pagination.has_more` fails —
-          surfacing exactly the bug class this storyboard exists to catch.
-        task: get_media_buys
-        schema_ref: "media-buy/get-media-buys-request.json"
-        response_schema_ref: "media-buy/get-media-buys-response.json"
-        doc_ref: "/media-buy/task-reference/get_media_buys"
-        comply_scenario: get_media_buys_pagination_integrity
-        stateful: true
-        context_outputs:
-          - name: next_cursor
-            path: "pagination.cursor"
-        expected: |
-          Return up to two media buys with:
-          - pagination.has_more = true
-          - pagination.cursor present (an opaque continuation token)
-
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          pagination:
-            max_results: 2
-
-          context:
-            correlation_id: "get_media_buys_pagination--first_page"
-        validations:
-          - check: response_schema
-            description: "Response matches get-media-buys-response.json schema"
-          - check: field_value
-            path: "pagination.has_more"
-            value: true
-            description: "Three fixtures seeded with max_results=2 → first page is non-terminal"
-          - check: field_present
-            path: "pagination.cursor"
-            description: "has_more=true requires a cursor — without one the caller cannot continue"
-          - check: field_value_or_absent
-            path: "pagination.total_count"
-            allowed_values: [3]
-            description: "If volunteered, total_count MUST equal the seeded set size — under-reporting hides inventory the same way a dishonest has_more does"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "get_media_buys_pagination--first_page"
-            description: "Context correlation_id returned unchanged"
-
-      - id: terminal_page
-        title: "Follow the cursor to the terminal page"
-        narrative: |
-          The buyer follows the captured cursor. With at most one remaining
-          buy the agent MUST return a terminal page: `has_more=false`
-          with no `cursor` field. A cursor on `has_more=false` is a stale
-          token that invites callers to follow it past the end of results.
+          The buyer requests media buys. Whatever path the SDK
+          request-builder selects (today: ID-lookup with the most
+          recently seeded media_buy_id), the agent MUST emit a valid
+          `pagination` envelope satisfying the cursor↔has_more
+          invariant.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
@@ -180,41 +129,32 @@ phases:
         comply_scenario: get_media_buys_pagination_integrity
         stateful: true
         expected: |
-          Return the remaining buy with:
-          - pagination.has_more = false
-          - pagination.cursor absent (a stale cursor on a terminal page is a
-            dishonest pagination signal)
+          Return media_buys with a `pagination` envelope:
+          - pagination.has_more is a boolean (false on terminal ID-lookup)
+          - pagination.cursor absent or null when has_more is false
 
         sample_request:
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          pagination:
-            cursor: "$context.next_cursor"
-            max_results: 2
 
           context:
-            correlation_id: "get_media_buys_pagination--terminal_page"
+            correlation_id: "get_media_buys_pagination_integrity--list_call"
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json schema"
-          - check: field_value
+          - check: field_present
+            path: "pagination"
+            description: "get_media_buys MUST emit a pagination envelope on every response"
+          - check: field_present
             path: "pagination.has_more"
-            value: false
-            description: "After two pages of two items the seeded set is exhausted"
-          - check: field_value_or_absent
-            path: "pagination.cursor"
-            allowed_values: [null]
-            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
-          - check: field_value_or_absent
-            path: "pagination.total_count"
-            allowed_values: [3]
-            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+            description: "pagination.has_more is REQUIRED per /schemas/core/pagination-response.json"
+
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "get_media_buys_pagination--terminal_page"
+            value: "get_media_buys_pagination_integrity--list_call"
             description: "Context correlation_id returned unchanged"

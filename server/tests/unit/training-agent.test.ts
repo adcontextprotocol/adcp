@@ -2012,7 +2012,7 @@ describe('get_media_buys handler', () => {
         packages: [{
           product_id: product.product_id,
           pricing_option_id: pricingOptions[0].pricing_option_id,
-          budget: 1000 * i,
+          budget: 5000 + 1000 * i,
         }],
       });
     }
@@ -2049,14 +2049,13 @@ describe('get_media_buys handler', () => {
   it('returns INVALID_REQUEST on malformed cursor', async () => {
     const account = { brand: { domain: 'badcursor.example' }, operator: 'badcursor.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_media_buys', {
+    const { result, isError } = await simulateCallTool(server, 'get_media_buys', {
       account,
       status_filter: ['active'],
       pagination: { cursor: 'not-a-valid-cursor' },
     });
-    expect(Array.isArray(result.errors)).toBe(true);
-    const errors = result.errors as Array<Record<string, unknown>>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
   });
 
   it('media_buy_ids bypasses pagination — returns all requested IDs regardless of max_results', async () => {
@@ -2076,13 +2075,16 @@ describe('get_media_buys handler', () => {
         packages: [{
           product_id: product.product_id,
           pricing_option_id: pricingOptions[0].pricing_option_id,
-          budget: 1000 * i,
+          budget: 5000 + 1000 * i,
         }],
       });
       ids.push(result.media_buy_id as string);
     }
 
-    // Fetch all 3 by ID with max_results=2 — pagination should be bypassed
+    // Fetch all 3 by ID with max_results=2 — ID lookup ignores max_results
+    // and returns all matching IDs. Pagination block is still emitted (per
+    // the cursor↔has_more invariant) but signals terminal: has_more=false,
+    // no cursor.
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'get_media_buys', {
       account,
@@ -2091,7 +2093,10 @@ describe('get_media_buys handler', () => {
     });
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys).toHaveLength(3);
-    expect(result.pagination).toBeUndefined();
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(3);
+    expect(pg.cursor).toBeUndefined();
   });
 });
 
