@@ -921,6 +921,20 @@
               </div>
             </div>
 
+            <!-- Orphan-adoption decision prompt: shown when the server returns
+                 409 orphan_manifest_decision_required because the brand domain
+                 was previously registered by another org and the manifest is
+                 awaiting an adopt-or-clear choice. -->
+            <div id="orphan-decision-prompt" style="display: none; background: var(--color-warning-50, #fffbeb); border: 1px solid var(--color-warning-300, #fcd34d); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-warning-800, #92400e); margin-bottom: var(--space-2);">This domain was previously registered</div>
+              <p id="orphan-decision-body" style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-4);"></p>
+              <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+                <button type="button" id="orphan-adopt-btn" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Adopt prior identity</button>
+                <button type="button" id="orphan-fresh-btn" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Start fresh</button>
+                <button type="button" id="orphan-cancel-btn" style="padding: var(--space-2) var(--space-5); background: transparent; color: var(--color-text-muted); border: none; font-size: var(--text-sm); cursor: pointer;">Cancel</button>
+              </div>
+            </div>
+
             <!-- Inline brand edit form -->
             <div id="brand-edit-form" style="display: none; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4);">
               <div class="form-group" style="margin-bottom: var(--space-4);">
@@ -1630,9 +1644,14 @@
     }
 
     var _brandSaving = false;
-    async function saveBrandIdentity(isNew) {
+    // Pending save context — captured when the server returns 409 orphan_decision_required
+    // so the adopt/fresh buttons can re-fire the save with the user's choice.
+    var _pendingOrphanSave = null;
+
+    async function saveBrandIdentity(isNew, opts) {
       if (_brandSaving) return;
       _brandSaving = true;
+      opts = opts || {};
 
       var suffix = isNew ? '_new' : '';
       var logoUrl = (document.getElementById('brand_logo_url' + suffix) || {}).value;
@@ -1661,6 +1680,7 @@
         var body = {};
         if (logoUrl) body.logo_url = logoUrl;
         if (brandColor) body.brand_color = brandColor;
+        if (typeof opts.adoptPriorManifest === 'boolean') body.adopt_prior_manifest = opts.adoptPriorManifest;
 
         var response = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
           method: 'PUT',
@@ -1668,6 +1688,20 @@
           body: JSON.stringify(body),
           credentials: 'include',
         });
+
+        // Server returns 409 when the brand was previously registered by another
+        // org and the orphan manifest needs an explicit adopt-or-clear choice.
+        // Surface the decision inline; the adopt/fresh buttons re-call this
+        // function with the answer in opts.
+        if (response.status === 409) {
+          var conflictData = {};
+          try { conflictData = await response.json(); } catch {}
+          if (conflictData.code === 'orphan_manifest_decision_required') {
+            _pendingOrphanSave = { isNew: isNew };
+            showOrphanDecisionPrompt(conflictData);
+            return; // caller will re-fire via the prompt buttons
+          }
+        }
 
         if (!response.ok) {
           var errData = {};
@@ -1684,9 +1718,16 @@
         }
         populateBrandSection(currentProfile || { primary_brand_domain: data.brand_domain, resolved_brand: data.brand });
         updateMemberCardPreview();
+        hideOrphanDecisionPrompt();
 
         if (successEl) {
-          successEl.textContent = 'Brand identity saved.';
+          if (data.claimed_orphaned_brand) {
+            successEl.textContent = data.kept_prior_manifest
+              ? 'Brand identity saved — adopted prior identity.'
+              : 'Brand identity saved — started fresh.';
+          } else {
+            successEl.textContent = 'Brand identity saved.';
+          }
           successEl.style.display = 'inline';
         }
       } catch (error) {
@@ -1698,6 +1739,44 @@
         btn.textContent = isNew ? 'Save brand' : 'Save';
       }
     }
+
+    function showOrphanDecisionPrompt(conflictData) {
+      var prompt = document.getElementById('orphan-decision-prompt');
+      var body = document.getElementById('orphan-decision-body');
+      var domain = conflictData.brand_domain || 'this domain';
+      var priorOrg = conflictData.prior_owner_org_id
+        ? ' by another organization (' + escapeHtml(conflictData.prior_owner_org_id) + ')'
+        : '';
+      body.innerHTML =
+        '<strong>' + escapeHtml(domain) + '</strong> was previously registered' + priorOrg +
+        '. Do you want to adopt the prior brand identity (logos, colors, agents) as your starting point — for example after an acquisition or rename — or start with a clean slate?';
+      prompt.style.display = 'block';
+    }
+
+    function hideOrphanDecisionPrompt() {
+      var prompt = document.getElementById('orphan-decision-prompt');
+      if (prompt) prompt.style.display = 'none';
+      _pendingOrphanSave = null;
+    }
+
+    function resolveOrphanDecision(adopt) {
+      if (!_pendingOrphanSave) {
+        hideOrphanDecisionPrompt();
+        return;
+      }
+      var ctx = _pendingOrphanSave;
+      hideOrphanDecisionPrompt();
+      saveBrandIdentity(ctx.isNew, { adoptPriorManifest: adopt });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var adoptBtn = document.getElementById('orphan-adopt-btn');
+      var freshBtn = document.getElementById('orphan-fresh-btn');
+      var cancelBtn = document.getElementById('orphan-cancel-btn');
+      if (adoptBtn) adoptBtn.addEventListener('click', function() { resolveOrphanDecision(true); });
+      if (freshBtn) freshBtn.addEventListener('click', function() { resolveOrphanDecision(false); });
+      if (cancelBtn) cancelBtn.addEventListener('click', hideOrphanDecisionPrompt);
+    });
 
     async function loadCredentials() {
       try {
