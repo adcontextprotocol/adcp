@@ -9,7 +9,7 @@ import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
-import { canReviewBrandLogos } from '../services/brand-logo-auth.js';
+import { canReviewBrandLogos, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import {
   validateLogoTags,
@@ -73,6 +73,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(403).json({ error: 'You are banned from this brand registry' });
         }
 
+        // Verified domain owners and admin API key auto-approve; community uploads queue for review
+        const isOwner = user.id === 'admin_api_key' || await isVerifiedBrandOwner(user.id, domain, brandDb);
+        const uploadSource: 'brand_owner' | 'community' = isOwner ? 'brand_owner' : 'community';
+        const uploadReviewStatus: 'approved' | 'pending' = isOwner ? 'approved' : 'pending';
+
         if (!req.file) {
           return res.status(400).json({ error: 'File is required' });
         }
@@ -128,8 +133,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           tags,
           width,
           height,
-          source: 'community',
-          review_status: 'pending',
+          source: uploadSource,
+          review_status: uploadReviewStatus,
           uploaded_by_user_id: user.id,
           uploaded_by_email: user.email,
           upload_note: note,
@@ -138,6 +143,15 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         if (!logo) {
           return res.status(409).json({ error: 'Duplicate logo already exists for this brand' });
+        }
+
+        // Auto-approved owner uploads: rebuild manifest only for non-verified-hosted brands
+        // (mirrors review endpoint — verified hosted brands manage their manifest via brand-identity)
+        if (isOwner) {
+          const hosted = await brandDb.getHostedBrandByDomain(domain);
+          if (!hosted || !hosted.domain_verified) {
+            await rebuildManifestLogos(domain, brandLogoDb, brandDb);
+          }
         }
 
         // If brand doesn't exist, create it
@@ -176,7 +190,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           success: true,
           domain,
           logo_id: logo.id,
-          review_status: 'pending',
+          review_status: logo.review_status,
           url: `/logos/brands/${domain}/${logo.id}`,
         });
       } catch (error) {
