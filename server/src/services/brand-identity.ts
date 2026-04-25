@@ -35,11 +35,21 @@ export interface UpdateBrandIdentityInput {
   brandColor?: string | null;
   /** Domain hint used when the profile has no primary_brand_domain yet (e.g., logo URL hostname). */
   fallbackDomainHint?: string;
+  /**
+   * When the brand row is orphaned (prior owner relinquished, manifest
+   * preserved) and this caller is the new claimant: when true, keep the
+   * prior brand_manifest as the starting point and merge new logo/color
+   * over it. When false (default), clear the prior manifest and start
+   * fresh. Either way the orphan flag is cleared at write time.
+   */
+  adoptPriorManifest?: boolean;
 }
 
 export interface UpdateBrandIdentityResult {
   brandDomain: string;
   wasUpdate: boolean;
+  /** True when this call adopted (or cleared) an orphaned manifest. */
+  adoptedOrphanedManifest?: boolean;
 }
 
 export type BrandIdentityErrorCode =
@@ -83,7 +93,7 @@ export class BrandIdentityError extends Error {
 export async function updateBrandIdentity(
   input: UpdateBrandIdentityInput,
 ): Promise<UpdateBrandIdentityResult> {
-  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint } = input;
+  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint, adoptPriorManifest } = input;
 
   if (logoUrl === undefined && brandColor === undefined) {
     throw new BrandIdentityError(400, 'Provide at least one of logo_url or brand_color.');
@@ -130,11 +140,18 @@ export async function updateBrandIdentity(
   const pool = getPool();
   const client = await pool.connect();
   let wasUpdate = false;
+  let adoptedOrphanedManifest = false;
   try {
     await client.query('BEGIN');
 
-    const existingResult = await client.query<{ id: string; workos_organization_id: string | null; brand_json: Record<string, unknown> }>(
-      'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
+    const existingResult = await client.query<{
+      id: string;
+      workos_organization_id: string | null;
+      brand_json: Record<string, unknown>;
+      manifest_orphaned: boolean | null;
+    }>(
+      `SELECT id, workos_organization_id, brand_manifest AS brand_json, manifest_orphaned
+       FROM brands WHERE domain = $1 FOR UPDATE`,
       [brandDomain]
     );
     const existing = existingResult.rows[0] ?? null;
@@ -152,9 +169,28 @@ export async function updateBrandIdentity(
     }
 
     if (existing) {
-      const bj = applyToBrandJson(existing.brand_json ?? {}, displayName, logoUrl, brandColor);
+      // Orphan-adoption decision: if a prior owner relinquished, the new
+      // claimant either adopts the existing manifest as a starting point
+      // (acquisition / handoff case) or starts fresh (avoids inheriting
+      // unrelated visual identity). Default = start fresh because most
+      // claims are not handoffs.
+      const claimingOrphaned = !!existing.manifest_orphaned;
+      const startingManifest = claimingOrphaned && !adoptPriorManifest
+        ? {}
+        : (existing.brand_json ?? {});
+      adoptedOrphanedManifest = claimingOrphaned;
+
+      const bj = applyToBrandJson(startingManifest, displayName, logoUrl, brandColor);
       await client.query(
-        'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
+        `UPDATE brands SET
+           brand_manifest = $1,
+           workos_organization_id = COALESCE(workos_organization_id, $3),
+           has_brand_manifest = TRUE,
+           is_public = TRUE,
+           manifest_orphaned = FALSE,
+           prior_owner_org_id = NULL,
+           updated_at = NOW()
+         WHERE id = $2`,
         [JSON.stringify(bj), existing.id, workosOrganizationId]
       );
     } else {
@@ -189,8 +225,8 @@ export async function updateBrandIdentity(
     client.release();
   }
 
-  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
-  return { brandDomain, wasUpdate };
+  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, adoptedOrphanedManifest, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
+  return { brandDomain, wasUpdate, adoptedOrphanedManifest };
 }
 
 

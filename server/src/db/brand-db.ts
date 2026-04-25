@@ -295,24 +295,25 @@ export class BrandDatabase {
   /**
    * Relinquish a hosted brand back to the discovered/community pool.
    *
-   * Clears ownership AND the brand_manifest fields the prior org authored
-   * (logos, colors, agents, narrative copy). Without this, the next org to
-   * claim the domain silently inherits the prior org's visual identity —
-   * a real spoofing risk if the row gets re-claimed via the unverified
-   * soft-claim path. The row stays so the canonical-domain key is
-   * preserved and any external references survive.
+   * Marks the manifest orphaned and stashes the prior owner's org id so a
+   * legitimate handoff (acquisition, org rename) can adopt the prior visual
+   * identity at claim time. The manifest itself is preserved but hidden from
+   * public surfaces via is_public=false until the next claimant decides
+   * whether to adopt or start fresh — see updateBrandIdentity's
+   * `adoptPriorManifest` flag. Without this, a hard reset would close the
+   * spoofing hole at the cost of legitimate-handoff UX; orphan-flag closes
+   * the hole AND preserves provenance.
    */
   async deleteHostedBrand(id: string): Promise<boolean> {
     const result = await query(
       `UPDATE brands SET
+         prior_owner_org_id = workos_organization_id,
          workos_organization_id = NULL,
          created_by_user_id = NULL,
          created_by_email = NULL,
          domain_verified = FALSE,
          verification_token = NULL,
-         brand_manifest = '{}'::jsonb,
-         has_brand_manifest = FALSE,
-         brand_name = NULL,
+         manifest_orphaned = TRUE,
          is_public = FALSE,
          updated_at = NOW()
        WHERE id = $1`,

@@ -58,10 +58,13 @@ export interface MemberProfileRoutesConfig {
 
 /**
  * Resolve brand identity from the brand registry for a given domain.
- * Resolves brand identity from the unified brands table.
+ * Skips orphaned manifests — when a prior owner relinquished, the manifest
+ * is preserved for adoption but should not surface on member-facing reads
+ * until a new claim adopts (or clears) it. See updateBrandIdentity.
  */
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
   const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (brand?.manifest_orphaned) return undefined;
   if (brand?.brand_manifest) {
     return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
   }
@@ -1176,7 +1179,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
-      const { logo_url, brand_color } = req.body;
+      const { logo_url, brand_color, adopt_prior_manifest } = req.body;
 
       // Auth: resolve target org (same pattern as /visibility route)
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
@@ -1240,23 +1243,27 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           logoUrl: logo_url,
           brandColor: brand_color,
           fallbackDomainHint,
+          adoptPriorManifest: adopt_prior_manifest === true,
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {
           if (err.isCrossOrgOwnership()) {
             // Convert the bare 403 into a routed escalation so an admin can
             // resolve via transfer_brand_ownership instead of the user dead-ending.
+            // Categorized as sensitive_topic because the dispute may involve
+            // trademark or commercial claims; the framing stays neutral so an
+            // admin reading it doesn't anchor to either party.
             const { brandDomain, currentOwnerOrgId } = err.meta;
             const callerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
             const escalation = await createEscalation({
               workos_user_id: user.id,
               user_email: user.email,
               user_display_name: callerName,
-              category: 'needs_human_action',
+              category: 'sensitive_topic',
               priority: 'normal',
-              summary: `Brand ownership dispute: ${displayName} wants to claim ${brandDomain}`,
+              summary: `Brand ownership review: ${brandDomain} claim from ${displayName}`,
               original_request: `Update brand identity for ${brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
-              addie_context: `Caller: ${callerName} <${user.email}>, org ${targetOrgId}. Current owner org: ${currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
+              addie_context: `Caller: ${callerName} <${user.email}>, org ${targetOrgId}. Current owner org: ${currentOwnerOrgId}. Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
             }).catch(escalErr => {
               logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
               return null;
@@ -1279,9 +1286,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain: result.brandDomain, durationMs: duration }, 'Brand identity updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain: result.brandDomain, adoptedOrphanedManifest: result.adoptedOrphanedManifest, durationMs: duration }, 'Brand identity updated');
 
-      res.json({ brand: resolvedBrand, brand_domain: result.brandDomain });
+      res.json({
+        brand: resolvedBrand,
+        brand_domain: result.brandDomain,
+        adopted_prior_manifest: result.adoptedOrphanedManifest ?? false,
+      });
     } catch (error: any) {
       const duration = Date.now() - startTime;
       const statusCode = error?.statusCode || 500;

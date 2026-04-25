@@ -2145,11 +2145,11 @@ export function createMemberToolHandlers(
             workos_user_id: userId,
             user_email: userEmail,
             user_display_name: displayName,
-            category: 'needs_human_action',
+            category: 'sensitive_topic',
             priority: 'normal',
-            summary: `Brand ownership dispute: ${profile.display_name} wants to claim ${brandDomain}`,
+            summary: `Brand ownership review: ${brandDomain} claim from ${profile.display_name}`,
             original_request: `Update brand identity for ${brandDomain} (logo=${logoUrl ?? 'unchanged'}, color=${brandColor ?? 'unchanged'}).`,
-            addie_context: `Caller: ${displayName} <${userEmail}>, org ${orgId}. Current owner org: ${currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
+            addie_context: `Caller: ${displayName} <${userEmail}>, org ${orgId}. Current owner org: ${currentOwnerOrgId}. Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
           }).catch(escalErr => {
             logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
             return null;
