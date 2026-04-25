@@ -1708,6 +1708,8 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
 
   // media_buy_ids is a direct lookup — callers expect all requested IDs back, no
   // pagination. Broad-scope list queries (no IDs) paginate via cursor.
+  // If a caller passes both media_buy_ids and pagination.cursor, the cursor is
+  // intentionally ignored (documented design: ID-lookup wins, cursor is silently dropped).
   let pageBuys = buys;
   let paginationBlock: Record<string, unknown> | undefined;
 
