@@ -24,8 +24,8 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
-| `max_results` | number | No | Maximum number of results to return |
-| `pagination` | object | No | Pagination: `cursor` (opaque cursor from previous response) for paging through large result sets |
+| `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
+| `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. |
 
 ### Destination Object
 
@@ -180,7 +180,9 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
     },
-    "max_results": 5
+    "pagination": {
+      "max_results": 5
+    }
   }
 }
 ```
@@ -317,7 +319,9 @@ A buyer checking availability across multiple DSP platforms:
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
     },
-    "max_results": 5
+    "pagination": {
+      "max_results": 5
+    }
   }
 }
 ```
@@ -415,7 +419,9 @@ await a2a.send({
             max_cpm: 5.0,
             catalog_types: ["marketplace"]
           },
-          max_results: 5
+          pagination: {
+            max_results: 5
+          }
         }
       }
     }]
