@@ -1203,28 +1203,64 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
-export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  let formats = getFormats();
+  const session = await getSession(sessionKeyFromArgs(req as Parameters<typeof sessionKeyFromArgs>[0], ctx.mode, ctx.userId, ctx.moduleId));
 
-  // Filter by channels
-  if (req.channels?.length) {
-    const validIds = new Set<string>();
-    for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
-      if (fmtChannels.some(c => req.channels!.includes(c))) {
-        validIds.add(fmtId);
+  // When comply_test_controller.seed_creative_format has pre-populated
+  // formats, use them as the catalog for this session. This gives storyboards
+  // a size-controlled, deterministic result set so pagination-integrity
+  // assertions can pin has_more and cursor values reliably. The seeded set
+  // replaces (not augments) the static catalog so total_count is knowable at
+  // storyboard-author time. When no formats have been seeded, fall back to the
+  // static catalog so normal (non-compliance) callers are unaffected.
+  let formats: ReturnType<typeof getFormats>;
+  const seeded = session.complyExtensions.seededCreativeFormats;
+  if (seeded.size > 0) {
+    // agent_url is stamped at seed time by comply-test-controller, so each
+    // stored entry already carries a schema-valid format_id.
+    formats = Array.from(seeded.values()) as ReturnType<typeof getFormats>;
+  } else {
+    formats = getFormats();
+
+    // Filter by channels (informal field; stripped by SDK in compliance runs,
+    // so this path is only reachable in non-SDK direct calls).
+    if (req.channels?.length) {
+      const validIds = new Set<string>();
+      for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
+        if (fmtChannels.some(c => req.channels!.includes(c))) {
+          validIds.add(fmtId);
+        }
       }
+      formats = formats.filter(f => validIds.has(f.format_id.id));
     }
-    formats = formats.filter(f => validIds.has(f.format_id.id));
   }
 
-  // Filter by format_ids
+  // Filter by format_ids (applies in both seeded and static paths)
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats };
+  const totalMatching = formats.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageFormats = formats.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    formats: pageFormats,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
+    },
+  };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {

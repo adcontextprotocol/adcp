@@ -31,6 +31,7 @@ import type {
   ComplyBudgetSimulation,
 } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
+import { getAgentUrl } from './config.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -455,7 +456,7 @@ function createStore(session: SessionState): TestControllerStore {
 
 // ── Tool definition ───────────────────────────────────────────────
 
-const SCENARIO_ENUM = ['list_scenarios', ...Object.values(CONTROLLER_SCENARIOS)] as const;
+const SCENARIO_ENUM = ['list_scenarios', ...Object.values(CONTROLLER_SCENARIOS), 'seed_creative_format'] as const;
 
 // JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
 // top-level `account` (sandbox gate) and `brand` (session keying) — both
@@ -520,6 +521,38 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
 
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  // seed_creative_format is a training-agent extension not in the SDK's
+  // CONTROLLER_SCENARIOS. Handle it before the SDK dispatcher so the SDK
+  // doesn't return UNKNOWN_SCENARIO. Idempotency (same ID + same fixture
+  // succeeds; same ID + different fixture → INVALID_STATE) is enforced
+  // inline to match the guarantee handleTestControllerRequest provides for
+  // the other seed_* scenarios via SEED_CACHE. agent_url is stamped at
+  // write time so any future reader gets a schema-valid format_id without
+  // knowing the agent's URL.
+  if (rawArgs.scenario === 'seed_creative_format') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const formatId = params.format_id as string | undefined;
+    if (!formatId) {
+      return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.format_id is required for seed_creative_format' };
+    }
+    const fixture = (params.fixture ?? {}) as Record<string, unknown>;
+    const stored: Record<string, unknown> = {
+      ...fixture,
+      format_id: { agent_url: getAgentUrl(), id: formatId },
+    };
+    const existing = session.complyExtensions.seededCreativeFormats.get(formatId);
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(stored)) {
+        return { success: false, error: 'INVALID_STATE', error_detail: `format_id "${formatId}" was already seeded with a different fixture — seed_creative_format is idempotent` };
+      }
+      return { success: true };
+    }
+    enforceMapCap(session.complyExtensions.seededCreativeFormats, formatId, 'seeded creative formats');
+    session.complyExtensions.seededCreativeFormats.set(formatId, stored);
+    return { success: true };
+  }
+
   const store = createStore(session);
   return handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 }

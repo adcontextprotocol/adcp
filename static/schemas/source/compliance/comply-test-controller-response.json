@@ -27,7 +27,8 @@
               "seed_pricing_option",
               "seed_creative",
               "seed_plan",
-              "seed_media_buy"
+              "seed_media_buy",
+              "seed_creative_format"
             ]
           },
           "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."

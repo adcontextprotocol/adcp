@@ -21,9 +21,10 @@
         "seed_pricing_option",
         "seed_creative",
         "seed_plan",
-        "seed_media_buy"
+        "seed_media_buy",
+        "seed_creative_format"
       ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
     },
     "params": {
       "type": "object",
@@ -75,6 +76,10 @@
           "type": "string",
           "maxLength": 2000,
           "description": "Optional human-readable explanation surfaced on the next create_media_buy response. Used by force_create_media_buy_arm for the 'submitted' and 'working' arms. Plain text only."
+        },
+        "format_id": {
+          "type": "string",
+          "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
         }
       },
       "additionalProperties": true
@@ -155,6 +160,10 @@
     {
       "if": { "properties": { "scenario": { "const": "seed_media_buy" } } },
       "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_creative_format" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["format_id"] } } }
     }
   ],
   "additionalProperties": true,
