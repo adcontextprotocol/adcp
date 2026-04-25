@@ -96,17 +96,25 @@ describe('Training Agent /mcp-strict route', () => {
     it('/mcp returns required_for: [] (sandbox)', async () => {
       const res = await callTool(app, '/mcp', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual([]);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
 
     it('/mcp-strict returns required_for: ["create_media_buy"] (grader target)', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
   });
 
