@@ -8,10 +8,21 @@
  * signatures, and sets the commit status the branch protection rule depends on.
  *
  * Environment:
- *   GITHUB_TOKEN         — auth, contents:write + pull-requests:write + statuses:write
+ *   GITHUB_TOKEN         — auth for API calls on the event repo
+ *                          (pull-requests:write + statuses:write).
  *   GITHUB_EVENT_NAME    — "issue_comment" | "pull_request_target"
  *   GITHUB_EVENT_PATH    — path to the event JSON
- *   GITHUB_REPOSITORY    — "owner/repo"
+ *   GITHUB_REPOSITORY    — "owner/repo" — the EVENT repo (where the PR lives)
+ *   LEDGER_DIR           — optional path to a checked-out clone of the central
+ *                          ledger repo (adcontextprotocol/adcp). When set, the
+ *                          script reads/writes signatures there and commits via
+ *                          git in that directory — the directory's `origin`
+ *                          remote must already be authenticated for push (e.g.
+ *                          via a GitHub App installation token configured by
+ *                          the calling workflow's `actions/checkout` step).
+ *                          Defaults to the current working directory, which is
+ *                          the right behavior when the event repo IS the
+ *                          ledger repo (adcp itself).
  */
 
 import fs from 'node:fs';
@@ -31,6 +42,13 @@ const STATUS_CONTEXT = 'IPR Policy / Signature';
 const CLAIM_COMMENT_MARKER = '<!-- ipr-check:request -->';
 const CONFIRM_COMMENT_MARKER = '<!-- ipr-check:confirmed -->';
 const WRONG_SIGNER_COMMENT_MARKER = '<!-- ipr-check:wrong-signer -->';
+
+// LEDGER_DIR is where the central ipr-signatures.json lives on disk. When the
+// workflow runs inside the event repo (e.g. adcp-client), the calling workflow
+// checks out adcontextprotocol/adcp into a sub-directory and points us at it
+// via env. When the event repo IS the ledger (adcp), it defaults to cwd and
+// no extra checkout is required.
+const LEDGER_DIR = process.env.LEDGER_DIR || process.cwd();
 
 const BOT_LOGIN_SUFFIX = '[bot]';
 const EXTRA_BOT_LOGINS = new Set([
@@ -60,11 +78,19 @@ function parseRepoSlug(slug) {
 }
 
 function git(args, opts = {}) {
-  return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', ...opts });
+  return execFileSync('git', args, {
+    cwd: LEDGER_DIR,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    ...opts,
+  });
 }
 
 function gitStatusPorcelain(pathname) {
-  return execFileSync('git', ['status', '--porcelain', pathname], { encoding: 'utf8' }).trim();
+  return execFileSync('git', ['status', '--porcelain', pathname], {
+    cwd: LEDGER_DIR,
+    encoding: 'utf8',
+  }).trim();
 }
 
 function configureGitIdentity() {
@@ -181,7 +207,7 @@ async function handleIssueComment(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures();
+  const signatures = readSignatures(LEDGER_DIR);
   if (hasSigned(signatures, prAuthor.id)) {
     const existing = findSignature(signatures, prAuthor.id);
     console.log(`${prAuthor.login} already signed on ${existing.created_at} — no-op.`);
@@ -206,7 +232,7 @@ async function handleIssueComment(gh, event, eventRepo) {
   if (!added) {
     throw new Error(`Unexpected: ${prAuthor.login} already signed after hasSigned check`);
   }
-  writeSignatures(next);
+  writeSignatures(next, LEDGER_DIR);
 
   configureGitIdentity();
   const committed = commitSignaturesChange(
@@ -241,7 +267,7 @@ async function handlePullRequestTarget(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures();
+  const signatures = readSignatures(LEDGER_DIR);
   if (hasSigned(signatures, prAuthor.id)) {
     const existing = findSignature(signatures, prAuthor.id);
     await setStatus(gh, eventRepo, headSha, {

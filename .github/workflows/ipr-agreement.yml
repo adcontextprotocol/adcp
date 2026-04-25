@@ -12,7 +12,9 @@ permissions:
   statuses: write
 
 concurrency:
-  group: ipr-signature-write
+  # Shared with the cross-repo callable workflow so signatures from any
+  # AAO repo serialize against signatures coming from adcp itself.
+  group: adcp-ipr-signature-write
   cancel-in-progress: false
 
 jobs:
