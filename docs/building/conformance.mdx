@@ -48,6 +48,8 @@ Agents MUST NOT declare a capability whose storyboards they do not pass. See the
 
 Every agent MUST pass every storyboard below.
 
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (snake_case YAML id) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+
 | Storyboard | What it verifies |
 |------------|------------------|
 | [`capability_discovery`](https://adcontextprotocol.org/compliance/latest/universal/capability-discovery) | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |

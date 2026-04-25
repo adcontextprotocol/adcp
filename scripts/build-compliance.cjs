@@ -345,10 +345,16 @@ function verifyEnumParity(specialisms, protocols) {
   }
 }
 
+const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
   verifyEnumParity(specialisms, protocols);
+  const docParityErrors = lintUniversalDocParity({ sourceDir });
+  if (docParityErrors.length) {
+    throw new Error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+  }
   lintStoryboardIdempotency(sourceDir, SCHEMAS_DIR);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
