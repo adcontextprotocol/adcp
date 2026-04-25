@@ -37,6 +37,7 @@ import {
 } from "../services/lusha.js";
 import { listEscalationsForUser } from "../db/escalation-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
+import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
@@ -378,33 +379,22 @@ export function createPublicBillingRouter(): Router {
         }
       }
 
-      const productDisplay = `${product.display_name} ($${(product.amount_cents / 100).toLocaleString()})`;
-
       logger.info(
         { invoiceId: result.invoiceId, orgId, lookupKey, userId: user.id },
         "Invoice request processed successfully"
       );
 
-      if (process.env.SLACK_WEBHOOK_URL) {
-        fetch(process.env.SLACK_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `Invoice requested`,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `*New Invoice Request*\n\n*Org:* ${org.name}\n*Requested by:* ${displayName} (${user.email})\n*Product:* ${productDisplay}\n*Invoice ID:* ${result.invoiceId}`,
-                },
-              },
-            ],
-          }),
-        }).catch((err) =>
-          logger.error({ err }, "Failed to send Slack notification for invoice request")
-        );
-      }
+      notifyInvoiceSent({
+        organizationName: org.name,
+        contactEmail: user.email,
+        contactName: displayName,
+        amount: product.amount_cents,
+        currency: product.currency,
+        productName: product.display_name,
+        invoiceId: result.invoiceId,
+      }).catch((err) =>
+        logger.error({ err }, "Failed to send billing channel notification for invoice request")
+      );
 
       res.json({
         success: true,
