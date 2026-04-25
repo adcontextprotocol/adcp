@@ -493,6 +493,18 @@ function main() {
     process.exit(1);
   }
 
+  // Pagination invariant: schema examples and storyboard fixtures MUST NOT
+  // teach the cursor↔has_more contradiction. has_more=true requires cursor;
+  // has_more=false MUST omit cursor. See pagination-response.json.
+  try {
+    execSync('node scripts/lint-pagination-invariant.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
