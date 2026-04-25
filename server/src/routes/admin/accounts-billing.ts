@@ -53,6 +53,7 @@ export function setupAccountsBillingRoutes(
             error?: string;
           };
           updated?: boolean;
+          revenue_events_synced?: number;
         } = { success: false };
 
         const orgResult = await pool.query(
@@ -243,6 +244,112 @@ export function setupAccountsBillingRoutes(
                       error: "No active subscription or paid membership invoice found",
                     };
                   }
+                }
+
+                // Backfill revenue_events for any missed invoice.paid webhooks.
+                // Idempotent: ON CONFLICT DO NOTHING so webhook-written rows win.
+                try {
+                  let revenueEventsSynced = 0;
+                  const productCache = new Map<string, string>();
+
+                  for await (const invoice of stripe.invoices.list({
+                    customer: org.stripe_customer_id,
+                    status: 'paid',
+                    limit: 100,
+                    expand: ['data.subscription', 'data.charge'],
+                  })) {
+                    if (invoice.amount_paid <= 0) continue;
+
+                    const primaryLine = invoice.lines?.data[0];
+                    let productId: string | null = null;
+                    let productName: string | null = null;
+                    let priceId: string | null = null;
+                    let billingInterval: string | null = null;
+
+                    if (primaryLine?.price) {
+                      const price = primaryLine.price;
+                      priceId = price.id;
+                      billingInterval = price.recurring?.interval || null;
+                      const product = price.product;
+                      if (typeof product === 'string') {
+                        productId = product;
+                        if (!productCache.has(product)) {
+                          try {
+                            const p = await stripe.products.retrieve(product);
+                            productCache.set(product, p.name);
+                          } catch {
+                            // product name stays null; not fatal
+                          }
+                        }
+                        productName = productCache.get(product) || primaryLine.description || null;
+                      } else if (product && typeof product === 'object' && 'name' in product) {
+                        productId = product.id;
+                        productName = product.name;
+                        productCache.set(product.id, product.name);
+                      }
+                    }
+
+                    if (!productName) {
+                      productName = invoice.description || null;
+                    }
+
+                    let revenueType = 'subscription_recurring';
+                    if (invoice.billing_reason === 'subscription_create') {
+                      revenueType = 'subscription_initial';
+                    } else if (!invoice.subscription) {
+                      revenueType = 'one_time';
+                    }
+
+                    const charge = typeof invoice.charge === 'object' ? invoice.charge : null;
+                    const paidAt = new Date(
+                      ((invoice.status_transitions?.paid_at || invoice.created) * 1000),
+                    );
+
+                    const upsertResult = await pool.query(
+                      `INSERT INTO revenue_events (
+                        workos_organization_id, stripe_invoice_id, stripe_subscription_id,
+                        stripe_payment_intent_id, stripe_charge_id, amount_paid, currency,
+                        revenue_type, billing_reason, product_id, product_name, price_id,
+                        billing_interval, paid_at, period_start, period_end
+                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                      ON CONFLICT (stripe_invoice_id) DO NOTHING`,
+                      [
+                        orgId,
+                        invoice.id,
+                        typeof invoice.subscription === 'string'
+                          ? invoice.subscription
+                          : (invoice.subscription && 'id' in invoice.subscription
+                            ? invoice.subscription.id : null),
+                        typeof invoice.payment_intent === 'string'
+                          ? invoice.payment_intent : null,
+                        charge?.id || null,
+                        invoice.amount_paid,
+                        invoice.currency,
+                        revenueType,
+                        invoice.billing_reason || null,
+                        productId,
+                        productName,
+                        priceId,
+                        billingInterval,
+                        paidAt,
+                        invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+                        invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+                      ],
+                    );
+
+                    if (upsertResult.rowCount && upsertResult.rowCount > 0) {
+                      revenueEventsSynced++;
+                    }
+                  }
+
+                  syncResults.revenue_events_synced = revenueEventsSynced;
+                  logger.info({ orgId, revenueEventsSynced }, 'Backfilled revenue_events from sync');
+                } catch (revenueBackfillError) {
+                  logger.error(
+                    { err: revenueBackfillError, orgId },
+                    'Failed to backfill revenue_events during sync — subscription sync succeeded',
+                  );
+                  // Don't fail the sync response; backfill failure is non-fatal
                 }
               }
             } catch (error) {

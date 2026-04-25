@@ -2809,6 +2809,9 @@
         else if (result.workos?.error) parts.push(`WorkOS: ${result.workos.error}`);
         if (result.stripe?.success) parts.push('Stripe ✓');
         else if (result.stripe?.error) parts.push(`Stripe: ${result.stripe.error}`);
+        if (typeof result.revenue_events_synced === 'number') {
+          parts.push(`${result.revenue_events_synced} payment${result.revenue_events_synced === 1 ? '' : 's'} synced`);
+        }
 
         statusEl.textContent = parts.join(' · ');
         statusEl.className = `sync-status ${result.success ? 'sync-success' : 'sync-error'}`;
