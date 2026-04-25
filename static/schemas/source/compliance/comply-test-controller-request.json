@@ -13,6 +13,7 @@
         "force_creative_status",
         "force_account_status",
         "force_media_buy_status",
+        "force_create_media_buy_arm",
         "force_session_status",
         "simulate_delivery",
         "simulate_budget_spend",
@@ -58,7 +59,23 @@
           },
           "required": ["amount", "currency"]
         },
-        "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend." }
+        "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend." },
+        "arm": {
+          "type": "string",
+          "enum": ["submitted", "input-required"],
+          "description": "Response arm for the next create_media_buy call. Used by force_create_media_buy_arm. v1 supports the two arms a buyer-supplied directive can shape without fabricating server state: 'submitted' (async task envelope) and 'input-required' (errors-branch). 'completed' is covered by seed_media_buy + a normal flow; 'working' is an out-of-band progress signal, not an initial response arm."
+        },
+        "task_id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Deterministic task handle the seller MUST emit verbatim on the next create_media_buy response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get calls within the same authenticated sandbox account. Sandbox task_ids are caller-opaque strings — the seller's production task-id format rules do not apply.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation surfaced on the next create_media_buy response. Used by force_create_media_buy_arm for the 'submitted' and 'working' arms. Plain text only."
+        }
       },
       "additionalProperties": true
     },
@@ -78,6 +95,23 @@
     {
       "if": { "properties": { "scenario": { "const": "force_media_buy_status" } } },
       "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id", "status"], "properties": { "status": { "$ref": "/schemas/enums/media-buy-status.json" } } } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_create_media_buy_arm" } } },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["arm"],
+            "allOf": [
+              {
+                "if": { "properties": { "arm": { "const": "submitted" } } },
+                "then": { "required": ["task_id"] }
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "scenario": { "const": "force_session_status" } } },
@@ -149,6 +183,17 @@
         "params": {
           "account_id": "acct-456",
           "status": "suspended"
+        }
+      }
+    },
+    {
+      "description": "Force the next create_media_buy call into the submitted arm with a deterministic task_id",
+      "data": {
+        "scenario": "force_create_media_buy_arm",
+        "params": {
+          "arm": "submitted",
+          "task_id": "task_async_signed_io_q2",
+          "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
         }
       }
     },

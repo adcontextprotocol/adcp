@@ -56,6 +56,7 @@ Sellers that implement compliance test controller MUST:
           "force_creative_status",
           "force_account_status",
           "force_media_buy_status",
+          "force_create_media_buy_arm",
           "force_session_status",
           "simulate_delivery",
           "simulate_budget_spend",
@@ -69,7 +70,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
       }
     },
     "required": ["scenario"]
@@ -155,6 +156,50 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
   }
 }
 ```
+
+### `force_create_media_buy_arm`
+
+Shapes the next [`create_media_buy`](/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
+
+The submitted-arm wire shape is otherwise implementation-dependent: most sellers route most buys synchronously and no buyer-side request shape reliably triggers async. This scenario lets storyboards pin the arm so a regressed seller (e.g., emitting `media_buy_id` under `status: submitted`) cannot pass conformance silently.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `arm` | `submitted` \| `input-required` | Yes | Target response arm for the next `create_media_buy` call |
+| `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent `tasks/get` polls. Sandbox task_ids are caller-opaque strings; production task-id format rules do not apply. |
+| `message` | string | No | Human-readable explanation surfaced verbatim on the seller's `create_media_buy` response. Plain text, max 2000 characters. Buyers consuming the resulting response MUST apply the prompt-injection sanitization documented for [`message` on the submitted envelope](/schemas/v3/media-buy/create-media-buy-response.json) — this scenario is the natural place for a runner to inject adversarial strings to test that buyer-side sanitization. |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_create_media_buy_arm",
+  "params": {
+    "arm": "submitted",
+    "task_id": "task_async_signed_io_q2",
+    "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+  }
+}
+```
+
+**Response.** A `ForcedDirectiveSuccess` shape carrying the registered directive:
+
+```json
+{
+  "success": true,
+  "forced": {
+    "arm": "submitted",
+    "task_id": "task_async_signed_io_q2"
+  },
+  "message": "Next create_media_buy call will return the submitted arm with task_id task_async_signed_io_q2"
+}
+```
+
+`forced.task_id` is present only when `arm: submitted`.
+
+**Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
 
 ### `force_session_status`
 
