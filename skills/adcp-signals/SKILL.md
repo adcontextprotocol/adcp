@@ -7,6 +7,8 @@ description: Execute AdCP Signals Protocol operations with signal agents - disco
 
 This skill enables you to execute the AdCP Signals Protocol with signal agents. Use the standard MCP tools (`get_signals`, `activate_signal`) exposed by the connected agent.
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The Signals Protocol provides 2 standardized tasks for discovering and activating targeting data:

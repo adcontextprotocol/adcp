@@ -108,6 +108,9 @@ COPY --from=builder /app/server/src/addie/rules/*.md ./dist/addie/rules/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
 
+# Skill docs read at runtime by Addie's ask_about_adcp_task / call_adcp_task loader.
+COPY --from=builder /app/skills ./skills
+
 # Shared agent-infrastructure read at Addie prompt-assembly time (rules/index.ts)
 # and by the triage routines. These are committed repo files; without them,
 # loadRules() silently degrades.

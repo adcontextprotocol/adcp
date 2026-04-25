@@ -49,11 +49,13 @@
     },
     "max_results": {
       "type": "integer",
-      "description": "Maximum number of results to return",
+      "description": "DEPRECATED: Use pagination.max_results instead. When both fields are present, agents MUST honor pagination.max_results. When only this field is present without a pagination envelope, agents SHOULD treat it as the page size subject to a maximum of 100 results. This field will be removed in AdCP 4.0.",
+      "deprecated": true,
       "minimum": 1
     },
     "pagination": {
-      "$ref": "/schemas/core/pagination-request.json"
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pagination.cursor for cursor-based page walks. When the deprecated top-level max_results field is also present, pagination.max_results takes precedence."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

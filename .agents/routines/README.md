@@ -46,14 +46,45 @@ Do these in order. Steps marked *(web)* require the claude.ai UI.
    routine**. Or run `/schedule daily at 9am` in the CLI and walk the
    prompts.
 
-   - **Name:** `adcp — issue triage` (adjust per repo)
-   - **Prompt:** paste from `triage-prompt.md`, prefixed with the three
-     files to read (see that doc)
-   - **Repository:** the target repo; leave branch pushes restricted to
-     `claude/*`
+   - **Name:** `adcp — issue triage`
+   - **Prompt:** the minimal launcher below — **do not** paste the full
+     `triage-prompt.md`. The launcher points at the file in the repo so
+     edits to `triage-prompt.md` flow to the live routine on the next
+     fire without any re-paste.
+   - **Repository:** `adcontextprotocol/adcp`; leave branch pushes
+     restricted to `claude/*`
    - **Environment:** new env, paste `environment-setup.sh` into the setup
      script field; Trusted network access
    - **Schedule trigger:** daily or every 6h (up to you)
+
+   Launcher prompt (paste verbatim — this is what's deployed):
+
+   ```
+   You are the adcp issue-triage agent for adcontextprotocol/adcp.
+
+   Read .agents/routines/triage-prompt.md and follow it exactly. That
+   file is your primary behavior guide — CLAUDE.md,
+   .agents/playbook.md, and .agents/current-context.md are supporting
+   context the triage prompt will tell you when to read. Expert
+   subagents live at .claude/agents/*.md and are spawned via the Task
+   tool per the workflow in triage-prompt.md.
+
+   If .agents/routines/triage-prompt.md does not exist, stop and
+   report. If .claude/agents/ is missing, the v2 expert-consultation
+   PR has not merged — also stop and report.
+
+   Run type:
+   • EVENT-DRIVEN: if this conversation contains issue context from
+     /fire (event name, repo, issue number, body fenced as
+     UNTRUSTED_ISSUE_BODY), act on that single issue.
+   • SCHEDULED: otherwise, walk open issues without the
+     `claude-triaged` label, skipping bot authors and issues with no
+     activity in 90+ days. Cap at 10 per run.
+
+   You commit as brian@agenticadvertising.org's linked GitHub
+   identity. Token budget burns the same account. Output a run
+   summary at the end.
+   ```
 
 2. **Add an API trigger** *(web only)* — on the routine's edit page,
    **Add another trigger → API**. Copy the URL, click **Generate token**,

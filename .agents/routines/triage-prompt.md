@@ -62,9 +62,36 @@ these:
    even for larger non-breaking changes.
 4. **Defer** — well-formed but out of the current build window or
    blocked on prerequisite work. Apply `claude-triaged` + relevant
-   label; comment only if the author is `NONE` or
-   `FIRST_TIME_CONTRIBUTOR` (so they know it was seen); otherwise
-   silent. Never burn expert cycles on a deferred issue.
+   label. Three flavors, each with a different comment rule:
+
+   - **Out of cycle (no specific blocker).** Post-cycle work, RFC
+     parked for later, etc. Silent for
+     MEMBER/COLLABORATOR/OWNER; courtesy ack for NONE /
+     FIRST_TIME_CONTRIBUTOR. Standard rule.
+   - **Blocked on a specific open PR/issue.** Always post a
+     one-line `Blocked-on: #N — resurfaces on merge` comment on the
+     issue, regardless of author tier. Silent defer here is the
+     bug — the dependency is the actionable artifact, and the
+     comment is both the audit trail and the resurfacing trigger
+     (a future sweep can search `in:comments "Blocked-on: #N"`
+     after #N closes).
+   - **Fold candidate.** Same as Blocked-on, *plus* the parent PR
+     is still iterating, by the same author or an active
+     contributor, and the issue's scope would naturally extend the
+     parent's diff (file overlap, generated-output overlap, same
+     codegen step). Additionally comment on the **parent PR**:
+     "Issue #M proposes &lt;short summary&gt; — same surface as
+     this PR; consider folding before merge or confirm follow-up."
+     Cross-link both ways. This avoids the "small follow-up gets
+     lost while the parent ships and re-opens the same file" failure
+     mode. Don't make this call if the parent PR is approved /
+     awaiting-merge or is large enough that scope expansion would
+     materially delay it — in that case stay in plain Blocked-on.
+
+   None of these burn expert cycles. The fold recommendation is a
+   structural call (does the work belong in the open PR?), not a
+   substantive one (is the work correct?) — experts come back into
+   play only if the issue eventually moves to Execute.
 
 **When in doubt between Execute and Flag: Execute.** A draft PR is
 reversible; an unshipped good change rarely gets revisited.
@@ -148,11 +175,21 @@ Check if the issue is one of:
 - **Epic** — labeled `epic`, title "Epic:", or body has a task list
   of **GitHub issue references** (`- [ ] #1234`). >8 checkboxes = epic.
 - **Tracking / meta** — labeled `tracking`, `meta`, `roadmap`
-- **Child of an open parent** — `Fixes #N` / `Closes #N` points at an
-  open issue/PR
+- **Child of an open parent** — any of:
+  - `Fixes #N` / `Closes #N` references an open issue/PR
+  - Body text references an open PR as a prerequisite ("after #N",
+    "follow-up to #N", "depends on #N", "once #N merges",
+    "extends #N")
+  - Acceptance criteria reference files that don't exist on `main`
+    but **do** exist in an open PR's diff. Spend one API call to
+    confirm: `gh pr list --state open --search "<file path or
+    short slug>"`, then `gh pr view <N> --json files --jq
+    '.files[].path'`. A match here is the strongest signal that
+    the issue is a follow-up to an in-flight PR.
 
-These are never auto-PR'd. They proceed to Step 2 (relevance) to
-decide between defer, flag-for-review, or clarify.
+These are never auto-PR'd. They proceed to Step 2 (relevance) and
+then to the **Defer** outcome (typically the *Fold candidate* or
+*Blocked-on* flavor — see outcome 4 above) rather than Execute.
 
 ### Step 2 — Relevance check: is this in the current build window?
 
@@ -555,6 +592,38 @@ related fixes, or "items 1-5 after PR #N" — decide:
 A single cohesive PR of 200 non-breaking lines is easier to review
 than three PRs of 60 lines with dependencies and cross-links. The
 bot's job is to reduce maintainer clicks, not multiply them.
+
+### Linkage rule for partial-rollout PRs
+
+When the issue proposes multiple items and you're shipping a subset,
+the PR body uses `Refs #N`, **not** `Closes #N`. `Closes` is reserved
+for PRs that fulfill the entire issue scope (even if delivered
+incrementally — only the *last* PR in the sequence carries `Closes`).
+
+This applies to:
+
+- Multi-item issues (numbered lists, task tables, taxonomies with
+  multiple `kind`s, follow-up bundles).
+- Issues with an explicit "incremental rollout" / "ship X first, then
+  Y, then Z" suggestion in the body.
+- Any case where the PR's actual scope is narrower than the issue's
+  proposed scope.
+
+In addition to using `Refs`, post a status comment on the parent
+issue listing what shipped and what remains, so a future triage sweep
+can find queued work. Example:
+
+```
+Shipped in #<PR>: shape_drift kind.
+Remaining in this issue: missing_required_field, format_mismatch,
+monotonic_violation, auth_misconfiguration. Issue stays open as the
+tracker for the remaining four.
+```
+
+`Closes` here would be a quiet bug: the issue auto-closes on merge,
+the remaining items lose their tracking surface, and no future sweep
+will resurface them. Always default to `Refs` when partial; promote to
+`Closes` only when the work is genuinely complete.
 
 ## Pre-PR build + test gate — mandatory before expert review
 

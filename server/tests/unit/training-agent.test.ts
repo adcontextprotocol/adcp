@@ -1077,6 +1077,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('preview_creative');
     expect(toolNames).toContain('report_usage');
     expect(toolNames).toContain('sync_accounts');
+    expect(toolNames).toContain('list_accounts');
     expect(toolNames).toContain('sync_governance');
     expect(toolNames).toContain('sync_catalogs');
     expect(toolNames).toContain('sync_event_sources');
@@ -1087,7 +1088,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(48);
+    expect(toolNames).toHaveLength(49);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {

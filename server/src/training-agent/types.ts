@@ -192,6 +192,11 @@ export interface ComplyExtensions {
   seededProducts: Map<string, Record<string, unknown>>;
   /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
   seededPricingOptions: Map<string, Record<string, unknown>>;
+  /** Creative formats seeded via comply_test_controller.seed_creative_format.
+   * Replaces the static format catalog for list_creative_formats when non-empty,
+   * giving storyboards a deterministic, size-controlled result set for
+   * pagination-integrity assertions. Keyed by the format's id string. */
+  seededCreativeFormats: Map<string, Record<string, unknown>>;
   /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
    * Consumed by the next create_media_buy call from this session and cleared. A second
    * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side

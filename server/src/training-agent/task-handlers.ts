@@ -19,6 +19,7 @@ import { mergeSeedProduct } from '@adcp/client/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
   Proposal,
@@ -208,6 +209,7 @@ import {
 } from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
+  handleListAccounts,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -231,6 +233,7 @@ import {
   handleComplyTestController,
   getDeliverySimulation,
   getAccountStatus,
+  getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 import {
@@ -1203,26 +1206,65 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  let formats = getFormats();
 
-  // Filter by channels
-  if (req.channels?.length) {
-    const validIds = new Set<string>();
-    for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
-      if (fmtChannels.some(c => req.channels!.includes(c))) {
-        validIds.add(fmtId);
+  // When comply_test_controller.seed_creative_format has pre-populated formats,
+  // use the seeded catalog so pagination-integrity storyboards can pin
+  // has_more / cursor / total_count against a known set size. The seed pool is
+  // process-global (not session-scoped) because list_creative_formats has no
+  // tenant identity in its request schema — every call is a global catalog
+  // read. Other seed_* scenarios (seed_creative, seed_media_buy) target
+  // entities the listing call carries identity for and stay session-scoped.
+  // Falls back to the static catalog when the seed pool is empty so normal
+  // (non-compliance) callers are unaffected.
+  let formats: ReturnType<typeof getFormats>;
+  const seeded = getSeededCreativeFormats();
+  if (seeded.size > 0) {
+    // Seeded entries are stored as Record<string, unknown> with the format_id
+    // stamped at seed time. Storyboards seed complete TrainingFormat-shaped
+    // fixtures (name/description/renders/assets); the cast through unknown
+    // matches that contract without re-validating at read time.
+    formats = Array.from(seeded.values()) as unknown as ReturnType<typeof getFormats>;
+  } else {
+    formats = getFormats();
+
+    // Filter by channels (informal field; stripped by SDK in compliance runs,
+    // so this path is only reachable in non-SDK direct calls).
+    if (req.channels?.length) {
+      const validIds = new Set<string>();
+      for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
+        if (fmtChannels.some(c => req.channels!.includes(c))) {
+          validIds.add(fmtId);
+        }
       }
+      formats = formats.filter(f => validIds.has(f.format_id.id));
     }
-    formats = formats.filter(f => validIds.has(f.format_id.id));
   }
 
-  // Filter by format_ids
+  // Filter by format_ids (applies in both seeded and static paths)
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats };
+  const totalMatching = formats.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageFormats = formats.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    formats: pageFormats,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
+    },
+  };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
@@ -2134,29 +2176,12 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   };
 }
 
-// Opaque offset-encoded cursor for in-memory list_creatives pagination.
-// Real backends would carry stable resource keys; an offset is sufficient
-// for the training agent because creatives.values() iterates in stable
-// insertion order. base64url keeps the token URL-safe and visibly opaque.
 function encodeCreativeCursor(offset: number): string {
-  return Buffer.from(`offset:${offset}`).toString('base64url');
+  return encodeOffsetCursor('creatives', offset);
 }
 
-// Returns null when the cursor is present but malformed. The caller MUST
-// surface INVALID_REQUEST in that case — silently restarting from offset 0
-// would teach a sloppy pattern (corrupt cursors duplicate items the caller
-// already saw). An absent cursor returns 0 (start of pagination).
 function decodeCreativeCursor(cursor: string | undefined): number | null {
-  if (!cursor) return 0;
-  try {
-    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
-    const m = /^offset:(\d+)$/.exec(decoded);
-    if (!m) return null;
-    const n = Number.parseInt(m[1], 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  } catch {
-    return null;
-  }
+  return decodeOffsetCursor('creatives', cursor);
 }
 
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
@@ -2513,11 +2538,37 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
+  const req = args as unknown as GetSignalsRequest & ToolArgs & {
+    brief?: string;
+    pagination?: { max_results?: number; cursor?: string };
+  };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
-  const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
+  // Pagination shape (pagination.max_results, schema cap 100) takes precedence
+  // over the legacy top-level `max_results` (no schema cap; this handler
+  // historically capped at 50 to keep semantic-search results focused). The two
+  // forms have different caps because they have different contracts —
+  // pagination.max_results is the standard envelope and matches the schema's
+  // documented 100 cap; top-level max_results is the predecessor and we
+  // preserve its tighter behavioral cap to avoid silently widening any caller
+  // currently relying on the 50 ceiling. Spec ambiguity on which form wins
+  // when both are present is tracked at adcontextprotocol/adcp#3113.
+  let maxResults: number;
+  const paginationMax = req.pagination?.max_results;
+  if (typeof paginationMax === 'number' && paginationMax >= 1) {
+    maxResults = Math.min(paginationMax, 100);
+  } else if (typeof req.max_results === 'number' && req.max_results >= 1) {
+    maxResults = Math.min(req.max_results, 50);
+  } else {
+    maxResults = MAX_SIGNAL_RESULTS;
+  }
+  const offset = decodeOffsetCursor('signals', req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   const allSignals = getAllSignals();
@@ -2570,8 +2621,13 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  // Cap results
-  results = results.slice(0, maxResults);
+  // Slice to the requested page after filters/sorts have settled. Iteration
+  // order is stable across calls within a session because getAllSignals()
+  // returns the static catalog and SYNONYM_MAP scoring is deterministic.
+  const totalMatching = results.length;
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  results = results.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
 
   // Build the training agent URL for deployment targets
   const agentUrl = getAgentUrl();
@@ -2634,7 +2690,21 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: { signals: SignalResponse[]; note?: string } = { signals };
+  const response: {
+    signals: SignalResponse[];
+    pagination: { has_more: boolean; total_count: number; cursor?: string };
+    note?: string;
+  } = {
+    signals,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      // Cursor MUST be present iff has_more is true — see
+      // static/schemas/source/core/pagination-response.json. universal/
+      // pagination-integrity catches stale tokens on terminal pages.
+      ...(hasMore && { cursor: encodeOffsetCursor('signals', pageEnd) }),
+    },
+  };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
@@ -3278,6 +3348,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,
+  list_accounts: handleListAccounts,
   sync_accounts: handleSyncAccounts,
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,
