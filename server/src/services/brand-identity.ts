@@ -35,24 +35,72 @@ export interface UpdateBrandIdentityInput {
   brandColor?: string | null;
   /** Domain hint used when the profile has no primary_brand_domain yet (e.g., logo URL hostname). */
   fallbackDomainHint?: string;
+  /**
+   * When the brand row is orphaned (prior owner relinquished, manifest
+   * preserved) and this caller is the new claimant: required to be set
+   * EXPLICITLY (true or false) — passing undefined throws an
+   * `orphan_manifest_decision_required` error with the prior owner's
+   * org id, so a UI can prompt the user. true = keep the prior manifest
+   * and merge new logo/color over it (acquisition / handoff case).
+   * false = clear the prior manifest and start fresh. Either way the
+   * orphan flag is cleared at write time.
+   */
+  adoptPriorManifest?: boolean;
 }
 
 export interface UpdateBrandIdentityResult {
   brandDomain: string;
   wasUpdate: boolean;
+  /** True when this call claimed a brand whose prior manifest was orphaned. */
+  claimedOrphanedBrand?: boolean;
+  /** True only when the caller chose to keep the prior manifest. */
+  keptPriorManifest?: boolean;
+}
+
+export type BrandIdentityErrorCode =
+  | 'invalid_input'                       // 400-class: bad logo URL, invalid color, etc.
+  | 'invalid_domain'                      // 400-class: domain canonicalizes to garbage
+  | 'no_brand_domain'                     // 400-class: caller has no domain to write to
+  | 'cross_org_ownership'                 // 403-class: domain owned by a different org
+  | 'orphan_manifest_decision_required';  // 409-class: caller must opt-in to adopt or clear
+
+/** Per-code meta payload shapes. Add a new code by extending this map. */
+export interface BrandIdentityErrorMetaByCode {
+  invalid_input: undefined;
+  invalid_domain: { canonicalDomain: string };
+  no_brand_domain: undefined;
+  cross_org_ownership: { brandDomain: string; currentOwnerOrgId: string };
+  orphan_manifest_decision_required: { brandDomain: string; priorOwnerOrgId: string | null };
 }
 
 export class BrandIdentityError extends Error {
-  constructor(public statusCode: number, message: string) {
+  constructor(
+    public readonly statusCode: number,
+    message: string,
+    public readonly code: BrandIdentityErrorCode = 'invalid_input',
+    public readonly meta?: BrandIdentityErrorMetaByCode[BrandIdentityErrorCode],
+  ) {
     super(message);
     this.name = 'BrandIdentityError';
+  }
+
+  /**
+   * Type guard that narrows both the discriminator and the meta payload —
+   * use this in catch sites instead of comparing `err.code` directly so
+   * callers get `err.meta.brandDomain` typed as string instead of unknown.
+   */
+  isCrossOrgOwnership(): this is BrandIdentityError & {
+    code: 'cross_org_ownership';
+    meta: BrandIdentityErrorMetaByCode['cross_org_ownership'];
+  } {
+    return this.code === 'cross_org_ownership';
   }
 }
 
 export async function updateBrandIdentity(
   input: UpdateBrandIdentityInput,
 ): Promise<UpdateBrandIdentityResult> {
-  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint } = input;
+  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint, adoptPriorManifest } = input;
 
   if (logoUrl === undefined && brandColor === undefined) {
     throw new BrandIdentityError(400, 'Provide at least one of logo_url or brand_color.');
@@ -82,37 +130,84 @@ export async function updateBrandIdentity(
     brandDomain = fallbackDomainHint;
   }
   if (!brandDomain) {
-    throw new BrandIdentityError(400, 'No brand domain set. Add your website to your profile first.');
+    throw new BrandIdentityError(400, 'No brand domain set. Add your website to your profile first.', 'no_brand_domain');
   }
   brandDomain = canonicalizeBrandDomain(brandDomain);
   try {
     assertValidBrandDomain(brandDomain);
   } catch (err) {
-    throw new BrandIdentityError(400, err instanceof Error ? err.message : 'Invalid brand domain.');
+    throw new BrandIdentityError(
+      400,
+      err instanceof Error ? err.message : 'Invalid brand domain.',
+      'invalid_domain',
+      { canonicalDomain: brandDomain },
+    );
   }
 
   const pool = getPool();
   const client = await pool.connect();
   let wasUpdate = false;
+  let claimedOrphanedBrand = false;
+  let keptPriorManifest = false;
   try {
     await client.query('BEGIN');
 
-    const existingResult = await client.query<{ id: string; workos_organization_id: string | null; brand_json: Record<string, unknown> }>(
-      'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
+    const existingResult = await client.query<{
+      id: string;
+      workos_organization_id: string | null;
+      brand_json: Record<string, unknown>;
+      manifest_orphaned: boolean | null;
+      prior_owner_org_id: string | null;
+    }>(
+      `SELECT id, workos_organization_id, brand_manifest AS brand_json, manifest_orphaned, prior_owner_org_id
+       FROM brands WHERE domain = $1 FOR UPDATE`,
       [brandDomain]
     );
     const existing = existingResult.rows[0] ?? null;
     wasUpdate = !!existing;
 
-    // Ownership boundary: don't let one org overwrite another's brand
+    // Ownership boundary: don't let one org overwrite another's brand. Callers
+    // can convert this into a brand-ownership escalation rather than a hard 403.
     if (existing && existing.workos_organization_id && existing.workos_organization_id !== workosOrganizationId) {
-      throw new BrandIdentityError(403, 'This brand domain is managed by another organization.');
+      throw new BrandIdentityError(
+        403,
+        'This brand domain is managed by another organization.',
+        'cross_org_ownership',
+        { brandDomain, currentOwnerOrgId: existing.workos_organization_id },
+      );
     }
 
     if (existing) {
-      const bj = applyToBrandJson(existing.brand_json ?? {}, displayName, logoUrl, brandColor);
+      // Orphan-adoption decision must be EXPLICIT — a silent default would
+      // either nuke the prior manifest (losing a legitimate handoff) or
+      // inherit it (silent identity adoption). Force the caller to choose.
+      // The 409 response includes priorOwnerOrgId so a UI can prompt.
+      if (existing.manifest_orphaned && adoptPriorManifest === undefined) {
+        throw new BrandIdentityError(
+          409,
+          'This brand was previously registered by another organization. Choose whether to adopt the prior brand identity (logos, colors, agents) or start fresh before continuing.',
+          'orphan_manifest_decision_required',
+          { brandDomain, priorOwnerOrgId: existing.prior_owner_org_id ?? null },
+        );
+      }
+
+      claimedOrphanedBrand = !!existing.manifest_orphaned;
+      keptPriorManifest = claimedOrphanedBrand && adoptPriorManifest === true;
+      const startingManifest = claimedOrphanedBrand && !keptPriorManifest
+        ? {}
+        : (existing.brand_json ?? {});
+
+      const bj = applyToBrandJson(startingManifest, displayName, logoUrl, brandColor);
       await client.query(
-        'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
+        `UPDATE brands SET
+           brand_manifest = $1,
+           workos_organization_id = COALESCE(workos_organization_id, $3),
+           has_brand_manifest = TRUE,
+           is_public = TRUE,
+           manifest_orphaned = FALSE,
+           prior_owner_org_id = NULL,
+           updated_at = NOW()
+         WHERE id = $2`,
         [JSON.stringify(bj), existing.id, workosOrganizationId]
       );
     } else {
@@ -147,8 +242,8 @@ export async function updateBrandIdentity(
     client.release();
   }
 
-  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
-  return { brandDomain, wasUpdate };
+  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, claimedOrphanedBrand, keptPriorManifest, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
+  return { brandDomain, wasUpdate, claimedOrphanedBrand, keptPriorManifest };
 }
 
 

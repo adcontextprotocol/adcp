@@ -164,7 +164,9 @@ export interface ListBrandsOptions {
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
   domain AS brand_domain, brand_manifest AS brand_json,
-  domain_verified, verification_token, is_public, created_at, updated_at`;
+  domain_verified, verification_token, is_public,
+  manifest_orphaned, prior_owner_org_id,
+  created_at, updated_at`;
 
 /**
  * Database operations for brands
@@ -294,15 +296,71 @@ export class BrandDatabase {
   }
 
   /**
-   * Delete a hosted brand
+   * Relinquish a hosted brand back to the discovered/community pool.
+   *
+   * Marks the manifest orphaned and stashes the prior owner's org id so a
+   * legitimate handoff (acquisition, org rename) can adopt the prior visual
+   * identity at claim time. The manifest itself is preserved but hidden from
+   * public surfaces via is_public=false until the next claimant decides
+   * whether to adopt or start fresh — see updateBrandIdentity's
+   * `adoptPriorManifest` flag. Without this, a hard reset would close the
+   * spoofing hole at the cost of legitimate-handoff UX; orphan-flag closes
+   * the hole AND preserves provenance.
    */
   async deleteHostedBrand(id: string): Promise<boolean> {
-    // Clear ownership fields rather than deleting the brand entirely
     const result = await query(
-      'UPDATE brands SET workos_organization_id = NULL, created_by_user_id = NULL, created_by_email = NULL, domain_verified = FALSE, verification_token = NULL, updated_at = NOW() WHERE id = $1',
+      `UPDATE brands SET
+         prior_owner_org_id = workos_organization_id,
+         workos_organization_id = NULL,
+         created_by_user_id = NULL,
+         created_by_email = NULL,
+         domain_verified = FALSE,
+         verification_token = NULL,
+         manifest_orphaned = TRUE,
+         is_public = FALSE,
+         updated_at = NOW()
+       WHERE id = $1`,
       [id]
     );
     return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  /**
+   * Claim an orphaned hosted brand at verification time.
+   *
+   * Atomically asserts ownership, marks verified, and resets the orphan
+   * state. Default = clear the prior manifest so the new owner doesn't
+   * silently inherit the prior org's visual identity. Pass
+   * `adoptPriorManifest: true` only when the caller has confirmed the
+   * legitimate-handoff case.
+   *
+   * Used by the verify-by-pointer route — without this, claiming an
+   * orphaned brand would leave the prior manifest attributed to the new
+   * owner, reopening the spoofing hole.
+   */
+  async claimOrphanedHostedBrand(
+    id: string,
+    workosOrganizationId: string,
+    options: { adoptPriorManifest?: boolean } = {},
+  ): Promise<HostedBrand | null> {
+    const adopt = options.adoptPriorManifest === true;
+    const manifestSet = adopt ? 'brand_manifest' : `'{}'::jsonb`;
+    const hasManifestSet = adopt ? 'has_brand_manifest' : 'FALSE';
+    const result = await query<HostedBrand>(
+      `UPDATE brands SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         brand_manifest = ${manifestSet},
+         has_brand_manifest = ${hasManifestSet},
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [id, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
   }
 
   /**

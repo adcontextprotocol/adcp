@@ -31,6 +31,11 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
     const brand = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!brand) return { error: 'Brand not found', status: 404 };
     if (brand.source_type === 'brand_json') return { error: 'Cannot edit self-hosted brand', status: 409 };
+    // Orphaned brands are awaiting adoption — feed/property edits during this
+    // window would write into the prior owner's manifest fields. Force the
+    // caller through updateBrandIdentity (which atomically clears or adopts
+    // the orphan state) before allowing further edits.
+    if (brand.manifest_orphaned) return { error: 'This brand is awaiting adoption — claim it through the brand identity flow first', status: 409 };
 
     // Verify the user's org owns this brand (via primary_brand_domain or organization_domains)
     const userOrg = await query<{ primary_organization_id: string | null }>(

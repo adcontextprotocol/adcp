@@ -2370,7 +2370,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
       if (!resolved) {
         const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-        if (discovered) {
+        // Hide orphaned manifests and explicitly non-public rows. The manifest
+        // is preserved server-side for adoption-at-claim-time but must not
+        // surface on public read paths until the next claim is applied.
+        if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
@@ -2547,7 +2550,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             }
 
             const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-            if (discovered) {
+            // Hide orphaned manifests and explicitly non-public rows; same
+            // rationale as the single-resolve route above.
+            if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
