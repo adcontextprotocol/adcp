@@ -1576,6 +1576,35 @@ For logo changes, use update_member_logo instead.`,
       required: ['domain', 'logo_id', 'action'],
     },
   },
+
+  // ============================================
+  // BRAND REGISTRY TOOLS
+  // ============================================
+  {
+    name: 'transfer_brand_ownership',
+    description: `Transfer ownership of a brand domain from one organization to another. Records a revision for audit. Use after out-of-band verification (acquisition docs, support ticket, legal correspondence) confirms the new org should own the domain.
+
+Do not use to resolve unverified disputes — use the escalation queue for those. This is for confirmed transfers only.`,
+    usage_hints: 'Get new_org_id from get_account. Pair with resolve_escalation to close the related support ticket after transfer.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain to transfer (e.g., "nova-brands.com")',
+        },
+        new_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the new owner (e.g., "org_01HW...")',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for the transfer, recorded in the audit trail (e.g., "Acquisition by Pinnacle Agency — see ticket #4821")',
+        },
+      },
+      required: ['domain', 'new_org_id', 'reason'],
+    },
+  },
 ];
 
 /**
@@ -8487,6 +8516,48 @@ Use add_committee_leader to assign a leader.`;
       if (error instanceof ToolError) throw error;
       logger.error({ error, logoId, domain, action }, 'Error reviewing brand logo');
       throw new ToolError(`Failed to ${action} logo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // ============================================
+  // BRAND REGISTRY HANDLERS
+  // ============================================
+
+  handlers.set('transfer_brand_ownership', async (input) => {
+    const rawDomain = input.domain as string;
+    const newOrgId = input.new_org_id as string;
+    const reason = input.reason as string;
+
+    if (!rawDomain) throw new ToolError('domain is required');
+    if (!newOrgId) throw new ToolError('new_org_id is required');
+    if (!reason || reason.length < 20) throw new ToolError('reason must be descriptive (at least 20 characters)');
+
+    const domain = canonicalizeBrandDomain(rawDomain);
+    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+    const adminEmail = memberContext?.workos_user?.email;
+    const adminName = memberContext?.workos_user?.first_name;
+
+    try {
+      const result = await brandDbForLogos.transferBrandOwnership(domain, newOrgId, reason, {
+        userId: adminUserId,
+        email: adminEmail,
+        name: adminName,
+      });
+
+      logger.info({ domain, oldOrgId: result.oldOrgId, newOrgId, adminUserId }, 'Addie: brand ownership transferred');
+
+      return JSON.stringify({
+        success: true,
+        domain,
+        old_org_id: result.oldOrgId ?? null,
+        new_org_id: newOrgId,
+        revision_number: result.revisionNumber,
+        reason,
+      }, null, 2);
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      logger.error({ error, domain, newOrgId }, 'Error transferring brand ownership');
+      throw new ToolError(`Failed to transfer ownership: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
