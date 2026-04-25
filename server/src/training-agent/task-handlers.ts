@@ -2034,6 +2034,22 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives = getComplianceCreatives();
   }
 
+  const totalMatching = creatives.length;
+  // Schema declares max_results min=1, max=100, default=50. Honor the cap;
+  // do not silently lift sub-1 values — those should surface as schema
+  // violations through the SDK's request validator, not be quietly corrected.
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageCreatives = creatives.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
   // Ad-server-capable sellers (creative.has_creative_library) quote per-
   // creative pricing whenever an account is present, independent of the
   // buyer setting include_pricing. Explicit `include_pricing: false` still
@@ -2047,14 +2063,19 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   return {
     query_summary: {
-      total_matching: creatives.length,
-      returned: creatives.length,
+      total_matching: totalMatching,
+      returned: pageCreatives.length,
     },
     pagination: {
-      has_more: false,
-      total_count: creatives.length,
+      has_more: hasMore,
+      total_count: totalMatching,
+      // Cursor MUST be present iff has_more is true — see
+      // static/schemas/source/core/pagination-response.json. Carrying a stale
+      // cursor on a terminal page invites callers to follow it past the end
+      // (caught by universal/pagination-integrity.yaml).
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
-    creatives: creatives.map(c => {
+    creatives: pageCreatives.map(c => {
       // Schema requires creatives[].name and creatives[].format_id.agent_url.
       // sync_creatives accepts payloads missing either (buyer may omit name,
       // SDK request builders occasionally drop agent_url), so stamp defaults
@@ -2082,6 +2103,31 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       return base;
     }),
   };
+}
+
+// Opaque offset-encoded cursor for in-memory list_creatives pagination.
+// Real backends would carry stable resource keys; an offset is sufficient
+// for the training agent because creatives.values() iterates in stable
+// insertion order. base64url keeps the token URL-safe and visibly opaque.
+function encodeCreativeCursor(offset: number): string {
+  return Buffer.from(`offset:${offset}`).toString('base64url');
+}
+
+// Returns null when the cursor is present but malformed. The caller MUST
+// surface INVALID_REQUEST in that case — silently restarting from offset 0
+// would teach a sloppy pattern (corrupt cursors duplicate items the caller
+// already saw). An absent cursor returns 0 (start of pagination).
+function decodeCreativeCursor(cursor: string | undefined): number | null {
+  if (!cursor) return 0;
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const m = /^offset:(\d+)$/.exec(decoded);
+    if (!m) return null;
+    const n = Number.parseInt(m[1], 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
