@@ -169,6 +169,10 @@ describe('comply_test_controller', () => {
         'force_session_status',
         'simulate_delivery',
         'simulate_budget_spend',
+        // Local scenarios appended by the training-agent wrapper while the SDK's
+        // CONTROLLER_SCENARIOS enum catches up. See LOCAL_SCENARIOS in
+        // server/src/training-agent/comply-test-controller.ts.
+        'force_create_media_buy_arm',
       ]);
     });
   });
