@@ -929,9 +929,9 @@
               <div style="font-weight: var(--font-semibold); color: var(--color-warning-800, #92400e); margin-bottom: var(--space-2);">This domain was previously registered</div>
               <p id="orphan-decision-body" style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-4);"></p>
               <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
-                <button type="button" id="orphan-adopt-btn" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Adopt prior identity</button>
-                <button type="button" id="orphan-fresh-btn" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Start fresh</button>
-                <button type="button" id="orphan-cancel-btn" style="padding: var(--space-2) var(--space-5); background: transparent; color: var(--color-text-muted); border: none; font-size: var(--text-sm); cursor: pointer;">Cancel</button>
+                <button type="button" onclick="resolveOrphanDecision(true)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Adopt prior identity</button>
+                <button type="button" onclick="resolveOrphanDecision(false)" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Start fresh</button>
+                <button type="button" onclick="hideOrphanDecisionPrompt()" style="padding: var(--space-2) var(--space-5); background: transparent; color: var(--color-text-muted); border: none; font-size: var(--text-sm); cursor: pointer;">Cancel</button>
               </div>
             </div>
 
@@ -1744,12 +1744,13 @@
       var prompt = document.getElementById('orphan-decision-prompt');
       var body = document.getElementById('orphan-decision-body');
       var domain = conflictData.brand_domain || 'this domain';
-      var priorOrg = conflictData.prior_owner_org_id
-        ? ' by another organization (' + escapeHtml(conflictData.prior_owner_org_id) + ')'
-        : '';
+      // Don't surface prior_owner_org_id in user-facing text — the response
+      // includes it for support-ticket diagnostics and tooling, but a member
+      // who has never seen that org id has no way to act on it. Generic copy
+      // also avoids accidentally signaling acquisitions to a screenshotted
+      // prompt.
       body.innerHTML =
-        '<strong>' + escapeHtml(domain) + '</strong> was previously registered' + priorOrg +
-        '. Do you want to adopt the prior brand identity (logos, colors, agents) as your starting point — for example after an acquisition or rename — or start with a clean slate?';
+        '<strong>' + escapeHtml(domain) + '</strong> was previously registered by another organization. Do you want to adopt the prior brand identity (logos, colors, agents) as your starting point — for example after an acquisition or rename — or start with a clean slate?';
       prompt.style.display = 'block';
     }
 
@@ -1768,15 +1769,6 @@
       hideOrphanDecisionPrompt();
       saveBrandIdentity(ctx.isNew, { adoptPriorManifest: adopt });
     }
-
-    document.addEventListener('DOMContentLoaded', function() {
-      var adoptBtn = document.getElementById('orphan-adopt-btn');
-      var freshBtn = document.getElementById('orphan-fresh-btn');
-      var cancelBtn = document.getElementById('orphan-cancel-btn');
-      if (adoptBtn) adoptBtn.addEventListener('click', function() { resolveOrphanDecision(true); });
-      if (freshBtn) freshBtn.addEventListener('click', function() { resolveOrphanDecision(false); });
-      if (cancelBtn) cancelBtn.addEventListener('click', hideOrphanDecisionPrompt);
-    });
 
     async function loadCredentials() {
       try {
