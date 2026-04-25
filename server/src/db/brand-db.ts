@@ -1,4 +1,5 @@
 import { query, getClient } from './client.js';
+import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
 import type {
   HostedBrand,
   DiscoveredBrand,
@@ -1037,6 +1038,87 @@ export class BrandDatabase {
       [domain.toLowerCase()]
     );
     return parseInt(result.rows[0].count, 10);
+  }
+
+  // ========== Ownership Transfer ==========
+
+  /**
+   * Transfer brand domain ownership to a new org, writing a revision for audit.
+   * Out-of-band verification (legal docs, support ticket) must happen before calling.
+   * Rejects unowned brands — there's nothing to transfer; use the normal
+   * registration path to claim them.
+   */
+  async transferBrandOwnership(
+    domain: string,
+    newOrgId: string,
+    reason: string,
+    editor: { userId: string; email?: string; name?: string },
+  ): Promise<{ oldOrgId: string; revisionNumber: number }> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      const lockResult = await client.query(
+        'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
+        [canonicalDomain]
+      );
+      if (lockResult.rows.length === 0) {
+        throw new Error(`Brand not found: ${canonicalDomain}`);
+      }
+
+      const current = lockResult.rows[0];
+      const oldOrgId = current.workos_organization_id ?? null;
+      if (!oldOrgId) {
+        throw new Error(`Brand ${canonicalDomain} has no current owner — there is nothing to transfer. Have the new org claim it through the normal registration path instead.`);
+      }
+      if (oldOrgId === newOrgId) {
+        throw new Error(`Brand ${canonicalDomain} is already owned by ${newOrgId}.`);
+      }
+
+      const orgCheck = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM organizations WHERE workos_organization_id = $1) AS exists`,
+        [newOrgId]
+      );
+      if (!orgCheck.rows[0]?.exists) {
+        throw new Error(`new_org_id ${newOrgId} does not exist in the organizations table.`);
+      }
+
+      const revResult = await client.query<{ next_rev: number }>(
+        'SELECT COALESCE(MAX(revision_number), 0) + 1 AS next_rev FROM brand_revisions WHERE brand_domain = $1',
+        [canonicalDomain]
+      );
+      const revisionNumber = revResult.rows[0].next_rev;
+
+      await client.query(
+        `INSERT INTO brand_revisions (
+          brand_domain, revision_number, snapshot,
+          editor_user_id, editor_email, editor_name, edit_summary
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          canonicalDomain,
+          revisionNumber,
+          JSON.stringify(current),
+          editor.userId,
+          editor.email ?? null,
+          editor.name ?? null,
+          `Ownership transferred to ${newOrgId}: ${reason}`,
+        ]
+      );
+
+      await client.query(
+        'UPDATE brands SET workos_organization_id = $1, updated_at = NOW() WHERE domain = $2',
+        [newOrgId, canonicalDomain]
+      );
+
+      await client.query('COMMIT');
+      return { oldOrgId, revisionNumber };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // ========== Helpers ==========

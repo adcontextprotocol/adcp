@@ -362,6 +362,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'review_brand_logo',
       'update_member_logo',
       'update_member_profile',
+      'transfer_brand_ownership',
     ],
     adminOnly: true,
   },
