@@ -4,6 +4,10 @@
   "title": "AdCP Specialism",
   "description": "Specialized capability claims an agent can make. Each specialism maps to a compliance storyboard bundle published at /compliance/{version}/specialisms/{id}/. An agent asserts specialisms it supports in get_adcp_capabilities; the AAO compliance runner executes the matching storyboards to verify the claim.",
   "type": "string",
+  "x-deprecated-enum-values": [
+    "signed-requests"
+  ],
+  "x-deprecated-enum-values-doc": "Enum values listed here are retained for backward compatibility but their corresponding storyboard has been relocated or removed. Build-time parity checks (scripts/build-compliance.cjs verifyEnumParity) skip filesystem-backing enforcement for these values. Targeted for removal in a future major version.",
   "enum": [
     "audience-sync",
     "brand-rights",
@@ -46,6 +50,6 @@
     "sales-social": "Social media advertising platform with self-service flows",
     "signal-marketplace": "Marketplace signal agent reselling third-party data",
     "signal-owned": "Owned signal agent exposing first-party segments",
-    "signed-requests": "Agent verifies RFC 9421 transport-layer request signatures per the AdCP request-signing profile. Graded by exercising 29 conformance vectors (21 negative + 8 positive) against the agent's live verifier."
+    "signed-requests": "DEPRECATED in 3.1 — reclassified to /compliance/{version}/universal/signed-requests.yaml. Advertise request_signing.supported: true in get_adcp_capabilities; this enum value is retained until 4.0 for backward compat but is no longer needed. See https://github.com/adcontextprotocol/adcp/issues/3075 (reclassification) and https://github.com/adcontextprotocol/adcp/issues/3078 (4.0 enum removal)."
   }
 }

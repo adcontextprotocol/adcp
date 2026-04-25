@@ -278,7 +278,7 @@ skip_result:
       A test-kit harness contract (e.g., signed-requests-runner) is not in
       scope for this grading run. detail MUST cite the contract key. Per
       the signed-requests-runner contract, unsatisfied contracts grade as
-      FAIL, not SKIP, for the specialisms that declare them — this reason
+      FAIL, not SKIP, for the storyboards that declare them — this reason
       applies only where the contract explicitly permits SKIP.
     peer_branch_taken: |
       The step is part of an `any_of` branch set (see storyboard-schema.yaml

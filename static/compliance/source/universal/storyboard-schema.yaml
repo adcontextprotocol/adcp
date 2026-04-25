@@ -144,7 +144,8 @@
 #   Runner contract — carries a harness coordination contract. Declares:
 #     id                 string (short identifier)
 #     applies_to         object or list (which storyboards/specialisms consume
-#                        this contract, e.g., `{ specialism: signed-requests }`)
+#                        this contract, e.g., `{ universal_storyboard: signed-requests }`
+#                        or `{ specialism: sales-catalog-driven }`)
 #     + contract-specific fields describing how the runner should pre-configure
 #       the agent under test (e.g., `receiver_urls:`, `retry_replay_contract:`
 #       for webhook-receiver-runner; `endpoint_modes:` for signed-requests)
@@ -176,7 +177,7 @@
 # substitution_observer_runner`.
 #
 # Storyboards that test pure harness infrastructure without a specific brand
-# (e.g., `specialisms/signed-requests/index.yaml`,
+# (e.g., `universal/signed-requests.yaml`,
 # `universal/webhook-emission.yaml`) point `prerequisites.test_kit` directly
 # at the runner contract and fall back on `task_default:` when any
 # `$test_kit.operations.<name>` reference resolves to null (see Step field

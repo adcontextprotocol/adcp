@@ -309,13 +309,21 @@ function verifyEnumParity(specialisms, protocols) {
   const enumSpecialisms = new Set(specialismEnum.enum);
   const enumProtocols = new Set(protocolEnum.enum);
 
+  // Enum values listed in `x-deprecated-enum-values` are retained for backward
+  // compatibility but their storyboard has been relocated or removed. The
+  // filesystem-backing requirement does not apply to them.
+  const deprecatedSpecialisms = new Set(specialismEnum['x-deprecated-enum-values'] || []);
+
   const missingFromEnum = [...fsSpecialisms].filter(x => !enumSpecialisms.has(x));
-  const missingFromFs = [...enumSpecialisms].filter(x => !fsSpecialisms.has(x));
+  const missingFromFs = [...enumSpecialisms]
+    .filter(x => !fsSpecialisms.has(x))
+    .filter(x => !deprecatedSpecialisms.has(x));
   if (missingFromEnum.length || missingFromFs.length) {
     const msg = [
       `Specialism enum drift between filesystem and specialism.json:`,
       missingFromEnum.length ? `  In filesystem but missing from enum: ${missingFromEnum.join(', ')}` : '',
-      missingFromFs.length ? `  In enum but missing from filesystem: ${missingFromFs.join(', ')}` : ''
+      missingFromFs.length ? `  In enum but missing from filesystem: ${missingFromFs.join(', ')}` : '',
+      missingFromFs.length ? `  (Add to "x-deprecated-enum-values" in specialism.json if intentionally retained for back-compat after storyboard removal.)` : ''
     ].filter(Boolean).join('\n');
     throw new Error(msg);
   }
