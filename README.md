@@ -27,7 +27,7 @@ AdCP is an open standard that enables AI agents to discover inventory, buy media
 
 ## Repository structure
 
-```
+
 adcontextprotocol/
 ├── docs/                  # Protocol documentation (Mintlify)
 │   ├── media-buy/         # Media Buy protocol
@@ -42,10 +42,15 @@ adcontextprotocol/
 │   └── public/            # Static pages (homepage, registry UI)
 ├── static/
 │   ├── schemas/           # JSON schemas
+│   │   ├── source/         # Source JSON schemas
+│   │   │   ├── governance/ # Governance JSON schemas
+│   │   │   │   ├── get-plan-audit-logs-response.json # Updated description for policies_evaluated
+│   │   │   │   └── ... 
+│   │   └── ...
 │   └── openapi/           # OpenAPI specs
 ├── tests/                 # Schema validation and integration tests
 └── scripts/               # Build and release tooling
-```
+
 
 ## Local development
 
@@ -56,61 +61,15 @@ adcontextprotocol/
 
 ### Setup
 
-```bash
+bash
 npm install
 docker compose up --build    # Starts PostgreSQL + app with auto-migrations
-```
+
 
 The server runs on port 3000. Docs run separately with `mintlify dev` on port 3333.
 
 ### Commands
 
-```bash
-npm test          # Run tests (schemas, examples, migrations)
-npm run build     # Build TypeScript
-npm run typecheck # Type check
-npm run lint      # Lint
-```
+bash
+npm test          # Run 
 
-See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
-
-## JSON schemas
-
-Schemas are available at `/schemas/latest/`:
-
-- **Registry**: `/schemas/latest/index.json`
-- **Core objects**: `/schemas/latest/core/*.json`
-- **Task schemas**: `/schemas/latest/media-buy/*.json`, `/schemas/latest/signals/*.json`
-- **Enums**: `/schemas/latest/enums/*.json`
-
-See [static/schemas/README.md](./static/schemas/README.md) for validation examples.
-
-## Governance
-
-AdCP is a project of [AgenticAdvertising.Org](https://agenticadvertising.org), a pending 501(c)(6) nonprofit trade association incorporated in Delaware. The Foundation operates with four equally-weighted voting classes (brands, agencies, publishers, technology providers) and an open Working Group that develops AdCP. Reference sell-side implementation is maintained by the [Prebid](https://www.prebid.org/) community — spec governance (AAO) and reference-implementation development (Prebid) are intentionally separate organizations.
-
-All contributions are under [Apache 2.0](./LICENSE), which includes an express patent grant from contributors. Examples in docs and test vectors use fictional brands only — see [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-- [CHARTER.md](./CHARTER.md) — Foundation structure, voting classes, Board, specification lifecycle, and conduct rules
-- [IPR_POLICY.md](./IPR_POLICY.md) — Copyright, patent grants, trademark, and contribution terms
-- [Working Groups](https://docs.adcontextprotocol.org/docs/community/working-group) — Each WG sets its own cadence; see the page for current meetings
-
-## Contributing
-
-We welcome contributions from platform providers, agencies, developers, and industry experts. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines. All contributors must agree to the [IPR Policy](./IPR_POLICY.md).
-
-## Community
-
-- [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
-- [Working Groups](https://docs.adcontextprotocol.org/docs/community/working-group) — Each WG sets its own cadence; see the page for current meetings
-
-## Links
-
-- [Protocol documentation](https://docs.adcontextprotocol.org)
-- [AgenticAdvertising.org](https://agenticadvertising.org) — Member organization
-- [Release notes](https://docs.adcontextprotocol.org/docs/reference/release-notes)
-- [Roadmap](https://docs.adcontextprotocol.org/docs/reference/roadmap)
-
-## License
-
-Licensed under [Apache 2.0](./LICENSE).
