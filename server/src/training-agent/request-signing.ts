@@ -254,7 +254,11 @@ function subtreeHasWebhookAuthentication(node: unknown, depth = 0): boolean {
 export function enforceSigningWhenWebhookAuthPresent(inner: Authenticator): Authenticator {
   const wrapped: Authenticator = async (req) => {
     if (!requestCarriesSignatureHeader(req.headers)) {
-      const raw = (req as { rawBody?: string }).rawBody;
+      // rawBody from the production http.ts verify callback; fall back to
+      // re-serialising req.body for test harnesses that omit the callback.
+      const rawBody = (req as { rawBody?: string }).rawBody;
+      const bodyForWebhookCheck = (req as { body?: unknown }).body;
+      const raw = rawBody ?? (bodyForWebhookCheck !== undefined ? JSON.stringify(bodyForWebhookCheck) : undefined);
       if (raw && bodyCarriesWebhookAuthentication(raw)) {
         throw new AuthError(
           'Signature required when push_notification_config.authentication is present.',

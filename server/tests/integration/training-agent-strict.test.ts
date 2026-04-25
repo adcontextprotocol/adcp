@@ -77,7 +77,14 @@ describe('Training Agent /mcp-strict route', () => {
 
   beforeAll(() => {
     app = express();
-    app.use(express.json());
+    // Mirror production http.ts: populate req.rawBody via the verify callback
+    // so requireTokenStrict's resolveOperation can identify the tool name and
+    // apply the required_for gate without falling back to req.body.
+    app.use(express.json({
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }));
     app.use('/api/training-agent', createTrainingAgentRouter());
   });
 
