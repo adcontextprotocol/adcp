@@ -10,6 +10,14 @@ import type Stripe from 'stripe';
 import type { WorkOS } from '@workos-inc/node';
 import type { Logger } from 'pino';
 
+/**
+ * Per-run shared cache for Stripe customers. Three Phase-1 invariants call
+ * `stripe.customers.retrieve` for the same set of orgs; this Map dedupes
+ * those calls within one /check run. Successes only — failures fall
+ * through to per-invariant warning handling.
+ */
+export type StripeCustomerCache = Map<string, Stripe.Customer | Stripe.DeletedCustomer>;
+
 export type Severity = 'critical' | 'warning' | 'info';
 
 /**
@@ -60,6 +68,12 @@ export interface InvariantContext {
   workos: WorkOS;
   logger: Logger;
   options?: InvariantOptions;
+  /**
+   * Shared per-run Stripe customer cache. The runner allocates a fresh Map
+   * per /check call so invariants that hit `customers.retrieve` for the
+   * same id only pay the API call once. Optional so tests can omit it.
+   */
+  stripeCustomerCache?: StripeCustomerCache;
 }
 
 export interface InvariantResult {

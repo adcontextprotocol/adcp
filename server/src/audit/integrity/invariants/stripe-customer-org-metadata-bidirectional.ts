@@ -7,6 +7,7 @@
  */
 import type Stripe from 'stripe';
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
+import { getStripeCustomerCached } from '../stripe-helpers.js';
 
 interface OrgRow {
   workos_organization_id: string;
@@ -23,7 +24,7 @@ export const stripeCustomerOrgMetadataBidirectionalInvariant: Invariant = {
     "downstream — exactly Triton's April 2026 mess in literal form.",
   severity: 'critical',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
-    const { pool, stripe, logger } = ctx;
+    const { pool, logger } = ctx;
     const violations: Violation[] = [];
 
     const result = await pool.query<OrgRow>(
@@ -34,7 +35,7 @@ export const stripeCustomerOrgMetadataBidirectionalInvariant: Invariant = {
 
     for (const org of result.rows) {
       try {
-        const customer = await stripe.customers.retrieve(org.stripe_customer_id);
+        const customer = await getStripeCustomerCached(ctx, org.stripe_customer_id);
         if ('deleted' in customer && customer.deleted) {
           // Treat as orphan — its own invariant handles the "deleted customer
           // still referenced" case; here we only check metadata when present.

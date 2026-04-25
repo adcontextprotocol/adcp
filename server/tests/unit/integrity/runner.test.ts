@@ -162,3 +162,56 @@ describe('runOneInvariant', () => {
     expect(report.total_violations).toBe(1);
   });
 });
+
+describe('runAllInvariants — Stripe customer cache sharing', () => {
+  it('allocates a fresh shared Stripe-customer cache for the run, visible to all invariants', async () => {
+    const seenCaches: Array<unknown> = [];
+    const ctx = makeCtx();
+    const invariants: Invariant[] = [
+      {
+        name: 'a',
+        description: 'a',
+        severity: 'info',
+        check: async (innerCtx) => {
+          seenCaches.push(innerCtx.stripeCustomerCache);
+          return { checked: 0, violations: [] };
+        },
+      },
+      {
+        name: 'b',
+        description: 'b',
+        severity: 'info',
+        check: async (innerCtx) => {
+          seenCaches.push(innerCtx.stripeCustomerCache);
+          return { checked: 0, violations: [] };
+        },
+      },
+    ];
+
+    await runAllInvariants(invariants, ctx);
+
+    expect(seenCaches[0]).toBeInstanceOf(Map);
+    expect(seenCaches[0]).toBe(seenCaches[1]); // same Map across invariants in one run
+  });
+
+  it('preserves a caller-supplied cache instead of allocating a new one', async () => {
+    const callerCache = new Map();
+    const seenCaches: Array<unknown> = [];
+    const ctx: InvariantContext = { ...makeCtx(), stripeCustomerCache: callerCache };
+    const invariants: Invariant[] = [
+      {
+        name: 'a',
+        description: 'a',
+        severity: 'info',
+        check: async (innerCtx) => {
+          seenCaches.push(innerCtx.stripeCustomerCache);
+          return { checked: 0, violations: [] };
+        },
+      },
+    ];
+
+    await runAllInvariants(invariants, ctx);
+
+    expect(seenCaches[0]).toBe(callerCache);
+  });
+});

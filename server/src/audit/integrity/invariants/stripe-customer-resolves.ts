@@ -5,12 +5,7 @@
  * otherwise produce silent webhook drops on the next subscription event.
  */
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
-
-function isStripeNotFound(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const e = err as { code?: string; statusCode?: number };
-  return e.code === 'resource_missing' || e.statusCode === 404;
-}
+import { getStripeCustomerCached, isStripeNotFound } from '../stripe-helpers.js';
 
 interface OrgRow {
   workos_organization_id: string;
@@ -26,7 +21,7 @@ export const stripeCustomerResolvesInvariant: Invariant = {
     'next subscription event for that customer.',
   severity: 'critical',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
-    const { pool, stripe, logger } = ctx;
+    const { pool, logger } = ctx;
     const violations: Violation[] = [];
 
     const result = await pool.query<OrgRow>(
@@ -37,7 +32,7 @@ export const stripeCustomerResolvesInvariant: Invariant = {
 
     for (const org of result.rows) {
       try {
-        const customer = await stripe.customers.retrieve(org.stripe_customer_id);
+        const customer = await getStripeCustomerCached(ctx, org.stripe_customer_id);
         if ('deleted' in customer && customer.deleted) {
           violations.push({
             invariant: 'stripe-customer-resolves',

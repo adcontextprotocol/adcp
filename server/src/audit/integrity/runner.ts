@@ -20,11 +20,19 @@ export async function runAllInvariants(
   const violations: Violation[] = [];
   const stats: Record<string, InvariantRunStats> = {};
 
+  // Allocate a fresh per-run Stripe customer cache so invariants that hit
+  // `customers.retrieve` for the same id only pay the API call once per run.
+  // (#1 and #3 in Phase 1 both walk the same set.) Caller can override by
+  // pre-populating ctx.stripeCustomerCache; we leave that alone.
+  const ctxWithCache: InvariantContext = ctx.stripeCustomerCache
+    ? ctx
+    : { ...ctx, stripeCustomerCache: new Map() };
+
   // Sequential by design (Phase 1): predictable Stripe/WorkOS API budget,
   // simpler reasoning, no race against per-invariant rate limits. Phase 2
   // can introduce bounded parallelism once we've measured real costs.
   for (const inv of invariants) {
-    stats[inv.name] = await runOneInvariantInto(inv, ctx, violations);
+    stats[inv.name] = await runOneInvariantInto(inv, ctxWithCache, violations);
   }
 
   const completedAt = new Date();

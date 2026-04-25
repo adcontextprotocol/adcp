@@ -8,7 +8,7 @@
  * Phase 1 surface: on-demand only. Phase 2 will add scheduled runs and a
  * persisted `integrity_runs` table for graphing drift over time.
  */
-import type { Router } from 'express';
+import type { Request, Router } from 'express';
 import type { WorkOS } from '@workos-inc/node';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
@@ -25,8 +25,50 @@ import {
 
 const logger = createLogger('admin-integrity-routes');
 
+/**
+ * Realistic upper bound on per-run sample size. Each unit costs at least one
+ * external API call; 1000 is well above any genuine run while preventing a
+ * misclick from burning rate-limit budget for the whole product.
+ */
+const MAX_SAMPLE_SIZE = 1000;
+
 interface IntegrityRoutesConfig {
   workos: WorkOS | null;
+}
+
+interface ParsedOptions {
+  options: InvariantOptions | undefined;
+  /** Set when query input was malformed; caller should 400. */
+  error?: { field: string; message: string };
+}
+
+/**
+ * Detect Stripe-key-mode vs DATABASE_URL environment mismatch. A staging app
+ * pointed at a live Stripe key (or vice versa) would surface thousands of
+ * phantom critical violations because the Stripe-side state and the AAO-side
+ * state describe entirely different worlds. Cheap heuristic: if the URL host
+ * looks like prod and the key is `sk_test_*`, refuse. Phase 2 can graduate
+ * this to a probe-and-cache. Returns null when no mismatch is detected.
+ */
+function detectEnvMismatch(): string | null {
+  const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
+  const databaseUrl = process.env.DATABASE_URL ?? '';
+  if (!stripeKey || !databaseUrl) return null;
+
+  const isLiveKey = stripeKey.startsWith('sk_live_');
+  const isTestKey = stripeKey.startsWith('sk_test_');
+  const looksProd =
+    databaseUrl.includes('agenticadvertising.org') ||
+    databaseUrl.includes('aao-prod') ||
+    /\.fly\.dev/.test(databaseUrl);
+
+  if (looksProd && isTestKey) {
+    return 'STRIPE_SECRET_KEY is sk_test_* but DATABASE_URL points at production. Refusing to run integrity checks against this mismatched configuration.';
+  }
+  if (!looksProd && isLiveKey) {
+    return 'STRIPE_SECRET_KEY is sk_live_* but DATABASE_URL does not look like production. Refusing to run integrity checks — would attribute live Stripe state against staging Postgres.';
+  }
+  return null;
 }
 
 export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesConfig): void {
@@ -43,25 +85,20 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
   });
 
   apiRouter.get('/integrity/check', requireAuth, requireAdmin, async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({
-        error: 'Stripe not configured',
-        message: 'Integrity checks require STRIPE_SECRET_KEY.',
-      });
-    }
-    if (!workos) {
-      return res.status(503).json({
-        error: 'WorkOS not configured',
-        message: 'Integrity checks require WorkOS env vars.',
-      });
+    const guard = guardPreconditions(req, workos);
+    if (guard) return res.status(guard.status).json(guard.body);
+
+    const parsed = parseOptions(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ error: 'Invalid query parameter', message: parsed.error.message });
     }
 
     const ctx: InvariantContext = {
       pool: getPool(),
-      stripe,
-      workos,
+      stripe: stripe!,
+      workos: workos!,
       logger,
-      options: parseOptions(req.query),
+      options: parsed.options,
     };
 
     try {
@@ -83,12 +120,8 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
   });
 
   apiRouter.get('/integrity/check/:name', requireAuth, requireAdmin, async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe not configured' });
-    }
-    if (!workos) {
-      return res.status(503).json({ error: 'WorkOS not configured' });
-    }
+    const guard = guardPreconditions(req, workos);
+    if (guard) return res.status(guard.status).json(guard.body);
 
     const invariant = getInvariantByName(req.params.name);
     if (!invariant) {
@@ -98,12 +131,17 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
       });
     }
 
+    const parsed = parseOptions(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ error: 'Invalid query parameter', message: parsed.error.message });
+    }
+
     const ctx: InvariantContext = {
       pool: getPool(),
-      stripe,
-      workos,
+      stripe: stripe!,
+      workos: workos!,
       logger,
-      options: parseOptions(req.query),
+      options: parsed.options,
     };
 
     try {
@@ -116,19 +154,68 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
   });
 }
 
-function parseOptions(query: Record<string, unknown>): InvariantOptions | undefined {
+function guardPreconditions(
+  _req: Request,
+  workos: WorkOS | null,
+): { status: number; body: Record<string, unknown> } | null {
+  if (!stripe) {
+    return {
+      status: 503,
+      body: {
+        error: 'Stripe not configured',
+        message: 'Integrity checks require STRIPE_SECRET_KEY.',
+      },
+    };
+  }
+  if (!workos) {
+    return {
+      status: 503,
+      body: {
+        error: 'WorkOS not configured',
+        message: 'Integrity checks require WORKOS_API_KEY and WORKOS_CLIENT_ID.',
+      },
+    };
+  }
+  const mismatch = detectEnvMismatch();
+  if (mismatch) {
+    return {
+      status: 412,
+      body: {
+        error: 'Environment mismatch',
+        message: mismatch,
+      },
+    };
+  }
+  return null;
+}
+
+function parseOptions(query: Record<string, unknown>): ParsedOptions {
   const opts: InvariantOptions = {};
-  if (typeof query.sample_size === 'string') {
+
+  if (query.sample_size !== undefined) {
+    if (typeof query.sample_size !== 'string') {
+      return { options: undefined, error: { field: 'sample_size', message: 'sample_size must be a string integer' } };
+    }
     const n = Number.parseInt(query.sample_size, 10);
-    if (Number.isFinite(n) && n > 0 && n <= 10_000) {
-      opts.sampleSize = n;
+    if (!Number.isFinite(n) || n <= 0 || String(n) !== query.sample_size.trim()) {
+      return { options: undefined, error: { field: 'sample_size', message: `sample_size must be a positive integer (got "${query.sample_size}")` } };
     }
+    if (n > MAX_SAMPLE_SIZE) {
+      return { options: undefined, error: { field: 'sample_size', message: `sample_size cannot exceed ${MAX_SAMPLE_SIZE}` } };
+    }
+    opts.sampleSize = n;
   }
-  if (typeof query.since === 'string') {
+
+  if (query.since !== undefined) {
+    if (typeof query.since !== 'string') {
+      return { options: undefined, error: { field: 'since', message: 'since must be an ISO 8601 date string' } };
+    }
     const d = new Date(query.since);
-    if (!Number.isNaN(d.getTime())) {
-      opts.sinceUpdated = d;
+    if (Number.isNaN(d.getTime())) {
+      return { options: undefined, error: { field: 'since', message: `since is not a valid ISO 8601 date (got "${query.since}")` } };
     }
+    opts.sinceUpdated = d;
   }
-  return Object.keys(opts).length > 0 ? opts : undefined;
+
+  return { options: Object.keys(opts).length > 0 ? opts : undefined };
 }

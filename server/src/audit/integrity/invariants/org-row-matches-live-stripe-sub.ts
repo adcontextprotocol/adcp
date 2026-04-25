@@ -8,12 +8,7 @@
  * (webhook in flight) and we don't want to page on every brief skew.
  */
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
-
-function isStripeNotFound(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const e = err as { code?: string; statusCode?: number };
-  return e.code === 'resource_missing' || e.statusCode === 404;
-}
+import { isStripeNotFound } from '../stripe-helpers.js';
 
 const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
