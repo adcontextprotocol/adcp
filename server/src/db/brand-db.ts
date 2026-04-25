@@ -439,6 +439,111 @@ export class BrandDatabase {
   }
 
   /**
+   * Issue a domain-claim challenge for an org. Generates a fresh token,
+   * stamps the issuing org id, and sets a 7-day expiry. Creates the brand
+   * row if it doesn't exist. Subsequent issues for the same domain
+   * overwrite — at most one outstanding challenge per domain.
+   */
+  async issueBrandClaimChallenge(
+    domain: string,
+    orgId: string,
+    ttlMs = 7 * 24 * 60 * 60 * 1000,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const token = `adcp-claim-${crypto.randomUUID()}`;
+    const expiresAt = new Date(Date.now() + ttlMs);
+
+    // Upsert: if the brand row doesn't exist (no one's ever interacted with
+    // this domain), insert a stub. Otherwise stamp the new challenge over
+    // any prior token. Note the row stays unowned until the challenge is
+    // actually verified — issuing alone doesn't grant ownership.
+    await query(
+      `INSERT INTO brands (
+         domain, source_type, review_status, is_public, has_brand_manifest,
+         verification_token, verification_token_org_id, verification_token_expires_at
+       )
+       VALUES ($1, 'community', 'approved', FALSE, FALSE, $2, $3, $4)
+       ON CONFLICT (domain) DO UPDATE SET
+         verification_token = EXCLUDED.verification_token,
+         verification_token_org_id = EXCLUDED.verification_token_org_id,
+         verification_token_expires_at = EXCLUDED.verification_token_expires_at,
+         updated_at = NOW()`,
+      [canonicalDomain, token, orgId, expiresAt]
+    );
+
+    return { token, expiresAt };
+  }
+
+  /**
+   * Read the current claim challenge for a domain, if any. Used by the
+   * verify endpoint to know what token to fetch and which org owns it.
+   */
+  async getBrandClaimChallenge(domain: string): Promise<{
+    token: string;
+    orgId: string;
+    expiresAt: Date;
+    expired: boolean;
+  } | null> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const result = await query<{
+      verification_token: string | null;
+      verification_token_org_id: string | null;
+      verification_token_expires_at: Date | null;
+    }>(
+      `SELECT verification_token, verification_token_org_id, verification_token_expires_at
+       FROM brands WHERE domain = $1`,
+      [canonicalDomain]
+    );
+    const row = result.rows[0];
+    if (!row?.verification_token || !row.verification_token_org_id || !row.verification_token_expires_at) {
+      return null;
+    }
+    return {
+      token: row.verification_token,
+      orgId: row.verification_token_org_id,
+      expiresAt: row.verification_token_expires_at,
+      expired: row.verification_token_expires_at.getTime() <= Date.now(),
+    };
+  }
+
+  /**
+   * Atomically apply a successful claim challenge: assert ownership, mark
+   * verified, clear the orphan flag if set, and clear the challenge token.
+   * Use only after the challenge has been independently verified
+   * (file-placement match) AND the cross-org / orphan rules allow the
+   * transfer. The route handler does that gating; this method just
+   * commits the result.
+   */
+  async applyVerifiedBrandClaim(
+    domain: string,
+    workosOrganizationId: string,
+    options: { adoptPriorManifest?: boolean } = {},
+  ): Promise<HostedBrand | null> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const adopt = options.adoptPriorManifest === true;
+    const manifestSet = adopt ? 'brand_manifest' : `'{}'::jsonb`;
+    const hasManifestSet = adopt ? 'has_brand_manifest' : 'FALSE';
+    const result = await query<HostedBrand>(
+      `UPDATE brands SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         brand_manifest = ${manifestSet},
+         has_brand_manifest = ${hasManifestSet},
+         verification_token = NULL,
+         verification_token_org_id = NULL,
+         verification_token_expires_at = NULL,
+         updated_at = NOW()
+       WHERE domain = $1
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [canonicalDomain, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
+  }
+
+  /**
    * List all hosted brand domains (used by crawler for brand.json scanning).
    */
   async listAllHostedBrandDomains(): Promise<string[]> {

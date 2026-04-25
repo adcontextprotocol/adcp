@@ -26,8 +26,9 @@ import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
-import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
+import { canonicalizeBrandDomain, assertValidBrandDomain } from "../services/identifier-normalization.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
+import { fetchAndMatchClaimToken, placementUrlFor } from "../services/brand-claim-challenge.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
@@ -1181,6 +1182,133 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
+  // POST /api/me/member-profile/brand-claim/issue — issue a file-placement
+  // domain ownership challenge (#3176). Returns the token + the URL where it
+  // must be published; the caller publishes the file and then calls /verify.
+  router.post('/brand-claim/issue', requireAuth, async (req, res) => {
+    try {
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) {
+        return res.status(400).json({ error: 'No organization associated with this account' });
+      }
+
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      if (!rawDomain) return res.status(400).json({ error: 'domain is required' });
+      const domain = canonicalizeBrandDomain(rawDomain);
+      try {
+        assertValidBrandDomain(domain);
+      } catch (err) {
+        return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid brand domain' });
+      }
+
+      const { token, expiresAt } = await brandDb.issueBrandClaimChallenge(domain, orgId);
+      return res.json({
+        domain,
+        token,
+        placement_url: placementUrlFor(domain, token),
+        expires_at: expiresAt.toISOString(),
+        instructions: `Publish the token (just the token text, no quotes or whitespace) at the placement_url, then call POST /api/me/member-profile/brand-claim/verify. Token expires in 7 days.`,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to issue brand claim challenge');
+      return res.status(500).json({ error: 'Failed to issue brand claim challenge' });
+    }
+  });
+
+  // POST /api/me/member-profile/brand-claim/verify — fetch the placement URL,
+  // confirm the body matches the issued token, and (when the cross-org / orphan
+  // rules allow) atomically claim ownership.
+  router.post('/brand-claim/verify', requireAuth, async (req, res) => {
+    try {
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) {
+        return res.status(400).json({ error: 'No organization associated with this account' });
+      }
+
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      if (!rawDomain) return res.status(400).json({ error: 'domain is required' });
+      const domain = canonicalizeBrandDomain(rawDomain);
+
+      const challenge = await brandDb.getBrandClaimChallenge(domain);
+      if (!challenge) {
+        return res.status(404).json({ error: 'No outstanding claim challenge for this domain. Call /brand-claim/issue first.' });
+      }
+      if (challenge.orgId !== orgId) {
+        // Don't reveal that another org is claiming this domain — same shape
+        // as a missing challenge. The actual claim conflict surfaces only if
+        // both verify successfully and we land in the cross-org branch below.
+        return res.status(404).json({ error: 'No outstanding claim challenge for this domain.' });
+      }
+      if (challenge.expired) {
+        return res.status(410).json({ error: 'Claim challenge expired. Call /brand-claim/issue to issue a new one.' });
+      }
+
+      const fetchResult = await fetchAndMatchClaimToken(domain, challenge.token);
+      if (!fetchResult.ok) {
+        return res.status(400).json({ error: 'Claim challenge verification failed', message: fetchResult.reason });
+      }
+
+      // Re-read the brand row to apply ownership rules atomically with the
+      // verified-claim conclusion. Verified > unverified — if there's a
+      // current owner that isn't us AND they're verified, we don't transfer;
+      // we file an escalation so an admin can adjudicate. Otherwise the
+      // claim is applied (claim, transfer-from-unverified, or claim-of-orphan).
+      const hosted = await brandDb.getHostedBrandByDomain(domain);
+      if (hosted && hosted.workos_organization_id && hosted.workos_organization_id !== orgId && hosted.domain_verified) {
+        // Both parties have proven control. Don't auto-resolve; route to humans.
+        const callerName = [req.user!.firstName, req.user!.lastName].filter(Boolean).join(' ') || req.user!.email;
+        const incumbentOrg = await orgDb.getOrganization(hosted.workos_organization_id).catch(() => null);
+        const incumbentName = incumbentOrg?.name ?? hosted.workos_organization_id;
+        const escalation = await createEscalation({
+          workos_user_id: req.user!.id,
+          user_email: req.user!.email,
+          user_display_name: callerName,
+          category: 'sensitive_topic',
+          priority: 'normal',
+          summary: `Verified domain claim conflict: ${domain} — ${incumbentName} (incumbent) vs ${callerName}'s org`,
+          original_request: `${callerName} passed file-placement domain verification for ${domain}, but ${incumbentName} also has verified ownership.`,
+          addie_context: `Both parties have proven control of ${domain} via the file-placement challenge. Incumbent: ${hosted.workos_organization_id} (${incumbentName}). Claimant: ${orgId}. Resolve via transfer_brand_ownership after confirming the legitimate next owner out of band.`,
+        }).catch(escalErr => {
+          logger.error({ err: escalErr, domain }, 'Failed to file verified-claim escalation');
+          return null;
+        });
+        return res.status(409).json({
+          error: 'Verified incumbent — claim filed for review',
+          message: 'Domain ownership is currently verified by another organization. We filed a ticket so the team can review.',
+          domain,
+          escalation_id: escalation?.id ?? null,
+          verified: true,
+          transferred: false,
+        });
+      }
+
+      // Apply the claim: assert ownership, mark verified, clear orphan flag,
+      // clear the challenge token. By default starts fresh — the caller can
+      // adopt the prior manifest separately via PUT /brand-identity.
+      const adoptPriorManifest = req.body?.adopt_prior_manifest === true;
+      const updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
+      logger.info({ domain, orgId, transferredFrom: hosted?.workos_organization_id ?? null, adoptPriorManifest }, 'Brand claim verified and applied');
+      return res.json({
+        domain,
+        verified: true,
+        transferred: true,
+        adopted_prior_manifest: adoptPriorManifest,
+        brand: updated ? { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified } : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to verify brand claim challenge');
+      return res.status(500).json({ error: 'Failed to verify brand claim challenge' });
+    }
+  });
+
   // PUT /api/me/member-profile/brand-identity - Update logo URL and brand color inline
   router.put('/brand-identity', requireAuth, async (req, res) => {
     const startTime = Date.now();
@@ -1302,10 +1430,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             return res.status(409).json({
               error: 'Brand domain is managed by another organization',
               message: escalation
-                ? 'We filed a ticket so the team can review.'
+                ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST /api/me/member-profile/brand-claim/issue and follow the instructions.`
                 : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
               escalation_id: escalation?.id ?? null,
               brand_domain: brandDomain,
+              self_service_path: '/api/me/member-profile/brand-claim/issue',
             });
           }
           return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
