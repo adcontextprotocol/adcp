@@ -208,12 +208,22 @@ function formatAcceptedList(values: unknown[]): string {
  * Convenience: render every hint on a step result as fix plans, joined
  * by horizontal rules. Returns `null` when there are no actionable
  * hints (lets callers omit the section entirely).
+ *
+ * Accepts the full `StoryboardStepHint` union (5 variants as of @adcp/client
+ * 5.18.0) and renders only the `context_value_rejected` variant. Other
+ * variants — `shape_drift`, `missing_required_field`, `format_mismatch`,
+ * `monotonic_violation` — are diagnostic but don't have a prescribed fix-plan
+ * format yet. Tracking generalised rendering at adcp-client#935.
  */
 export function renderAllHintFixPlans(
-  hints: ContextValueRejectedHint[] | undefined,
+  hints: readonly { kind: string }[] | undefined,
   ctx: { current_step_id: string; current_task: string; surface: 'step' | 'full' }
 ): string | null {
   if (!hints || !hints.length) return null;
+  const rejectionHints = hints.filter(
+    (h): h is ContextValueRejectedHint => h.kind === 'context_value_rejected'
+  );
+  if (!rejectionHints.length) return null;
   // Dedup on (source_step_id, context_key, rejected_value) — the runner's
   // detector already de-dupes by `(context_key, rejected_value)` per error
   // (rejection-hints.ts), but a single response may carry the same drift
@@ -221,7 +231,7 @@ export function renderAllHintFixPlans(
   // fix plans separated by a horizontal rule reads like a bug.
   const seen = new Set<string>();
   const blocks: string[] = [];
-  for (const h of hints) {
+  for (const h of rejectionHints) {
     const key = `${h.source_step_id}::${h.context_key}::${stableStringify(h.rejected_value)}`;
     if (seen.has(key)) continue;
     seen.add(key);
