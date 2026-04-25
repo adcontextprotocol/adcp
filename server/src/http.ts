@@ -6685,15 +6685,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           statuses: ['active'],
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              statuses: ['active'],
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            statuses: ['active'],
+          });
         }
 
         // Map memberships to organization details with roles
