@@ -2950,6 +2950,7 @@
     async function loadSystemPrompt() {
       try {
         const response = await fetch('/api/admin/addie/system-prompt');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         const display = document.getElementById('system-prompt-display');
         display.textContent = data.system_prompt || '(No system prompt available)';
