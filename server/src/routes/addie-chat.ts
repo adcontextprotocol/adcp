@@ -205,10 +205,12 @@ async function initializeChatClient(): Promise<void> {
     claudeClient.registerTool(searchMembersTool, searchMembersHandler);
   }
 
-  // Knowledge tool handlers — used both for the global anonymous-safe registration
-  // below and for the authenticated-only set further down. The same handler instance
-  // is fine for both surfaces; tier gating happens at registration, not at call time.
-  const knowledgeHandlers = createKnowledgeToolHandlers();
+  // Two handler maps: anonymous-scoped (for global registration — restricts
+  // user-submitted resources and strips Addie-generated notes) and full
+  // (for the authenticated-only set). The split happens at handler-creation
+  // time because handler closures don't carry per-call scope.
+  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
+  const authedKnowledgeHandlers = createKnowledgeToolHandlers();
 
   // Register anonymous-safe knowledge tools globally — search_docs, get_doc,
   // search_repos, search_resources, get_recent_news. All read-only over public
@@ -217,7 +219,7 @@ async function initializeChatClient(): Promise<void> {
   // already exposes the same set; this aligns the web chat path with it.
   for (const tool of KNOWLEDGE_TOOLS) {
     if (!ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
-    const handler = knowledgeHandlers.get(tool.name);
+    const handler = anonymousKnowledgeHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
@@ -228,13 +230,22 @@ async function initializeChatClient(): Promise<void> {
   const authTools: typeof KNOWLEDGE_TOOLS = [];
   const authHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // Knowledge tools that require authentication: search_slack, get_channel_activity,
-  // bookmark_resource — anything touching Slack history or member-scoped writes.
-  // Anonymous-safe tools are registered globally above.
+  // Add ALL knowledge tool handlers to the authenticated set — including the
+  // anonymous-safe names. This is the override path: globally-registered
+  // anonymous-scoped handlers (set above) are shadowed for authenticated
+  // requests because claude-client.processMessage merges per-request handlers
+  // LAST (claude-client.ts:594, "last wins"). Result: anonymous gets the
+  // restricted handler globally, authenticated users get the full handler
+  // via this per-request override.
   for (const tool of KNOWLEDGE_TOOLS) {
-    if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
-    const handler = knowledgeHandlers.get(tool.name);
-    if (handler) {
+    const handler = authedKnowledgeHandlers.get(tool.name);
+    if (!handler) continue;
+    if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
+      // Tool definition is already on the global registry; only the handler
+      // needs to override. Don't push to authTools — that would duplicate
+      // the tool in the API request — only set the handler.
+      authHandlers.set(tool.name, handler);
+    } else {
       authTools.push(tool);
       authHandlers.set(tool.name, handler);
     }
@@ -289,7 +300,9 @@ async function initializeChatClient(): Promise<void> {
 
   initialized = true;
   logger.info({
-    anonymousTools: DIRECTORY_TOOLS.length + ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.size + 1, // +1 for search_members
+    // Use the registry as the source of truth — globally-registered tool count
+    // drifts otherwise (e.g. if more tools graduate to anonymous access).
+    anonymousTools: claudeClient.getRegisteredTools().length,
     authenticatedTools: authTools.length,
     anonymousModel: AddieModelConfig.anonymousChat,
     authenticatedModel: AddieModelConfig.chat,

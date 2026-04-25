@@ -542,13 +542,15 @@ Retrieve governance state, budget tracking, and audit trail for one or more plan
 
 Property and collection lists combine static selections with dynamic filters. Use `resolve: true` on get operations to see the final resolved set of properties or collections.
 
-### Three invariants for campaign governance
+### Three invariants for audit and disclosure decisions
 
-When asked about audit logs, policy versioning, or what to share with a counterparty, lead with these:
+These three properties of campaign governance shape what an orchestrator can disclose, can rely on a counterparty having, and cannot work around. Surface them when audit-trail design or counterparty disclosure decisions come up.
 
 1. **Inline policies are additive-only over registry policies.** A buyer's bespoke `custom_policies` (or inline `policy` entries on a plan) may add restrictions on top of registry-sourced policies. They MUST NOT relax, override, or disable registry policies. Counterparties who see `policies_evaluated: ["us_coppa"]` can trust the registry version of `us_coppa` was applied at its declared `enforcement` level.
-2. **`effective_date` allows informational-before-enforcement.** A registry policy with a future `effective_date` is evaluated by governance agents but does not block — it surfaces as informational findings. This is how a working group adopts "minimal restrictions initially" without deploying a separate registry: publish the policy with a future date.
-3. **`governance_context` is the seller-visible correlation token; full plan/budget data is buyer-side.** The seller sees the opaque token they were issued and the entries scoped to it. Plan-level totals (`budget.authorized`, `channel_allocation`, `drift_metrics`) belong to the buyer's internal view and are never shared by default.
+2. **`governance_context` is the seller-visible correlation token; full plan/budget data is buyer-side.** The seller sees the opaque token they were issued and the entries scoped to it. Plan-level totals (`budget.authorized`, `channel_allocation`, `drift_metrics`) belong to the buyer's internal view and are never shared by default.
+3. **`plan_hash` is the cryptographic attestation surface.** `base64url_no_pad(SHA-256(JCS(plan_payload)))` over the plan revision the check evaluated. Any party with the plan revision can recompute and byte-compare. This is what makes a four-field shareable attestation (`governance_context`, `status`, `plan_hash`, `policies_evaluated`) cryptographically meaningful — counterparties don't have to trust the buyer's summary.
+
+> A related working-group adoption pattern — `effective_date` enabling informational-before-enforcement of new policies — lives in [Policy Registry](/docs/governance/policy-registry); it shapes registry rollout rather than per-check disclosure decisions.
 
 ---
 

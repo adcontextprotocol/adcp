@@ -16,7 +16,7 @@ Both are produced from [`get_plan_audit_logs`](/docs/governance/campaign/tasks/g
 
 Three reasons buyers maintain distinct views:
 
-1. **Strategy leakage.** Total authorized budget, channel allocation, and remaining headroom across all sellers are competitive signals. A single seller does not need to know the buyer's full plan to verify their own buy.
+1. **Strategy leakage.** Total authorized budget, channel allocation, and remaining headroom across all sellers are competitive signals. Note that derived ratios are not safer than raw amounts — `budget.utilization_pct` is a one-step inverse problem if a seller knows their own committed share. A single seller does not need to know the buyer's full plan to verify their own buy.
 2. **Cross-counterparty isolation.** Seller A has no business seeing the findings, governance contexts, or outcomes for Seller B. A shareable view is always scoped to the requesting party's `governance_context` values.
 3. **Internal review fields.** Human review reasons, drift metrics, and oversight thresholds are the buyer's own governance posture. They protect the buyer in a regulator audit; they are not addressed to a counterparty.
 
@@ -42,17 +42,19 @@ The table below classifies every field in the [`get_plan_audit_logs`](/docs/gove
 | `plans[].summary.statuses` | yes | no | yes |
 | `plans[].summary.findings_count` | yes | no | yes |
 | `plans[].summary.human_reviews[]` | yes | no | redact reason; share resolution + timestamp on request |
-| `plans[].summary.drift_metrics.*` | yes | no | on request |
+| `plans[].summary.drift_metrics.*` | yes | no | available if the buyer's counterparty rules require disclosure |
 | `plans[].entries[].id`, `type`, `timestamp` | yes | yes (own context only) | yes |
 | `plans[].entries[].caller` | yes | yes (own context only) | yes |
 | `plans[].entries[].tool` | yes | yes (own context only) | yes |
 | `plans[].entries[].check_type`, `status` | yes | yes (own context only) | yes |
+| `plans[].entries[].mode` | yes | yes (own context only) | yes — distinguishes a `denied` from an `approved`-with-finding under `audit` |
 | `plans[].entries[].explanation` | yes | yes (own context only) | yes |
 | `plans[].entries[].categories_evaluated` | yes | yes (own context only) | yes |
 | `plans[].entries[].policies_evaluated` | yes | yes (own context only) | yes |
 | `plans[].entries[].findings[]` | yes | yes (own context only) | yes |
 | `plans[].entries[].plan_hash` | yes | yes (own context only) | yes — auditors verify this |
 | `plans[].entries[].governance_context` | yes | yes (own context only) | yes |
+| `plans[].entries[].purchase_type` | yes | yes (own context only) | yes |
 | `plans[].entries[].outcome`, `outcome_status` | yes | yes (own context only) | yes |
 | `plans[].entries[].committed_budget` | yes | yes (own context only) | yes |
 

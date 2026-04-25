@@ -33,6 +33,12 @@ function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Re
   return { ...args, idempotency_key: `gen-${randomUUID()}` };
 }
 
+// FIXME(framework-migration): reaches into the MCP Server's private
+// `_requestHandlers` map. server/src/training-agent/FRAMEWORK_MIGRATION.md
+// flags this exact pattern as in-flight migration to the McpServer wrapper
+// (`server.server._requestHandlers`). When that lands, the four test files
+// using the same pattern + this script should switch together; consider
+// extracting a shared `simulateCallTool` helper at that point.
 async function callTool(
   server: ReturnType<typeof createTrainingAgentServer>,
   toolName: string,

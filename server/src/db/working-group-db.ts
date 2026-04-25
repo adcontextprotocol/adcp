@@ -2030,6 +2030,9 @@ export class WorkingGroupDatabase {
   /**
    * Get all successfully indexed documents with their content and working group context.
    * Used by the docs indexer to include working group content in search results.
+   *
+   * Excludes documents from private working groups — those are committee-internal
+   * and must not surface to anonymous web-chat callers via search_docs/get_doc.
    */
   async getIndexedDocumentsWithContent(): Promise<Array<CommitteeDocument & { working_group_name: string; working_group_slug: string }>> {
     const result = await query<CommitteeDocument & { working_group_name: string; working_group_slug: string }>(
@@ -2045,6 +2048,7 @@ export class WorkingGroupDatabase {
          AND cd.last_content IS NOT NULL
          AND LENGTH(cd.last_content) > 100
          AND wg.status = 'active'
+         AND wg.is_private = false
        ORDER BY cd.last_modified_at DESC NULLS LAST`,
       []
     );

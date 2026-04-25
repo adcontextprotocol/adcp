@@ -93,7 +93,12 @@ function getChatClient(): AddieClaudeClient {
     // Register knowledge + directory tools for MCP callers.
     // MCP chat_with_addie keeps knowledge tools because MCP partners use Sonnet,
     // unlike web chat anonymous users who get Haiku (see addie-chat.ts).
-    const knowledgeHandlers = createKnowledgeToolHandlers();
+    //
+    // MCP chat_with_addie is invoked without a per-call auth context, so all
+    // callers here are treated as anonymous — handlers are scoped to exclude
+    // user-bookmarked URLs and strip Addie-generated notes that could carry
+    // prompt-injection text from arbitrary fetched content.
+    const knowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
     for (const tool of KNOWLEDGE_TOOLS) {
       if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
         const handler = knowledgeHandlers.get(tool.name);
