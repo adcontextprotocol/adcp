@@ -12,7 +12,7 @@
  * these intake routes.
  */
 
-import { OrganizationDatabase } from '../db/organization-db.js';
+import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
 import { createCustomerPortalSession } from './stripe-client.js';
 import { createLogger } from '../logger.js';
 
@@ -33,14 +33,32 @@ export interface ActiveSubscriptionBlock {
 }
 
 /**
- * Set of subscription statuses where minting another subscription would
- * duplicate live state. `past_due` is included because creating a second sub
- * on a customer with a past_due one stacks two unresolved invoices instead of
- * letting the user fix payment on the existing one. `canceled`, `unpaid`, and
- * `incomplete_expired` are *not* included — those are recoverable by
- * re-subscribing.
+ * Statuses where another paid subscription would duplicate live state.
+ * Reuses `TIER_PRESERVING_STATUSES` from organization-db.ts — same set
+ * (active, past_due, trialing), same intent (a paid relationship exists).
+ * `canceled`, `unpaid`, and `incomplete_expired` are recoverable by
+ * re-subscribing and intentionally pass through.
  */
-const BLOCKING_STATUSES = new Set(['active', 'trialing', 'past_due']);
+const BLOCKING_STATUSES: ReadonlySet<string> = new Set(TIER_PRESERVING_STATUSES);
+
+function formatAmount(cents: number): string {
+  // Render as fixed 2-decimal currency; otherwise $250.50 displays as "$250.5".
+  return `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export interface BlockOptions {
+  /**
+   * Where to redirect the user after they finish in the Stripe Customer
+   * Portal. Pass undefined to suppress the portal URL entirely — required on
+   * the invite-acceptance path, where the requester has only `member` role
+   * on the org and a portal session would grant `admin`-equivalent control
+   * over the org's subscription, payment method, and cancellation.
+   */
+  customerPortalReturnUrl?: string;
+}
 
 /**
  * Returns a 409 payload if the org already has a live subscription,
@@ -49,38 +67,49 @@ const BLOCKING_STATUSES = new Set(['active', 'trialing', 'past_due']);
  *
  * @param orgId    workos_organization_id of the org being billed
  * @param orgDb    OrganizationDatabase instance (DI for testing)
- * @param returnUrl Where to send the user back to from the Stripe Customer Portal
+ * @param options.customerPortalReturnUrl  When provided, the 409 includes a
+ *   single-use Stripe Customer Portal URL the requester can follow to
+ *   manage the existing subscription. Omit on routes where the requester
+ *   does not have admin authority over the org (e.g., invite acceptance
+ *   for a not-yet-member or a `member`-role user).
  */
 export async function blockIfActiveSubscription(
   orgId: string,
   orgDb: OrganizationDatabase,
-  returnUrl: string,
+  options: BlockOptions = {},
 ): Promise<ActiveSubscriptionBlock | null> {
   const info = await orgDb.getSubscriptionInfo(orgId);
   if (!info || !BLOCKING_STATUSES.has(info.status)) {
     return null;
   }
 
-  const org = await orgDb.getOrganization(orgId);
   let portalUrl: string | undefined;
-  if (org?.stripe_customer_id) {
-    try {
-      portalUrl = (await createCustomerPortalSession(org.stripe_customer_id, returnUrl)) || undefined;
-    } catch (err) {
-      logger.warn({ err, orgId }, 'Failed to create customer portal session for active-sub block');
+  if (options.customerPortalReturnUrl) {
+    const org = await orgDb.getOrganization(orgId);
+    if (org?.stripe_customer_id) {
+      try {
+        portalUrl = (await createCustomerPortalSession(
+          org.stripe_customer_id,
+          options.customerPortalReturnUrl,
+        )) || undefined;
+      } catch (err) {
+        logger.warn({ err, orgId }, 'Failed to create customer portal session for active-sub block');
+      }
     }
   }
 
-  const productName = info.product_name || `${info.lookup_key ?? 'membership'}`;
-  const amountDisplay = info.amount_cents
-    ? `$${(info.amount_cents / 100).toLocaleString()}`
-    : 'an active tier';
+  const productName = info.product_name || info.lookup_key || 'membership';
+  const amountDisplay = info.amount_cents != null ? formatAmount(info.amount_cents) : 'an active tier';
+
+  const remediation = portalUrl
+    ? 'To change tiers, cancel, or update payment method, use the Stripe Customer Portal.'
+    : 'To change tiers, cancel, or update payment method, contact finance@agenticadvertising.org or sign in to the dashboard at https://agenticadvertising.org/dashboard/membership.';
 
   return {
     status: 409,
     body: {
       error: 'Active subscription exists',
-      message: `This organization is already on ${productName} (${amountDisplay}). To change tiers, cancel, or update payment method, use the Stripe Customer Portal.`,
+      message: `This organization is already on ${productName} (${amountDisplay}). ${remediation}`,
       existing_subscription: {
         status: info.status,
         product_name: info.product_name,

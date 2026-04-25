@@ -32,6 +32,8 @@ function makeOrgDb(opts: {
   } as unknown as OrganizationDatabase;
 }
 
+const PORTAL_RETURN_URL = 'https://app/dashboard/membership';
+
 describe('blockIfActiveSubscription', () => {
   beforeEach(() => {
     mockCreatePortal.mockReset();
@@ -39,19 +41,19 @@ describe('blockIfActiveSubscription', () => {
 
   it('returns null when org has no subscription info', async () => {
     const orgDb = makeOrgDb({ info: null });
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
     expect(result).toBeNull();
   });
 
   it('returns null when subscription status is "none"', async () => {
     const orgDb = makeOrgDb({ info: { status: 'none' } });
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
     expect(result).toBeNull();
   });
 
   it('returns null when subscription is canceled', async () => {
     const orgDb = makeOrgDb({ info: { status: 'canceled' } });
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
     expect(result).toBeNull();
   });
 
@@ -62,7 +64,7 @@ describe('blockIfActiveSubscription', () => {
     });
     mockCreatePortal.mockResolvedValueOnce('https://billing.stripe.com/p/session/x');
 
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.body.existing_subscription.status).toBe('past_due');
@@ -70,7 +72,7 @@ describe('blockIfActiveSubscription', () => {
 
   it('returns null when subscription is unpaid (recoverable by re-subscribing)', async () => {
     const orgDb = makeOrgDb({ info: { status: 'unpaid' } });
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
     expect(result).toBeNull();
   });
 
@@ -89,33 +91,65 @@ describe('blockIfActiveSubscription', () => {
       },
     });
 
-    const result = await blockIfActiveSubscription('org_triton', orgDb, 'https://app/dashboard/membership');
+    const result = await blockIfActiveSubscription('org_triton', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe(409);
     expect(result!.body.error).toBe('Active subscription exists');
     expect(result!.body.message).toContain('Corporate Membership');
-    expect(result!.body.message).toContain('$10,000');
+    expect(result!.body.message).toContain('$10,000.00');
+    expect(result!.body.message).toContain('Stripe Customer Portal');
     expect(result!.body.existing_subscription).toEqual({
       status: 'active',
       product_name: 'Corporate Membership',
       amount_cents: 1000000,
     });
     expect(result!.body.customer_portal_url).toBe('https://billing.stripe.com/p/session/test');
-    expect(mockCreatePortal).toHaveBeenCalledWith('cus_triton', 'https://app/dashboard/membership');
+    expect(mockCreatePortal).toHaveBeenCalledWith('cus_triton', PORTAL_RETURN_URL);
   });
 
   it('blocks when subscription is trialing', async () => {
     const orgDb = makeOrgDb({
-      info: { status: 'trialing', amount_cents: 250 },
+      info: { status: 'trialing', amount_cents: 25050 },
       org: { stripe_customer_id: 'cus_x' },
     });
     mockCreatePortal.mockResolvedValueOnce(null);
 
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.body.existing_subscription.status).toBe('trialing');
+  });
+
+  it('formats fractional dollar amounts with 2 decimal places', async () => {
+    const orgDb = makeOrgDb({
+      info: { status: 'active', amount_cents: 25050 },
+      org: { stripe_customer_id: null },
+    });
+
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
+
+    expect(result).not.toBeNull();
+    // $250.50 must render with cents — toLocaleString defaults drop them.
+    expect(result!.body.message).toContain('$250.50');
+  });
+
+  it('omits customer_portal_url when caller does not pass customerPortalReturnUrl (privilege check)', async () => {
+    // The invite-acceptance route omits returnUrl because the recipient gets
+    // `member` role only and a portal session would grant admin-equivalent
+    // control over the org's subscription.
+    const orgDb = makeOrgDb({
+      info: { status: 'active', amount_cents: 1000000, product_name: 'Corporate Membership' },
+      org: { stripe_customer_id: 'cus_triton' },
+    });
+
+    const result = await blockIfActiveSubscription('org_triton', orgDb /* no options */);
+
+    expect(result).not.toBeNull();
+    expect(result!.body.customer_portal_url).toBeUndefined();
+    expect(result!.body.message).toContain('finance@agenticadvertising.org');
+    expect(result!.body.message).not.toContain('Stripe Customer Portal');
+    expect(mockCreatePortal).not.toHaveBeenCalled();
   });
 
   it('omits customer_portal_url when org has no Stripe customer id', async () => {
@@ -124,10 +158,12 @@ describe('blockIfActiveSubscription', () => {
       org: { stripe_customer_id: null },
     });
 
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.body.customer_portal_url).toBeUndefined();
+    // Falls back to the finance@ message when portal URL can't be generated.
+    expect(result!.body.message).toContain('finance@agenticadvertising.org');
     expect(mockCreatePortal).not.toHaveBeenCalled();
   });
 
@@ -138,10 +174,11 @@ describe('blockIfActiveSubscription', () => {
       org: { stripe_customer_id: 'cus_x' },
     });
 
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.body.customer_portal_url).toBeUndefined();
+    expect(result!.body.message).toContain('finance@agenticadvertising.org');
   });
 
   it('falls back to lookup_key in the message when product_name is missing', async () => {
@@ -154,7 +191,7 @@ describe('blockIfActiveSubscription', () => {
       org: { stripe_customer_id: null },
     });
 
-    const result = await blockIfActiveSubscription('org_x', orgDb, 'https://app/dashboard');
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
 
     expect(result).not.toBeNull();
     expect(result!.body.message).toContain('aao_membership_builder_3000');

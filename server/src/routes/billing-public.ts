@@ -259,12 +259,12 @@ export function createPublicBillingRouter(): Router {
       }
 
       // Refuse if the org already has an active subscription. Tier changes go
-      // through the Stripe Customer Portal, not this intake route.
-      const activeBlock = await blockIfActiveSubscription(
-        orgId,
-        orgDb,
-        `${req.protocol}://${req.get('host')}/dashboard/membership`,
-      );
+      // through the Stripe Customer Portal, not this intake route. The
+      // requester is an authenticated member of the org (verified above), so
+      // it's safe to surface the portal URL.
+      const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
+        customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
+      });
       if (activeBlock) {
         return res.status(activeBlock.status).json(activeBlock.body);
       }
@@ -493,12 +493,12 @@ export function createPublicBillingRouter(): Router {
         const baseUrl = `${protocol}://${host}`;
 
         // Refuse if the org already has an active subscription. Tier changes go
-        // through the Stripe Customer Portal, not this checkout intake.
-        const activeBlock = await blockIfActiveSubscription(
-          orgId,
-          orgDb,
-          `${baseUrl}/dashboard/membership`,
-        );
+        // through the Stripe Customer Portal, not this checkout intake. The
+        // requester is a verified org member, so the portal URL is safe to
+        // include.
+        const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
+          customerPortalReturnUrl: `${baseUrl}/dashboard/membership`,
+        });
         if (activeBlock) {
           return res.status(activeBlock.status).json(activeBlock.body);
         }
