@@ -363,6 +363,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'update_member_logo',
       'update_member_profile',
       'transfer_brand_ownership',
+      'list_orphaned_brands',
     ],
     adminOnly: true,
   },
