@@ -41,7 +41,7 @@ The registry solves this by providing:
 - **Standardized policy definitions** with structured metadata (jurisdiction, policy category, enforcement level)
 - **Natural language policy text** that governance agents (LLMs) use directly for evaluation
 - **Calibration exemplars** (pass/fail scenarios) that align agent behavior
-- **Version tracking** so brands can pin to specific policy versions
+- **Version tracking** so brands can pin to specific policy versions (see [pinning in the campaign spec](/docs/governance/campaign/specification#version-pinning))
 
 ## Policy categories
 
@@ -117,7 +117,25 @@ Policies have optional `effective_date` and `sunset_date` fields. Governance age
 
 This means brands can reference upcoming regulations before they take effect. The governance agent evaluates them and reports what *would* have been flagged, without blocking campaigns. Once the effective date passes, enforcement activates automatically -- no configuration change needed.
 
-For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
+### Worked example: informational-to-enforced transition
+
+Suppose you reference `eu_ai_act_article_50`, which carries `effective_date: "2026-08-02"`. Before that date, every `check_governance` call evaluates the policy and returns findings at `info` severity -- no campaign is blocked. Buying teams see _what would be flagged_ and can clean up creatives before enforcement begins. On and after 2026-08-02, the same findings are emitted at blocking severity and campaigns that trigger them are rejected.
+
+No re-syncing the plan. No policy-configuration change. The governance agent reads the date on each evaluation call and shifts enforcement automatically.
+
+### `requires_human_review` is not gated by `effective_date`
+
+The `effective_date`/`sunset_date` mechanism governs content-blocking enforcement (reject vs. inform). It does **not** gate the `requires_human_review` flag.
+
+When a policy carries `requires_human_review: true`, the governance agent MUST set `plan.human_review_required = true` as soon as the policy is resolved -- regardless of whether `effective_date` is in the future. GDPR Article 22 and EU AI Act Annex III human-oversight obligations predate any AI-Act-specific effective date; the human-review requirement fires unconditionally.
+
+**Practical consequence:** a policy with `effective_date: "2027-01-01"` and `requires_human_review: true` published today will surface only informational content findings until 2027, but will immediately mandate `human_review_required: true` on any plan that references it. These are two independent dimensions of a policy's effect.
+
+### Sunset detection
+
+Governance agents evaluate `sunset_date` dynamically against their wall clock on each `check_governance` call. There is no registry push notification. A policy that crosses its `sunset_date` between two evaluation calls is silently dropped starting with the call that occurs after the date passes -- callers do not need to take any action.
+
+To verify which policies are still active, inspect `resolved_policies` in the `sync_plans` response or `policies_evaluated` in the `check_governance` response. A policy that was previously listed and no longer appears has either been sunsetted or is no longer matched after a plan re-sync.
 
 ## Three tiers of policy application
 
