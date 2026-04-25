@@ -45,8 +45,15 @@ caller:
 prerequisites:
   description: |
     The storyboard bootstraps three accounts in the setup phase via
-    sync_accounts. No controller seeding is required — the setup phase
-    is the first step group and runs before the pagination walk.
+    `sync_accounts`. The seed-DAG documented at
+    `static/compliance/source/universal/storyboard-schema.yaml` does not
+    include accounts (today's seed kinds are products, pricing_options,
+    creatives, plans, media_buys), so this storyboard deliberately
+    departs from the `controller_seeding: true` precedent used by
+    `pagination-integrity.yaml` (list_creatives) and bootstraps via
+    real protocol calls. Adding `seed_account` to the controller is
+    tracked separately; until then the create-then-list pattern keeps
+    the storyboard self-contained without extending the seed taxonomy.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: false
 
@@ -114,22 +121,21 @@ phases:
           accounts:
             - brand:
                 domain: acme-corp.com
-                name: Acme Corp
               operator: pinnacle-media.com
               billing: operator
               sandbox: true
             - brand:
                 domain: nova-brands.com
-                name: Nova Brands
               operator: pinnacle-media.com
               billing: operator
               sandbox: true
             - brand:
                 domain: pinnacle-media.com
-                name: Pinnacle Media
               operator: pinnacle-media.com
               billing: operator
               sandbox: true
+
+          idempotency_key: "$generate:uuid_v4#pagination_integrity_list_accounts_setup_sync_three_accounts"
           context:
             correlation_id: "pagination_integrity_list_accounts--setup"
         validations:

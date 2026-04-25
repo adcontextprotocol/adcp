@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
 import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -101,31 +102,13 @@ export function clearAccountStore(): void {
   accountStore.clear();
 }
 
-// ── list_accounts pagination helpers ────────────────────────────────
-
-function encodeAccountCursor(offset: number): string {
-  return Buffer.from(`offset:${offset}`).toString('base64url');
-}
-
-// Returns null when the cursor is present but malformed; absent cursor returns 0.
-function decodeAccountCursor(cursor: string | undefined): number | null {
-  if (!cursor) return 0;
-  try {
-    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
-    const m = /^offset:(\d+)$/.exec(decoded);
-    if (!m) return null;
-    const n = Number.parseInt(m[1], 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  } catch {
-    return null;
-  }
-}
-
 interface AccountWireShape {
   account_id: string;
   name: string;
   advertiser: string;
-  brand: { domain: string; brand_id?: string; name?: string };
+  // brand-ref.json defines this object; it carries domain + optional brand_id
+  // only — `name` is not in the schema and additionalProperties is false.
+  brand: { domain: string; brand_id?: string };
   operator: string;
   billing: string;
   account_scope: string;
@@ -138,14 +121,20 @@ interface AccountWireShape {
 
 function accountStateToWire(account: AccountState): AccountWireShape {
   const advertiser = account.brand.name ?? account.brand.domain;
-  const name = account.brand.domain === account.operator
+  const displayName = account.brand.domain === account.operator
     ? advertiser
     : `${advertiser} c/o ${account.operator}`;
+  // brand-ref.json forbids `name` on the wire (additionalProperties: false),
+  // so emit only the schema-declared fields. AccountState.brand.name is an
+  // operational hint we use to derive `name`/`advertiser` above; it never
+  // reaches the buyer.
+  const wireBrand: { domain: string; brand_id?: string } = { domain: account.brand.domain };
+  if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
   const wire: AccountWireShape = {
     account_id: account.accountId,
-    name,
+    name: displayName,
     advertiser,
-    brand: account.brand,
+    brand: wireBrand,
     operator: account.operator,
     billing: account.billing,
     account_scope: account.accountScope,
@@ -166,7 +155,7 @@ function getComplianceAccounts(): AccountWireShape[] {
       account_id: 'acc_pagination_integrity_1',
       name: 'Acme c/o Pinnacle',
       advertiser: 'Acme Corp',
-      brand: { domain: 'acme-corp.com', name: 'Acme Corp' },
+      brand: { domain: 'acme-corp.com' },
       operator: 'pinnacle-media.com',
       billing: 'operator',
       account_scope: 'operator_brand',
@@ -176,7 +165,7 @@ function getComplianceAccounts(): AccountWireShape[] {
       account_id: 'acc_pagination_integrity_2',
       name: 'Nova c/o Pinnacle',
       advertiser: 'Nova Brands',
-      brand: { domain: 'nova-brands.com', name: 'Nova Brands' },
+      brand: { domain: 'nova-brands.com' },
       operator: 'pinnacle-media.com',
       billing: 'operator',
       account_scope: 'operator_brand',
@@ -186,7 +175,7 @@ function getComplianceAccounts(): AccountWireShape[] {
       account_id: 'acc_pagination_integrity_3',
       name: 'Pinnacle',
       advertiser: 'Pinnacle Media',
-      brand: { domain: 'pinnacle-media.com', name: 'Pinnacle Media' },
+      brand: { domain: 'pinnacle-media.com' },
       operator: 'pinnacle-media.com',
       billing: 'operator',
       account_scope: 'brand',
@@ -489,7 +478,7 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   const totalMatching = accounts.length;
   const requestedMax = req.pagination?.max_results;
   const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
-  const offset = decodeAccountCursor(req.pagination?.cursor);
+  const offset = decodeOffsetCursor('accounts', req.pagination?.cursor);
   if (offset === null) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
   }
@@ -502,7 +491,7 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
     pagination: {
       has_more: hasMore,
       total_count: totalMatching,
-      ...(hasMore && { cursor: encodeAccountCursor(pageEnd) }),
+      ...(hasMore && { cursor: encodeOffsetCursor('accounts', pageEnd) }),
     },
   };
 }
