@@ -28,6 +28,7 @@ import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
+import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
@@ -1203,13 +1204,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       return null;
     }
     // Role check: only org admins/owners can issue or verify a brand claim.
-    // Matches the same pattern used by member-profile creation upstream.
+    // Use resolveUserRole so inactive/pending memberships can't pass — a
+    // removed admin must not be able to claim a brand on the org that
+    // removed them.
     try {
       const memberships = await workos.userManagement.listOrganizationMemberships({
         userId: req.user!.id,
         organizationId: orgId,
       });
-      const role = memberships.data[0]?.role?.slug || 'member';
+      const role = resolveUserRole(memberships.data);
       if (role !== 'admin' && role !== 'owner') {
         res.status(403).json({
           error: 'Not authorized',
@@ -1235,17 +1238,31 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (!workos) {
         return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
       const result = await issueDomainChallenge({
         workos,
+        brandDb,
         orgId,
-        rawDomain: (req.body?.domain as string | undefined) ?? '',
+        rawDomain,
       });
       if (!result.ok) {
-        const httpStatus = result.code === 'collision' ? 409 : result.code === 'workos_error' ? 500 : 400;
-        return res.status(httpStatus).json({
-          error: result.code,
-          message: result.message,
-        });
+        if (result.code === 'collision') {
+          return res.status(409).json({
+            error: 'Domain already registered',
+            code: 'collision',
+            message: 'This domain is already registered to another organization. Open a brand-ownership escalation if the assignment is wrong.',
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        if (result.code === 'invalid_domain') {
+          return res.status(400).json({
+            error: 'Invalid brand domain',
+            code: 'invalid_domain',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
       }
       return res.json({
         domain: result.domain,
@@ -1254,6 +1271,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         verification_strategy: result.verification_strategy,
         verification_token: result.verification_token,
         verification_prefix: result.verification_prefix,
+        prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
           ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
           : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
@@ -1276,26 +1294,41 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (!workos) {
         return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
       const result = await verifyDomainChallenge({
         workos,
         brandDb,
         orgId,
-        rawDomain: (req.body?.domain as string | undefined) ?? '',
+        rawDomain,
         adoptPriorManifest: req.body?.adopt_prior_manifest === true,
       });
       if (!result.ok) {
-        const httpStatus = result.code === 'no_challenge' ? 404 : result.code === 'workos_error' ? 500 : 400;
-        return res.status(httpStatus).json({
-          error: result.code,
-          message: result.message,
-          ...(result.code === 'still_pending' ? { state: result.state } : {}),
-        });
+        const canonical = rawDomain ? canonicalizeBrandDomain(rawDomain) : '';
+        if (result.code === 'no_challenge') {
+          return res.status(404).json({
+            error: 'No outstanding domain challenge for this organization. Call /brand-claim/issue first.',
+            code: 'no_challenge',
+            domain: canonical,
+          });
+        }
+        if (result.code === 'still_pending') {
+          return res.status(400).json({
+            error: 'Domain still pending',
+            code: 'still_pending',
+            message: result.message,
+            domain: canonical,
+            state: result.state,
+            ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to verify brand claim challenge', code: 'workos_error' });
       }
       return res.json({
         domain: result.domain,
         verified: true,
         newly_verified: result.newly_verified,
         adopted_prior_manifest: result.adopted_prior_manifest,
+        brand: result.brand,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to verify brand claim challenge');

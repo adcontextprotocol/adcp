@@ -6,13 +6,13 @@
  *  - addie/mcp/member-tools.ts:request_brand_domain_challenge / verify_brand_domain_challenge (chat)
  *
  * Encapsulates the WorkOS Domain Verification API calls + brand-registry
- * mirror. The route handler still owns auth/role checks and req/res
- * translation; the chat tool handler does the same in chat-friendly form.
- * Keeps the WorkOS-vs-our-DB orchestration in one place.
+ * mirror. Callers own auth/role checks and req/res translation; this layer
+ * owns WorkOS-vs-our-DB orchestration.
  */
 
 import type { WorkOS } from '@workos-inc/node';
 import { BrandDatabase } from '../db/brand-db.js';
+import type { HostedBrand } from '../types.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from './identifier-normalization.js';
 import { createLogger } from '../logger.js';
 
@@ -28,6 +28,10 @@ export type IssueChallengeResult =
       verification_token: string | null;
       verification_prefix: string | null;
       already_verified: boolean;
+      // True when a brand row exists for this domain with an orphaned manifest
+      // (a prior owner relinquished). Tells callers whether to surface the
+      // adopt-vs-fresh decision when the user runs verify.
+      prior_manifest_exists: boolean;
     }
   | { ok: false; code: 'invalid_domain'; message: string }
   | { ok: false; code: 'collision'; message: string }
@@ -39,9 +43,10 @@ export type VerifyChallengeResult =
       domain: string;
       newly_verified: boolean;
       adopted_prior_manifest: boolean;
+      brand: { brand_domain: string; domain_verified: boolean } | null;
     }
   | { ok: false; code: 'no_challenge'; message: string }
-  | { ok: false; code: 'still_pending'; message: string; state: string }
+  | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number }
   | { ok: false; code: 'workos_error'; message: string };
 
 /**
@@ -56,12 +61,22 @@ function isVerifiedState(state: unknown): boolean {
   return s === 'verified' || s === 'legacy_verified';
 }
 
+// In-process verify cooldown to stop autonomous LLM loops from polling. DNS
+// propagation is minutes-scale; a 60s floor between verify attempts costs
+// nothing for a real user but kills retry loops.
+const VERIFY_COOLDOWN_MS = 60_000;
+const verifyAttemptTimes = new Map<string, number>();
+function cooldownKey(orgId: string, domain: string) {
+  return `${orgId}:${domain}`;
+}
+
 export async function issueDomainChallenge(input: {
   workos: WorkOS;
+  brandDb: BrandDatabase;
   orgId: string;
   rawDomain: string;
 }): Promise<IssueChallengeResult> {
-  const { workos, orgId, rawDomain } = input;
+  const { workos, brandDb, orgId, rawDomain } = input;
   if (!rawDomain) {
     return { ok: false, code: 'invalid_domain', message: 'domain is required' };
   }
@@ -75,6 +90,21 @@ export async function issueDomainChallenge(input: {
       code: 'invalid_domain',
       message: 'The domain is malformed or a shared platform / public-suffix domain that cannot be claimed.',
     };
+  }
+
+  // Detect orphaned-manifest case so callers can offer the adopt option.
+  // Brand row exists, has a non-empty manifest, and was relinquished by a
+  // prior owner. If the row is owned by the caller's org or there's no
+  // manifest, the adopt decision doesn't apply.
+  let priorManifestExists = false;
+  try {
+    const existingBrand = await brandDb.getHostedBrandByDomain(domain);
+    if (existingBrand && existingBrand.manifest_orphaned === true) {
+      const manifest = existingBrand.brand_json as Record<string, unknown> | null | undefined;
+      priorManifestExists = !!manifest && Object.keys(manifest).length > 0;
+    }
+  } catch (err) {
+    logger.warn({ err, domain }, 'brand-claim: prior-manifest check failed, defaulting to false');
   }
 
   // Idempotent re-issue: if the domain is already attached to this org
@@ -93,6 +123,7 @@ export async function issueDomainChallenge(input: {
         verification_token: existingDomain.verificationToken ?? null,
         verification_prefix: existingDomain.verificationPrefix ?? null,
         already_verified: isVerifiedState(existingDomain.state),
+        prior_manifest_exists: priorManifestExists,
       };
     }
   } catch (err) {
@@ -110,6 +141,7 @@ export async function issueDomainChallenge(input: {
       verification_token: created.verificationToken ?? null,
       verification_prefix: created.verificationPrefix ?? null,
       already_verified: isVerifiedState(created.state),
+      prior_manifest_exists: priorManifestExists,
     };
   } catch (err: any) {
     // WorkOS returns 422 for both "already attached to another org" AND
@@ -156,7 +188,31 @@ export async function verifyDomainChallenge(input: {
   }
   const domain = canonicalizeBrandDomain(rawDomain);
 
-  const existing = await workos.organizations.getOrganization(orgId);
+  // Cooldown gate. DNS propagation can take minutes; the LLM seeing
+  // "still_pending" tends to retry immediately. Reject inside the
+  // cooldown window with a hint to wait.
+  const key = cooldownKey(orgId, domain);
+  const now = Date.now();
+  const last = verifyAttemptTimes.get(key);
+  if (last !== undefined && now - last < VERIFY_COOLDOWN_MS) {
+    const retryAfterSeconds = Math.ceil((VERIFY_COOLDOWN_MS - (now - last)) / 1000);
+    return {
+      ok: false,
+      code: 'still_pending',
+      message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help and the LLM should not poll.`,
+      state: 'pending',
+      retry_after_seconds: retryAfterSeconds,
+    };
+  }
+  verifyAttemptTimes.set(key, now);
+
+  let existing;
+  try {
+    existing = await workos.organizations.getOrganization(orgId);
+  } catch (err) {
+    logger.error({ err, orgId, domain }, 'brand-claim: getOrganization failed during verify');
+    return { ok: false, code: 'workos_error', message: 'Failed to look up organization.' };
+  }
   const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
   if (!existingDomain) {
     return {
@@ -193,17 +249,32 @@ export async function verifyDomainChallenge(input: {
     return {
       ok: false,
       code: 'still_pending',
-      message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take a few minutes — try again.',
+      message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take 5-15 minutes (occasionally longer with slow registrars).',
       state: String(verified.state),
     };
   }
 
-  await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
+  let updated: HostedBrand | null = null;
+  try {
+    updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
+  } catch (err) {
+    logger.error({ err, orgId, domain }, 'brand-claim: applyVerifiedBrandClaim failed after WorkOS verify');
+    return { ok: false, code: 'workos_error', message: 'Domain verified with WorkOS but the brand registry write failed. Retry the verify call.' };
+  }
+  // Verify succeeded — clear cooldown so a follow-up call returns the
+  // already-verified path without an artificial wait.
+  verifyAttemptTimes.delete(key);
   logger.info({ domain, orgId, adoptPriorManifest, alreadyVerified }, 'Brand claim verified via WorkOS and applied to registry');
   return {
     ok: true,
     domain,
     newly_verified: !alreadyVerified,
     adopted_prior_manifest: adoptPriorManifest,
+    brand: updated ? { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified } : null,
   };
+}
+
+// Test-only: reset the in-memory cooldown map so suites can run verify back-to-back.
+export function _resetVerifyCooldown() {
+  verifyAttemptTimes.clear();
 }

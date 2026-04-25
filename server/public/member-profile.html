@@ -993,7 +993,7 @@
                   <div style="display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); font-family: monospace; font-size: var(--text-sm);">
                     <div style="color: var(--color-text-muted);">Name:</div>
                     <code id="domain-claim-record-name" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
-                    <button type="button" onclick="copyDomainClaimField('name')" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+                    <button type="button" onclick="copyDomainClaimField('name', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
 
                     <div style="color: var(--color-text-muted);">Type:</div>
                     <code style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);">TXT</code>
@@ -1001,7 +1001,7 @@
 
                     <div style="color: var(--color-text-muted);">Value:</div>
                     <code id="domain-claim-record-value" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
-                    <button type="button" onclick="copyDomainClaimField('value')" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+                    <button type="button" onclick="copyDomainClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
                   </div>
 
                   <label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
@@ -1830,12 +1830,13 @@
 
     // Domain ownership challenge (#3176/#3189) — DNS TXT challenge via WorkOS.
     // Used to claim a brand currently registered to another org.
+    let _domainClaimOpen = false;
     function toggleDomainClaim() {
+      _domainClaimOpen = !_domainClaimOpen;
       var panel = document.getElementById('domain-claim-panel');
       var toggle = document.getElementById('domain-claim-toggle');
-      var open = panel.style.display === 'none' || !panel.style.display;
-      panel.style.display = open ? 'block' : 'none';
-      toggle.textContent = open ? 'Cancel' : 'Start';
+      panel.style.display = _domainClaimOpen ? 'block' : 'none';
+      toggle.textContent = _domainClaimOpen ? 'Cancel' : 'Start';
     }
 
     function setDomainClaimError(msg) {
@@ -1915,11 +1916,14 @@
           // 'still_pending' is the common case — DNS hasn't propagated yet.
           // Surface as inline status, not an error banner, so the user can
           // just retry without losing the issued challenge.
-          if (data.error === 'still_pending') {
-            statusEl.textContent = data.message || 'DNS not yet propagated. Try again in a minute.';
+          if (data.code === 'still_pending') {
+            var hint = data.retry_after_seconds
+              ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
+              : '';
+            statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
             return;
           }
-          throw new Error(data.message || 'Failed to verify domain.');
+          throw new Error(data.message || data.error || 'Failed to verify domain.');
         }
         statusEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; Domain verified' +
           (data.adopted_prior_manifest ? ' &mdash; inherited prior brand identity.' : '.') + '</span>';
@@ -1934,13 +1938,12 @@
       }
     }
 
-    function copyDomainClaimField(field) {
+    function copyDomainClaimField(field, btn) {
       var id = field === 'name' ? 'domain-claim-record-name' : 'domain-claim-record-value';
       var text = document.getElementById(id).textContent;
-      if (!text) return;
+      if (!text || !btn) return;
+      var original = btn.textContent;
       navigator.clipboard.writeText(text).then(function() {
-        var btn = event.target;
-        var original = btn.textContent;
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = original; }, 2000);
       });

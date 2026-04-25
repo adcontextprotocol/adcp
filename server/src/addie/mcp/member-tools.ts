@@ -71,6 +71,10 @@ import { v4 as uuidv4 } from 'uuid';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
 import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../services/pipes.js';
+import { BrandDatabase } from '../../db/brand-db.js';
+import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
+import { getWorkos } from '../../auth/workos-client.js';
+import { resolveUserRole } from '../../utils/resolve-user-role.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -79,6 +83,7 @@ const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
 const wgDb = new WorkingGroupDatabase();
 const slackDb = new SlackDatabase();
+const brandDb = new BrandDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -704,8 +709,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'request_brand_domain_challenge',
     description:
-      "Start a domain ownership challenge for a brand domain so the caller's organization can claim or verify it. Issues a DNS TXT record via WorkOS that the user must publish at the domain. Use when a member wants to claim a brand domain they actually control. Pair with verify_brand_domain_challenge once the DNS record is live.",
-    usage_hints: 'Use when the user says "claim acme.com for our brand" or "I want to verify my domain ownership" or hits a cross-org dispute on a domain they control. Returns DNS TXT instructions the user can publish.',
+      "Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record.",
+    usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check.',
     input_schema: {
       type: 'object',
       properties: {
@@ -720,8 +725,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'verify_brand_domain_challenge',
     description:
-      "After the user publishes the DNS TXT record from request_brand_domain_challenge, ask WorkOS to verify it and apply the brand registry update. On success the caller's organization owns the brand domain. Returns verification status; if WorkOS hasn't found the record yet, advises retry.",
-    usage_hints: 'Use after the user confirms they published the DNS TXT record. Pass adopt_prior_manifest=true if a previous owner relinquished the brand and the user wants to keep their visual identity (acquisition/handoff case).',
+      "Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry.",
+    usage_hints: 'Use only after the user confirms publication. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
     input_schema: {
       type: 'object',
       properties: {
@@ -731,7 +736,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
         adopt_prior_manifest: {
           type: 'boolean',
-          description: 'Set true if a prior owner relinquished this domain and the caller wants to inherit their brand manifest (logos, colors, agents). Default false starts fresh.',
+          description: 'Set true ONLY when the issue response had prior_manifest_exists=true and the user explicitly asked to inherit the prior brand identity (logos, colors, agents). Default false starts fresh. Do not set true on a clean claim or hostile takeover.',
         },
       },
       required: ['domain'],
@@ -2240,17 +2245,19 @@ export function createMemberToolHandlers(
 
   /**
    * Lookup the caller's role on their org via WorkOS. Brand-claim is org-state
-   * mutation and only admins/owners should run it (matches the same gate the
-   * /brand-claim/issue + /verify routes apply).
+   * mutation and only active admins/owners should run it. Filters via
+   * resolveUserRole so an inactive/pending membership row that still carries
+   * an admin slug cannot pass — a removed admin must not be able to claim a
+   * brand on the org that removed them. (Matches /brand-claim/issue + /verify
+   * route gate.)
    */
   async function callerIsOrgAdmin(workosUserId: string, orgId: string): Promise<boolean> {
     try {
-      const { getWorkos } = await import('../../auth/workos-client.js');
       const memberships = await getWorkos().userManagement.listOrganizationMemberships({
         userId: workosUserId,
         organizationId: orgId,
       });
-      const role = memberships.data[0]?.role?.slug || 'member';
+      const role = resolveUserRole(memberships.data);
       return role === 'admin' || role === 'owner';
     } catch (err) {
       logger.error({ err, workosUserId, orgId }, 'brand-claim chat tool: role lookup failed');
@@ -2273,9 +2280,7 @@ export function createMemberToolHandlers(
     const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
     if (!rawDomain) return 'Tell me the brand domain you want to claim (e.g., "acme.com").';
 
-    const { issueDomainChallenge } = await import('../../services/brand-claim.js');
-    const { getWorkos } = await import('../../auth/workos-client.js');
-    const result = await issueDomainChallenge({ workos: getWorkos(), orgId, rawDomain });
+    const result = await issueDomainChallenge({ workos: getWorkos(), brandDb, orgId, rawDomain });
 
     if (!result.ok) {
       if (result.code === 'collision') {
@@ -2296,7 +2301,7 @@ export function createMemberToolHandlers(
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
-    return [
+    const lines = [
       `OK — I asked WorkOS to issue a domain ownership challenge for **${result.domain}**.`,
       ``,
       `**Publish this DNS TXT record:**`,
@@ -2304,9 +2309,17 @@ export function createMemberToolHandlers(
       `- Name: \`${recordName}\``,
       `- Type: \`TXT\``,
       `- Value: \`${result.verification_token}\``,
+      `- TTL: \`300\` (or your registrar's minimum)`,
       ``,
-      `Once it's live (DNS propagation usually a few minutes, sometimes longer), tell me and I'll run \`verify_brand_domain_challenge\`. If a previous organization had this domain registered and you'd like to inherit their brand identity (logos, colors), mention "adopt prior identity" so I pass that flag through.`,
-    ].join('\n');
+      `DNS propagation usually takes 5–15 minutes; some registrars take an hour. Once you've published it AND confirmed it's live, tell me and I'll run \`verify_brand_domain_challenge\`. Don't ask me to verify before then — the call will just fail and the server enforces a 60s cooldown between attempts.`,
+    ];
+    if (result.prior_manifest_exists) {
+      lines.push(
+        ``,
+        `Note: a previous organization had this domain registered and left a brand identity (logos / colors / agents) in place. After verification you can either inherit that prior identity (typical for acquisitions or rebrands) or start fresh. If you want to inherit, mention "adopt prior identity" before I run verify; otherwise I'll start fresh.`,
+      );
+    }
+    return lines.join('\n');
   });
 
   handlers.set('verify_brand_domain_challenge', async (input) => {
@@ -2325,12 +2338,9 @@ export function createMemberToolHandlers(
     if (!rawDomain) return 'Which domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
     const adoptPriorManifest = input.adopt_prior_manifest === true;
 
-    const { verifyDomainChallenge } = await import('../../services/brand-claim.js');
-    const { getWorkos } = await import('../../auth/workos-client.js');
-    const { BrandDatabase } = await import('../../db/brand-db.js');
     const result = await verifyDomainChallenge({
       workos: getWorkos(),
-      brandDb: new BrandDatabase(),
+      brandDb,
       orgId,
       rawDomain,
       adoptPriorManifest,
@@ -2341,7 +2351,9 @@ export function createMemberToolHandlers(
         return `I don't see an outstanding domain challenge for ${rawDomain}. Run \`request_brand_domain_challenge\` first to get the DNS TXT record to publish.`;
       }
       if (result.code === 'still_pending') {
-        return `WorkOS hasn't found the DNS TXT record yet. ${result.message} Try again in a few minutes — DNS propagation can take a while, especially after a fresh publish.`;
+        // Anti-loop: tell the model to STOP, not to retry. The user should
+        // confirm the record is live before another attempt.
+        return `WorkOS hasn't found the DNS TXT record yet. ${result.message}\n\n**Stop here. Do NOT call verify_brand_domain_challenge again.** Ask the user to confirm the record is published and resolves correctly (a \`dig TXT <record-name>\` from their machine should show the verification value), then wait for them to ask before retrying.`;
       }
       return `Verification failed: ${result.message}`;
     }
