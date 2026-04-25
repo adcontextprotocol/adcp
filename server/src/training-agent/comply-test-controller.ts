@@ -458,16 +458,24 @@ function createStore(session: SessionState): TestControllerStore {
 /** Scenarios this wrapper handles before delegating to the SDK dispatcher. The SDK's
  * `CONTROLLER_SCENARIOS` enum is closed; new scenarios from spec PRs land here until
  * the SDK adopts them. Listed in the tool's input enum and merged into list_scenarios
- * responses so storyboards can detect support. */
+ * responses so storyboards can detect support.
+ *
+ * TODO: when the SDK ships native `force_create_media_buy_arm` (tracked at
+ * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
+ * entry in place during the transition; remove once a release has landed and the
+ * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = ['force_create_media_buy_arm'] as const;
 
 // ── Tool definition ───────────────────────────────────────────────
 
-const SCENARIO_ENUM = [
+// `Array.from(new Set(...))` dedups in case the SDK adopts a local scenario
+// natively. Without this, both the input enum and the list_scenarios response
+// would carry the same scenario name twice the moment the SDK catches up.
+const SCENARIO_ENUM = Array.from(new Set([
   'list_scenarios',
   ...Object.values(CONTROLLER_SCENARIOS),
   ...LOCAL_SCENARIOS,
-] as const;
+])) as readonly string[];
 
 // JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
 // top-level `account` (sandbox gate) and `brand` (session keying) — both
@@ -546,6 +554,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
 
   // Augment list_scenarios with our local scenarios so storyboards detect support.
   // The SDK answers from store-method presence, which doesn't see the local handlers.
+  // Dedup via Set so the day the SDK adopts a LOCAL_SCENARIOS entry natively, the
+  // response doesn't carry the same name twice.
   if (
     scenario === 'list_scenarios'
     && sdkResponse
@@ -554,7 +564,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     && Array.isArray((sdkResponse as { scenarios?: unknown }).scenarios)
   ) {
     const r = sdkResponse as { success: true; scenarios: string[] } & Record<string, unknown>;
-    return { ...r, scenarios: [...r.scenarios, ...LOCAL_SCENARIOS] };
+    return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...LOCAL_SCENARIOS])) };
   }
 
   return sdkResponse;

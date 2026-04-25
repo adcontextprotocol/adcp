@@ -1239,12 +1239,22 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // wraps this handler, so a replayed request returns the cached submitted
   // response without re-evaluating the (now-empty) directive slot.
   const directive = session.complyExtensions.forcedCreateMediaBuyArm;
-  if (directive && directive.arm === 'submitted' && directive.taskId) {
+  if (
+    directive
+    && directive.arm === 'submitted'
+    && typeof directive.taskId === 'string'
+    && directive.taskId.length > 0
+    && directive.taskId.length <= 128
+  ) {
     session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    const responseMessage =
+      typeof directive.message === 'string' && directive.message.length <= 2000
+        ? directive.message
+        : undefined;
     return {
       status: 'submitted',
       task_id: directive.taskId,
-      ...(directive.message && { message: directive.message }),
+      ...(responseMessage && { message: responseMessage }),
     };
   }
 

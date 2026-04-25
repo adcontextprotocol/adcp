@@ -141,7 +141,9 @@ describe('force_create_media_buy_arm', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INVALID_PARAMS');
-      expect(result.error_detail).toMatch(/maxLength/);
+      // Loose match — the assertion's job is "rejected with task_id named in
+      // the detail," not "the validator phrased the limit a particular way."
+      expect(result.error_detail).toMatch(/task_id/);
     });
   });
 
@@ -211,6 +213,62 @@ describe('force_create_media_buy_arm', () => {
 
       const buy = await callTool(server, 'create_media_buy', buildCreateMediaBuyArgs(pkg));
       expect(buy.task_id).toBe('task_second');
+    });
+
+    it('replays the cached submitted response on idempotency_key replay (does not re-evaluate the empty directive slot)', async () => {
+      const pkg = await getValidPackage(server);
+
+      await callTool(server, 'comply_test_controller', {
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: 'task_replay_lock' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      const args = buildCreateMediaBuyArgs(pkg);
+      const idempotencyKey = `replay-${crypto.randomUUID()}`;
+
+      const first = await callTool(server, 'create_media_buy', { ...args, idempotency_key: idempotencyKey });
+      expect(first.status).toBe('submitted');
+      expect(first.task_id).toBe('task_replay_lock');
+
+      // Second call with the SAME idempotency_key. The directive has been
+      // consumed, so without idempotency replay the seller would fall through
+      // to the default arm. The SDK's request-idempotency cache MUST replay
+      // the cached submitted response — locks the contract that
+      // task-handlers.ts:1232-1240 promises in its comment.
+      const replay = await callTool(server, 'create_media_buy', { ...args, idempotency_key: idempotencyKey });
+      expect(replay.status).toBe('submitted');
+      expect(replay.task_id).toBe('task_replay_lock');
+    });
+
+    it('does not consume a directive registered on a different (account, brand) pair', async () => {
+      const pkg = await getValidPackage(server);
+
+      // Register on (force-arm.example.com)
+      await callTool(server, 'comply_test_controller', {
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: 'task_account_a' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      // create_media_buy from a DIFFERENT brand+account — must not see the directive.
+      const otherAccount = { brand: { domain: 'other-tenant.example.com' }, operator: 'other-tester', sandbox: true };
+      const otherBrand = { domain: 'other-tenant.example.com' };
+      const buy = await callTool(server, 'create_media_buy', {
+        ...buildCreateMediaBuyArgs(pkg),
+        account: otherAccount,
+        brand: otherBrand,
+      });
+      // Other tenant gets the default arm.
+      expect(buy.status).not.toBe('submitted');
+      expect(buy.task_id).toBeUndefined();
+
+      // Original tenant still has the directive — the cross-tenant request didn't consume it.
+      const ownBuy = await callTool(server, 'create_media_buy', buildCreateMediaBuyArgs(pkg));
+      expect(ownBuy.status).toBe('submitted');
+      expect(ownBuy.task_id).toBe('task_account_a');
     });
 
   });
