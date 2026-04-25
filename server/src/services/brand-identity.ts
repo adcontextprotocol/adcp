@@ -48,15 +48,35 @@ export type BrandIdentityErrorCode =
   | 'no_brand_domain'      // 400-class: caller has no domain to write to
   | 'cross_org_ownership'; // 403-class: domain owned by a different org
 
+/** Per-code meta payload shapes. Add a new code by extending this map. */
+export interface BrandIdentityErrorMetaByCode {
+  invalid_input: undefined;
+  invalid_domain: { canonicalDomain: string };
+  no_brand_domain: undefined;
+  cross_org_ownership: { brandDomain: string; currentOwnerOrgId: string };
+}
+
 export class BrandIdentityError extends Error {
   constructor(
-    public statusCode: number,
+    public readonly statusCode: number,
     message: string,
-    public code: BrandIdentityErrorCode = 'invalid_input',
-    public meta: Record<string, unknown> = {},
+    public readonly code: BrandIdentityErrorCode = 'invalid_input',
+    public readonly meta?: BrandIdentityErrorMetaByCode[BrandIdentityErrorCode],
   ) {
     super(message);
     this.name = 'BrandIdentityError';
+  }
+
+  /**
+   * Type guard that narrows both the discriminator and the meta payload —
+   * use this in catch sites instead of comparing `err.code` directly so
+   * callers get `err.meta.brandDomain` typed as string instead of unknown.
+   */
+  isCrossOrgOwnership(): this is BrandIdentityError & {
+    code: 'cross_org_ownership';
+    meta: BrandIdentityErrorMetaByCode['cross_org_ownership'];
+  } {
+    return this.code === 'cross_org_ownership';
   }
 }
 
@@ -99,7 +119,12 @@ export async function updateBrandIdentity(
   try {
     assertValidBrandDomain(brandDomain);
   } catch (err) {
-    throw new BrandIdentityError(400, err instanceof Error ? err.message : 'Invalid brand domain.', 'invalid_domain');
+    throw new BrandIdentityError(
+      400,
+      err instanceof Error ? err.message : 'Invalid brand domain.',
+      'invalid_domain',
+      { canonicalDomain: brandDomain },
+    );
   }
 
   const pool = getPool();

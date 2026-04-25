@@ -1243,27 +1243,31 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {
-          if (err.code === 'cross_org_ownership') {
+          if (err.isCrossOrgOwnership()) {
             // Convert the bare 403 into a routed escalation so an admin can
             // resolve via transfer_brand_ownership instead of the user dead-ending.
+            const { brandDomain, currentOwnerOrgId } = err.meta;
+            const callerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
             const escalation = await createEscalation({
               workos_user_id: user.id,
               user_email: user.email,
-              user_display_name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+              user_display_name: callerName,
               category: 'needs_human_action',
               priority: 'normal',
-              summary: `Brand ownership dispute: ${displayName} wants to claim ${err.meta.brandDomain}`,
-              original_request: `Update brand identity for ${err.meta.brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
-              addie_context: `Caller org: ${targetOrgId}. Current owner org: ${err.meta.currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
+              summary: `Brand ownership dispute: ${displayName} wants to claim ${brandDomain}`,
+              original_request: `Update brand identity for ${brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
+              addie_context: `Caller: ${callerName} <${user.email}>, org ${targetOrgId}. Current owner org: ${currentOwnerOrgId}. If the claim is legitimate, run transfer_brand_ownership to resolve.`,
             }).catch(escalErr => {
-              logger.error({ err: escalErr, brandDomain: err.meta.brandDomain }, 'Failed to file brand-ownership escalation');
+              logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
               return null;
             });
             return res.status(409).json({
               error: 'Brand domain is managed by another organization',
-              message: 'We filed a ticket so the team can review.',
+              message: escalation
+                ? 'We filed a ticket so the team can review.'
+                : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
               escalation_id: escalation?.id ?? null,
-              brand_domain: err.meta.brandDomain,
+              brand_domain: brandDomain,
             });
           }
           return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
