@@ -124,7 +124,7 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT } = {}) {
     if (missingFromDoc.length) {
       errors.push(
         `${check.relpath}: universal-storyboards table is missing rows for ${missingFromDoc.map(t => '`' + t + '`').join(', ')}.\n` +
-        `  Add a row to the table under "${check.heading}". The runner will fail any agent that doesn't pass these.`
+        `  Add a row to the table under "${check.heading}" using the ${check.tokenLabel} form. The runner will fail any agent that doesn't pass these.`
       );
     }
 

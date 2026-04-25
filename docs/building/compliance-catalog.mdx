@@ -17,6 +17,8 @@ This page is the human-readable index of that taxonomy. The machine-readable equ
 
 Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance.
 
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (kebab-case slug) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+
 | Storyboard | Purpose |
 |-----------|---------|
 | `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
