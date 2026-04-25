@@ -233,6 +233,7 @@ import {
   handleComplyTestController,
   getDeliverySimulation,
   getAccountStatus,
+  getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 import {
@@ -1205,26 +1206,65 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  let formats = getFormats();
 
-  // Filter by channels
-  if (req.channels?.length) {
-    const validIds = new Set<string>();
-    for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
-      if (fmtChannels.some(c => req.channels!.includes(c))) {
-        validIds.add(fmtId);
+  // When comply_test_controller.seed_creative_format has pre-populated formats,
+  // use the seeded catalog so pagination-integrity storyboards can pin
+  // has_more / cursor / total_count against a known set size. The seed pool is
+  // process-global (not session-scoped) because list_creative_formats has no
+  // tenant identity in its request schema — every call is a global catalog
+  // read. Other seed_* scenarios (seed_creative, seed_media_buy) target
+  // entities the listing call carries identity for and stay session-scoped.
+  // Falls back to the static catalog when the seed pool is empty so normal
+  // (non-compliance) callers are unaffected.
+  let formats: ReturnType<typeof getFormats>;
+  const seeded = getSeededCreativeFormats();
+  if (seeded.size > 0) {
+    // Seeded entries are stored as Record<string, unknown> with the format_id
+    // stamped at seed time. Storyboards seed complete TrainingFormat-shaped
+    // fixtures (name/description/renders/assets); the cast through unknown
+    // matches that contract without re-validating at read time.
+    formats = Array.from(seeded.values()) as unknown as ReturnType<typeof getFormats>;
+  } else {
+    formats = getFormats();
+
+    // Filter by channels (informal field; stripped by SDK in compliance runs,
+    // so this path is only reachable in non-SDK direct calls).
+    if (req.channels?.length) {
+      const validIds = new Set<string>();
+      for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
+        if (fmtChannels.some(c => req.channels!.includes(c))) {
+          validIds.add(fmtId);
+        }
       }
+      formats = formats.filter(f => validIds.has(f.format_id.id));
     }
-    formats = formats.filter(f => validIds.has(f.format_id.id));
   }
 
-  // Filter by format_ids
+  // Filter by format_ids (applies in both seeded and static paths)
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats };
+  const totalMatching = formats.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageFormats = formats.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    formats: pageFormats,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
+    },
+  };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {

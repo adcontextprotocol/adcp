@@ -27,7 +27,8 @@
               "seed_pricing_option",
               "seed_creative",
               "seed_plan",
-              "seed_media_buy"
+              "seed_media_buy",
+              "seed_creative_format"
             ]
           },
           "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."
@@ -111,6 +112,20 @@
       "required": ["success", "forced"],
       "additionalProperties": true,
       "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }] }
+    },
+    {
+      "title": "SeedSuccess",
+      "description": "A seed_* scenario successfully pre-populated a fixture in the seller's test state",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": true },
+        "message": { "type": "string", "description": "Human-readable acknowledgement." },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["success"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }, { "required": ["forced"] }] }
     },
     {
       "title": "ControllerError",
