@@ -50,9 +50,18 @@ vi.mock('../../server/src/addie/mcp/admin-tools.js', () => ({
   isSlackUserAAOAdmin: (...args: unknown[]) => mockIsSlackUserAAOAdmin(...args),
 }));
 
-async function loadModule() {
-  return await import('../../server/src/addie/jobs/announcement-handlers.js');
-}
+import * as announcementHandlers from '../../server/src/addie/jobs/announcement-handlers.js';
+const {
+  renderReviewCard,
+  buildPublicAnnouncementPayload,
+  scrubBareUrlsForPublicPost,
+  handleAnnouncementApproveSlack,
+  loadDraftAndState,
+  refreshReviewCardForOrg,
+  markLinkedInPosted,
+  handleAnnouncementMarkLinkedIn,
+  handleAnnouncementSkip,
+} = announcementHandlers;
 
 const ORG_ID = 'org_ACME123';
 const ADMIN_USER = 'U0ADMIN42';
@@ -136,16 +145,14 @@ function queueDbReads(opts: {
 }
 
 beforeEach(() => {
-  // Clears the module cache so each test's loadModule() call gets a fresh
-  // module instance. vi.clearAllMocks() resets call history but not the module
-  // registry — without this the cached instance from a prior test carries stale
-  // mock implementations into the next test.
-  vi.resetModules();
-  vi.clearAllMocks();
-  // Reset mockQuery specifically so the `mockResolvedValueOnce` queue
-  // from a previous test doesn't carry over. `clearAllMocks` clears
-  // call history but not queued implementations.
+  // mockReset drains both the mockResolvedValueOnce queue and call history per
+  // mock. clearAllMocks() alone clears history but leaves queued values.
   mockQuery.mockReset();
+  mockSendChannelMessage.mockReset();
+  mockDeleteChannelMessage.mockReset();
+  mockUpdateChannelMessage.mockReset();
+  mockGetAnnouncementChannel.mockReset();
+  mockIsSlackUserAAOAdmin.mockReset();
   mockIsSlackUserAAOAdmin.mockResolvedValue(true);
   mockGetAnnouncementChannel.mockResolvedValue({
     channel_id: ANNOUNCE_CHANNEL,
@@ -158,7 +165,6 @@ beforeEach(() => {
 
 describe('renderReviewCard', () => {
   it('initial state: three buttons, status pending-pending', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks, text } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
@@ -178,7 +184,6 @@ describe('renderReviewCard', () => {
   });
 
   it('after slack posted: shows approver, drops approve + skip buttons, keeps LI button', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
@@ -200,7 +205,6 @@ describe('renderReviewCard', () => {
   });
 
   it('after both channels posted: no actions block (terminal)', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
@@ -221,7 +225,6 @@ describe('renderReviewCard', () => {
   });
 
   it('admin-source actor renders as plain "an AAO admin" text, not a slack mention', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
@@ -244,7 +247,6 @@ describe('renderReviewCard', () => {
   });
 
   it('skipped: shows skipper, no actions', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: DRAFT_METADATA,
@@ -262,7 +264,6 @@ describe('renderReviewCard', () => {
   });
 
   it('sanitizes Slack-breakout tokens in the re-rendered drafts', async () => {
-    const { renderReviewCard } = await loadModule();
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
       draft: {
@@ -284,7 +285,6 @@ describe('renderReviewCard', () => {
 
 describe('buildPublicAnnouncementPayload', () => {
   it('produces section + image blocks with sanitized text', async () => {
-    const { buildPublicAnnouncementPayload } = await loadModule();
     const payload = buildPublicAnnouncementPayload({
       ...DRAFT_METADATA,
       slack_text: 'Welcome <!channel>!',
@@ -299,7 +299,6 @@ describe('buildPublicAnnouncementPayload', () => {
   });
 
   it('returns null when stored visual_url would fail isSafeVisualUrl', async () => {
-    const { buildPublicAnnouncementPayload } = await loadModule();
     // loopback IP is explicitly rejected by isSafeVisualUrl
     const payload = buildPublicAnnouncementPayload({
       ...DRAFT_METADATA,
@@ -309,7 +308,6 @@ describe('buildPublicAnnouncementPayload', () => {
   });
 
   it('strips bare URLs not on the AAO host from the public slack text', async () => {
-    const { buildPublicAnnouncementPayload } = await loadModule();
     const payload = buildPublicAnnouncementPayload({
       ...DRAFT_METADATA,
       slack_text:
@@ -324,7 +322,6 @@ describe('buildPublicAnnouncementPayload', () => {
 
 describe('scrubBareUrlsForPublicPost', () => {
   it('replaces off-host URLs with [link removed], keeps on-host URLs intact', async () => {
-    const { scrubBareUrlsForPublicPost } = await loadModule();
     expect(
       scrubBareUrlsForPublicPost(
         'a https://evil.example/ b https://agenticadvertising.org/ok',
@@ -334,7 +331,6 @@ describe('scrubBareUrlsForPublicPost', () => {
   });
 
   it('handles malformed URL-like fragments gracefully', async () => {
-    const { scrubBareUrlsForPublicPost } = await loadModule();
     const out = scrubBareUrlsForPublicPost(
       'check https://.malformed and normal text',
       'https://agenticadvertising.org',
@@ -349,7 +345,6 @@ describe('handleAnnouncementApproveSlack', () => {
     queueDbReads({});
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT activity
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const ack = vi.fn<any>().mockResolvedValue(undefined);
     const client = buildClient();
     await handleAnnouncementApproveSlack({ ack, body: buildActionBody(), client });
@@ -383,7 +378,6 @@ describe('handleAnnouncementApproveSlack', () => {
       ],
     });
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -402,7 +396,6 @@ describe('handleAnnouncementApproveSlack', () => {
     queueDbReads({});
     mockQuery.mockRejectedValueOnce(new Error('db down')); // INSERT fails
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -421,7 +414,6 @@ describe('handleAnnouncementApproveSlack', () => {
     queueDbReads({});
     mockGetAnnouncementChannel.mockResolvedValueOnce({ channel_id: null, channel_name: null });
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -446,7 +438,6 @@ describe('handleAnnouncementApproveSlack', () => {
       ],
     });
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -463,7 +454,6 @@ describe('handleAnnouncementApproveSlack', () => {
   test('refuses non-admin', async () => {
     mockIsSlackUserAAOAdmin.mockResolvedValueOnce(false);
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -479,7 +469,6 @@ describe('handleAnnouncementApproveSlack', () => {
   });
 
   test('ignores bodies missing required fields', async () => {
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     const ack = vi.fn<any>().mockResolvedValue(undefined);
     await handleAnnouncementApproveSlack({
@@ -493,7 +482,6 @@ describe('handleAnnouncementApproveSlack', () => {
   });
 
   test('ignores action value that does not look like an org ID', async () => {
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -512,7 +500,6 @@ describe('handleAnnouncementApproveSlack', () => {
       },
     });
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -527,7 +514,6 @@ describe('handleAnnouncementApproveSlack', () => {
   });
 
   test('rejects body with non-slack channel id shape', async () => {
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -539,7 +525,6 @@ describe('handleAnnouncementApproveSlack', () => {
   });
 
   test('rejects body with non-slack message ts shape', async () => {
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -554,7 +539,6 @@ describe('handleAnnouncementApproveSlack', () => {
     queueDbReads({});
     mockSendChannelMessage.mockResolvedValueOnce({ ok: false, error: 'channel_not_found' });
 
-    const { handleAnnouncementApproveSlack } = await loadModule();
     const client = buildClient();
     await handleAnnouncementApproveSlack({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -587,7 +571,6 @@ describe('legacy-row back-compat (Stage 2 rows without _via)', () => {
         },
       ],
     });
-    const { loadDraftAndState, renderReviewCard } = await loadModule();
     const loaded = await loadDraftAndState(ORG_ID);
     expect(loaded).not.toBeNull();
     const { blocks } = renderReviewCard({
@@ -611,7 +594,6 @@ describe('legacy-row back-compat (Stage 2 rows without _via)', () => {
         },
       ],
     });
-    const { loadDraftAndState, renderReviewCard } = await loadModule();
     const loaded = await loadDraftAndState(ORG_ID);
     const { blocks } = renderReviewCard({
       orgId: ORG_ID,
@@ -643,7 +625,6 @@ describe('legacy-row back-compat (Stage 2 rows without _via)', () => {
         },
       ],
     });
-    const { loadDraftAndState } = await loadModule();
     const loaded = await loadDraftAndState(ORG_ID);
     expect(loaded!.state.linkedinMarker.source).toBe('admin');
     expect(loaded!.state.linkedinMarker.slackUserId).toBeNull();
@@ -668,7 +649,6 @@ describe('refreshReviewCardForOrg', () => {
       ],
     });
 
-    const { refreshReviewCardForOrg } = await loadModule();
     await refreshReviewCardForOrg(ORG_ID);
 
     expect(mockUpdateChannelMessage).toHaveBeenCalledTimes(1);
@@ -682,7 +662,6 @@ describe('refreshReviewCardForOrg', () => {
 
   it('no-ops silently when no draft row exists', async () => {
     queueDbReads({ draft: null });
-    const { refreshReviewCardForOrg } = await loadModule();
     await refreshReviewCardForOrg(ORG_ID);
     expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
   });
@@ -691,7 +670,6 @@ describe('refreshReviewCardForOrg', () => {
     queueDbReads({
       draft: { ...DRAFT_METADATA, review_message_ts: null as unknown as string },
     });
-    const { refreshReviewCardForOrg } = await loadModule();
     await refreshReviewCardForOrg(ORG_ID);
     expect(mockUpdateChannelMessage).not.toHaveBeenCalled();
   });
@@ -699,7 +677,6 @@ describe('refreshReviewCardForOrg', () => {
   it('swallows chat.update errors — caller does not need to worry about them', async () => {
     queueDbReads({});
     mockUpdateChannelMessage.mockResolvedValueOnce({ ok: false, error: 'message_not_found' });
-    const { refreshReviewCardForOrg } = await loadModule();
     await expect(refreshReviewCardForOrg(ORG_ID)).resolves.toBeUndefined();
   });
 });
@@ -711,7 +688,6 @@ describe('markLinkedInPosted (shared)', () => {
     queueDbReads({});
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'admin',
       workosUserId: WORKOS_USER,
@@ -732,7 +708,6 @@ describe('markLinkedInPosted (shared)', () => {
     queueDbReads({});
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'slack',
       slackUserId: ADMIN_USER,
@@ -751,7 +726,6 @@ describe('markLinkedInPosted (shared)', () => {
   test('no draft → kind=no_draft, no INSERT', async () => {
     queueDbReads({ draft: null });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'admin',
       workosUserId: WORKOS_USER,
@@ -775,7 +749,6 @@ describe('markLinkedInPosted (shared)', () => {
       ],
     });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'admin',
       workosUserId: WORKOS_USER,
@@ -799,7 +772,6 @@ describe('markLinkedInPosted (shared)', () => {
       ],
     });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'admin',
       workosUserId: WORKOS_USER,
@@ -822,7 +794,6 @@ describe('markLinkedInPosted (shared)', () => {
       ],
     });
 
-    const { markLinkedInPosted } = await loadModule();
     const outcome = await markLinkedInPosted(ORG_ID, {
       source: 'admin',
       workosUserId: WORKOS_USER,
@@ -837,7 +808,6 @@ describe('handleAnnouncementMarkLinkedIn', () => {
     queueDbReads({});
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { handleAnnouncementMarkLinkedIn } = await loadModule();
     const client = buildClient();
     await handleAnnouncementMarkLinkedIn({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -868,7 +838,6 @@ describe('handleAnnouncementMarkLinkedIn', () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT linkedin
 
-    const { handleAnnouncementMarkLinkedIn } = await loadModule();
     const client = buildClient();
     await handleAnnouncementMarkLinkedIn({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -900,7 +869,6 @@ describe('handleAnnouncementMarkLinkedIn', () => {
       ],
     });
 
-    const { handleAnnouncementMarkLinkedIn } = await loadModule();
     const client = buildClient();
     await handleAnnouncementMarkLinkedIn({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -926,7 +894,6 @@ describe('handleAnnouncementMarkLinkedIn', () => {
       ],
     });
 
-    const { handleAnnouncementMarkLinkedIn } = await loadModule();
     const client = buildClient();
     await handleAnnouncementMarkLinkedIn({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -946,7 +913,6 @@ describe('handleAnnouncementSkip', () => {
     queueDbReads({});
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const { handleAnnouncementSkip } = await loadModule();
     const client = buildClient();
     await handleAnnouncementSkip({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -975,7 +941,6 @@ describe('handleAnnouncementSkip', () => {
       ],
     });
 
-    const { handleAnnouncementSkip } = await loadModule();
     const client = buildClient();
     await handleAnnouncementSkip({
       ack: vi.fn<any>().mockResolvedValue(undefined),
@@ -1003,7 +968,6 @@ describe('handleAnnouncementSkip', () => {
       ],
     });
 
-    const { handleAnnouncementSkip } = await loadModule();
     const client = buildClient();
     await handleAnnouncementSkip({
       ack: vi.fn<any>().mockResolvedValue(undefined),
