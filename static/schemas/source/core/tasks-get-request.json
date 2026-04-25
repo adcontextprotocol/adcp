@@ -21,6 +21,11 @@
       "default": false,
       "description": "Include full conversation history for this task (may increase response size)"
     },
+    "include_result": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include the terminal task payload on the response when the task has reached `status: completed`. When true, the response carries a `result` object whose shape matches the original task response payload (e.g., for `task_type: create_media_buy`, `result` contains the same `media_buy_id`, `packages`, and `status` a synchronous `create_media_buy` completion would have produced). Defaults to false to keep status-only polls cheap. Sellers MUST honor this flag when the task is in a terminal status; for non-terminal statuses the flag has no effect."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -44,6 +49,13 @@
       "data": {
         "task_id": "task_123",
         "include_history": true
+      }
+    },
+    {
+      "description": "Retrieve completion payload for a terminal create_media_buy task",
+      "data": {
+        "task_id": "task_789",
+        "include_result": true
       }
     }
   ]

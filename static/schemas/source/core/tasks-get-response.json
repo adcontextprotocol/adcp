@@ -107,6 +107,11 @@
       ],
       "additionalProperties": true
     },
+    "result": {
+      "type": "object",
+      "description": "Terminal task payload, populated only when `status` is `completed` and `include_result` was true on the request. The shape matches the original task response payload for the task's `task_type` — for example, when `task_type` is `create_media_buy`, `result` carries the same `media_buy_id`, `packages`, and `status` that a synchronous `create_media_buy` completion would have produced. Sellers MUST NOT populate `result` for non-terminal statuses (`submitted`, `working`, `input-required`, `auth-required`); for `failed`/`canceled` use `error` instead. Buyers SHOULD treat `result` as authoritative for the terminal payload — webhooks remain the supported delivery mechanism, and this field is the typed retrieval path.",
+      "additionalProperties": true
+    },
     "history": {
       "type": "array",
       "description": "Complete conversation history for this task (only included if include_history was true in request)",
