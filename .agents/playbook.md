@@ -449,8 +449,32 @@ lands on an open issue. To poke the routine yourself:
   usual cause. Comment `/triage` to recover.
 
 If `claude-triaging` is stuck on an issue for >30 minutes with no
-visible progress, the routine errored mid-run. Remove the label
-manually and re-fire with `/triage`.
+visible progress, the routine errored mid-run. The
+`Clear stuck claude-triaging labels` workflow runs every 30 minutes
+and clears the label automatically; if you need it gone faster,
+remove it manually and re-fire with `/triage`.
+
+**Recovery against silent webhook misses.** GitHub occasionally
+drops `issues.opened` webhook deliveries with no audit trail (this
+is what bit #3112 — issue created, no triage workflow run, no
+signal). The `Triage webhook-miss sweep` workflow runs hourly, finds
+issues opened in the last 24h with no `claude-triag*` label and no
+`## Triage` comment, and fires the routine manually as a recovery.
+Tag-line in the payload is `RECOVERY SWEEP:` so the routine knows
+this is a catch-up rather than a fresh fire.
+
+**Local manual fire.** For "I need to fire triage right now without
+leaving a public `/triage` comment trail" or "the sweep won't pick
+this up for an hour" cases, use `.agents/scripts/triage-local.sh`:
+
+```bash
+.agents/scripts/triage-local.sh <issue-number> [execute|clarify|defer]
+```
+
+Requires `CLAUDE_ROUTINE_TRIAGE_URL` and `CLAUDE_ROUTINE_TRIAGE_TOKEN`
+env vars (or a local `.env` file). The script writes nothing to
+GitHub — it only POSTs to the routine's `/fire` endpoint with the
+issue payload. The routine itself does all the comment/label work.
 
 ## Cross-Agent Integration
 
