@@ -7,6 +7,8 @@ description: Execute AdCP Creative Protocol operations with creative agents - bu
 
 This skill enables you to execute the AdCP Creative Protocol with creative agents. Use the standard MCP tools (`list_creative_formats`, `build_creative`, `preview_creative`) exposed by the connected agent.
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The Creative Protocol provides 4 standardized tasks for building and previewing advertising creatives:

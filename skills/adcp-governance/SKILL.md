@@ -7,6 +7,8 @@ description: Execute AdCP Governance Protocol operations with governance agents 
 
 This skill enables you to execute the AdCP Governance Protocol with governance agents. Covers three areas: property lists (site-level targeting), collection lists (program-level targeting), and content standards (brand safety rules).
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The Governance Protocol provides 17 standardized tasks across three areas:

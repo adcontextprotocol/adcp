@@ -51,6 +51,8 @@ services:
       - ./server/public:/app/server/public:ro
       # Mount docs directory for Addie knowledge base
       - ./docs:/app/docs:ro
+      # Mount skills/ so Addie's ask_about_adcp_task loader sees protocol skills
+      - ./skills:/app/skills:ro
     depends_on:
       postgres:
         condition: service_healthy
