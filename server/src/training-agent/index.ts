@@ -166,11 +166,17 @@ function buildStrictAuthenticator(): Authenticator | null {
     fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
     resolveOperation: (req) => {
+      // rawBody is populated by the production http.ts `verify` callback.
+      // Fall back to req.body (already-parsed by express.json) when rawBody
+      // is absent — e.g. in test harnesses that skip the verify callback.
+      // Safe here because resolveOperation drives only the required_for
+      // routing decision, not cryptographic verification.
       const raw = (req as { rawBody?: string }).rawBody;
-      if (!raw) return undefined;
       try {
-        const body = JSON.parse(raw) as { method?: string; params?: { name?: string } };
-        if (body.method === 'tools/call' && typeof body.params?.name === 'string') {
+        const body = raw
+          ? JSON.parse(raw) as { method?: string; params?: { name?: string } }
+          : (req as { body?: { method?: string; params?: { name?: string } } }).body;
+        if (body && body.method === 'tools/call' && typeof body.params?.name === 'string') {
           return body.params.name;
         }
       } catch {
