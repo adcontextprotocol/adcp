@@ -263,8 +263,8 @@ export function createInvitesRouter(): Router {
       // early check before either has minted a sub.
       const intake = await withOrgIntakeLock<
         | { kind: 'block'; block: ActiveSubscriptionBlock }
-        | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
         | { kind: 'invoiceFailed' }
+        | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
       >(org.workos_organization_id, async () => {
         const racedBlock = await blockIfActiveSubscription(
           org.workos_organization_id,
@@ -302,12 +302,14 @@ export function createInvitesRouter(): Router {
       }
       const invoiceResult = intake.invoiceResult;
 
+      // INVARIANT: in-lock-guard-re-check
       // markMembershipInviteAccepted runs OUTSIDE the lock. That is safe
       // only because the in-lock `blockIfActiveSubscription` re-check
-      // catches duplicate-sub attempts: a third concurrent click on the
-      // same invite will block when its lock-internal guard reads the
-      // Stripe-side sub this acceptance just minted. Do not remove the
-      // re-guard inside the lock without re-thinking this invariant.
+      // (above, inside withOrgIntakeLock) catches duplicate-sub attempts:
+      // a third concurrent click on the same invite will block when its
+      // lock-internal guard reads the Stripe-side sub this acceptance just
+      // minted. Do not remove the re-guard inside the lock without
+      // re-thinking this invariant.
       const accepted = await markMembershipInviteAccepted(
         token,
         user.id,
