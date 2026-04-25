@@ -435,4 +435,156 @@ export function setupAccountsBillingRoutes(
       }
     }
   );
+
+  // POST /api/admin/accounts/:orgId/reset-subscription-state
+  // Atomically clears all subscription-related fields to NULL.
+  // Use when Stripe state is gone but the DB row is stale (e.g., post-audit cleanup,
+  // unlinked customer with orphaned stripe_subscription_id blocking a unique constraint).
+  apiRouter.post(
+    "/accounts/:orgId/reset-subscription-state",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      const { confirmation, reason } = req.body;
+
+      try {
+        const pool = getPool();
+
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, stripe_customer_id,
+                  subscription_status, stripe_subscription_id,
+                  subscription_amount, subscription_currency, subscription_interval,
+                  subscription_current_period_end, subscription_canceled_at,
+                  subscription_product_id, subscription_product_name,
+                  subscription_price_id, subscription_price_lookup_key,
+                  membership_tier, subscription_metadata
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The specified organization does not exist",
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        if (!reason || reason.trim().length < 10) {
+          return res.status(400).json({
+            error: "Reason required",
+            message:
+              "A reason of at least 10 characters is required for the audit record.",
+          });
+        }
+
+        if (!confirmation || confirmation !== org.name) {
+          return res.status(400).json({
+            error: "Confirmation required",
+            message: `To reset subscription state, provide the exact organization name "${org.name}" in the confirmation field.`,
+            requires_confirmation: true,
+            organization_name: org.name,
+          });
+        }
+
+        // Refuse if the org has live Stripe subscriptions — caller should /sync or cancel first.
+        if (org.stripe_customer_id && stripe) {
+          const customer = await stripe.customers.retrieve(
+            org.stripe_customer_id,
+            { expand: ["subscriptions"] }
+          );
+
+          if (!customer.deleted) {
+            const liveStatuses = ["active", "trialing", "past_due", "incomplete"];
+            const liveSubs =
+              (customer as Stripe.Customer).subscriptions?.data.filter(
+                (sub: any) => liveStatuses.includes(sub.status)
+              ) ?? [];
+
+            if (liveSubs.length > 0) {
+              return res.status(400).json({
+                error: "Live subscriptions exist",
+                message: `Organization has ${liveSubs.length} live Stripe subscription(s). Run /sync or cancel the subscription before resetting.`,
+                live_subscription_ids: liveSubs.map((s: any) => s.id),
+              });
+            }
+          }
+        }
+
+        const beforeState = {
+          subscription_status: org.subscription_status,
+          stripe_subscription_id: org.stripe_subscription_id,
+          subscription_amount: org.subscription_amount,
+          subscription_currency: org.subscription_currency,
+          subscription_interval: org.subscription_interval,
+          subscription_current_period_end: org.subscription_current_period_end,
+          subscription_canceled_at: org.subscription_canceled_at,
+          subscription_product_id: org.subscription_product_id,
+          subscription_product_name: org.subscription_product_name,
+          subscription_price_id: org.subscription_price_id,
+          subscription_price_lookup_key: org.subscription_price_lookup_key,
+          membership_tier: org.membership_tier,
+          subscription_metadata: org.subscription_metadata,
+        };
+
+        await pool.query(
+          `UPDATE organizations
+           SET subscription_status = NULL,
+               stripe_subscription_id = NULL,
+               subscription_amount = NULL,
+               subscription_currency = NULL,
+               subscription_interval = NULL,
+               subscription_current_period_end = NULL,
+               subscription_canceled_at = NULL,
+               subscription_product_id = NULL,
+               subscription_product_name = NULL,
+               subscription_price_id = NULL,
+               subscription_price_lookup_key = NULL,
+               membership_tier = NULL,
+               subscription_metadata = NULL,
+               updated_at = NOW()
+           WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        const orgDb = new OrganizationDatabase();
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: req.user!.id,
+          action: "subscription_state_reset",
+          resource_type: "organization",
+          resource_id: orgId,
+          details: {
+            org_name: org.name,
+            admin_email: req.user!.email,
+            reason: reason.trim(),
+            before_state: beforeState,
+          },
+        });
+
+        logger.info(
+          { orgId, orgName: org.name, adminEmail: req.user?.email },
+          "Reset subscription state for organization"
+        );
+
+        res.json({
+          success: true,
+          message: `Subscription state reset for ${org.name}`,
+          org_id: orgId,
+          org_name: org.name,
+          cleared_fields: Object.entries(beforeState)
+            .filter(([, v]) => v !== null)
+            .map(([k]) => k),
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId }, "Error resetting subscription state");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to reset subscription state",
+        });
+      }
+    }
+  );
 }
