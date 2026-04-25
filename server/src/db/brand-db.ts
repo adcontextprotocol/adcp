@@ -1,4 +1,5 @@
 import { query, getClient } from './client.js';
+import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
 import type {
   HostedBrand,
   DiscoveredBrand,
@@ -1044,14 +1045,16 @@ export class BrandDatabase {
   /**
    * Transfer brand domain ownership to a new org, writing a revision for audit.
    * Out-of-band verification (legal docs, support ticket) must happen before calling.
+   * Rejects unowned brands — there's nothing to transfer; use the normal
+   * registration path to claim them.
    */
   async transferBrandOwnership(
     domain: string,
     newOrgId: string,
     reason: string,
     editor: { userId: string; email?: string; name?: string },
-  ): Promise<{ oldOrgId: string | null; revisionNumber: number }> {
-    const canonicalDomain = domain.toLowerCase();
+  ): Promise<{ oldOrgId: string; revisionNumber: number }> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -1061,11 +1064,25 @@ export class BrandDatabase {
         [canonicalDomain]
       );
       if (lockResult.rows.length === 0) {
-        throw new Error(`Brand not found: ${domain}`);
+        throw new Error(`Brand not found: ${canonicalDomain}`);
       }
 
       const current = lockResult.rows[0];
       const oldOrgId = current.workos_organization_id ?? null;
+      if (!oldOrgId) {
+        throw new Error(`Brand ${canonicalDomain} has no current owner — there is nothing to transfer. Have the new org claim it through the normal registration path instead.`);
+      }
+      if (oldOrgId === newOrgId) {
+        throw new Error(`Brand ${canonicalDomain} is already owned by ${newOrgId}.`);
+      }
+
+      const orgCheck = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM organizations WHERE workos_organization_id = $1) AS exists`,
+        [newOrgId]
+      );
+      if (!orgCheck.rows[0]?.exists) {
+        throw new Error(`new_org_id ${newOrgId} does not exist in the organizations table.`);
+      }
 
       const revResult = await client.query<{ next_rev: number }>(
         'SELECT COALESCE(MAX(revision_number), 0) + 1 AS next_rev FROM brand_revisions WHERE brand_domain = $1',

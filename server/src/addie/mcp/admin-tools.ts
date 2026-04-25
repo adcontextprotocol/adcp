@@ -8526,11 +8526,19 @@ Use add_committee_leader to assign a leader.`;
   handlers.set('transfer_brand_ownership', async (input) => {
     const rawDomain = input.domain as string;
     const newOrgId = input.new_org_id as string;
-    const reason = input.reason as string;
+    const rawReason = input.reason as string;
 
     if (!rawDomain) throw new ToolError('domain is required');
     if (!newOrgId) throw new ToolError('new_org_id is required');
-    if (!reason || reason.length < 20) throw new ToolError('reason must be descriptive (at least 20 characters)');
+    if (!/^org_[A-Z0-9]{20,}$/.test(newOrgId)) {
+      throw new ToolError(`new_org_id ${newOrgId} is not a valid WorkOS organization id (expected "org_..." format).`);
+    }
+    if (!rawReason || rawReason.length < 20) {
+      throw new ToolError('reason must be descriptive (at least 20 characters)');
+    }
+    // Cap so the audit revision can't be bloated to MB by a typo or
+    // prompt-injected long reason; matches review_brand_logo's note cap.
+    const reason = rawReason.slice(0, 1000);
 
     const domain = canonicalizeBrandDomain(rawDomain);
     const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
@@ -8549,7 +8557,7 @@ Use add_committee_leader to assign a leader.`;
       return JSON.stringify({
         success: true,
         domain,
-        old_org_id: result.oldOrgId ?? null,
+        old_org_id: result.oldOrgId,
         new_org_id: newOrgId,
         revision_number: result.revisionNumber,
         reason,
