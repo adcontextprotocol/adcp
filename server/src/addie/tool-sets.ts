@@ -126,6 +126,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_company_listing',
       'update_company_listing',
       'update_company_logo',
+      'request_brand_domain_challenge',
+      'verify_brand_domain_challenge',
       'list_working_groups',
       'get_working_group',
       'join_working_group',
