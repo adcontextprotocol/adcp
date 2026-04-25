@@ -172,6 +172,7 @@ function createStore(session: SessionState): TestControllerStore {
 
       const now = new Date().toISOString();
       mb.status = status;
+      mb.complyControllerForced = true;
       mb.updatedAt = now;
 
       if (status === 'canceled') {
