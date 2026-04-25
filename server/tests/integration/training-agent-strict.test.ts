@@ -112,10 +112,11 @@ describe('Training Agent /mcp-strict route', () => {
 
   describe('presence-gated enforcement', () => {
     it('unsigned create_media_buy on /mcp-strict returns 401 request_signature_required', async () => {
+      // auth: false — bearer bypass (SDK #2586) short-circuits required_for; graders send no bearer.
       const res = await callTool(app, '/mcp-strict', 'create_media_buy', {
         account: { brand: { domain: 'strict-test.example.com' }, sandbox: true },
         idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
-      });
+      }, { auth: false });
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('request_signature_required');
       expect(res.body.error_description).toMatch(/create_media_buy.*signed/);
