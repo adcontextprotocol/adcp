@@ -218,6 +218,79 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
       );
       expect(wrongValue).toEqual([]);
     });
+
+    it('findAgentsForPropertyIdentifier returns [] when the property has no agent_property_authorizations row (INNER JOIN contract)', async () => {
+      // Insert a property with the same identifier under a *different*
+      // publisher and no authorization. The current implementation uses
+      // an INNER JOIN against agent_property_authorizations, so this row
+      // must be invisible. PR 4 swapping to LEFT JOIN would silently
+      // return ghost agent_url=null rows; this test catches that.
+      const ORPHAN_DOMAIN = `prop-orphan${DOMAIN_SUFFIX}`;
+      await fedDb.upsertProperty({
+        property_id: 'orphan-prop',
+        publisher_domain: ORPHAN_DOMAIN,
+        property_type: 'website',
+        name: 'Orphan Site',
+        identifiers: [{ type: 'orphan_id', value: 'orphan-only' }],
+      });
+      const matches = await fedDb.findAgentsForPropertyIdentifier(
+        'orphan_id',
+        'orphan-only'
+      );
+      expect(matches).toEqual([]);
+    });
+
+    it('findAgentsForPropertyIdentifier orders results by (publisher_domain, agent_url)', async () => {
+      // Seed a second publisher with a property carrying an identifier
+      // shared with PUB_A's home property. Two agents on each side give
+      // us a four-row result with a stable expected order.
+      const SHARED_TYPE = 'shared_id';
+      const SHARED_VALUE = 'shared-1';
+      await fedDb.upsertProperty({
+        property_id: 'order-a',
+        publisher_domain: PUB_A,
+        property_type: 'website',
+        name: 'Order A Site',
+        identifiers: [{ type: SHARED_TYPE, value: SHARED_VALUE }],
+      });
+      await fedDb.upsertProperty({
+        property_id: 'order-b',
+        publisher_domain: PUB_B,
+        property_type: 'website',
+        name: 'Order B Site',
+        identifiers: [{ type: SHARED_TYPE, value: SHARED_VALUE }],
+      });
+      const aProps = await fedDb.getPropertiesForDomain(PUB_A);
+      const bProps = await fedDb.getPropertiesForDomain(PUB_B);
+      const aRow = aProps.find((p) => p.property_id === 'order-a') as unknown as { id: string };
+      const bRow = bProps.find((p) => p.property_id === 'order-b') as unknown as { id: string };
+      // Authorize Y first (alphabetically later) to verify ORDER BY,
+      // not insertion order, drives the result.
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_Y,
+        property_id: bRow.id,
+      });
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_X,
+        property_id: bRow.id,
+      });
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_Y,
+        property_id: aRow.id,
+      });
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_X,
+        property_id: aRow.id,
+      });
+
+      const matches = await fedDb.findAgentsForPropertyIdentifier(SHARED_TYPE, SHARED_VALUE);
+      expect(matches.map((m) => `${m.publisher_domain}/${m.agent_url}`)).toEqual([
+        `${PUB_A}/${AGENT_X}`,
+        `${PUB_A}/${AGENT_Y}`,
+        `${PUB_B}/${AGENT_X}`,
+        `${PUB_B}/${AGENT_Y}`,
+      ]);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────
@@ -256,6 +329,39 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
         'mobile_app/Pinnacle Mobile',
         'website/Pinnacle Homepage',
         'website/Pinnacle News',
+      ]);
+    });
+
+    it('getPropertiesForAgent orders by (publisher_domain, property_type, name)', async () => {
+      // Authorize AGENT_X for PUB_B properties + one PUB_A property so
+      // the cross-publisher ordering contract gets exercised.
+      const pubBProps = await fedDb.getPropertiesForDomain(PUB_B);
+      for (const p of pubBProps) {
+        await fedDb.upsertAgentPropertyAuthorization({
+          agent_url: AGENT_X,
+          property_id: (p as unknown as { id: string }).id,
+        });
+      }
+      await fedDb.upsertProperty({
+        property_id: 'acme-home',
+        publisher_domain: PUB_A,
+        property_type: 'website',
+        name: 'Acme Homepage',
+        identifiers: [{ type: 'domain', value: PUB_A }],
+      });
+      const pubAProps = await fedDb.getPropertiesForDomain(PUB_A);
+      await fedDb.upsertAgentPropertyAuthorization({
+        agent_url: AGENT_X,
+        property_id: (pubAProps[0] as unknown as { id: string }).id,
+      });
+
+      const ordered = await fedDb.getPropertiesForAgent(AGENT_X);
+      // PUB_A < PUB_B alphabetically (`prop-acme...` < `prop-pinnacle...`).
+      expect(ordered.map((p) => `${p.publisher_domain}/${p.property_type}/${p.name}`)).toEqual([
+        `${PUB_A}/website/Acme Homepage`,
+        `${PUB_B}/mobile_app/Pinnacle Mobile`,
+        `${PUB_B}/website/Pinnacle Homepage`,
+        `${PUB_B}/website/Pinnacle News`,
       ]);
     });
   });

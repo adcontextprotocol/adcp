@@ -190,10 +190,11 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       expect(auths.every((a) => a.agent_url === AGENT_X)).toBe(true);
     });
 
-    it('getAgentAuthorizationsForDomain reports only property-level authorizations', async () => {
-      // Property-level authorization is a different graph from
-      // agent_publisher_authorizations — populating the publisher-level
-      // graph alone must NOT bleed into property-level reads.
+    it('getAgentAuthorizationsForDomain returns [] when only publisher-level rows exist (no bleed into property-level reads)', async () => {
+      // Property-level and publisher-level authorization are separate
+      // graphs. The publisher-level rows seeded in beforeEach must not
+      // surface through this property-level reader. PR 4 must preserve
+      // this separation.
       const rows = await propDb.getAgentAuthorizationsForDomain(PUB_A);
       expect(rows).toEqual([]);
     });
@@ -391,10 +392,13 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       expect(result.selectors[0].unauthorized_items).toEqual([]);
     });
 
-    it('selection_type=by_tag reports tag-level unauthorized items', async () => {
-      // 'flagship' covers home + news (both authorized). 'mobile' covers
-      // mobile (unauthorized). Two requested, two authorized for flagship,
-      // zero authorized for mobile.
+    it('selection_type=by_tag pins property-counting semantics + tag-level unauthorized items', async () => {
+      // Selector tags ['flagship', 'mobile'] match all three properties
+      // via tags && operator: home (flagship) + news (flagship) +
+      // mobile (mobile). AGENT_X is authorized for home + news only.
+      // So: requested=3 (matched properties), authorized=2, coverage=67.
+      // Tag coverage: flagship is covered (home + news both authorized),
+      // mobile is not (mobile property unauthorized) → unauthorized=['mobile'].
       const result = await fedDb.validateAgentForProduct(AGENT_X, [
         {
           publisher_domain: PUB_A,
@@ -403,9 +407,18 @@ describe('Registry reader baseline — agent + authorization reads', () => {
         },
       ]);
       expect(result.selectors).toHaveLength(1);
-      expect(result.selectors[0].selection_type).toBe('by_tag');
-      // Tags missing from the agent's covered set surface in unauthorized_items.
-      expect(result.selectors[0].unauthorized_items).toEqual(['mobile']);
+      expect(result.total_requested).toBe(3);
+      expect(result.total_authorized).toBe(2);
+      expect(result.coverage_percentage).toBe(67);
+      expect(result.authorized).toBe(false);
+      expect(result.selectors[0]).toMatchObject({
+        publisher_domain: PUB_A,
+        selection_type: 'by_tag',
+        requested_count: 3,
+        authorized_count: 2,
+        unauthorized_items: ['mobile'],
+        source: 'adagents_json',
+      });
     });
 
     it('reports source=agent_claim for an agent with only an unverified claim', async () => {
@@ -456,6 +469,17 @@ describe('Registry reader baseline — agent + authorization reads', () => {
       // No row for AGENT_X — '*' must NOT expand at read time.
       const auths = await fedDb.getDomainsForAgent(AGENT_X);
       expect(auths).toEqual([]);
+    });
+
+    it('bulkGetFirstAuthForAgents treats "*" as a literal agent_url key', async () => {
+      // PR 4 must not special-case the wildcard inside the bulk path
+      // any differently from the single-agent reader.
+      const map = await fedDb.bulkGetFirstAuthForAgents([AGENT_WILDCARD]);
+      const first = map.get(AGENT_WILDCARD);
+      expect(first).toBeTruthy();
+      expect(first!.agent_url).toBe(AGENT_WILDCARD);
+      expect(first!.publisher_domain).toBe(PUB_A);
+      expect(first!.source).toBe('adagents_json');
     });
   });
 });
