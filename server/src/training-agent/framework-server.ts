@@ -516,7 +516,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 
     capabilities: {
       major_versions: [3],
-      specialisms: ['signed-requests'],
+      specialisms: [],
       features: {
         inlineCreativeManagement: true,
         propertyListFiltering: true,
