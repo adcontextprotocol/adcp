@@ -11,7 +11,7 @@ AdCP uses two related but distinct concepts when working with creative formats. 
 
 ```json
 {
-  "agent_url": "https://creatives.adcontextprotocol.org",
+  "agent_url": "https://creative.adcontextprotocol.org",
   "id": "display_300x250"
 }
 ```
@@ -20,7 +20,7 @@ Optional dimension and duration fields extend it for parameterized template form
 
 ```json
 {
-  "agent_url": "https://creatives.adcontextprotocol.org",
+  "agent_url": "https://creative.adcontextprotocol.org",
   "id": "display_static",
   "width": 300,
   "height": 250
@@ -36,7 +36,7 @@ Optional dimension and duration fields extend it for parameterized template form
 ```json
 {
   "format_id": {
-    "agent_url": "https://creatives.adcontextprotocol.org",
+    "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
   "name": "Display Banner 300×250",
@@ -73,7 +73,7 @@ Wrong — `format_id` must be an object, not a plain string:
 Correct:
 
 ```json
-{ "format_id": { "agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250" } }
+{ "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" } }
 ```
 
 AJV error: `format_id must be of type object`. Cause: the `.id` string inside the `format_id` object looks like a self-contained name and is sometimes extracted and used directly.
@@ -85,7 +85,7 @@ Wrong — a `formats[]` element must be a full definition object, not a bare `fo
 ```json
 {
   "formats": [
-    { "agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250" }
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
   ]
 }
 ```
@@ -96,9 +96,9 @@ Correct:
 {
   "formats": [
     {
-      "format_id": { "agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250" },
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
       "name": "Display Banner 300×250",
-      "assets": [ "..." ]
+      "assets": [ { "asset_id": "image", "asset_type": "image", "item_type": "individual", "required": true } ]
     }
   ]
 }
