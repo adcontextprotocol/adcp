@@ -46,4 +46,18 @@ describe('BrandIdentityError', () => {
     expect(err.code).toBe('invalid_domain');
     expect(err.isCrossOrgOwnership()).toBe(false);
   });
+
+  it('discriminates orphan_manifest_decision_required with priorOwnerOrgId meta', () => {
+    const err = new BrandIdentityError(
+      409,
+      'This brand was previously registered by another organization. Choose adopt or fresh.',
+      'orphan_manifest_decision_required',
+      { brandDomain: 'thehook.es', priorOwnerOrgId: 'org_01PRIOR' },
+    );
+    expect(err.statusCode).toBe(409);
+    expect(err.code).toBe('orphan_manifest_decision_required');
+    expect(err.isCrossOrgOwnership()).toBe(false);
+    // Meta carries the prior owner so a UI / agent can prompt the user.
+    expect((err.meta as { priorOwnerOrgId: string }).priorOwnerOrgId).toBe('org_01PRIOR');
+  });
 });

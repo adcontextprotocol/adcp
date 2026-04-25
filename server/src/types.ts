@@ -473,6 +473,10 @@ export interface HostedBrand {
   domain_verified: boolean;
   verification_token?: string;
   is_public: boolean;
+  /** True when a prior owner relinquished and the manifest is awaiting adoption. */
+  manifest_orphaned?: boolean;
+  /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
+  prior_owner_org_id?: string;
   created_at: Date;
   updated_at: Date;
 }

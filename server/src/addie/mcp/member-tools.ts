@@ -666,8 +666,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'update_company_logo',
     description:
-      "Update the company logo or brand color on the directory listing. Use when a member wants to upload, change, or fix their company logo. The logo URL must be a publicly accessible HTTPS image (PNG, JPG, SVG, etc.) — file-viewer links like Google Drive don't work.",
-    usage_hints: 'Use when the user says "update our logo", "fix my company logo", "set the brand color", or shares a logo URL. Validates that the URL returns an actual image before saving.',
+      "Update the company logo or brand color on the directory listing. Use when a member wants to upload, change, or fix their company logo. The logo URL must be a publicly accessible HTTPS image (PNG, JPG, SVG, etc.) — file-viewer links like Google Drive don't work.\n\nIf the brand domain was previously registered by another organization, the tool returns a notice asking the user whether to adopt the prior brand identity (logos, colors, agents) or start fresh — pass `adopt_prior_manifest: true` to adopt or `false` to clear, then call again.",
+    usage_hints: 'Use when the user says "update our logo", "fix my company logo", "set the brand color", or shares a logo URL. Validates that the URL returns an actual image before saving. If the response says the brand was previously registered, ask the user to choose adopt or clear, then re-run with adopt_prior_manifest set explicitly.',
     input_schema: {
       type: 'object',
       properties: {
@@ -678,6 +678,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
         brand_color: {
           type: 'string',
           description: 'Primary brand color as a hex string (e.g., "#FF5733"). Omit to leave unchanged.',
+        },
+        adopt_prior_manifest: {
+          type: 'boolean',
+          description: 'Required only when the brand was previously registered by another org. true = keep the prior brand identity (logos, colors, agents) as a starting point (acquisition / handoff case). false = start fresh. Omit on first call; set explicitly after the user picks.',
         },
       },
       required: [],
@@ -2113,6 +2117,10 @@ export function createMemberToolHandlers(
       } catch { /* validated below */ }
     }
 
+    const adoptPriorManifest = typeof input.adopt_prior_manifest === 'boolean'
+      ? input.adopt_prior_manifest
+      : undefined;
+
     try {
       const result = await updateBrandIdentity({
         workosOrganizationId: orgId,
@@ -2121,6 +2129,7 @@ export function createMemberToolHandlers(
         logoUrl,
         brandColor,
         fallbackDomainHint,
+        adoptPriorManifest,
       });
       // Dynamic import: member-context.js transitively constructs a WorkOS
       // client at module load, which would break tests that import this file
@@ -2134,6 +2143,15 @@ export function createMemberToolHandlers(
       return `Done — ${parts.join(', ')} for ${profile.display_name} (${result.brandDomain}). It may take a moment for the change to appear in the member directory.`;
     } catch (err) {
       if (err instanceof BrandIdentityError) {
+        if (err.code === 'orphan_manifest_decision_required') {
+          // The domain was previously registered. Bounce the question back to
+          // the user so they can pick adopt-or-clear before we apply the write.
+          const meta = err.meta as { brandDomain: string; priorOwnerOrgId: string | null };
+          const priorOrgClause = meta.priorOwnerOrgId
+            ? `previously registered by another organization (org ${meta.priorOwnerOrgId})`
+            : 'previously registered';
+          return `Heads up — ${meta.brandDomain} was ${priorOrgClause} and we kept the prior brand identity on file in case it's a legitimate handoff (acquisition, rename). Should I adopt the prior logos / colors / agents as the starting point, or start fresh? Once you tell me, I'll re-run with \`adopt_prior_manifest\` set accordingly.`;
+        }
         if (err.isCrossOrgOwnership()) {
           // Convert the cross-org dead-end into a routed escalation so an
           // admin can resolve via transfer_brand_ownership.
@@ -2141,15 +2159,19 @@ export function createMemberToolHandlers(
           const userId = memberContext.workos_user.workos_user_id;
           const userEmail = memberContext.workos_user.email;
           const displayName = [memberContext.workos_user.first_name, memberContext.workos_user.last_name].filter(Boolean).join(' ') || userEmail;
+          // Resolve the incumbent org's display name so admins reading the
+          // queue summary see both parties named.
+          const incumbentOrg = await orgDb.getOrganization(currentOwnerOrgId).catch(() => null);
+          const incumbentName = incumbentOrg?.name ?? currentOwnerOrgId;
           const escalation = await createEscalation({
             workos_user_id: userId,
             user_email: userEmail,
             user_display_name: displayName,
             category: 'sensitive_topic',
             priority: 'normal',
-            summary: `Brand ownership review: ${brandDomain} claim from ${profile.display_name}`,
+            summary: `Brand ownership review: ${brandDomain} — claim by ${profile.display_name} vs current owner ${incumbentName}`,
             original_request: `Update brand identity for ${brandDomain} (logo=${logoUrl ?? 'unchanged'}, color=${brandColor ?? 'unchanged'}).`,
-            addie_context: `Caller: ${displayName} <${userEmail}>, org ${orgId}. Current owner org: ${currentOwnerOrgId}. Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
+            addie_context: `Caller: ${displayName} <${userEmail}>, org ${orgId} (${profile.display_name}). Current owner org: ${currentOwnerOrgId} (${incumbentName}). Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
           }).catch(escalErr => {
             logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
             return null;

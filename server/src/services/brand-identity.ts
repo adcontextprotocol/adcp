@@ -37,10 +37,13 @@ export interface UpdateBrandIdentityInput {
   fallbackDomainHint?: string;
   /**
    * When the brand row is orphaned (prior owner relinquished, manifest
-   * preserved) and this caller is the new claimant: when true, keep the
-   * prior brand_manifest as the starting point and merge new logo/color
-   * over it. When false (default), clear the prior manifest and start
-   * fresh. Either way the orphan flag is cleared at write time.
+   * preserved) and this caller is the new claimant: required to be set
+   * EXPLICITLY (true or false) — passing undefined throws an
+   * `orphan_manifest_decision_required` error with the prior owner's
+   * org id, so a UI can prompt the user. true = keep the prior manifest
+   * and merge new logo/color over it (acquisition / handoff case).
+   * false = clear the prior manifest and start fresh. Either way the
+   * orphan flag is cleared at write time.
    */
   adoptPriorManifest?: boolean;
 }
@@ -48,15 +51,18 @@ export interface UpdateBrandIdentityInput {
 export interface UpdateBrandIdentityResult {
   brandDomain: string;
   wasUpdate: boolean;
-  /** True when this call adopted (or cleared) an orphaned manifest. */
-  adoptedOrphanedManifest?: boolean;
+  /** True when this call claimed a brand whose prior manifest was orphaned. */
+  claimedOrphanedBrand?: boolean;
+  /** True only when the caller chose to keep the prior manifest. */
+  keptPriorManifest?: boolean;
 }
 
 export type BrandIdentityErrorCode =
-  | 'invalid_input'        // 400-class: bad logo URL, invalid color, etc.
-  | 'invalid_domain'       // 400-class: domain canonicalizes to garbage
-  | 'no_brand_domain'      // 400-class: caller has no domain to write to
-  | 'cross_org_ownership'; // 403-class: domain owned by a different org
+  | 'invalid_input'                       // 400-class: bad logo URL, invalid color, etc.
+  | 'invalid_domain'                      // 400-class: domain canonicalizes to garbage
+  | 'no_brand_domain'                     // 400-class: caller has no domain to write to
+  | 'cross_org_ownership'                 // 403-class: domain owned by a different org
+  | 'orphan_manifest_decision_required';  // 409-class: caller must opt-in to adopt or clear
 
 /** Per-code meta payload shapes. Add a new code by extending this map. */
 export interface BrandIdentityErrorMetaByCode {
@@ -64,6 +70,7 @@ export interface BrandIdentityErrorMetaByCode {
   invalid_domain: { canonicalDomain: string };
   no_brand_domain: undefined;
   cross_org_ownership: { brandDomain: string; currentOwnerOrgId: string };
+  orphan_manifest_decision_required: { brandDomain: string; priorOwnerOrgId: string | null };
 }
 
 export class BrandIdentityError extends Error {
@@ -140,7 +147,8 @@ export async function updateBrandIdentity(
   const pool = getPool();
   const client = await pool.connect();
   let wasUpdate = false;
-  let adoptedOrphanedManifest = false;
+  let claimedOrphanedBrand = false;
+  let keptPriorManifest = false;
   try {
     await client.query('BEGIN');
 
@@ -149,8 +157,9 @@ export async function updateBrandIdentity(
       workos_organization_id: string | null;
       brand_json: Record<string, unknown>;
       manifest_orphaned: boolean | null;
+      prior_owner_org_id: string | null;
     }>(
-      `SELECT id, workos_organization_id, brand_manifest AS brand_json, manifest_orphaned
+      `SELECT id, workos_organization_id, brand_manifest AS brand_json, manifest_orphaned, prior_owner_org_id
        FROM brands WHERE domain = $1 FOR UPDATE`,
       [brandDomain]
     );
@@ -169,16 +178,24 @@ export async function updateBrandIdentity(
     }
 
     if (existing) {
-      // Orphan-adoption decision: if a prior owner relinquished, the new
-      // claimant either adopts the existing manifest as a starting point
-      // (acquisition / handoff case) or starts fresh (avoids inheriting
-      // unrelated visual identity). Default = start fresh because most
-      // claims are not handoffs.
-      const claimingOrphaned = !!existing.manifest_orphaned;
-      const startingManifest = claimingOrphaned && !adoptPriorManifest
+      // Orphan-adoption decision must be EXPLICIT — a silent default would
+      // either nuke the prior manifest (losing a legitimate handoff) or
+      // inherit it (silent identity adoption). Force the caller to choose.
+      // The 409 response includes priorOwnerOrgId so a UI can prompt.
+      if (existing.manifest_orphaned && adoptPriorManifest === undefined) {
+        throw new BrandIdentityError(
+          409,
+          'This brand was previously registered by another organization. Choose whether to adopt the prior brand identity (logos, colors, agents) or start fresh before continuing.',
+          'orphan_manifest_decision_required',
+          { brandDomain, priorOwnerOrgId: existing.prior_owner_org_id ?? null },
+        );
+      }
+
+      claimedOrphanedBrand = !!existing.manifest_orphaned;
+      keptPriorManifest = claimedOrphanedBrand && adoptPriorManifest === true;
+      const startingManifest = claimedOrphanedBrand && !keptPriorManifest
         ? {}
         : (existing.brand_json ?? {});
-      adoptedOrphanedManifest = claimingOrphaned;
 
       const bj = applyToBrandJson(startingManifest, displayName, logoUrl, brandColor);
       await client.query(
@@ -225,8 +242,8 @@ export async function updateBrandIdentity(
     client.release();
   }
 
-  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, adoptedOrphanedManifest, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
-  return { brandDomain, wasUpdate, adoptedOrphanedManifest };
+  logger.info({ profileId: profile?.id, brandDomain, wasUpdate, claimedOrphanedBrand, keptPriorManifest, hasLogo: !!logoUrl, hasColor: !!brandColor }, 'Brand identity updated');
+  return { brandDomain, wasUpdate, claimedOrphanedBrand, keptPriorManifest };
 }
 
 

@@ -7861,10 +7861,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.debug({ err }, 'Failed to load content for member profile');
         }
 
-        // Resolve brand data from registry if linked
+        // Resolve brand data from registry if linked. Skip orphaned brands —
+        // the manifest is preserved server-side for adoption-at-claim-time
+        // but must not surface on the public member-profile endpoint.
         if (profile.primary_brand_domain) {
           const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-          if (brand?.brand_manifest) {
+          if (brand?.brand_manifest && !brand.manifest_orphaned) {
             profile.resolved_brand = resolveBrandFromJson(
               profile.primary_brand_domain,
               brand.brand_manifest as Record<string, unknown>,
