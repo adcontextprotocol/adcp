@@ -29,7 +29,7 @@ AdCP 3.x defines two public trust marks with a clear containment relationship:
 
 **Upgrade path.** Storyboards green → enroll in the observability program → seven days of healthy delivery → Verified. Clear forward momentum rather than a cliff.
 
-**Coverage gaps are explicit.** Some specialisms don't have a clean live-observability path — `signed-requests`, for example, is a per-request heartbeat with no canonical campaign to observe. Those specialisms may permanently live at **AdCP Conformant** only, and that's an honest claim. See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the per-specialism coverage analysis.
+**Coverage gaps are explicit.** Some claims don't have a clean live-observability path. The universal `signed_requests` storyboard, for example, is a per-request transport heartbeat with no canonical campaign to observe — agents declaring `request_signing.supported: true` are graded as **AdCP Conformant** for that capability with no Verified counterpart, and that's an honest claim. The same applies to specialisms whose surface is intrinsically observational (e.g., catalog-only signal agents) rather than delivery-shaped. See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the per-storyboard coverage analysis.
 
 ## Why these two marks, not the earlier "Tier 1 / Tier 2"
 
@@ -199,7 +199,7 @@ The end-state target ([#3046](https://github.com/adcontextprotocol/adcp/issues/3
 
 **The machinery on this page is reusable either way.** The eight checks, `attestation_verifier` scope, Path A/B enrollment, webhook-ownership contract — all of it applies per canonical campaign once the runner lands. The trigger changes from "watch whatever the seller runs" to "watch AAO's canonical campaign running through the seller," but the observation and mark-issuance logic is the same.
 
-**Per-specialism coverage.** Some specialisms (`sales-non-guaranteed`, `sales-guaranteed`, `creative-template`, `audience-sync`) have clean canonical flows. Others (`signed-requests`, edge-case governance specialisms) may not — those stay at AdCP Conformant only. The coverage analysis lives in the RFC.
+**Per-storyboard coverage.** Some specialisms (`sales-non-guaranteed`, `sales-guaranteed`, `creative-template`, `audience-sync`) have clean canonical flows. Others — including the universal `signed_requests` storyboard (transport-layer; no campaign shape) and edge-case governance specialisms — may not, and stay at AdCP Conformant only. The coverage analysis lives in the RFC.
 
 See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the full RFC, and the operational-plan issue it opens for AAO's runner service commitment.
 
