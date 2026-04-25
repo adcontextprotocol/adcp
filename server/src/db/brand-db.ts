@@ -364,6 +364,69 @@ export class BrandDatabase {
   }
 
   /**
+   * List brand rows currently in the orphaned state — prior owner relinquished,
+   * manifest preserved for adoption. Joins the prior org name for admin display
+   * so the queue is readable without a separate lookup. Newest-first because
+   * recently relinquished brands are the most likely to need attention.
+   *
+   * The returned `last_updated_at` is the row's `updated_at` column. While a
+   * brand is orphaned, only `deleteHostedBrand` writes to it (the read paths
+   * filter orphans out, and the write paths — claimOrphanedHostedBrand,
+   * updateBrandIdentity, transferBrandOwnership — all clear the orphan flag
+   * as part of the same UPDATE), so in practice this equals "relinquished
+   * at." If a future code path mutates an orphan without clearing the flag,
+   * this field starts to drift; rename to a dedicated `manifest_orphaned_at`
+   * column at that point.
+   */
+  async listOrphanedBrands(
+    limit = 50,
+    offset = 0,
+  ): Promise<Array<{
+    domain: string;
+    brand_name: string | null;
+    prior_owner_org_id: string | null;
+    prior_owner_org_name: string | null;
+    last_updated_at: Date;
+    manifest_preview: { logo_url?: string; brand_color?: string };
+  }>> {
+    const result = await query<{
+      domain: string;
+      brand_name: string | null;
+      prior_owner_org_id: string | null;
+      prior_owner_org_name: string | null;
+      last_updated_at: Date;
+      brand_manifest: Record<string, unknown> | null;
+    }>(
+      `SELECT b.domain, b.brand_name, b.prior_owner_org_id,
+              o.name AS prior_owner_org_name,
+              b.updated_at AS last_updated_at,
+              b.brand_manifest
+       FROM brands b
+       LEFT JOIN organizations o ON o.workos_organization_id = b.prior_owner_org_id
+       WHERE b.manifest_orphaned = TRUE
+       ORDER BY b.updated_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows.map(row => {
+      const resolved = row.brand_manifest
+        ? resolveBrandFromJson(row.domain, row.brand_manifest, false)
+        : null;
+      return {
+        domain: row.domain,
+        brand_name: row.brand_name,
+        prior_owner_org_id: row.prior_owner_org_id,
+        prior_owner_org_name: row.prior_owner_org_name,
+        last_updated_at: row.last_updated_at,
+        manifest_preview: {
+          logo_url: resolved?.logo_url,
+          brand_color: resolved?.brand_color,
+        },
+      };
+    });
+  }
+
+  /**
    * Generate verification token for a hosted brand
    */
   async generateVerificationToken(id: string): Promise<string | null> {

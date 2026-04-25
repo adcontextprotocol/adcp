@@ -1604,6 +1604,24 @@ Do not use to resolve unverified disputes — use the escalation queue for those
       required: ['domain', 'new_org_id', 'reason'],
     },
   },
+  {
+    name: 'list_orphaned_brands',
+    description: `List brand domains in the orphaned state — a prior owner relinquished and the manifest is preserved for adoption. Use this to audit relinquished brands, see which ones have stale data, and trigger admin cleanup or reach out to potential adopters. Returns prior owner org name + id, when relinquished, and a manifest preview so admins can decide at a glance.`,
+    usage_hints: 'Use to answer "what brands are awaiting adoption?" or to find a specific orphaned domain. Pair with transfer_brand_ownership when an admin has confirmed the right next owner out of band.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum brands to return (default 50, max 200)',
+        },
+        offset: {
+          type: 'number',
+          description: 'Pagination offset (default 0)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -8386,6 +8404,41 @@ Use add_committee_leader to assign a leader.`;
       if (error instanceof ToolError) throw error;
       logger.error({ error, domain, newOrgId }, 'Error transferring brand ownership');
       throw new ToolError(`Failed to transfer ownership: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('list_orphaned_brands', async (input) => {
+    const limit = Math.min(Math.max((input.limit as number) ?? 50, 1), 200);
+    const offset = Math.max((input.offset as number) ?? 0, 0);
+    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+
+    try {
+      const orphaned = await brandDbForLogos.listOrphanedBrands(limit, offset);
+      // Log every invocation so a bulk-enumeration pattern (e.g., compromised
+      // admin token sweeping the orphan pool for relinquish signals) shows up
+      // in audit logs. Matches the pattern used by other admin list_* tools.
+      logger.info({ adminUserId, count: orphaned.length, limit, offset }, 'Addie: admin listed orphaned brands');
+
+      if (orphaned.length === 0) {
+        return JSON.stringify({ success: true, message: 'No orphaned brands awaiting adoption.', count: 0, brands: [] }, null, 2);
+      }
+
+      const now = Date.now();
+      const brands = orphaned.map(b => ({
+        domain: b.domain,
+        brand_name: b.brand_name,
+        prior_owner_org_id: b.prior_owner_org_id,
+        prior_owner_org_name: b.prior_owner_org_name,
+        last_updated_at: b.last_updated_at,
+        days_since_relinquished: Math.floor((now - new Date(b.last_updated_at).getTime()) / 86_400_000),
+        logo_url: b.manifest_preview.logo_url ?? null,
+        brand_color: b.manifest_preview.brand_color ?? null,
+      }));
+
+      return JSON.stringify({ success: true, count: brands.length, brands }, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error listing orphaned brands');
+      throw new ToolError(`Failed to list orphaned brands: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
