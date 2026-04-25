@@ -204,7 +204,7 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 
 ### `force_task_completion`
 
-Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to `force_create_media_buy_arm`: that scenario drives the seller into the submitted envelope; this one closes the loop by transitioning the task store entry from `submitted` to `completed` and stamping the result that subsequent [`tasks/get`](/docs/protocol/calling-an-agent#async-task-polling) calls return when `include_result: true`.
+Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to `force_create_media_buy_arm`: that scenario drives the seller into the submitted envelope; this one closes the loop by transitioning the task store entry to `completed` and stamping the result that subsequent [`tasks/get`](/docs/building/implementation/async-operations#polling-for-submitted-operations) calls return when `include_result: true`.
 
 The submitted → completed lifecycle is otherwise non-deterministic — real task completions ride on out-of-band signals (IO countersignature, batch processor cron, governance human review). Storyboards cannot wait. This scenario lets a runner pin the completion deterministically immediately after registering the directive, so the buyer-side polling assertion fires on the same wire shape buyers will observe in production.
 
@@ -212,8 +212,8 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `task_id` | string | Yes | Task to resolve. MUST match an existing task in the seller's store. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
-| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. |
+| `task_id` | string | Yes | Task to resolve. MUST resolve within the caller's authenticated sandbox account; sellers MUST return `NOT_FOUND` (not `FORBIDDEN`, per the multi-tenant convention above) for `task_id`s belonging to other accounts. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
+| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. Sellers MUST emit `INVALID_PARAMS` if `result` does not validate against the response branch for the task's original method. Sellers MAY reject `result` payloads exceeding 256 KB with `INVALID_PARAMS`; storyboards MUST stay below this. |
 
 **Example:**
 
@@ -233,9 +233,26 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 }
 ```
 
-**Response.** Returns the standard [`StateTransitionSuccess`](#state-transition-responses-force_) shape with `previous_state: "submitted"` and `current_state: "completed"`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `cancelled`).
+**Response.** Returns a state-transition success shape:
 
-**Buyer-side observation.** After this scenario runs, a `tasks/get(task_id)` request with `include_result: true` MUST return `status: "completed"` and the registered `result` verbatim. Sellers that fail to surface the result (or surface a different value) break the round-trip contract and fail the `create_media_buy_async` storyboard's polling phase.
+```json
+{
+  "success": true,
+  "previous_state": "submitted",
+  "current_state": "completed",
+  "message": "Task task_async_signed_io_q2 transitioned from submitted to completed"
+}
+```
+
+Source state MUST be `submitted`, `working`, or `input-required`; any other source returns `INVALID_TRANSITION`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown to the caller's account, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `canceled`). Forcing a task to `failed` is out of scope for this scenario; the input-required arm of `force_create_media_buy_arm` covers the buyer-input-needed failure path.
+
+**Replay semantics.** Replays with identical params before the task is terminal are idempotent no-ops. Replays with diverging params before the task is terminal MUST overwrite the registered result (last-write-wins) — same precedent as `force_create_media_buy_arm`'s "second call overwrites." After the task is terminal, every replay returns `INVALID_TRANSITION` regardless of params.
+
+**Cross-protocol obligations.**
+- **Push notifications.** If the buyer registered `push_notification_config.url` on the original `create_media_buy`, forcing completion MUST fire the webhook with the same payload `tasks/get(task_id, include_result: true)` would return. Otherwise the storyboard can only test polling, not push delivery.
+- **`simulate_delivery` / `simulate_budget_spend`.** Once forced to completed with a valid `CreateMediaBuyResponse` carrying `media_buy_id`, the resulting media buy MUST be addressable by those scenarios. Round-tripping through `force_task_completion` is the supported path for storyboards that need a media buy without going through the synchronous flow.
+
+**Buyer-side observation.** After this scenario runs, a `tasks/get(task_id)` request with `include_result: true` MUST return `status: "completed"` and the registered `result` with all caller-supplied fields preserved. Sellers MAY augment with seller-controlled fields (e.g., `created_at`, `dsp_*` IDs, normalized currency casing) but MUST NOT overwrite caller-supplied values. The `result` payload is buyer-controlled in sandbox and round-trips through the seller's store — buyers polling `tasks/get` MUST treat the response as untrusted seller output (per AdCP convention) regardless of the fact that they originated the bytes. This makes `force_task_completion` the natural place for a runner to inject adversarial payloads when testing buyer-side sanitization on the polling path.
 
 ### `force_session_status`
 

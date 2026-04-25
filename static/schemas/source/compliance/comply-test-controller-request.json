@@ -84,7 +84,7 @@
         },
         "result": {
           "$ref": "/schemas/core/async-response-data.json",
-          "description": "Completion payload to record against the task. Used by force_task_completion. Validates against the async-response-data union — for create_media_buy this is a CreateMediaBuyResponse with media_buy_id and packages. The seller MUST surface this verbatim on the next tasks/get(task_id) call when include_result is true."
+          "description": "Completion payload to record against the task. Used by force_task_completion. Validates against the async-response-data union — for create_media_buy this is a CreateMediaBuyResponse with media_buy_id and packages. The seller MUST surface this on the next tasks/get(task_id) call when include_result is true, with all caller-supplied fields preserved (sellers MAY augment with seller-controlled fields like created_at or dsp_* IDs but MUST NOT overwrite caller-supplied values). Sellers MUST emit INVALID_PARAMS if the payload does not validate against the response branch for the task's original method, and MAY reject payloads exceeding 256 KB with INVALID_PARAMS."
         }
       },
       "additionalProperties": true
