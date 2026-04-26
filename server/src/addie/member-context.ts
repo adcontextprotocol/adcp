@@ -133,6 +133,62 @@ async function fetchAgentTesting(
   };
 }
 
+/**
+ * Count of perspectives this user has published, with the most recent
+ * publish timestamp. Drives the "share what you're building" prompt.
+ *
+ * Counts only published rows authored by this user — drafts, pending
+ * review, archived, and rejected are excluded so the rule fires for
+ * users who genuinely haven't shipped a perspective yet.
+ */
+async function fetchPerspectives(
+  workosUserId: string,
+): Promise<MemberContext['perspectives']> {
+  const result = await query<{ count: string; last_at: Date | null }>(
+    `SELECT COUNT(*)::text as count, MAX(published_at) as last_at
+       FROM perspectives
+       WHERE proposer_user_id = $1
+         AND status = 'published'`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  return {
+    published_count: parseInt(row?.count || '0', 10),
+    last_published_at: row?.last_at ? new Date(row.last_at) : null,
+  };
+}
+
+/**
+ * The user's next upcoming registered event (start_time > now), if any.
+ * Drives the pre-event prep prompt that fires inside the ~14-day window.
+ *
+ * Joins event_registrations on workos_user_id (not email) — anonymous
+ * email-only registrations don't get prompts. The rule's audience is
+ * authenticated members whose home is being personalized.
+ */
+async function fetchNextEvent(
+  workosUserId: string,
+): Promise<MemberContext['next_event']> {
+  const result = await query<{ title: string; slug: string; start_time: Date }>(
+    `SELECT e.title, e.slug, e.start_time
+       FROM event_registrations r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.workos_user_id = $1
+         AND e.start_time > NOW()
+         AND e.status = 'published'
+       ORDER BY e.start_time ASC
+       LIMIT 1`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    title: row.title,
+    slug: row.slug,
+    starts_at: new Date(row.start_time),
+  };
+}
+
 async function fetchCertification(
   workosUserId: string,
 ): Promise<MemberContext['certification']> {
@@ -422,6 +478,26 @@ export interface MemberContext {
   };
 
   /**
+   * The user's published-perspectives footprint. Powers the "share
+   * what you're building" prompt for active members who haven't
+   * written one yet.
+   */
+  perspectives?: {
+    published_count: number;
+    last_published_at: Date | null;
+  };
+
+  /**
+   * The user's next upcoming registered event (if any). Powers the
+   * pre-event prep prompt within ~14 days of the start.
+   */
+  next_event?: {
+    title: string;
+    slug: string;
+    starts_at: Date;
+  };
+
+  /**
    * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
    * suppress themselves after being shown without action. Map is keyed
    * by rule_id; absent keys mean the rule has never been shown.
@@ -667,6 +743,20 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, workosUserId }, 'Addie: Failed to load agent testing context');
     }
 
+    // Published-perspectives footprint — drives the "share what you're building" prompt.
+    try {
+      context.perspectives = await fetchPerspectives(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load perspectives context');
+    }
+
+    // Next upcoming registered event — drives pre-event prep prompts.
+    try {
+      context.next_event = await fetchNextEvent(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load next event');
+    }
+
     // Process subscription info
     if (subscriptionInfo && subscriptionInfo.status !== 'none') {
       context.subscription = {
@@ -881,6 +971,18 @@ async function resolveContextFromLocalDb(
     context.agent_testing = await fetchAgentTesting(workosUserId);
   } catch (error) {
     logger.warn({ error, workosUserId }, 'Addie Web: Failed to load agent testing context');
+  }
+
+  try {
+    context.perspectives = await fetchPerspectives(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load perspectives context');
+  }
+
+  try {
+    context.next_event = await fetchNextEvent(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load next event');
   }
 
   try {

@@ -69,6 +69,33 @@ function certModuleLabel(ctx: MemberContext | null): string | null {
 }
 
 /**
+ * True for active members who have never published a perspective. Gated
+ * on having logged in at least once in the last 30 days so we don't ask
+ * dormant accounts to write. The rule's audience is engaged members
+ * who have something to share but haven't shipped one yet.
+ */
+function hasZeroPerspectives(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const count = ctx?.perspectives?.published_count;
+  if (count === undefined || count > 0) return false;
+  return (ctx?.engagement?.login_count_30d ?? 0) > 0;
+}
+
+/**
+ * Days from now until the user's next registered event, or null when
+ * there's no upcoming registration. Past-the-start events shouldn't be
+ * here — fetchNextEvent filters on start_time > NOW() — but defensively
+ * return null for negative deltas.
+ */
+function daysToNextEvent(ctx: MemberContext | null): number | null {
+  const start = ctx?.next_event?.starts_at;
+  if (!start) return null;
+  const ms = new Date(start).getTime() - Date.now();
+  if (ms < 0) return null;
+  return ms / (24 * 60 * 60 * 1000);
+}
+
+/**
  * True for builder personas whose last agent test was either never run
  * or older than 14 days. Gates the agent-staleness rule so builders
  * actively iterating (last test < 14d) don't get nagged.
@@ -239,6 +266,33 @@ export const MEMBER_RULES: PromptRule[] = [
     prompt: 'What do I get if I upgrade from Explorer?',
   },
   {
+    id: 'event.upcoming_registered',
+    priority: 89,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const days = daysToNextEvent(memberContext);
+      if (days === null) return false;
+      return days <= 14;
+    },
+    label: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title ? `Prep for ${title}` : 'Prep for your event';
+    },
+    prompt: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title
+        ? `${title} is coming up. What do I need to know?`
+        : 'My next event is coming up. What do I need to know?';
+    },
+    // Dynamic prompt → matchClick fallback. Match either the
+    // event-titled phrasing or the no-title fallback. Title characters
+    // are not escaped: false positives from a user happening to type a
+    // matching string are fine for telemetry purposes.
+    matchClick: (msg) =>
+      / is coming up\. What do I need to know\?$/.test(msg) ||
+      msg === 'My next event is coming up. What do I need to know?',
+  },
+  {
     id: 'agent.stale_test',
     priority: 91,
     when: ({ memberContext }) => hasStaleAgentTest(memberContext),
@@ -352,6 +406,13 @@ export const MEMBER_RULES: PromptRule[] = [
     when: ({ memberContext }) => isMember(memberContext) && isLowLoginActive(memberContext),
     label: "Here's what you missed",
     prompt: "Give me a quick catch-up on what's happened recently.",
+  },
+  {
+    id: 'perspectives.share_first_one',
+    priority: 55,
+    when: ({ memberContext }) => hasZeroPerspectives(memberContext),
+    label: "Share what I'm building",
+    prompt: "Help me draft a perspective about what I'm working on.",
   },
   {
     id: 'member.test_my_agent',

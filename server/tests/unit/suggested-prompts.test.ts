@@ -323,6 +323,74 @@ describe('buildSuggestedPrompts', () => {
     });
   });
 
+  describe('perspectives share rule', () => {
+    it('fires for an active member with zero published perspectives', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 0, last_published_at: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain("Share what I'm building");
+    });
+
+    it('does not fire when the user has published before', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 2, last_published_at: DAYS_AGO(30) },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+
+    it('does not fire for dormant members (no logins in 30d)', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 0, last_published_at: null },
+        engagement: { login_count_30d: 0, last_login: DAYS_AGO(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+
+    it('does not fire for non-members', () => {
+      const ctx = makeMember({
+        is_member: false,
+        perspectives: { published_count: 0, last_published_at: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+  });
+
+  describe('upcoming event prep rule', () => {
+    const event = (daysFromNow: number) => ({
+      title: 'Cannes Lions',
+      slug: 'cannes-2026',
+      starts_at: new Date(NOW.getTime() + daysFromNow * 24 * 60 * 60 * 1000),
+    });
+
+    it('renders an event-specific label when within 14 days', () => {
+      const ctx = makeMember({ next_event: event(7) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Prep for Cannes Lions');
+    });
+
+    it('renders the matching prompt body alongside', () => {
+      const ctx = makeMember({ next_event: event(3) });
+      const prep = buildSuggestedPrompts(ctx, false).find((p) => p.label === 'Prep for Cannes Lions');
+      expect(prep?.prompt).toBe('Cannes Lions is coming up. What do I need to know?');
+    });
+
+    it('does not fire when the event is more than 14 days out', () => {
+      const ctx = makeMember({ next_event: event(30) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
+
+    it('does not fire when no upcoming event', () => {
+      const ctx = makeMember({ next_event: undefined });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
+
+    it('matchClick recognizes the dynamic event prompt', () => {
+      expect(matchRuleIdFromMessage('Cannes Lions is coming up. What do I need to know?'))
+        .toBe('event.upcoming_registered');
+      expect(matchRuleIdFromMessage('My next event is coming up. What do I need to know?'))
+        .toBe('event.upcoming_registered');
+    });
+  });
+
   describe('agent stale-test rule', () => {
     const builderPersona = { persona: 'molecule_builder', aspiration_persona: null, source: 'assessment', journey_stage: null };
 
