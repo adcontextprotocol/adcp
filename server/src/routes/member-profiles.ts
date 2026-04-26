@@ -1456,6 +1456,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             });
             return res.status(409).json({
               error: 'Brand domain is managed by another organization',
+              code: 'cross_org_ownership',
               message: escalation
                 ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST /api/me/member-profile/brand-claim/issue and follow the instructions.`
                 : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
