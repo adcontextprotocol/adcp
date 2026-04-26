@@ -22,7 +22,8 @@ vi.mock('../../src/addie/jobs/github-filer.js', () => ({
   fileGitHubIssue: mocks.fileGitHubIssue,
 }));
 
-vi.mock('../../src/middleware/auth.js', () => ({
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     (req as { user: unknown }).user = {
       id: 'user_test_admin',
@@ -34,6 +35,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
   requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 // Stripe is mocked in other integration tests to avoid the billing init path.
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: null,
@@ -43,8 +48,7 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
-describe.skip('Escalation triage endpoints', () => {
+describe('Escalation triage endpoints', () => {
   let server: HTTPServer;
   let app: unknown;
 

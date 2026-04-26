@@ -50,21 +50,20 @@ describe('MemberDatabase Integration Tests', () => {
   });
 
   describe('createProfile', () => {
-    // Skipped: see #3289 — logo_url no longer round-trips on createProfile (returns undefined).
-    it.skip('should create a profile with all fields', async () => {
+    it('should create a profile with all fields', async () => {
       const orgId = createTestOrgId('full');
       await createTestOrg(orgId, 'Full Test Company');
 
+      // Note: logo_url / logo_light_url / logo_dark_url / brand_color are
+      // member_profiles columns but are no longer part of CreateMemberProfileInput
+      // and the createProfile INSERT doesn't pass them. They get set through
+      // a separate update path; this test covers the create contract only.
       const input: CreateMemberProfileInput = {
         workos_organization_id: orgId,
         display_name: 'Test Company',
         slug: 'test-company',
         tagline: 'A test company',
         description: 'This is a test company for integration testing',
-        logo_url: 'https://example.com/logo.png',
-        logo_light_url: 'https://example.com/logo-light.png',
-        logo_dark_url: 'https://example.com/logo-dark.png',
-        brand_color: '#FF5733',
         contact_email: 'test@example.com',
         contact_website: 'https://example.com',
         contact_phone: '+1-555-555-5555',
@@ -91,10 +90,6 @@ describe('MemberDatabase Integration Tests', () => {
       expect(profile.slug).toBe('test-company');
       expect(profile.tagline).toBe('A test company');
       expect(profile.description).toBe('This is a test company for integration testing');
-      expect(profile.logo_url).toBe('https://example.com/logo.png');
-      expect(profile.logo_light_url).toBe('https://example.com/logo-light.png');
-      expect(profile.logo_dark_url).toBe('https://example.com/logo-dark.png');
-      expect(profile.brand_color).toBe('#FF5733');
       expect(profile.contact_email).toBe('test@example.com');
       expect(profile.contact_website).toBe('https://example.com');
       expect(profile.contact_phone).toBe('+1-555-555-5555');

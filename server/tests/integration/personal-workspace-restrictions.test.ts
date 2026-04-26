@@ -45,8 +45,9 @@ import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_USER_ID,
       email: 'owner@test.com',
@@ -56,9 +57,13 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => {
+  requireAdmin: (_req: any, res: any) => {
     return res.status(403).json({ error: 'Admin required' });
   },
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock Stripe client
@@ -70,8 +75,7 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
-describe.skip('Personal Workspace Restrictions', () => {
+describe('Personal Workspace Restrictions', () => {
   let server: HTTPServer;
   let app: any;
   let pool: Pool;
@@ -124,7 +128,10 @@ describe.skip('Personal Workspace Restrictions', () => {
   });
 
   describe('POST /api/organizations/:orgId/invitations', () => {
-    it('should reject invitations to personal workspaces', async () => {
+    // Skipped: see #3289 — handler hits WorkOS userManagement.* directly
+    // (organizations.ts) without a per-file @workos-inc/node mock; request hits
+    // real WorkOS with a test key and 401s into a 500.
+    it.skip('should reject invitations to personal workspaces', async () => {
       const response = await request(app)
         .post(`/api/organizations/${TEST_PERSONAL_ORG_ID}/invitations`)
         .send({ email: 'test@example.com', role: 'member' })
@@ -134,7 +141,7 @@ describe.skip('Personal Workspace Restrictions', () => {
       expect(response.body.message).toContain('Personal workspaces cannot have team members');
     });
 
-    it('should allow invitations to team workspaces', async () => {
+    it.skip('should allow invitations to team workspaces', async () => {
       const response = await request(app)
         .post(`/api/organizations/${TEST_TEAM_ORG_ID}/invitations`)
         .send({ email: 'test@example.com', role: 'member' })
@@ -145,7 +152,7 @@ describe.skip('Personal Workspace Restrictions', () => {
   });
 
   describe('POST /api/organizations/:orgId/domain-verification-link', () => {
-    it('should reject domain verification for personal workspaces', async () => {
+    it.skip('should reject domain verification for personal workspaces', async () => {
       const response = await request(app)
         .post(`/api/organizations/${TEST_PERSONAL_ORG_ID}/domain-verification-link`)
         .send()
@@ -155,7 +162,7 @@ describe.skip('Personal Workspace Restrictions', () => {
       expect(response.body.message).toContain('Personal workspaces cannot claim corporate domains');
     });
 
-    it('should allow domain verification for team workspaces', async () => {
+    it.skip('should allow domain verification for team workspaces', async () => {
       const response = await request(app)
         .post(`/api/organizations/${TEST_TEAM_ORG_ID}/domain-verification-link`)
         .send()
