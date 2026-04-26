@@ -3578,11 +3578,17 @@ async function handleActiveThreadReply({
   const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
   const outputValidation = validateOutput(activeThreadGuarded.text);
 
-  // Send response in the thread
+  // Send response in the thread. Slack rejects postMessage with an empty
+  // `text` (no_text). If the model returned nothing or everything was
+  // sanitized away, fall back to a plain apology so the user isn't ignored.
+  const activeThreadSlackText = wrapUrlsForSlack(outputValidation.sanitized);
+  const activeThreadOutgoing = activeThreadSlackText.trim().length > 0
+    ? activeThreadSlackText
+    : "I'm sorry, I encountered an error. Please try again.";
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
+      text: activeThreadOutgoing,
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {

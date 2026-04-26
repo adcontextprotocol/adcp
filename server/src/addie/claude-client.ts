@@ -19,6 +19,7 @@ import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummar
 import { notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
+import { stripBannedRituals } from './response-postprocess.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -895,7 +896,8 @@ export class AddieClaudeClient {
 
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
-          const text = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
+          const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
+          const text = stripBannedRituals(rawText);
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
           return {
             text,
@@ -1417,7 +1419,7 @@ export class AddieClaudeClient {
           yield {
             type: 'done',
             response: {
-              text: fullText,
+              text: stripBannedRituals(fullText),
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
               flagged: !!hallucinationReason,
@@ -1448,7 +1450,7 @@ export class AddieClaudeClient {
             yield {
               type: 'done',
               response: {
-                text: fullText,
+                text: stripBannedRituals(fullText),
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
                 flagged: false,
