@@ -20,6 +20,8 @@ function makeSub(
     /** When omitted, latest_invoice is null → treated as unpaid. */
     latest_invoice_status?: Stripe.Invoice.Status | null;
     latest_invoice_id?: string;
+    /** Expanded product.name for tier label tests. Defaults to a sensible value. */
+    product_name?: string | null;
   },
 ): Stripe.Subscription {
   const latestInvoice =
@@ -31,6 +33,13 @@ function makeSub(
             id: extras.latest_invoice_id ?? `in_${id}`,
             status: extras.latest_invoice_status,
           } as Stripe.Invoice);
+
+  const productField =
+    extras?.product_name === undefined
+      ? { id: `prod_${id}`, name: 'Builder Membership' }
+      : extras.product_name === null
+        ? null
+        : { id: `prod_${id}`, name: extras.product_name };
 
   return {
     id,
@@ -44,6 +53,7 @@ function makeSub(
           price: {
             unit_amount: extras?.unit_amount ?? 300000,
             lookup_key: extras?.lookup_key ?? 'aao_membership_builder_3000',
+            product: productField,
           },
         },
       ],
@@ -543,14 +553,18 @@ describe('dedupOnSubscriptionCreated', () => {
     });
   });
 
-  describe('canceledFacts payload (drives customer apology email)', () => {
-    it('canceled_new outcome carries cancelSucceeded=true on successful cancel', async () => {
+  describe('canceledFacts + survivingTierLabel payload (drives customer apology email)', () => {
+    it('canceled_new outcome carries cancelSucceeded=true and the surviving tier label', async () => {
       const newSub = makeSub('sub_new', 'active', {
         latest_invoice_status: 'open',
         unit_amount: 300000,
         lookup_key: 'aao_membership_builder_3000',
+        product_name: 'Builder Membership',
       });
-      const existing = makeSub('sub_existing', 'active', { latest_invoice_status: 'paid' });
+      const existing = makeSub('sub_existing', 'active', {
+        latest_invoice_status: 'paid',
+        product_name: 'Corporate Membership',
+      });
       const stripe = makeStripe({
         list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
       });
@@ -567,9 +581,10 @@ describe('dedupOnSubscriptionCreated', () => {
       expect(result.kind).toBe('canceled_new');
       if (result.kind === 'canceled_new') {
         expect(result.canceledFacts.cancelSucceeded).toBe(true);
-        expect(result.canceledFacts.wasPaid).toBe(false);
         expect(result.canceledFacts.amountCents).toBe(300000);
         expect(result.canceledFacts.lookupKey).toBe('aao_membership_builder_3000');
+        // Surviving sub is the existing one — its product name flows through.
+        expect(result.survivingTierLabel).toBe('Corporate Membership');
       }
     });
 
@@ -597,8 +612,11 @@ describe('dedupOnSubscriptionCreated', () => {
       }
     });
 
-    it('canceled_existing outcome surfaces facts about the canceled existing sub', async () => {
-      const newSub = makeSub('sub_new_leader', 'active', { latest_invoice_status: 'paid' });
+    it('canceled_existing surfaces facts about the canceled sub and the new sub as the surviving tier', async () => {
+      const newSub = makeSub('sub_new_leader', 'active', {
+        latest_invoice_status: 'paid',
+        product_name: 'Leader Membership',
+      });
       const oldUnpaid = makeSub('sub_old_pro', 'active', {
         latest_invoice_status: 'open',
         unit_amount: 25000,
@@ -622,6 +640,37 @@ describe('dedupOnSubscriptionCreated', () => {
         expect(result.canceledFacts.cancelSucceeded).toBe(true);
         expect(result.canceledFacts.amountCents).toBe(25000);
         expect(result.canceledFacts.lookupKey).toBe('aao_membership_pro_250');
+        // Surviving sub is the new sub — its product name flows through.
+        expect(result.survivingTierLabel).toBe('Leader Membership');
+      }
+    });
+
+    it('falls back to lookup_key when the surviving sub has no expanded product name', async () => {
+      const newSub = makeSub('sub_new', 'active', {
+        latest_invoice_status: 'open',
+        product_name: null,
+      });
+      const existing = makeSub('sub_existing', 'active', {
+        latest_invoice_status: 'paid',
+        lookup_key: 'aao_membership_corporate_5m',
+        product_name: null,
+      });
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_new');
+      if (result.kind === 'canceled_new') {
+        expect(result.survivingTierLabel).toBe('aao_membership_corporate_5m');
       }
     });
   });

@@ -28,7 +28,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
-import { dedupOnSubscriptionCreated, type CanceledSubFacts } from "./billing/dedup-on-subscription-created.js";
+import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -225,9 +225,8 @@ function fireDedupNotice(args: {
   logger: import('pino').Logger;
   scenario: 'canceled_new' | 'canceled_existing';
   survivingTierLabel: string | null;
-  canceledFacts: CanceledSubFacts;
 }): void {
-  const { org, workos: workosClient, logger: log, scenario, survivingTierLabel, canceledFacts } = args;
+  const { org, workos: workosClient, logger: log, scenario, survivingTierLabel } = args;
   void (async () => {
     try {
       const { getOrgAdminEmails } = await import('./utils/org-admins.js');
@@ -246,7 +245,6 @@ function fireDedupNotice(args: {
             organizationName: org.name ?? 'your organization',
             scenario,
             survivingTierLabel,
-            canceledSubWasPaid: canceledFacts.wasPaid,
             workosOrganizationId: org.workos_organization_id,
           }).catch((err) =>
             log.error({ err, to, orgId: org.workos_organization_id }, 'Failed to send dedup notice'),
@@ -3555,8 +3553,7 @@ export class HTTPServer {
                       workos,
                       logger,
                       scenario: 'canceled_new',
-                      survivingTierLabel: null, // we don't have the surviving sub expanded here
-                      canceledFacts: dedup.canceledFacts,
+                      survivingTierLabel: dedup.survivingTierLabel,
                     });
                   }
                   break;
@@ -3577,21 +3574,12 @@ export class HTTPServer {
                   // UPDATE block below run, but skip handleSubscriptionCreated
                   // — this is a tier swap, not a fresh activation.
                   if (dedup.canceledFacts.cancelSucceeded && org && workos) {
-                    // The surviving (new) sub's tier label comes from the
-                    // event payload — we have it inline.
-                    const newItem = subscription.items?.data?.[0];
-                    const newProduct = newItem?.price?.product;
-                    const survivingTierLabel =
-                      typeof newProduct === 'string'
-                        ? null
-                        : (newProduct as Stripe.Product | undefined)?.name ?? null;
                     fireDedupNotice({
                       org,
                       workos,
                       logger,
                       scenario: 'canceled_existing',
-                      survivingTierLabel,
-                      canceledFacts: dedup.canceledFacts,
+                      survivingTierLabel: dedup.survivingTierLabel,
                     });
                   }
                   break;

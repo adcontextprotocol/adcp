@@ -51,16 +51,12 @@ export interface DedupArgs {
  *                              alerted to resolve manually
  */
 export interface CanceledSubFacts {
-  /** True iff the canceled sub had a paid latest_invoice — money moved. */
-  wasPaid: boolean;
   /** Whether the Stripe cancel API call succeeded. False = ops manual cleanup. */
   cancelSucceeded: boolean;
   /** Stripe price.unit_amount on the canceled sub (cents); null if unknown. */
   amountCents: number | null;
   /** Stripe price.lookup_key on the canceled sub; null if unknown. */
   lookupKey: string | null;
-  /** Stripe product.name or item description, when we can derive it. */
-  productLabel: string | null;
 }
 
 export type DedupOutcome =
@@ -70,12 +66,15 @@ export type DedupOutcome =
       kind: 'canceled_new';
       existingLiveSubIds: string[];
       canceledFacts: CanceledSubFacts;
+      /** Product.name or lookup_key of the surviving sub, for customer email copy. */
+      survivingTierLabel: string | null;
     }
   | {
       kind: 'canceled_existing';
       canceledSubId: string;
       survivingNewSubId: string;
       canceledFacts: CanceledSubFacts;
+      survivingTierLabel: string | null;
     }
   | { kind: 'manual_review'; allLiveSubIds: string[]; reason: string };
 
@@ -109,13 +108,13 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
 
   let liveSubs: Stripe.Subscription[];
   try {
-    // Expand latest_invoice so we can read its status without a per-sub
-    // round trip. limit: 100 is Stripe's max per page.
+    // Expand latest_invoice (for paid status) and product (for tier label
+    // in the customer email). limit: 100 is Stripe's max per page.
     const list = await stripe.subscriptions.list({
       customer: customerId,
       status: 'all',
       limit: 100,
-      expand: ['data.latest_invoice'],
+      expand: ['data.latest_invoice', 'data.items.data.price.product'],
     });
     if (list.has_more) {
       logger.warn(
@@ -153,7 +152,6 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
   // Exactly one unpaid → cancel it. Only safe auto-action.
   if (unpaid.length === 1) {
     const target = unpaid[0].sub;
-    const targetWasPaid = unpaid[0].paid; // false by definition; surfaced for downstream copy
     const survivors = liveSubs.filter((s) => s.id !== target.id);
 
     const canceled = await tryCancel({
@@ -173,13 +171,19 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
       survivors,
     });
 
-    const canceledFacts = factsForSub(target, targetWasPaid, canceled);
+    const canceledFacts = factsForSub(target, canceled);
+    // For the customer email, derive a human-readable tier label from the
+    // surviving sub. canceled_new has exactly one survivor (the existing
+    // sub); canceled_existing's survivor is the new sub itself.
+    const survivor = target.id === subscription.id ? survivors[0] : subscription;
+    const survivingTierLabel = tierLabelForSub(survivor);
 
     if (target.id === subscription.id) {
       return {
         kind: 'canceled_new',
         existingLiveSubIds: survivors.map((s) => s.id),
         canceledFacts,
+        survivingTierLabel,
       };
     }
     return {
@@ -187,6 +191,7 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
       canceledSubId: target.id,
       survivingNewSubId: subscription.id,
       canceledFacts,
+      survivingTierLabel,
     };
   }
 
@@ -231,24 +236,30 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
 
 function factsForSub(
   sub: Stripe.Subscription,
-  wasPaid: boolean,
   cancelSucceeded: boolean,
 ): CanceledSubFacts {
-  const item = sub.items?.data?.[0];
-  const price = item?.price;
-  const product = price?.product;
-  const productLabel =
-    typeof product === 'string'
-      ? null
-      : (product as Stripe.Product | undefined)?.name ?? null;
-
+  const price = sub.items?.data?.[0]?.price;
   return {
-    wasPaid,
     cancelSucceeded,
     amountCents: price?.unit_amount ?? null,
     lookupKey: price?.lookup_key ?? null,
-    productLabel,
   };
+}
+
+/**
+ * Human-readable label for a sub's tier. Prefers the expanded product name;
+ * falls back to the price's lookup_key, then null.
+ */
+function tierLabelForSub(sub: Stripe.Subscription | undefined): string | null {
+  if (!sub) return null;
+  const price = sub.items?.data?.[0]?.price;
+  if (!price) return null;
+  const product = price.product;
+  if (product && typeof product !== 'string') {
+    const name = (product as Stripe.Product).name;
+    if (name) return name;
+  }
+  return price.lookup_key ?? null;
 }
 
 /**

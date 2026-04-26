@@ -1841,9 +1841,10 @@ ${footerText}
  *     sub from a prior intake (e.g., an admin invite they ignored). Their new
  *     sub is now active.
  *
- * Refunds aren't typical here because the dedup helper only auto-cancels
- * UNPAID subs (per the cancel-unpaid policy). The `wasPaid` flag is wired
- * defensively in case future policy changes cancel paid subs — copy adapts.
+ * The dedup helper only auto-cancels UNPAID subs (cancel-unpaid policy), so
+ * we don't talk about refunds here — there's nothing to refund. If the
+ * policy ever expands to cancel paid subs, this email should be revised
+ * with refund copy at the same time.
  */
 export async function sendDuplicateSubscriptionNotice(data: {
   to: string;
@@ -1852,8 +1853,6 @@ export async function sendDuplicateSubscriptionNotice(data: {
   scenario: 'canceled_new' | 'canceled_existing';
   /** Tier label of the surviving sub (the one the customer keeps), if known. */
   survivingTierLabel: string | null;
-  /** True iff the canceled sub had been paid — affects refund copy. */
-  canceledSubWasPaid: boolean;
   workosUserId?: string;
   workosOrganizationId?: string;
 }): Promise<boolean> {
@@ -1880,9 +1879,9 @@ export async function sendDuplicateSubscriptionNotice(data: {
     ? `<p>Your active membership: <strong>${safeTier}</strong>.</p>`
     : '';
 
-  const refundLine = data.canceledSubWasPaid
-    ? `<p>Any charges on the canceled subscription will be refunded to your original payment method within 5–10 business days.</p>`
-    : `<p>No charges occurred on the canceled subscription.</p>`;
+  // The dedup helper only cancels UNPAID subs, so no refund is needed —
+  // we just confirm to the customer that no charge occurred.
+  const noChargeLine = `<p>No charges occurred on the canceled subscription.</p>`;
 
   const explanationText =
     data.scenario === 'canceled_new'
@@ -1893,9 +1892,7 @@ export async function sendDuplicateSubscriptionNotice(data: {
     ? `\nYour active membership: ${data.survivingTierLabel}.\n`
     : '';
 
-  const refundTextLine = data.canceledSubWasPaid
-    ? '\nAny charges on the canceled subscription will be refunded to your original payment method within 5–10 business days.\n'
-    : '\nNo charges occurred on the canceled subscription.\n';
+  const noChargeTextLine = '\nNo charges occurred on the canceled subscription.\n';
 
   try {
     const emailEvent = await emailDb.createEmailEvent({
@@ -1906,7 +1903,6 @@ export async function sendDuplicateSubscriptionNotice(data: {
       workos_organization_id: data.workosOrganizationId,
       metadata: {
         scenario: data.scenario,
-        canceledSubWasPaid: data.canceledSubWasPaid,
         survivingTierLabel: data.survivingTierLabel,
       },
     });
@@ -1937,7 +1933,7 @@ export async function sendDuplicateSubscriptionNotice(data: {
 
   ${survivingLine}
 
-  ${refundLine}
+  ${noChargeLine}
 
   <p>If this looks wrong — for example, you intended to upgrade or change tiers — just reply to this email or write to <a href="mailto:finance@agenticadvertising.org">finance@agenticadvertising.org</a> and we'll sort it out.</p>
 
@@ -1953,7 +1949,7 @@ A quick heads-up about your subscription — AgenticAdvertising.org
 Hi,
 
 ${explanationText}
-${survivingTextLine}${refundTextLine}
+${survivingTextLine}${noChargeTextLine}
 If this looks wrong — for example, you intended to upgrade or change tiers — just reply to this email or write to finance@agenticadvertising.org and we'll sort it out.
 
 — The AgenticAdvertising.org Team
