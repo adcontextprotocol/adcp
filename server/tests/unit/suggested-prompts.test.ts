@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildSuggestedPrompts } from '../../src/addie/home/builders/suggested-prompts.js';
+import { buildSuggestedPrompts, pickPrompts } from '../../src/addie/home/builders/suggested-prompts.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 const NOW = new Date('2026-04-23T12:00:00Z');
@@ -384,6 +384,98 @@ describe('buildSuggestedPrompts', () => {
       });
       const prompts = buildSuggestedPrompts(ctx, false);
       expect(prompts.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('suppression via prompt_telemetry', () => {
+    it('suppresses a rule whose suppressed_until is in the future', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Complete my profile');
+    });
+
+    it('does not suppress a rule whose suppressed_until is in the past', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(60),
+            suppressed_until: DAYS_AGO(1),
+          }],
+        ]),
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Complete my profile');
+    });
+
+    it('does not suppress when telemetry is missing', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: undefined,
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Complete my profile');
+    });
+
+    it('does not suppress persona prompts even with high shown_count', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        prompt_telemetry: new Map([
+          ['persona.data_decoder', {
+            shown_count: 100,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 365 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      // Persona rules have decay: false, so suppressed_until is ignored.
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Prove the outcomes');
+    });
+
+    it('persona ruleIds are excluded from telemetry recording', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+      });
+      const { ruleIds } = pickPrompts(ctx, false);
+      expect(ruleIds.every((id) => !id.startsWith('persona.'))).toBe(true);
+    });
+
+    it('suppression of a high-priority rule lets the next-priority rule fire', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        working_groups: [],
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).not.toContain('Complete my profile');
+      // Find a working group fires once profile is suppressed.
+      expect(labels).toContain('Find a working group');
+    });
+  });
+
+  describe('pickPrompts', () => {
+    it('returns parallel prompts and ruleIds arrays', () => {
+      const { prompts, ruleIds } = pickPrompts(makeMember(), false);
+      expect(prompts).toHaveLength(ruleIds.length);
+      ruleIds.forEach((id) => expect(typeof id).toBe('string'));
+    });
+
+    it('admin path returns admin rule IDs', () => {
+      const { ruleIds } = pickPrompts(makeMember(), true);
+      expect(ruleIds.every((id) => id.startsWith('admin.'))).toBe(true);
     });
   });
 });

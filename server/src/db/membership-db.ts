@@ -13,6 +13,14 @@ const logger = createLogger('membership-db');
 
 // ── Types ────────────────────────────────────────────────────────────
 
+/** Tracks how each organization_memberships row came to exist. */
+export type ProvisioningSource =
+  | 'verified_domain'  // autoLinkByVerifiedDomain
+  | 'invited'          // POST /:orgId/invitations or /members/by-email Path 1
+  | 'admin_added'      // /members/by-email Path 2 direct add
+  | 'webhook'          // organization_membership.created with no staged source
+  | 'unknown';
+
 export interface MembershipUpsertParams {
   user_id: string;
   organization_id: string;
@@ -23,6 +31,13 @@ export interface MembershipUpsertParams {
   role: string;          // raw role slug from WorkOS (e.g. 'member', 'admin', 'owner')
   seat_type: string;     // resolved seat type ('contributor' | 'community_only')
   has_explicit_seat_type: boolean;
+  /**
+   * Provisioning source to record on the local cache row. Only written when
+   * the row is being inserted (or when the existing row has NULL/'unknown'
+   * source) — once a membership is tagged, subsequent webhook upserts don't
+   * overwrite the original attribution.
+   */
+  provisioning_source?: ProvisioningSource;
 }
 
 export interface MembershipUpsertResult {
@@ -57,6 +72,7 @@ export async function upsertOrganizationMembership(
       last_name,
       role,
       seat_type,
+      provisioning_source,
       synced_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
@@ -70,7 +86,7 @@ export async function upsertOrganizationMembership(
         WHEN $7 = '__auto__' THEN 'member'
         ELSE $7
       END,
-      $8, NOW()
+      $8, $10, NOW()
     )
     ON CONFLICT (workos_user_id, workos_organization_id)
     DO UPDATE SET
@@ -83,6 +99,9 @@ export async function upsertOrganizationMembership(
         WHEN $9::boolean THEN EXCLUDED.seat_type
         ELSE organization_memberships.seat_type
       END,
+      -- Don't overwrite an existing attribution; later webhooks would be the
+      -- 'webhook' source and would otherwise wipe a more specific origin.
+      provisioning_source = COALESCE(organization_memberships.provisioning_source, EXCLUDED.provisioning_source),
       synced_at = NOW(),
       updated_at = NOW()
     RETURNING role`,
@@ -96,6 +115,7 @@ export async function upsertOrganizationMembership(
       effectiveRole,
       params.seat_type,
       params.has_explicit_seat_type,
+      params.provisioning_source ?? null,
     ],
   );
 
@@ -136,23 +156,28 @@ export async function deleteOrganizationMembership(
 // ── Invitation seat type ─────────────────────────────────────────────
 
 /**
- * Consume any pending seat_type assignment from an invitation.
- * Returns the seat type if one was found, or null.
+ * Consume any pending seat_type and provisioning_source staged by the endpoint
+ * that triggered the membership creation. Returns both fields when a row is
+ * found; null when no staging row exists.
  */
 export async function consumeInvitationSeatType(
   organizationId: string,
   email: string,
-): Promise<string | null> {
+): Promise<{ seat_type: string; source: ProvisioningSource | null } | null> {
   const pool = getPool();
 
-  const result = await pool.query<{ seat_type: string }>(
+  const result = await pool.query<{ seat_type: string; source: string | null }>(
     `DELETE FROM invitation_seat_types
      WHERE workos_organization_id = $1 AND lower(email) = lower($2)
-     RETURNING seat_type`,
+     RETURNING seat_type, source`,
     [organizationId, email],
   );
 
-  return result.rows[0]?.seat_type ?? null;
+  if (!result.rows[0]) return null;
+  return {
+    seat_type: result.rows[0].seat_type,
+    source: (result.rows[0].source as ProvisioningSource | null) ?? null,
+  };
 }
 
 // ── Successor promotion query ────────────────────────────────────────
@@ -260,6 +285,23 @@ export async function autoLinkByVerifiedDomain(
 
   if (userAlreadyMember) return null;
 
+  // Stage the provisioning source so the organization_membership.created
+  // webhook handler can record 'verified_domain' on the local cache row.
+  // Clear any stale (org, email) staging row first; consumeInvitationSeatType
+  // matches by (org, email) and we don't want a leftover row from a prior
+  // failed attempt to win.
+  const stagingKey = `verified_domain_${orgId}_${userId}`;
+  await pool.query(
+    'DELETE FROM invitation_seat_types WHERE workos_organization_id = $1 AND lower(email) = lower($2)',
+    [orgId, email],
+  );
+  await pool.query(
+    `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+     VALUES ($1, $2, $3, 'community_only', 'verified_domain')
+     ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
+    [stagingKey, orgId, email],
+  );
+
   // Always create as member. Auto-promotion to owner for ownerless orgs is
   // handled atomically by upsertOrganizationMembership when the
   // organization_membership.created webhook fires — that path uses a NOT EXISTS
@@ -280,7 +322,131 @@ export async function autoLinkByVerifiedDomain(
       logger.info({ userId, orgId }, 'Auto-link skipped: membership already exists in WorkOS');
       return { organizationId: orgId, organizationName: orgName, role: 'member' };
     }
+    // Roll back the staging row so a stale 'verified_domain' source can't be
+    // consumed by an unrelated future invite for the same (org, email) pair.
+    try {
+      await pool.query(
+        'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1',
+        [stagingKey],
+      );
+    } catch (rollbackErr) {
+      logger.error(
+        { err: rollbackErr, userId, orgId, email, stagingKey },
+        'CRITICAL: failed to rollback verified_domain staging row after createOrganizationMembership failure — manually delete row to avoid source leak',
+      );
+    }
     logger.warn({ err, userId, orgId }, 'Failed to auto-link user to organization');
     return null;
   }
+}
+
+// ── Auto-provision digest queries ───────────────────────────────────
+
+/**
+ * Row in the auto-provision digest payload — one per newly-auto-joined member
+ * since the org's last digest watermark.
+ */
+export interface NewAutoProvisionedMember {
+  workos_user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string;
+  seat_type: string;
+  joined_at: Date;
+}
+
+/**
+ * Find orgs that have at least one auto-provisioned member since their last
+ * digest watermark. Returns one row per org (with the org's owner emails and
+ * the count of new members) so the caller can iterate.
+ *
+ * Skip personal workspaces and orgs with auto_provision_verified_domain=false
+ * (the latter shouldn't have any verified-domain members anyway, but the join
+ * makes the intent explicit).
+ */
+export async function findOrgsWithNewAutoProvisionedMembers(): Promise<
+  Array<{
+    workos_organization_id: string;
+    org_name: string;
+    last_sent_at: Date | null;
+    new_member_count: number;
+  }>
+> {
+  const pool = getPool();
+  const result = await pool.query<{
+    workos_organization_id: string;
+    org_name: string;
+    last_sent_at: Date | null;
+    new_member_count: string; // pg COUNT comes back as string
+  }>(`
+    SELECT
+      o.workos_organization_id,
+      o.name AS org_name,
+      o.last_auto_provision_digest_sent_at AS last_sent_at,
+      COUNT(om.workos_user_id) AS new_member_count
+    FROM organizations o
+    JOIN organization_memberships om
+      ON om.workos_organization_id = o.workos_organization_id
+    WHERE om.provisioning_source = 'verified_domain'
+      AND om.created_at > COALESCE(o.last_auto_provision_digest_sent_at, 'epoch'::timestamptz)
+      AND COALESCE(o.is_personal, false) = false
+      AND COALESCE(o.auto_provision_verified_domain, true) = true
+    GROUP BY o.workos_organization_id, o.name, o.last_auto_provision_digest_sent_at
+    HAVING COUNT(om.workos_user_id) > 0
+  `);
+
+  return result.rows.map(r => ({
+    workos_organization_id: r.workos_organization_id,
+    org_name: r.org_name,
+    last_sent_at: r.last_sent_at,
+    new_member_count: parseInt(r.new_member_count, 10),
+  }));
+}
+
+/**
+ * List the auto-provisioned members added to a given org since the watermark.
+ * Used to build the digest body once findOrgsWithNewAutoProvisionedMembers has
+ * filtered to orgs with non-zero counts.
+ */
+export async function listNewAutoProvisionedMembers(
+  organizationId: string,
+  since: Date | null,
+): Promise<NewAutoProvisionedMember[]> {
+  const pool = getPool();
+  const sinceTs = since ?? new Date(0);
+  const result = await pool.query<NewAutoProvisionedMember>(`
+    SELECT
+      workos_user_id,
+      email,
+      first_name,
+      last_name,
+      role,
+      seat_type,
+      created_at AS joined_at
+    FROM organization_memberships
+    WHERE workos_organization_id = $1
+      AND provisioning_source = 'verified_domain'
+      AND created_at > $2
+    ORDER BY created_at ASC
+  `, [organizationId, sinceTs]);
+
+  return result.rows;
+}
+
+/**
+ * Mark the digest as sent for an organization. Called after successful delivery
+ * so the next run skips the same members.
+ */
+export async function markAutoProvisionDigestSent(
+  organizationId: string,
+  sentAt: Date = new Date(),
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE organizations
+     SET last_auto_provision_digest_sent_at = $2, updated_at = NOW()
+     WHERE workos_organization_id = $1`,
+    [organizationId, sentAt],
+  );
 }
