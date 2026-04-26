@@ -17,6 +17,8 @@ export interface PromptTelemetryRow {
   shown_count: number;
   last_shown_at: Date | null;
   suppressed_until: Date | null;
+  clicked_count: number;
+  last_clicked_at: Date | null;
 }
 
 /**
@@ -27,7 +29,8 @@ export async function getTelemetryForUser(
   workosUserId: string,
 ): Promise<Map<string, PromptTelemetryRow>> {
   const result = await query<PromptTelemetryRow>(
-    `SELECT rule_id, shown_count, last_shown_at, suppressed_until
+    `SELECT rule_id, shown_count, last_shown_at, suppressed_until,
+            clicked_count, last_clicked_at
        FROM addie_prompt_telemetry
        WHERE workos_user_id = $1`,
     [workosUserId],
@@ -39,6 +42,8 @@ export async function getTelemetryForUser(
       shown_count: Number(row.shown_count),
       last_shown_at: row.last_shown_at ? new Date(row.last_shown_at) : null,
       suppressed_until: row.suppressed_until ? new Date(row.suppressed_until) : null,
+      clicked_count: Number(row.clicked_count ?? 0),
+      last_clicked_at: row.last_clicked_at ? new Date(row.last_clicked_at) : null,
     });
   }
   return map;
@@ -103,6 +108,92 @@ export async function recordPromptsShown(
   } catch (error) {
     logger.warn({ error, workosUserId, ruleIds }, 'Failed to record prompt telemetry');
   }
+}
+
+/**
+ * Record a click on a single rule. Increments clicked_count and sets
+ * last_clicked_at. Also clears suppressed_until — a click is the user
+ * acting on the prompt, so we should re-evaluate normally rather than
+ * keep suppressing.
+ *
+ * Fire-and-forget: callers don't await the result.
+ */
+export async function recordPromptClicked(
+  workosUserId: string,
+  ruleId: string,
+): Promise<void> {
+  if (!workosUserId || !ruleId) return;
+  try {
+    await query(
+      `INSERT INTO addie_prompt_telemetry
+         (workos_user_id, rule_id, shown_count, last_shown_at,
+          clicked_count, last_clicked_at)
+       VALUES ($1, $2, 0, NULL, 1, NOW())
+       ON CONFLICT (workos_user_id, rule_id) DO UPDATE SET
+         clicked_count = addie_prompt_telemetry.clicked_count + 1,
+         last_clicked_at = NOW(),
+         suppressed_until = NULL`,
+      [workosUserId, ruleId],
+    );
+  } catch (error) {
+    logger.warn({ error, workosUserId, ruleId }, 'Failed to record prompt click');
+  }
+}
+
+export interface RuleMetricsRow {
+  rule_id: string;
+  distinct_users_shown: number;
+  total_shown: number;
+  total_clicked: number;
+  ctr: number;
+  distinct_users_suppressed: number;
+  last_shown_at: Date | null;
+  last_clicked_at: Date | null;
+}
+
+/**
+ * Per-rule aggregate metrics for the admin dashboard.
+ *
+ * total_shown is summed across users. distinct_users_shown is the
+ * number of users who saw the rule at least once. CTR is
+ * total_clicked / total_shown (0 when no shows).
+ */
+export async function getRuleMetrics(): Promise<RuleMetricsRow[]> {
+  const result = await query<{
+    rule_id: string;
+    distinct_users_shown: string;
+    total_shown: string;
+    total_clicked: string;
+    distinct_users_suppressed: string;
+    last_shown_at: Date | null;
+    last_clicked_at: Date | null;
+  }>(
+    `SELECT
+       rule_id,
+       COUNT(DISTINCT workos_user_id)::text AS distinct_users_shown,
+       SUM(shown_count)::text AS total_shown,
+       SUM(clicked_count)::text AS total_clicked,
+       SUM(CASE WHEN suppressed_until > NOW() THEN 1 ELSE 0 END)::text AS distinct_users_suppressed,
+       MAX(last_shown_at) AS last_shown_at,
+       MAX(last_clicked_at) AS last_clicked_at
+     FROM addie_prompt_telemetry
+     GROUP BY rule_id
+     ORDER BY total_shown DESC`,
+  );
+  return result.rows.map((r) => {
+    const totalShown = parseInt(r.total_shown || '0', 10);
+    const totalClicked = parseInt(r.total_clicked || '0', 10);
+    return {
+      rule_id: r.rule_id,
+      distinct_users_shown: parseInt(r.distinct_users_shown || '0', 10),
+      total_shown: totalShown,
+      total_clicked: totalClicked,
+      ctr: totalShown > 0 ? totalClicked / totalShown : 0,
+      distinct_users_suppressed: parseInt(r.distinct_users_suppressed || '0', 10),
+      last_shown_at: r.last_shown_at ? new Date(r.last_shown_at) : null,
+      last_clicked_at: r.last_clicked_at ? new Date(r.last_clicked_at) : null,
+    };
+  });
 }
 
 /**

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Suggested-prompt metrics — AdCP Admin</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--color-bg-page);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .container { flex: 1; max-width: 1400px; margin: 0 auto; padding: 40px 20px; width: 100%; }
+    h1 { color: var(--color-text-heading); margin-bottom: 8px; font-size: 28px; }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: 30px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+
+    table {
+      width: 100%;
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    th {
+      background: var(--color-bg-page);
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { color: var(--color-text-heading); }
+    th.sorted-asc::after { content: ' ↑'; }
+    th.sorted-desc::after { content: ' ↓'; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--color-bg-page); }
+
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .rule-id { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: var(--color-text-secondary); }
+    .label { font-weight: 500; color: var(--color-text-heading); }
+    .prompt-text { color: var(--color-text-secondary); font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+    .ctr-bar {
+      display: inline-block;
+      height: 6px;
+      background: var(--color-brand);
+      border-radius: 3px;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--color-bg-page);
+      color: var(--color-text-secondary);
+    }
+    .pill-decay-off { background: #fef3c7; color: #92400e; }
+    .pill-dormant { background: #fee2e2; color: #991b1b; }
+    .empty {
+      padding: 40px;
+      text-align: center;
+      color: var(--color-text-secondary);
+    }
+    .updated {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div data-nav></div>
+  <div class="container">
+    <h1>Suggested-prompt metrics</h1>
+    <p class="subtitle">
+      Per-rule shown / clicked counts and CTR for Addie's suggested-prompts engine.
+      Click data is heuristic: an incoming user message that exactly matches a
+      rule's prompt text counts as a click. Dormant rules (red) have never been shown.
+    </p>
+
+    <table id="metrics-table">
+      <thead>
+        <tr>
+          <th data-sort="priority" class="num">Pri</th>
+          <th data-sort="rule_id">Rule</th>
+          <th data-sort="label">Label</th>
+          <th data-sort="distinct_users_shown" class="num">Users shown</th>
+          <th data-sort="total_shown" class="num sorted-desc">Total shown</th>
+          <th data-sort="total_clicked" class="num">Clicked</th>
+          <th data-sort="ctr" class="num">CTR</th>
+          <th data-sort="distinct_users_suppressed" class="num">Suppressed</th>
+          <th data-sort="last_shown_at">Last shown</th>
+        </tr>
+      </thead>
+      <tbody id="metrics-tbody">
+        <tr><td colspan="9" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+    <p class="updated" id="updated"></p>
+  </div>
+
+  <script>
+    let rules = [];
+    let sortKey = 'total_shown';
+    let sortDir = 'desc';
+
+    function fmtPct(n) { return (n * 100).toFixed(1) + '%'; }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      const now = Date.now();
+      const days = Math.floor((now - d.getTime()) / (24 * 3600 * 1000));
+      if (days === 0) return 'today';
+      if (days === 1) return '1d ago';
+      if (days < 30) return days + 'd ago';
+      return d.toLocaleDateString();
+    }
+
+    function render() {
+      const tbody = document.getElementById('metrics-tbody');
+      if (rules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">No data yet.</td></tr>';
+        return;
+      }
+
+      const sorted = [...rules].sort((a, b) => {
+        const av = a[sortKey] ?? '';
+        const bv = b[sortKey] ?? '';
+        let cmp = 0;
+        if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv));
+        return sortDir === 'desc' ? -cmp : cmp;
+      });
+
+      tbody.innerHTML = sorted.map((r) => {
+        const dormant = r.total_shown === 0;
+        const ctrPct = r.total_shown > 0 ? r.ctr : null;
+        const ctrCell = ctrPct === null
+          ? '<span class="pill pill-dormant">never shown</span>'
+          : '<span class="ctr-bar" style="width: ' + Math.min(80, ctrPct * 80) + 'px"></span>' + fmtPct(ctrPct);
+        return '<tr>' +
+          '<td class="num">' + (r.priority ?? '—') + '</td>' +
+          '<td class="rule-id">' + escapeHtml(r.rule_id) + '</td>' +
+          '<td><div class="label">' + escapeHtml(r.label ?? '(unknown)') + '</div>' +
+            (r.prompt ? '<div class="prompt-text">' + escapeHtml(r.prompt) + '</div>' : '') + '</td>' +
+          '<td class="num">' + r.distinct_users_shown + '</td>' +
+          '<td class="num">' + r.total_shown + '</td>' +
+          '<td class="num">' + r.total_clicked + '</td>' +
+          '<td class="num">' + ctrCell + '</td>' +
+          '<td class="num">' + r.distinct_users_suppressed +
+            (r.decay === false ? ' <span class="pill pill-decay-off">no decay</span>' : '') +
+          '</td>' +
+          '<td>' + fmtDate(r.last_shown_at) + '</td>' +
+        '</tr>';
+      }).join('');
+
+      document.querySelectorAll('th[data-sort]').forEach((th) => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        if (th.dataset.sort === sortKey) {
+          th.classList.add(sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        }
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    document.querySelectorAll('th[data-sort]').forEach((th) => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortKey = key; sortDir = 'desc'; }
+        render();
+      });
+    });
+
+    fetch('/api/admin/prompt-metrics', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        rules = data.rules ?? [];
+        document.getElementById('updated').textContent =
+          'Loaded ' + rules.length + ' rules at ' + new Date().toLocaleTimeString();
+        render();
+      })
+      .catch((err) => {
+        document.getElementById('metrics-tbody').innerHTML =
+          '<tr><td colspan="9" class="empty">Failed to load: ' + escapeHtml(err.message) + '</td></tr>';
+      });
+  </script>
+</body>
+</html>

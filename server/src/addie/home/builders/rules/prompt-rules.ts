@@ -335,3 +335,29 @@ export const MEMBER_RULES: PromptRule[] = [
 ];
 
 export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];
+
+/**
+ * Reverse index from prompt text → rule id, built once at module load.
+ *
+ * Used by the message-receipt path to detect heuristic clicks: when an
+ * incoming user message exactly matches a known rule's prompt string,
+ * we record a click against that rule. Click telemetry feeds the admin
+ * dashboard's CTR column.
+ *
+ * Exact-string match (after .trim()) is intentionally strict — false
+ * positives (a user paraphrases the same idea) would inflate the CTR
+ * for popular rules. We accept a few false negatives (a user manually
+ * retypes the prompt with a different period) for cleaner data.
+ */
+const PROMPT_TO_RULE_ID = new Map<string, string>(
+  ALL_RULES.map((r) => [r.prompt.trim(), r.id]),
+);
+
+/**
+ * Look up the rule_id whose prompt text matches the given user message
+ * verbatim. Returns null when there is no match.
+ */
+export function matchRuleIdFromMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  return PROMPT_TO_RULE_ID.get(message.trim()) ?? null;
+}

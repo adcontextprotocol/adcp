@@ -5690,6 +5690,11 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-addie-costs.html');
     });
 
+    // Suggested-prompts metrics dashboard.
+    this.app.get('/admin/prompt-metrics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-prompt-metrics.html');
+    });
+
     // Note: /admin/billing is now served from billing.ts router
 
     // Admin content management — now lives in dashboard
