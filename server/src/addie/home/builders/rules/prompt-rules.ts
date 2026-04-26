@@ -68,6 +68,21 @@ function certModuleLabel(ctx: MemberContext | null): string | null {
   return cert.module_id ?? cert.track_id ?? null;
 }
 
+/**
+ * True for builder personas whose last agent test was either never run
+ * or older than 14 days. Gates the agent-staleness rule so builders
+ * actively iterating (last test < 14d) don't get nagged.
+ */
+function hasStaleAgentTest(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const p = persona(ctx);
+  if (p !== 'molecule_builder' && p !== 'pragmatic_builder') return false;
+  const last = ctx?.agent_testing?.last_test_at;
+  if (!last) return true; // never tested → definitely worth a nudge
+  const age = Date.now() - new Date(last).getTime();
+  return age > 14 * 24 * 60 * 60 * 1000;
+}
+
 function isLowLoginActive(ctx: MemberContext | null): boolean {
   const last = lastLoginMs(ctx);
   if (last === null) return false;
@@ -224,6 +239,13 @@ export const MEMBER_RULES: PromptRule[] = [
     prompt: 'What do I get if I upgrade from Explorer?',
   },
   {
+    id: 'agent.stale_test',
+    priority: 91,
+    when: ({ memberContext }) => hasStaleAgentTest(memberContext),
+    label: 'Run a fresh agent test',
+    prompt: 'When did I last test my agent, and can we run a fresh evaluation?',
+  },
+  {
     id: 'cert.continue_in_progress',
     priority: 93,
     // Never auto-suppress: re-engaging a stalled learner is exactly the
@@ -334,7 +356,11 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'member.test_my_agent',
     priority: 50,
-    when: ({ memberContext }) => isMember(memberContext),
+    // The high-priority agent.stale_test rule (id: 'agent.stale_test')
+    // is more accurate for builder personas with stale agents — duplicating
+    // the generic "Test my agent" filler in the same render is redundant.
+    when: ({ memberContext }) =>
+      isMember(memberContext) && !hasStaleAgentTest(memberContext),
     label: 'Test my agent',
     prompt: 'Can you check if my agent is set up correctly?',
   },

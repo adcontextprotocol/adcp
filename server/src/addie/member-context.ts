@@ -15,6 +15,7 @@ import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
 import { getLatestAttempt } from '../db/certification-db.js';
+import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -45,6 +46,7 @@ const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
+const agentContextDb = new AgentContextDatabase();
 
 /**
  * Get pending content count for a user
@@ -115,6 +117,22 @@ async function getPendingContentForUser(
  * which is why the cert prompt rule uses a 45-day freshness guard against
  * `started_at` rather than trying to infer engagement from this field.
  */
+/**
+ * Fetch the most recent agent_test_history row for the user. Powers
+ * the builder-persona "test your agent" prompt rule for builders whose
+ * last test run is stale.
+ */
+async function fetchAgentTesting(
+  workosUserId: string,
+): Promise<MemberContext['agent_testing']> {
+  const latest = await agentContextDb.getLatestTestForUser(workosUserId);
+  if (!latest) return { last_test_at: null, last_outcome: null };
+  return {
+    last_test_at: new Date(latest.started_at),
+    last_outcome: latest.overall_passed ? 'passed' : 'failed',
+  };
+}
+
 async function fetchCertification(
   workosUserId: string,
 ): Promise<MemberContext['certification']> {
@@ -390,6 +408,20 @@ export interface MemberContext {
   };
 
   /**
+   * Most recent agent test the user has run against any of their saved
+   * agents. Powers the builder-persona "test your agent" prompt for
+   * builders whose last test is stale.
+   *
+   * Tests against the public test agent or unsaved URLs are not
+   * recorded — they don't count here either, which matches the rule's
+   * audience (builders who have already saved their seller agent).
+   */
+  agent_testing?: {
+    last_test_at: Date | null;
+    last_outcome: 'passed' | 'failed' | null;
+  };
+
+  /**
    * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
    * suppress themselves after being shown without action. Map is keyed
    * by rule_id; absent keys mean the rule has never been shown.
@@ -628,6 +660,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, workosUserId }, 'Addie: Failed to load certification context');
     }
 
+    // Latest agent test — drives the "test your agent" prompt for builders.
+    try {
+      context.agent_testing = await fetchAgentTesting(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load agent testing context');
+    }
+
     // Process subscription info
     if (subscriptionInfo && subscriptionInfo.status !== 'none') {
       context.subscription = {
@@ -836,6 +875,12 @@ async function resolveContextFromLocalDb(
     context.certification = await fetchCertification(workosUserId);
   } catch (error) {
     logger.warn({ error, workosUserId }, 'Addie Web: Failed to load certification context');
+  }
+
+  try {
+    context.agent_testing = await fetchAgentTesting(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load agent testing context');
   }
 
   try {

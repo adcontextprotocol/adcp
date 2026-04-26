@@ -323,6 +323,55 @@ describe('buildSuggestedPrompts', () => {
     });
   });
 
+  describe('agent stale-test rule', () => {
+    const builderPersona = { persona: 'molecule_builder', aspiration_persona: null, source: 'assessment', journey_stage: null };
+
+    it('fires for a molecule_builder who has never tested an agent', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Run a fresh agent test');
+    });
+
+    it('fires for a pragmatic_builder whose last test is older than 14 days', () => {
+      const ctx = makeMember({
+        persona: { persona: 'pragmatic_builder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        agent_testing: { last_test_at: DAYS_AGO(20), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Run a fresh agent test');
+    });
+
+    it('does not fire for a builder who tested recently', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: DAYS_AGO(5), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
+    it('does not fire for non-builder personas even when stale', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        agent_testing: { last_test_at: DAYS_AGO(60), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
+    it('outranks the persona prompt for the same builder', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const staleIdx = labels.indexOf('Run a fresh agent test');
+      const personaIdx = labels.indexOf('Build a sales agent');
+      expect(staleIdx).toBeGreaterThanOrEqual(0);
+      expect(personaIdx).toBeGreaterThanOrEqual(0);
+      expect(staleIdx).toBeLessThan(personaIdx);
+    });
+  });
+
   describe('certification continuation', () => {
     it('shows Continue certification when a fresh attempt is in_progress', () => {
       const ctx = makeMember({
