@@ -18,6 +18,10 @@ vi.mock('../../server/src/addie/security.js', () => ({
 
 vi.mock('../../server/src/notifications/email.js', () => ({
   sendEmailReply: vi.fn(),
+  // Re-exported by addie/prompts.js which is now transitively imported via
+  // sanitizeSpeakerName in the email handler. Must be present on the mock
+  // or the prompts module fails to evaluate.
+  SLACK_INVITE_URL: 'https://example.test/slack-invite',
 }));
 
 vi.mock('../../server/src/utils/markdown.js', () => ({
