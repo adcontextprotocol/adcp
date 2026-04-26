@@ -10,9 +10,6 @@ import {
 } from '../fixtures/stripe-webhooks.js';
 import type { Pool } from 'pg';
 
-// No need to mock Stripe - we'll use real test mode!
-// We only need to mock the webhook signature verification
-
 // Mock auth middleware to bypass authentication in tests
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
@@ -31,13 +28,35 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-// Skipped: see #3289 — webhook tests in this file require a non-null stripe
-// instance (vi.mock currently sets `stripe: null`, and the webhook route
-// returns 400 "Stripe not configured" on every request). Either build a
-// fuller stripe-client mock that exposes `webhooks.constructEvent` and the
-// invoice/customer fixtures, or move the revenue-tracking integration tests
-// down to the database layer where vi.mock(stripe) isn't needed.
-describe.skip('Revenue Tracking Integration Tests', () => {
+// vi.mock factories are hoisted above all top-level statements, so any vars
+// referenced inside must be declared via vi.hoisted to be live at factory-evaluation time.
+const mocks = vi.hoisted(() => ({
+  mockConstructEvent: vi.fn().mockImplementation((body: any) => {
+    return typeof body === 'string' ? JSON.parse(body) : JSON.parse(body.toString());
+  }),
+  // Reject to exercise the handler's description-fallback path (try/catch around products.retrieve).
+  mockProductsRetrieve: vi.fn().mockRejectedValue(new Error('No Stripe product in test env')),
+}));
+
+vi.mock('../../src/billing/stripe-client.js', () => ({
+  stripe: {
+    webhooks: { constructEvent: mocks.mockConstructEvent },
+    products: { retrieve: mocks.mockProductsRetrieve },
+    customers: { retrieve: vi.fn().mockResolvedValue({ deleted: true }) },
+  },
+  STRIPE_WEBHOOK_SECRET: 'whsec_test_fixture',
+  createStripeCustomer: vi.fn().mockResolvedValue(null),
+  createCustomerPortalSession: vi.fn().mockResolvedValue(null),
+  createCustomerSession: vi.fn().mockResolvedValue(null),
+  fetchAllPaidInvoices: vi.fn().mockResolvedValue([]),
+  fetchAllRefunds: vi.fn().mockResolvedValue([]),
+  getPendingInvoices: vi.fn().mockResolvedValue([]),
+  getBillingProducts: vi.fn().mockResolvedValue([]),
+  getStripeSubscriptionInfo: vi.fn().mockResolvedValue(null),
+  listCustomersWithOrgIds: vi.fn().mockResolvedValue(new Map()),
+}));
+
+describe('Revenue Tracking Integration Tests', () => {
   let server: HTTPServer;
   let app: any;
   let pool: Pool;
@@ -69,30 +88,9 @@ describe.skip('Revenue Tracking Integration Tests', () => {
       [TEST_ORG_ID, 'Test Revenue Org', TEST_CUSTOMER_ID]
     );
 
-    // Initialize HTTP server with real Stripe test mode
     server = new HTTPServer();
     await server.start(0); // Use port 0 for random port
     app = server.app;
-
-    // Override Stripe webhook signature verification for tests
-    // This allows us to send test events without valid Stripe signatures
-    const stripeClient = await import('../../src/billing/stripe-client.js');
-    console.log('[TEST] Stripe client initialized:', !!stripeClient.stripe);
-    console.log('[TEST] STRIPE_WEBHOOK_SECRET set:', !!stripeClient.STRIPE_WEBHOOK_SECRET);
-
-    // Webhook route is now registered!
-
-    if (stripeClient.stripe) {
-      const originalConstructEvent = stripeClient.stripe.webhooks.constructEvent.bind(stripeClient.stripe.webhooks);
-      stripeClient.stripe.webhooks.constructEvent = ((body: any, signature: string, secret: string) => {
-        // In tests, skip signature verification and just parse the event
-        // body is a Buffer from express.raw(), need to convert to string first
-        const bodyString = Buffer.isBuffer(body) ? body.toString('utf8') :
-                          typeof body === 'string' ? body :
-                          JSON.stringify(body);
-        return JSON.parse(bodyString);
-      }) as any;
-    }
   });
 
   afterAll(async () => {
@@ -121,11 +119,6 @@ describe.skip('Revenue Tracking Integration Tests', () => {
       });
 
       const response = await sendWebhook(event);
-
-      if (response.status !== 200) {
-        console.log('Webhook response status:', response.status);
-        console.log('Webhook response body:', response.body);
-      }
 
       expect(response.status).toBe(200);
 
