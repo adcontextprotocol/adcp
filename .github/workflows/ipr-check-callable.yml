@@ -65,7 +65,7 @@ jobs:
     steps:
       - name: Mint AAO IPR Bot installation token (scoped to adcp)
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.IPR_APP_ID }}
           private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
