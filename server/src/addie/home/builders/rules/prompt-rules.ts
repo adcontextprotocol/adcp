@@ -119,9 +119,13 @@ export const MEMBER_RULES: PromptRule[] = [
     label: 'Join AgenticAdvertising.org',
     prompt: 'How do I join, and what do I get?',
   },
+  // Persona rules use decay: false because they're not nudges — they're
+  // a stable entry point reflecting who the user is. Suppressing them
+  // would leave the user with strictly worse fallbacks for their persona.
   {
     id: 'persona.molecule_builder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'molecule_builder',
     label: 'Build a sales agent',
@@ -130,6 +134,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.pragmatic_builder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'pragmatic_builder',
     label: 'Fastest path to AdCP',
@@ -138,6 +143,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.data_decoder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) => isMember(memberContext) && persona(memberContext) === 'data_decoder',
     label: 'Prove the outcomes',
     prompt: 'How do I measure agentic vs. traditional and prove AdCP improves outcomes?',
@@ -145,6 +151,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.resops_integrator',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'resops_integrator',
     label: 'Fit AdCP into my stack',
@@ -153,6 +160,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.ladder_or_simple_starter',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) &&
       (persona(memberContext) === 'ladder_climber' ||
@@ -163,6 +171,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.pureblood_protector',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'pureblood_protector',
     label: 'Brand safety controls',
