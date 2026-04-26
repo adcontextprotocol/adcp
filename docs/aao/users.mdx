@@ -1,0 +1,63 @@
+---
+title: AAO for Members
+description: What AgenticAdvertising.org members can do — sign-in, certification, working groups, perspectives, directory listings, and asking Addie for help.
+---
+
+# AAO for Members
+
+This page covers what an AAO member — someone with an active membership of any tier — can do on AgenticAdvertising.org and through Addie. For organization admins (people who manage their company's seats and billing), see [AAO for Org Admins](/docs/aao/org-admins). For the full list of Addie's tools, see the [Addie Tool Reference](/docs/aao/addie-tools).
+
+## Sign in and link your account
+
+- **Sign in.** Go to [agenticadvertising.org](https://agenticadvertising.org) and sign in with email or Google. New visitors get a free anonymous Addie session; signing in unlocks member tools.
+- **Link Slack.** If you joined the AAO Slack workspace, ask Addie *"link my account"* in any DM and she'll generate a personalized sign-in link. After signing in, your Slack identity is permanently linked.
+- **Lost your link?** Ask Addie *"send me my sign-in link"* — she has a `get_account_link` tool that works in any channel.
+
+## Certification (AdCP Academy)
+
+| Tier | Price | What you get |
+|---|---|---|
+| Tier 1 — AdCP Basics | Free, no membership required | Three foundation modules, ~90 min |
+| Tier 2 — AdCP Practitioner | Any active membership ($50+/yr) | Basics + one role-specific track + build project |
+| Tier 3 — AdCP Specialist | Any active membership ($50+/yr) | Practitioner + a specialist capstone in one of five areas |
+
+Ask Addie:
+- *"Start module A1"* — begins or resumes the relevant module in your current tier.
+- *"Where am I in certification?"* — she'll list completed modules and what's next.
+- *"What's the next step in my Practitioner track?"* — track-aware progression.
+
+## Working groups, councils, and chapters
+
+- **Browse working groups.** Ask *"what working groups are active?"* or visit [agenticadvertising.org/working-groups](https://agenticadvertising.org/working-groups).
+- **Join a working group.** Tell Addie *"I want to join the [name] working group"* — Professional tier and above can join contributor-track WGs; Explorer tier has read-only access via the website.
+- **Express council interest.** Councils require nomination; Addie can record your interest with `express_council_interest`.
+- **Find your local chapter.** Ask *"is there an AAO chapter in [region]?"* — chapters are member-run and most accept newcomers without a separate join flow.
+
+## Perspectives (publishing on AAO)
+
+Members can publish *perspectives* — short articles, op-eds, and reports — on agenticadvertising.org under Stories.
+
+- **Submit a draft.** Ask Addie to *"propose a perspective"* with your title and content (or paste a Google Doc link — she'll read it via `read_google_doc`).
+- **Editorial review.** Submitted perspectives go to `pending_review`. AAO admins review and approve, request edits, or decline.
+- **Cover illustration.** Members get monthly free illustration generation. Ask *"generate a cover for my perspective"* once it's submitted.
+- **Edit after publishing.** Use the edit button on the perspective page; if it's missing, ask Addie to investigate.
+
+## Directory listing
+
+- **Get listed.** Members on Professional tier and above get a directory listing on agenticadvertising.org/registry. Ask Addie *"set up my directory listing"* and she'll walk through company name, description, offerings, contact, and visibility.
+- **Update your listing.** Ask *"update my directory listing"* — Addie has `update_company_listing`.
+- **Add your logo.** *"Update my company logo to [URL]"* — `update_company_logo`.
+- **Brand verification.** If you publish at an owned domain, ask *"verify my brand for [domain]"* and Addie issues a DNS challenge via `request_brand_domain_challenge`.
+
+## Profile
+
+- **View / update profile.** *"Show my profile"* / *"update my profile"* (`get_my_profile`, `update_my_profile`).
+- **Profile photo.** Upload via the profile page on the website. If the upload control is missing, ask Addie to escalate.
+- **Member portrait.** Members on Builder tier and above get an auto-generated graphic-novel portrait — ask *"generate my portrait"*.
+
+## What Addie can't do for you
+
+- Change your tier or process refunds — that's an org-admin action; ask the team via *"escalate to admin"*.
+- Promote someone to admin in your org — escalation only.
+- Delete an account — escalation; admins handle this carefully.
+- Invent a tool that doesn't exist. If Addie says she has a tool that you can't find on this page or the [Addie Tool Reference](/docs/aao/addie-tools), she's probably wrong — push back and ask her to verify.
