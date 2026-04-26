@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload storyboards log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: storyboards-log-${{ matrix.mode }}
           path: /tmp/storyboards.log
@@ -202,7 +202,7 @@ jobs:
 
       - name: Persist matrix results for summary job
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: storyboard-results-${{ matrix.mode }}
           path: /tmp/storyboard-results/results.txt
