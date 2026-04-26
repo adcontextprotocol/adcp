@@ -7,6 +7,8 @@ description: Execute AdCP Sponsored Intelligence (SI) Protocol operations with b
 
 This skill enables you to execute the AdCP SI Protocol with brand agents. SI enables conversational commerce sessions where users engage directly with brand agents for shopping, inquiries, and transactions.
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The SI Protocol provides 4 standardized tasks for managing conversational sessions:

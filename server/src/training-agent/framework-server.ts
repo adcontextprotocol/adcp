@@ -52,7 +52,7 @@ import {
   handleActivateSignal,
   handleReportUsage,
 } from './task-handlers.js';
-import { handleSyncAccounts, handleSyncGovernance } from './account-handlers.js';
+import { handleSyncAccounts, handleSyncGovernance, handleListAccounts } from './account-handlers.js';
 import {
   handleSyncCatalogs,
   handleSyncEventSources,
@@ -428,6 +428,10 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     account: ACCOUNT_REF,
     brand: BRAND_REF,
     context: CONTEXT_REF,
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().optional(),
+    }).optional(),
   };
 
   const DELETE_COLLECTION_LIST_SCHEMA = {
@@ -516,7 +520,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 
     capabilities: {
       major_versions: [3],
-      specialisms: ['signed-requests'],
+      specialisms: [],
       features: {
         inlineCreativeManagement: true,
         propertyListFiltering: true,
@@ -628,6 +632,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
     accounts: {
       syncAccounts: adapt('sync_accounts', handleSyncAccounts),
+      listAccounts: adapt('list_accounts', handleListAccounts),
       syncGovernance: adapt('sync_governance', handleSyncGovernance),
       reportUsage: adapt('report_usage', handleReportUsage),
     },

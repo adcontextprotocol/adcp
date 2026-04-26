@@ -25,6 +25,11 @@ import {
 import * as referralDb from "../db/referral-codes-db.js";
 import { sanitizeBillingAddress } from "../billing/billing-address.js";
 import {
+  blockIfActiveSubscription,
+  type ActiveSubscriptionBlock,
+} from "../billing/active-subscription-guard.js";
+import { withOrgIntakeLock } from "../billing/org-intake-lock.js";
+import {
   OrganizationDatabase,
   type CompanyType,
   type RevenueTier,
@@ -37,6 +42,7 @@ import {
 } from "../services/lusha.js";
 import { listEscalationsForUser } from "../db/escalation-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
+import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
@@ -256,6 +262,17 @@ export function createPublicBillingRouter(): Router {
         }
       }
 
+      // Refuse if the org already has an active subscription. Tier changes go
+      // through the Stripe Customer Portal, not this intake route. The
+      // requester is an authenticated member of the org (verified above), so
+      // it's safe to surface the portal URL.
+      const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
+        customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
+      });
+      if (activeBlock) {
+        return res.status(activeBlock.status).json(activeBlock.body);
+      }
+
       // Product must be eligible for this org type (individual → personal
       // workspace, company → non-personal org).
       const customerType = org.is_personal ? 'individual' : 'company';
@@ -356,15 +373,35 @@ export function createPublicBillingRouter(): Router {
 
       logger.info({ orgId, lookupKey, userId: user.id }, 'Invoice request received');
 
-      const result = await createAndSendInvoice(invoiceData);
+      // Lock + re-guard + Stripe write must be atomic per-org. The early
+      // `blockIfActiveSubscription` above handles the common case fast; this
+      // section closes the millisecond race where two concurrent intakes both
+      // pass that early check before either has minted a sub.
+      const intake = await withOrgIntakeLock<
+        | { kind: 'block'; block: ActiveSubscriptionBlock }
+        | { kind: 'invoiceFailed' }
+        | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
+      >(orgId, async () => {
+        const racedBlock = await blockIfActiveSubscription(orgId, orgDb, {
+          customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
+        });
+        if (racedBlock) return { kind: 'block', block: racedBlock };
+        const invoiceResult = await createAndSendInvoice(invoiceData);
+        if (!invoiceResult) return { kind: 'invoiceFailed' };
+        return { kind: 'success', invoiceResult };
+      });
 
-      if (!result) {
+      if (intake.kind === 'block') {
+        return res.status(intake.block.status).json(intake.block.body);
+      }
+      if (intake.kind === 'invoiceFailed') {
         return res.status(500).json({
           error: "Failed to create invoice",
           message:
             "Could not create or send invoice. Please contact finance@agenticadvertising.org for assistance.",
         });
       }
+      const result = intake.invoiceResult;
 
       if (validatedInvoiceReferralCode) {
         try {
@@ -378,33 +415,22 @@ export function createPublicBillingRouter(): Router {
         }
       }
 
-      const productDisplay = `${product.display_name} ($${(product.amount_cents / 100).toLocaleString()})`;
-
       logger.info(
         { invoiceId: result.invoiceId, orgId, lookupKey, userId: user.id },
         "Invoice request processed successfully"
       );
 
-      if (process.env.SLACK_WEBHOOK_URL) {
-        fetch(process.env.SLACK_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `Invoice requested`,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `*New Invoice Request*\n\n*Org:* ${org.name}\n*Requested by:* ${displayName} (${user.email})\n*Product:* ${productDisplay}\n*Invoice ID:* ${result.invoiceId}`,
-                },
-              },
-            ],
-          }),
-        }).catch((err) =>
-          logger.error({ err }, "Failed to send Slack notification for invoice request")
-        );
-      }
+      notifyInvoiceSent({
+        organizationName: org.name,
+        contactEmail: user.email,
+        contactName: displayName,
+        amount: product.amount_cents,
+        currency: product.currency,
+        productName: product.display_name,
+        invoiceId: result.invoiceId,
+      }).catch((err) =>
+        logger.error({ err }, "Failed to send billing channel notification for invoice request")
+      );
 
       res.json({
         success: true,
@@ -489,6 +515,17 @@ export function createPublicBillingRouter(): Router {
         const host = req.get("host");
         const protocol = req.protocol;
         const baseUrl = `${protocol}://${host}`;
+
+        // Refuse if the org already has an active subscription. Tier changes go
+        // through the Stripe Customer Portal, not this checkout intake. The
+        // requester is a verified org member, so the portal URL is safe to
+        // include.
+        const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
+          customerPortalReturnUrl: `${baseUrl}/dashboard/membership`,
+        });
+        if (activeBlock) {
+          return res.status(activeBlock.status).json(activeBlock.body);
+        }
 
         // Determine referral discount to apply at checkout.
         // Priority 1: accepted referral (prospect already accepted invitation — use that discount)

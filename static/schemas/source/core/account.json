@@ -50,8 +50,7 @@
       "description": "Identifier for the rate card applied to this account"
     },
     "payment_terms": {
-      "type": "string",
-      "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
+      "$ref": "/schemas/enums/payment-terms.json",
       "description": "Payment terms agreed for this account. Binding for all invoices when the account is active."
     },
     "credit_limit": {

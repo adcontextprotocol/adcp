@@ -26,13 +26,13 @@ Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` 
 Save your agent as a named alias so you can reference it by name:
 
 ```bash
-npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
 ```
 
 This stores the alias in `~/.adcp/config.json`. You only need to do this once. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents — no setup needed.
 
 <Tip>
-You can also pass a URL directly instead of an alias: `npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller`
+You can also pass a URL directly instead of an alias: `npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller`
 </Tip>
 
 ## Run a storyboard
@@ -40,7 +40,7 @@ You can also pass a URL directly instead of an alias: `npx @adcp/client storyboa
 ### 1. List available storyboards
 
 ```bash
-npx @adcp/client storyboard list
+npx @adcp/client@latest storyboard list
 ```
 
 Each storyboard targets a specific agent type. The [Build an Agent](/docs/building/build-an-agent) page maps skills to their matching storyboards.
@@ -48,7 +48,7 @@ Each storyboard targets a specific agent type. The [Build an Agent](/docs/buildi
 ### 2. Preview what a storyboard tests
 
 ```bash
-npx @adcp/client storyboard show media_buy_seller
+npx @adcp/client@latest storyboard show media_buy_seller
 ```
 
 This shows the phases, steps, and validations without running anything.
@@ -56,7 +56,7 @@ This shows the phases, steps, and validations without running anything.
 ### 3. Run the storyboard
 
 ```bash
-npx @adcp/client storyboard run my-agent media_buy_seller
+npx @adcp/client@latest storyboard run my-agent media_buy_seller
 ```
 
 Output shows each step with pass/fail:
@@ -82,13 +82,13 @@ Pass `--json` for machine-readable results. Pass `--debug` to see full request/r
 If a step fails, run it individually:
 
 ```bash
-npx @adcp/client storyboard step my-agent media_buy_seller create_media_buy --json --debug
+npx @adcp/client@latest storyboard step my-agent media_buy_seller create_media_buy --json --debug
 ```
 
 Pass `--context` to provide state from earlier steps (account IDs, product IDs):
 
 ```bash
-npx @adcp/client storyboard step my-agent media_buy_seller get_products \
+npx @adcp/client@latest storyboard step my-agent media_buy_seller get_products \
   --context '{"account_id":"acct-123"}' --json
 ```
 
@@ -97,7 +97,7 @@ npx @adcp/client storyboard step my-agent media_buy_seller get_products \
 Run without a storyboard ID to test everything. The CLI discovers your agent's tools via `tools/list` and selects matching storyboards automatically:
 
 ```bash
-npx @adcp/client storyboard run my-agent
+npx @adcp/client@latest storyboard run my-agent
 ```
 
 Add `--json` for structured output.
@@ -165,8 +165,8 @@ The protocol requires that `(brand, account)`-scoped state [survive across agent
 **Verify by multi-instance testing.** If you deploy long-running processes (containers, VMs, a classic app server behind a load balancer), put ≥2 replicas behind round-robin routing and run storyboards against the shared endpoint:
 
 ```bash
-npx @adcp/client --save-auth my-agent https://my-agent.example/mcp
-npx @adcp/client storyboard run my-agent
+npx @adcp/client@latest --save-auth my-agent https://my-agent.example/mcp
+npx @adcp/client@latest storyboard run my-agent
 ```
 
 The compliance runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences most likely to catch in-process state. Stateless probes (capability discovery, auth rejection, schema validation) are unaffected.
@@ -207,12 +207,12 @@ Anything else the two tenants share — audit shards, rate-limit buckets keyed b
 
 ```bash
 # Cross-tenant (full MUST)
-npx @adcp/client fuzz my-agent \
+npx @adcp/client@latest fuzz my-agent \
   --auth-token $TENANT_A_TOKEN \
   --auth-token-cross-tenant $TENANT_B_TOKEN
 
 # Baseline (partial coverage)
-npx @adcp/client fuzz my-agent --auth-token $TOKEN
+npx @adcp/client@latest fuzz my-agent --auth-token $TOKEN
 ```
 
 Tokens may also be supplied via `ADCP_AUTH_TOKEN` and `ADCP_AUTH_TOKEN_CROSS_TENANT`. See the [`@adcp/client` uniform-error-response invariant guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/VALIDATE-YOUR-AGENT.md#uniform-error-response-invariant-paired-probe) for the full flag list, the header allowlist, and the list of tools currently probed.
@@ -227,10 +227,10 @@ The typical development workflow:
 
 1. **Build** — Point a coding agent at a [skill file](/docs/building/build-an-agent) to generate your agent
 2. **Run** — Start the agent locally (`npx tsx agent.ts`)
-3. **Validate** — Run the matching storyboard (`npx @adcp/client storyboard run my-agent media_buy_seller`)
+3. **Validate** — Run the matching storyboard (`npx @adcp/client@latest storyboard run my-agent media_buy_seller`)
 4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
 5. **Repeat** — Run the storyboard again until all steps pass
-6. **Full check** — Run `npx @adcp/client storyboard run my-agent` (no storyboard ID) for a full assessment before going live
+6. **Full check** — Run `npx @adcp/client@latest storyboard run my-agent` (no storyboard ID) for a full assessment before going live
 
 <Info>
 For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
@@ -240,13 +240,13 @@ For [Practitioner certification](https://agenticadvertising.org/certification), 
 
 | Command | Description |
 |---------|-------------|
-| `npx @adcp/client storyboard list` | List all available storyboards |
-| `npx @adcp/client storyboard show <id>` | Preview storyboard structure |
-| `npx @adcp/client storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
-| `npx @adcp/client storyboard step <agent> <id> <step>` | Run a single step |
-| `npx @adcp/client <agent> [tool] [payload]` | Call any tool directly |
-| `npx @adcp/client --save-auth <alias> <url>` | Save agent alias |
-| `npx @adcp/client --list-agents` | List saved aliases |
+| `npx @adcp/client@latest storyboard list` | List all available storyboards |
+| `npx @adcp/client@latest storyboard show <id>` | Preview storyboard structure |
+| `npx @adcp/client@latest storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
+| `npx @adcp/client@latest storyboard step <agent> <id> <step>` | Run a single step |
+| `npx @adcp/client@latest <agent> [tool] [payload]` | Call any tool directly |
+| `npx @adcp/client@latest --save-auth <alias> <url>` | Save agent alias |
+| `npx @adcp/client@latest --list-agents` | List saved aliases |
 
 All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
 

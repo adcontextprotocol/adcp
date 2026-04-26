@@ -104,7 +104,7 @@ The `mode`/`userId`/`moduleId`/`trackId`/`learnerLevel` fields are only populate
 
 ### 10. Custom capabilities block
 
-Our `handleGetAdcpCapabilities` returns a bespoke shape with `publisher_domains`, `compliance_testing.scenarios[]`, `specialisms: ['signed-requests']`, `request_signing`, etc. The framework auto-generates capabilities from registered tools — useful, but doesn't know about the training-agent-specific fields.
+Our `handleGetAdcpCapabilities` returns a bespoke shape with `publisher_domains`, `compliance_testing.scenarios[]`, `request_signing`, etc. The framework auto-generates capabilities from registered tools — useful, but doesn't know about the training-agent-specific fields.
 
 Resolution: override `get_adcp_capabilities` via `server.tool(...)` after `createAdcpServer` returns. Our override wins (McpServer's `.tool()` replaces prior registrations). Straightforward once the `server.tool()` typing issues are resolved (blocker #2).
 

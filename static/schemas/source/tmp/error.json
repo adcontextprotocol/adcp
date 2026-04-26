@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/error.json",
   "title": "TMP Error",
   "description": "Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "type": {
@@ -16,10 +17,11 @@
     },
     "code": {
       "type": "string",
-      "description": "Machine-readable error code",
+      "description": "Machine-readable error code. `seller_not_authorized` is returned by providers at sync time when an AvailablePackage declares a `seller_agent.agent_url` that is not present in the `authorized_agents` list of the publisher's adagents.json for a property the package claims to serve.",
       "enum": [
         "invalid_request",
         "unknown_package",
+        "seller_not_authorized",
         "rate_limited",
         "timeout",
         "internal_error",

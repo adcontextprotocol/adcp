@@ -36,6 +36,7 @@ import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
+import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
@@ -346,6 +347,20 @@ export function registerAllJobs(): void {
     failureThreshold: 1,
     businessHours: { startHour: 9, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.posted || r.awardsFound > 0,
+  });
+
+  // Brand logo pending-review digest - daily reminder when items are stuck
+  // in moderation. The pending queue is otherwise invisible (admins won't
+  // poll list_pending_brand_logos), and members hit dead-letter UX while
+  // their logo waits.
+  jobScheduler.register({
+    name: 'brand-logo-digest',
+    description: 'Daily digest of brand logos pending review',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 25, unit: 'minutes' },
+    runner: runBrandLogoDigestJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.posted || r.staleCount > 0,
   });
 
   // Social post ideas - generates social copy for members to share
@@ -803,6 +818,7 @@ export const JOB_NAMES = {
   WG_DIGEST: 'wg-digest',
   WG_DIGEST_PREP: 'wg-digest-prep',
   CREDENTIAL_DIGEST: 'credential-digest',
+  BRAND_LOGO_DIGEST: 'brand-logo-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',

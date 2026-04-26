@@ -102,6 +102,7 @@
                   },
                   "docs/protocol/architecture",
                   "docs/protocol/required-tasks",
+                  "docs/protocol/calling-an-agent",
                   {
                     "group": "Understanding AdCP",
                     "pages": [
@@ -306,6 +307,7 @@
                       "docs/governance/overview",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
+                      "docs/governance/policy-registry-sync",
                       "docs/governance/annex-iii-obligations",
                       {
                         "group": "Property Governance",
@@ -366,6 +368,7 @@
                           "docs/governance/campaign/index",
                           "docs/governance/campaign/safety-model",
                           "docs/governance/campaign/specification",
+                          "docs/governance/campaign/audit-trail",
                           {
                             "group": "Tasks",
                             "pages": [
@@ -505,6 +508,7 @@
                   "docs/reference/media-channel-taxonomy",
                   "docs/reference/roadmap",
                   "docs/reference/versioning",
+                  "docs/reference/url-canonicalization",
                   "docs/reference/test-vectors/index",
                   "docs/reference/experimental-status",
                   "docs/reference/v2-sunset",
@@ -605,6 +609,7 @@
               },
               "docs/protocol/architecture",
               "docs/protocol/required-tasks",
+              "docs/protocol/calling-an-agent",
               {
                 "group": "Understanding AdCP",
                 "pages": [
@@ -807,6 +812,7 @@
                   "docs/governance/overview",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
+                  "docs/governance/policy-registry-sync",
                   {
                     "group": "Property Governance",
                     "pages": [
@@ -859,6 +865,7 @@
                       "docs/governance/campaign/index",
                       "docs/governance/campaign/safety-model",
                       "docs/governance/campaign/specification",
+                      "docs/governance/campaign/audit-trail",
                       {
                         "group": "Tasks",
                         "pages": [
@@ -978,6 +985,7 @@
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
               "docs/reference/versioning",
+              "docs/reference/url-canonicalization",
               "docs/reference/known-limitations",
               "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",

@@ -7,6 +7,8 @@ description: Execute AdCP Brand Protocol operations with brand agents - get bran
 
 This skill enables you to execute the AdCP Brand Protocol with brand agents. The Brand Protocol provides access to brand identity, creative guidelines, and licensable rights (talent, IP, content).
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The Brand Protocol provides 4 standardized tasks:

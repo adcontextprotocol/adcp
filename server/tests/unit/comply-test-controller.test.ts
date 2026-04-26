@@ -162,14 +162,28 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(true);
       const scenarios = result.scenarios as string[];
-      expect(scenarios).toEqual([
+      // Order-agnostic: the controller does not promise a specific ordering and
+      // the SDK is free to reshuffle CONTROLLER_SCENARIOS. Assert membership of
+      // every advertised scenario (SDK-native + LOCAL_SCENARIOS appended by the
+      // training-agent wrapper) without coupling to enumeration order.
+      expect(scenarios).toEqual(expect.arrayContaining([
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
         'force_session_status',
         'simulate_delivery',
         'simulate_budget_spend',
-      ]);
+        // Local scenarios — see LOCAL_SCENARIOS in
+        // server/src/training-agent/comply-test-controller.ts.
+        'force_create_media_buy_arm',
+        'force_task_completion',
+        'seed_creative_format',
+      ]));
+      // Catch silent drift in either direction (entries removed, or new ones
+      // not yet documented in this assertion).
+      expect(scenarios.length).toBe(9);
+      // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
+      expect(new Set(scenarios).size).toBe(scenarios.length);
     });
   });
 

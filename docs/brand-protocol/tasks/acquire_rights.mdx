@@ -203,6 +203,29 @@ The response uses a discriminated union on `status`:
 
 When `suggestions` is present on a rejected response, the rejection is actionable — the buyer can adjust their request and retry. When `suggestions` is absent, the rejection is final and the buyer should not retry for this rights/talent combination. This convention applies consistently across `acquire_rights` rejections, `get_rights` excluded results, and creative approval rejections.
 
+## Request validation
+
+Two campaign-field validations are normative for `acquire_rights`. Both produce `INVALID_REQUEST` with the offending `field` populated and `recovery: "correctable"` (the buyer can fix the request and retry).
+
+### Expired campaign window
+
+Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.end_date"` when `campaign.end_date` is in the past at the time of the request. Acquiring rights for a window that has already elapsed produces a zero-duration grant and is almost always a buyer-side bug — surfacing it deterministically is more useful than silently issuing credentials that immediately expire.
+
+Unlike [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), which supports an `any_of` past-start auto-adjust pattern (a flight can be time-shifted forward without re-licensing), rights grants are not time-shiftable: the contract attaches to the requested period, so reject-only is the correct contract for `acquire_rights`.
+
+Brand agents MAY also reject when `campaign.start_date` is more than the rights agent's configured grace window in the past (typically the rights agent rejects start dates earlier than `now - 24h` since rights cannot be retroactively granted); that decision is contract-specific and SHOULD use `field: "campaign.start_date"`. The `end_date < now` check is the normative floor.
+
+### CPM-priced rights under a governance plan
+
+When the buyer's request carries an intent-phase `governance_context` token on the [protocol envelope](/docs/building/implementation/security) (the buyer's plan is governed — see [Buyer-side governance invocation](/docs/governance/campaign/specification#buyer-side-governance-invocation)) and the selected pricing option has `model: "cpm"`, `campaign.estimated_impressions` is the input the brand agent uses to project commitment against remaining plan budget. To make that projection deterministic across implementations:
+
+- Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"` when a `governance_context` is present, the selected `pricing_option.model` is `"cpm"`, and `campaign.estimated_impressions` is either omitted or `0`. Implementer-chosen defaults (e.g., assuming 1M impressions) are non-conformant — they hide a policy decision inside each implementation and produce different governance outcomes for identical requests.
+- When `estimated_impressions` is provided and non-zero, the projected commitment is `(pricing_option.price / 1000) × campaign.estimated_impressions`, evaluated in `pricing_option.currency`. If `pricing_option.currency` differs from the governance plan's budget currency (as carried on the plan), the brand agent MUST reject with `INVALID_REQUEST` and `field: "pricing_option_id"` — currency conversion is not specified for governance projection, so currency-mismatched offers cannot be cleared against a governed plan.
+- If the projected commitment exceeds the buyer's remaining plan budget, the agent MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"`, populating `reason` with the projected commitment and remaining budget so the buyer can adjust.
+- Non-CPM pricing options (`model: "flat_rate"`, etc.) commit the flat amount regardless of impression volume; brand agents MUST NOT require `estimated_impressions` for governance projection on those options. Buyers MAY still provide `estimated_impressions` for cap-tracking purposes.
+
+Requests without a `governance_context` token are unaffected by this validation — `estimated_impressions` remains optional in that case (sellers MAY refuse to transact ungoverned plans as a matter of commercial policy, per [Buyer-side governance invocation](/docs/governance/campaign/specification#buyer-side-governance-invocation), but that refusal is independent of this projection rule).
+
 ## Generation credentials
 
 When rights are acquired, the agent coordinates with LLM providers to issue scoped credentials:

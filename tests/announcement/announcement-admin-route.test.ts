@@ -15,22 +15,25 @@ import { Router } from 'express';
 import request from 'supertest';
 
 // Route module transitively imports workos-client which throws on
-// module load if this isn't set. Any value works — the client is never
-// called in these tests because we mock the admin-tools boundary.
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
-
+// module load if these env vars aren't set. vi.hoisted runs before the
+// static imports below so the env vars are present when WorkOS instantiates.
+// Any values work — the client is never called in these tests because we
+// mock the admin-tools boundary.
 const {
   mockMarkLinkedInPosted,
   mockRefreshReviewCardForOrg,
   mockLoadDraftAndState,
   mockCurrentUser,
-} = vi.hoisted(() => ({
-  mockMarkLinkedInPosted: vi.fn<any>(),
-  mockRefreshReviewCardForOrg: vi.fn<any>(),
-  mockLoadDraftAndState: vi.fn<any>(),
-  mockCurrentUser: { id: 'user_wk_admin01', email: 'admin@example.com', is_admin: true },
-}));
+} = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  return {
+    mockMarkLinkedInPosted: vi.fn<any>(),
+    mockRefreshReviewCardForOrg: vi.fn<any>(),
+    mockLoadDraftAndState: vi.fn<any>(),
+    mockCurrentUser: { id: 'user_wk_admin01', email: 'admin@example.com', is_admin: true },
+  };
+});
 
 vi.mock('../../server/src/addie/jobs/announcement-handlers.js', () => ({
   markLinkedInPosted: (...args: unknown[]) => mockMarkLinkedInPosted(...args),
@@ -57,8 +60,9 @@ vi.mock('../../server/src/billing/stripe-client.js', () => ({
   getProductsForCustomer: vi.fn(),
 }));
 
-async function buildApp() {
-  const { setupAccountRoutes } = await import('../../server/src/routes/admin/accounts.js');
+import { setupAccountRoutes } from '../../server/src/routes/admin/accounts.js';
+
+function buildApp() {
   const app = express();
   app.use(express.json());
   const pageRouter = Router();
@@ -71,14 +75,16 @@ async function buildApp() {
 const ORG_ID = 'org_ACME123';
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockMarkLinkedInPosted.mockReset();
+  mockRefreshReviewCardForOrg.mockReset();
+  mockLoadDraftAndState.mockReset();
   mockCurrentUser.id = 'user_wk_admin01';
   mockRefreshReviewCardForOrg.mockResolvedValue(undefined);
 });
 
 describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
   it('400 on malformed orgId', async () => {
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post('/api/admin/accounts/not-an-org/announcement/linkedin')
       .send({});
@@ -89,7 +95,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('403 when the caller is the static ADMIN_API_KEY', async () => {
     mockCurrentUser.id = 'admin_api_key';
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -100,7 +106,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('404 when markLinkedInPosted returns no_draft', async () => {
     mockMarkLinkedInPosted.mockResolvedValueOnce({ kind: 'no_draft' });
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -115,7 +121,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
       state: {},
       notice: 'This announcement was already skipped.',
     });
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -131,7 +137,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
       state: {},
       notice: 'LinkedIn post was already marked.',
     });
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -146,7 +152,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
       draft: {},
       state: {},
     });
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -156,7 +162,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('calls refreshReviewCardForOrg fire-and-forget on success paths', async () => {
     mockMarkLinkedInPosted.mockResolvedValueOnce({ kind: 'recorded', draft: {}, state: {} });
-    const app = await buildApp();
+    const app = buildApp();
     await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -165,7 +171,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('does NOT call refreshReviewCardForOrg on error paths', async () => {
     mockMarkLinkedInPosted.mockResolvedValueOnce({ kind: 'no_draft' });
-    const app = await buildApp();
+    const app = buildApp();
     await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -174,7 +180,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('passes the admin actor shape to markLinkedInPosted', async () => {
     mockMarkLinkedInPosted.mockResolvedValueOnce({ kind: 'recorded', draft: {}, state: {} });
-    const app = await buildApp();
+    const app = buildApp();
     await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
@@ -186,7 +192,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
 
   it('returns 500 when markLinkedInPosted throws', async () => {
     mockMarkLinkedInPosted.mockRejectedValueOnce(new Error('db down'));
-    const app = await buildApp();
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});

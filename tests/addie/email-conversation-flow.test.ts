@@ -74,15 +74,12 @@ vi.mock('../../server/src/routes/addie-chat.js', () => ({
 }));
 
 // --- Mock email sending ---
+const { mockSendEmailReply } = vi.hoisted(() => ({
+  mockSendEmailReply: vi.fn<any>(),
+}));
+
 vi.mock('../../server/src/notifications/email.js', () => ({
-  sendEmailReply: vi.fn<any>().mockImplementation(async (data: any) => {
-    state.sentEmails.push({
-      to: [data.threadContext.from],
-      subject: data.threadContext.subject,
-      textContent: data.textContent,
-    });
-    return { success: true, messageId: `resend_${Date.now()}` };
-  }),
+  sendEmailReply: mockSendEmailReply,
 }));
 
 vi.mock('../../server/src/addie/security.js', () => ({
@@ -204,6 +201,14 @@ describe('email conversation flow', () => {
     state.threadMessages = [];
     state.foundThread = null;
     state.createdThread = null;
+    mockSendEmailReply.mockImplementation(async (data: any) => {
+      state.sentEmails.push({
+        to: [data.threadContext.from],
+        subject: data.threadContext.subject,
+        textContent: data.textContent,
+      });
+      return { success: true, messageId: `resend_${Date.now()}` };
+    });
   });
 
   describe('thread resolution', () => {
@@ -385,8 +390,7 @@ On Mon, Apr 1, 2026 at 3:00 PM Addie wrote:
 
   describe('error handling', () => {
     test('returns error when email send fails', async () => {
-      const { sendEmailReply } = await import('../../server/src/notifications/email.js');
-      (sendEmailReply as any).mockResolvedValueOnce({ success: false, error: 'Resend API error' });
+      mockSendEmailReply.mockResolvedValueOnce({ success: false, error: 'Resend API error' });
 
       const result = await handleEmailConversation(baseInput());
 

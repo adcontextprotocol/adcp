@@ -49,15 +49,7 @@
             "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing."
           },
           "payment_terms": {
-            "type": "string",
-            "enum": [
-              "net_15",
-              "net_30",
-              "net_45",
-              "net_60",
-              "net_90",
-              "prepay"
-            ],
+            "$ref": "/schemas/enums/payment-terms.json",
             "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms."
           },
           "sandbox": {

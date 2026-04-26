@@ -719,16 +719,24 @@ export class AddieDatabase {
 
   /**
    * Search curated resources (with summaries and notes)
+   *
+   * @param options.excludeUserSubmitted - When true, omit `web_search`-sourced
+   *   rows (queued via `bookmark_resource`). Anonymous callers must pass true
+   *   so attacker-controlled URLs can't ride into unauthenticated context.
    */
   async searchCuratedResources(searchQuery: string, options: {
     limit?: number;
     minQuality?: number;
     tags?: string[];
+    excludeUserSubmitted?: boolean;
   } = {}): Promise<CuratedResourceSearchResult[]> {
     const limit = options.limit ?? 10;
+    const sourceTypes = options.excludeUserSubmitted
+      ? "'curated', 'perspective_link'"
+      : "'curated', 'perspective_link', 'web_search'";
     const conditions: string[] = [
       'is_active = TRUE',
-      "source_type IN ('curated', 'perspective_link', 'web_search')",
+      `source_type IN (${sourceTypes})`,
       "fetch_status = 'success'",
       "search_vector @@ websearch_to_tsquery('english', $1)",
     ];
@@ -778,13 +786,19 @@ export class AddieDatabase {
     minQuality?: number;
     tags?: string[];
     topic?: string;
+    excludeUserSubmitted?: boolean;
   } = {}): Promise<RecentNewsResult[]> {
     // Clamp inputs to reasonable ranges for safety
     const days = Math.max(1, Math.min(options.days ?? 7, 365));
     const limit = Math.max(1, Math.min(options.limit ?? 10, 100));
+    // Anonymous callers omit `web_search` (URLs queued via bookmark_resource —
+    // attacker-controllable) and `community` (free-form member submissions).
+    const sourceTypes = options.excludeUserSubmitted
+      ? "'curated', 'perspective_link', 'rss'"
+      : "'curated', 'perspective_link', 'web_search', 'rss', 'community'";
     const conditions: string[] = [
       'is_active = TRUE',
-      "source_type IN ('curated', 'perspective_link', 'web_search', 'rss', 'community')",
+      `source_type IN (${sourceTypes})`,
       "fetch_status = 'success'",
       `last_fetched_at >= NOW() - $1::integer * INTERVAL '1 day'`,
     ];

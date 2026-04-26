@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/create_media_buy_async
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -467,6 +468,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

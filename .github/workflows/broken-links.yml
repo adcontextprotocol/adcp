@@ -56,7 +56,7 @@ jobs:
       env:
         PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-    - name: Check for broken links in docs
+    - name: Mintlify broken links (fix any links printed below)
       run: npx --no-install mintlify broken-links
 
     - name: Check browser-facing Agentic Advertising links

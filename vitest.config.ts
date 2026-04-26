@@ -7,6 +7,9 @@ export default defineConfig({
     // server-side module init in imported code keeps child processes alive.
     // Threads share the parent process lifecycle and exit cleanly. Same speed.
     pool: 'threads',
+    // Cap individual test hangs at 10 s so a single stalled test doesn't
+    // silently consume the entire 60 s precommit budget with no test name.
+    testTimeout: 10000,
     exclude: [
       '**/node_modules/**',
       '**/dist/**',

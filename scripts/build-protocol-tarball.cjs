@@ -20,6 +20,7 @@
  *     manifest.json
  *     schemas/...
  *     compliance/...
+ *     skills/...                  # call-adcp-agent + per-protocol skill docs
  *     openapi/registry.yaml
  *
  * Usage mirrors build-schemas.cjs:
@@ -38,6 +39,7 @@ const { execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const DIST_SCHEMAS = path.join(ROOT, 'dist/schemas');
 const DIST_COMPLIANCE = path.join(ROOT, 'dist/compliance');
+const SKILLS_DIR = path.join(ROOT, 'skills');
 const OPENAPI_FILE = path.join(ROOT, 'static/openapi/registry.yaml');
 const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 const OUT_DIR = path.join(ROOT, 'dist/protocol');
@@ -118,6 +120,7 @@ This tarball contains the complete AdCP protocol for version \`${version}\`${isD
 
 - \`schemas/\` — JSON Schemas for every task (request + response)
 - \`compliance/\` — Storyboard bundles (universal, domains/, specialisms/, test-kits/)
+- \`skills/\` — Agent-facing protocol skills (\`call-adcp-agent\` for buyer-side rules, \`adcp-*\` for per-protocol task semantics). SDKs ship these to give Claude/agents the cross-cutting wire contract.
 - \`openapi/registry.yaml\` — OpenAPI description of the registry endpoints
 - \`manifest.json\` — Version + contents summary
 - \`CHANGELOG.md\` — Release notes
@@ -129,7 +132,7 @@ ${quickstart}
 ## Validate an agent
 
 \`\`\`bash
-npx @adcp/client storyboard run https://my-agent.example.com
+npx @adcp/client@latest storyboard run https://my-agent.example.com
 \`\`\`
 
 The CLI uses the same \`compliance/\` tree bundled here. For offline runs, point it at
@@ -144,9 +147,9 @@ for the enumerated domains + specialisms that agents can claim in
 ## Layout stability
 
 The directory structure inside \`adcp-{version}/\` (\`schemas/\`, \`compliance/\`,
-\`openapi/\`, \`manifest.json\`) is a stable contract within a given major
-version. Renames or moves inside this tree are breaking changes and only ship
-with a major bump.
+\`skills/\`, \`openapi/\`, \`manifest.json\`) is a stable contract within a given
+major version. Renames or moves inside this tree are breaking changes and only
+ship with a major bump.
 
 ## Docs
 
@@ -191,6 +194,10 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
     fs.copyFileSync(OPENAPI_FILE, path.join(openapiDst, 'registry.yaml'));
   }
 
+  if (fs.existsSync(SKILLS_DIR)) {
+    copyTree(SKILLS_DIR, path.join(bundleDir, 'skills'));
+  }
+
   if (fs.existsSync(CHANGELOG_FILE)) {
     fs.copyFileSync(CHANGELOG_FILE, path.join(bundleDir, 'CHANGELOG.md'));
   }
@@ -198,6 +205,17 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
   writeBundleReadme(bundleDir, version, isDev);
 
   const fileCount = walk(bundleDir).length;
+
+  // Enumerate skills so SDK sync scripts can pick them out without re-walking
+  // the tree, and so consumers can detect missing/added skills via the manifest.
+  const bundledSkillsDir = path.join(bundleDir, 'skills');
+  const skillNames = fs.existsSync(bundledSkillsDir)
+    ? fs.readdirSync(bundledSkillsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && fs.existsSync(path.join(bundledSkillsDir, e.name, 'SKILL.md')))
+        .map(e => e.name)
+        .sort()
+    : [];
+
   const manifest = {
     adcp_version: version,
     generated_at: new Date().toISOString(),
@@ -205,6 +223,7 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
     contents: {
       schemas: fs.existsSync(schemasDst),
       compliance: fs.existsSync(path.join(bundleDir, 'compliance')),
+      skills: skillNames,
       openapi: fs.existsSync(path.join(bundleDir, 'openapi')),
       changelog: fs.existsSync(path.join(bundleDir, 'CHANGELOG.md')),
       readme: true

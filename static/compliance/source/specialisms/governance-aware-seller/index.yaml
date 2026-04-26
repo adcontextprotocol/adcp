@@ -52,10 +52,11 @@ narrative: |
   Sellers that do not claim this specialism are graded `not_applicable` on
   these scenarios rather than failed. This mirrors the pattern used by the
   other governance-* specialisms (`governance-spend-authority`,
-  `governance-delivery-monitor`) and by `measurement-verification` and
-  `signed-requests` — cross-cutting capabilities are gated behind explicit
-  specialism claims instead of being force-included under every sales-*
-  specialism.
+  `governance-delivery-monitor`) and by `measurement-verification` —
+  cross-cutting capabilities that involve campaign behavior are gated behind
+  explicit specialism claims instead of being force-included under every
+  sales-* specialism. (`signed-requests` was previously listed here; it was
+  reclassified in 3.1 to a universal capability-gated storyboard.)
 
   Composition means the seller:
   - accepts `sync_governance` to register the buyer's governance agent URL and
@@ -96,4 +97,40 @@ prerequisites:
     protocol.
   test_kit: "test-kits/acme-outdoor.yaml"
 
-phases: []
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "governance_aware_seller--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_aware_seller--get_capabilities"
+            description: "Context correlation_id returned unchanged"

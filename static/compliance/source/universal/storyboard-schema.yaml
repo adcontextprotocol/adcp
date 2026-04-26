@@ -144,7 +144,8 @@
 #   Runner contract — carries a harness coordination contract. Declares:
 #     id                 string (short identifier)
 #     applies_to         object or list (which storyboards/specialisms consume
-#                        this contract, e.g., `{ specialism: signed-requests }`)
+#                        this contract, e.g., `{ universal_storyboard: signed-requests }`
+#                        or `{ specialism: sales-catalog-driven }`)
 #     + contract-specific fields describing how the runner should pre-configure
 #       the agent under test (e.g., `receiver_urls:`, `retry_replay_contract:`
 #       for webhook-receiver-runner; `endpoint_modes:` for signed-requests)
@@ -176,7 +177,7 @@
 # substitution_observer_runner`.
 #
 # Storyboards that test pure harness infrastructure without a specific brand
-# (e.g., `specialisms/signed-requests/index.yaml`,
+# (e.g., `universal/signed-requests.yaml`,
 # `universal/webhook-emission.yaml`) point `prerequisites.test_kit` directly
 # at the runner contract and fall back on `task_default:` when any
 # `$test_kit.operations.<name>` reference resolves to null (see Step field
@@ -555,7 +556,7 @@
 # check: string (what to validate: "response_schema", "field_present", "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
-#                "any_of", "refs_resolve")
+#                "any_of", "refs_resolve", "a2a_submitted_artifact")
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
@@ -665,6 +666,15 @@
 #         key: agent_url
 #         equals: $agent_url
 #       on_out_of_scope: warn
+#
+# A2A wire-shape — use `check: a2a_submitted_artifact`:
+#   Asserts the A2A envelope invariants for AdCP `submitted` arms: `Task.id` /
+#   `Task.contextId` non-empty, `Task.state` normalised to `completed` (A2A 0.3
+#   wire value `"completed"`; A2A 1.0 enum `"TASK_STATE_COMPLETED"`), and the
+#   last non-null, object-typed DataPart's `data.status === 'submitted'`
+#   preserving the AdCP discriminator. Grades `not_applicable` on non-A2A
+#   transports so storyboards can include it alongside MCP-shape assertions
+#   without forking by transport.
 #
 # --- Runner output ---
 #

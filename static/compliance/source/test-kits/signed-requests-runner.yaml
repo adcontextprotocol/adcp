@@ -1,8 +1,9 @@
 # Signed-Requests Runner — Harness Contract Test Kit
 #
-# Applies to: specialisms/signed-requests/index.yaml
+# Applies to: universal/signed-requests.yaml (gated on
+# `request_signing.supported: true` in get_adcp_capabilities).
 #
-# The signed-requests specialism grades an agent's RFC 9421 verifier against 28
+# The signed-requests storyboard grades an agent's RFC 9421 verifier against 28
 # conformance vectors at /compliance/{version}/test-vectors/request-signing/.
 # Most vectors are pure black-box: the runner constructs a signed HTTP request,
 # sends it, and checks the response. Three negative vectors assert behavior that
@@ -13,16 +14,17 @@
 #   020-rate-abuse       — per-keyid replay cache must be at its configured cap
 #
 # This test-kit defines the coordination contract between a black-box runner and
-# a request-signing agent under test. Agents claiming the specialism MUST
-# pre-configure their verifier per this contract before the negative phase runs.
-# The runner reads this file to know (a) the keyids it will sign with, (b) how
-# to provoke each stateful negative vector, and (c) the grading-time cap values
-# it will target (which are NOT production recommendations — see each field).
-# See `scope` below for what the contract does NOT specify.
+# a request-signing agent under test. Agents advertising
+# `request_signing.supported: true` MUST pre-configure their verifier per this
+# contract before the negative phase runs. The runner reads this file to know
+# (a) the keyids it will sign with, (b) how to provoke each stateful negative
+# vector, and (c) the grading-time cap values it will target (which are NOT
+# production recommendations — see each field). See `scope` below for what the
+# contract does NOT specify.
 
 id: signed_requests_runner
 applies_to:
-  specialism: signed-requests
+  universal_storyboard: signed-requests
 
 description: |
   Coordination contract between a black-box runner and a request-signing agent
@@ -39,9 +41,9 @@ endpoint_scope: sandbox
 # its first step (the second copy is what the grader expects to be rejected).
 # Running this against a production endpoint would create a real media buy.
 # Graders MUST target a sandbox/staging endpoint or an idempotency-keyed
-# sacrificial path the agent discards post-grading. Agents claiming the
-# specialism SHOULD expose a dedicated grading endpoint rather than grading in
-# prod.
+# sacrificial path the agent discards post-grading. Agents advertising
+# `request_signing.supported: true` SHOULD expose a dedicated grading endpoint
+# rather than grading in prod.
 
 harness_mode: black_box
 # Agents participating in a white-box test harness (e.g., SDK internal tests
@@ -147,7 +149,7 @@ scope:
       counterparty only.
 
 references:
-  specialism: static/compliance/source/specialisms/signed-requests/index.yaml
+  universal_storyboard: static/compliance/source/universal/signed-requests.yaml
   test_vectors: /compliance/{version}/test-vectors/request-signing/
   verifier_checklist: /docs/building/implementation/security.mdx#verifier-checklist-requests
   runner_implementation: https://github.com/adcontextprotocol/adcp-client/issues/585

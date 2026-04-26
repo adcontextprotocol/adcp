@@ -6,23 +6,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // announcement-handlers → mcp/admin-tools → workos-client (throws on module
-// load without these). Dummy values satisfy the guard; nothing here
-// actually calls WorkOS.
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
-
-const { mockQuery } = vi.hoisted(() => ({
-  mockQuery: vi.fn<any>(),
-}));
+// load without these). vi.hoisted runs before the static imports below so
+// the env vars are set when the WorkOS client is instantiated. Dummy values
+// satisfy the guard; nothing here actually calls WorkOS.
+const { mockQuery } = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  return { mockQuery: vi.fn<any>() };
+});
 
 vi.mock('../../server/src/db/client.js', () => ({
   query: (...args: unknown[]) => mockQuery(...args),
 }));
 
+import { loadAnnouncementBacklog } from '../../server/src/addie/jobs/announcement-handlers.js';
+
 beforeEach(() => {
-  vi.clearAllMocks();
   mockQuery.mockReset();
-  // Safer default — without this a `mockResolvedValueOnce` consumed
+  // Safety net — without this a `mockResolvedValueOnce` consumed
   // by a prior test's overlap would leave a subsequent call returning
   // `undefined` (→ TypeError or timeout). Tests that care always
   // stack their own mockResolvedValueOnce on top.
@@ -67,7 +68,6 @@ describe('loadAnnouncementBacklog', () => {
       ],
     });
 
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
 
     expect(rows).toHaveLength(2);
@@ -106,14 +106,12 @@ describe('loadAnnouncementBacklog', () => {
         },
       ],
     });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
     expect(rows[0].is_backfill).toBe(false);
   });
 
   it('SQL uses DISTINCT ON per organization so one draft per org returned', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     await loadAnnouncementBacklog();
     const sql = mockQuery.mock.calls[0][0] as string;
     // Four DISTINCT ON (organization_id) clauses: latest_draft, slack_pub,
@@ -124,14 +122,12 @@ describe('loadAnnouncementBacklog', () => {
 
   it('empty query returns empty array (happy zero-case)', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
     expect(rows).toEqual([]);
   });
 
   it('SQL LEFT-JOINs organizations so orphan drafts still surface', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     await loadAnnouncementBacklog();
     const sql = mockQuery.mock.calls[0][0] as string;
     // INNER JOIN on organizations would silently drop orphan drafts
@@ -159,7 +155,6 @@ describe('loadAnnouncementBacklog', () => {
         },
       ],
     });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
     expect(rows[0].org_created_at).toEqual(orgCreated);
   });
@@ -182,7 +177,6 @@ describe('loadAnnouncementBacklog', () => {
         },
       ],
     });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
     expect(rows[0].org_created_at).toBeNull();
   });
@@ -205,7 +199,6 @@ describe('loadAnnouncementBacklog', () => {
         },
       ],
     });
-    const { loadAnnouncementBacklog } = await import('../../server/src/addie/jobs/announcement-handlers.js');
     const rows = await loadAnnouncementBacklog();
     expect(rows[0].org_name).toBe('org_DELETED');
   });

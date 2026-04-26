@@ -77,7 +77,14 @@ describe('Training Agent /mcp-strict route', () => {
 
   beforeAll(() => {
     app = express();
-    app.use(express.json());
+    // Mirror production http.ts: populate req.rawBody via the verify callback
+    // so requireTokenStrict's resolveOperation can identify the tool name and
+    // apply the required_for gate without falling back to req.body.
+    app.use(express.json({
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }));
     app.use('/api/training-agent', createTrainingAgentRouter());
   });
 
@@ -89,30 +96,39 @@ describe('Training Agent /mcp-strict route', () => {
     it('/mcp returns required_for: [] (sandbox)', async () => {
       const res = await callTool(app, '/mcp', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual([]);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
 
     it('/mcp-strict returns required_for: ["create_media_buy"] (grader target)', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
   });
 
   describe('presence-gated enforcement', () => {
     it('unsigned create_media_buy on /mcp-strict returns 401 request_signature_required', async () => {
+      // auth: false — bearer bypass (SDK #2586) short-circuits required_for; graders send no bearer.
       const res = await callTool(app, '/mcp-strict', 'create_media_buy', {
         account: { brand: { domain: 'strict-test.example.com' }, sandbox: true },
         idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
-      });
+      }, { auth: false });
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('request_signature_required');
       expect(res.body.error_description).toMatch(/create_media_buy.*signed/);
-      expect(res.headers['www-authenticate']).toMatch(/^Bearer /);
+      expect(res.headers['www-authenticate']).toMatch(/Signature error="request_signature_required"/);
     });
 
     it('unsigned create_media_buy on /mcp still accepted (bearer fallthrough)', async () => {

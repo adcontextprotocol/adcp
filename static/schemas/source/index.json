@@ -334,6 +334,10 @@
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
         },
+        "seller-agent-ref": {
+          "$ref": "/schemas/core/seller-agent-ref.json",
+          "description": "Reference to a seller agent by its adagents.json-declared URL. Used on TMP AvailablePackage and echoed on Offer."
+        },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
           "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
