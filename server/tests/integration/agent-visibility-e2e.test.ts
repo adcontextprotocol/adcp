@@ -418,8 +418,7 @@ describe('Agent visibility E2E', () => {
     expect(withApi.map((a) => a.url)).toContain('https://members.privp.example');
   });
 
-  // Skipped: see #3289 — references `src/db/migrations/419_agent_visibility.sql`; path should be `server/src/db/migrations/...`.
-  it.skip('legacy is_public agents are normalized on read', async () => {
+  it('legacy is_public agents are normalized on read', async () => {
     const orgId = `${TEST_PREFIX}_legacy`;
     await seedOrg(pool, orgId, null);
     // Bypass typed helper to store a legacy shape
@@ -440,7 +439,7 @@ describe('Agent visibility E2E', () => {
     // Re-run migration 419 explicitly to simulate the transform on legacy rows
     const fs = await import('fs/promises');
     const path = await import('path');
-    const sqlPath = path.resolve(process.cwd(), 'src/db/migrations/419_agent_visibility.sql');
+    const sqlPath = path.resolve(process.cwd(), 'server/src/db/migrations/419_agent_visibility.sql');
     const sql = await fs.readFile(sqlPath, 'utf-8');
     await pool.query(sql);
 

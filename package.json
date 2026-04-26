@@ -48,7 +48,7 @@
     "test:unit": "vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run server/tests/unit/",
-    "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts --exclude '**/admin-sync-revenue-backfill.test.ts' --exclude '**/self-service-delete.test.ts'",
+    "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
     "test:openapi": "tsx scripts/generate-openapi.ts && git diff --exit-code static/openapi/registry.yaml || (echo 'OpenAPI spec is out of date. Run: npm run build:openapi' && exit 1)",
     "test:registry": "vitest run server/tests --exclude 'server/tests/simulation/**'",
     "test:simulation": "vitest run server/tests/simulation/scenarios --pool forks --poolOptions.forks.singleFork --testTimeout 120000",

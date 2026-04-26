@@ -68,8 +68,7 @@ describe('getDigestEmailRecipients — active track scoping', () => {
     expect(r.cert_total_modules).toBe(0);
   });
 
-  // Skipped: see #3289 — counts return 4 instead of 3; scoping rule or fixture has drifted.
-  it.skip('scopes counts to the track most recently touched', async () => {
+  it('scopes counts to the track most recently touched', async () => {
     // Track A: A1 + A2 completed, touched earlier (should NOT be the active track)
     await query(
       `INSERT INTO learner_progress (workos_user_id, module_id, status, updated_at)
@@ -87,10 +86,15 @@ describe('getDigestEmailRecipients — active track scoping', () => {
       [TEST_USER]
     );
 
+    const trackBTotal = (await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM certification_modules WHERE track_id = 'B'`,
+    )).rows[0].count;
+
     const r = await recipient();
-    // Track B has 3 seeded modules (B1, B2, B3); 1 is completed.
+    // Track B's module count comes from the live curriculum, not a hard-coded
+    // fixture; new modules land in main and would otherwise drift this test.
     expect(r.cert_modules_completed).toBe(1);
-    expect(r.cert_total_modules).toBe(3);
+    expect(r.cert_total_modules).toBe(Number(trackBTotal));
   });
 
   it('counts tested_out the same as completed', async () => {
@@ -107,8 +111,7 @@ describe('getDigestEmailRecipients — active track scoping', () => {
     expect(r.cert_total_modules).toBe(3);
   });
 
-  // Skipped: see #3289 — same drift as the previous test.
-  it.skip('breaks updated_at ties deterministically via module_id DESC', async () => {
+  it('breaks updated_at ties deterministically via module_id DESC', async () => {
     // Two rows with identical updated_at on different tracks. The ORDER BY
     // tiebreak of module_id DESC should pick 'B1' > 'A1', so active track = B.
     await query(
@@ -119,11 +122,16 @@ describe('getDigestEmailRecipients — active track scoping', () => {
       [TEST_USER]
     );
 
+    const trackBTotal = (await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM certification_modules WHERE track_id = 'B'`,
+    )).rows[0].count;
+    const expectedTotal = Number(trackBTotal);
+
     // Run several times to make sure the pick is stable (non-deterministic
     // behavior would show up as flakes here).
     for (let i = 0; i < 5; i++) {
       const r = await recipient();
-      expect(r.cert_total_modules).toBe(3); // track B has 3 modules
+      expect(r.cert_total_modules).toBe(expectedTotal);
       expect(r.cert_modules_completed).toBe(0);
     }
   });

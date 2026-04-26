@@ -14,8 +14,9 @@ import type { Pool } from 'pg';
 // We only need to mock the webhook signature verification
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       workos_user_id: 'user_test_admin',
       email: 'admin@test.com',
@@ -23,10 +24,19 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
+}));
+
+// Skipped: see #3289 — webhook tests in this file require a non-null stripe
+// instance (vi.mock currently sets `stripe: null`, and the webhook route
+// returns 400 "Stripe not configured" on every request). Either build a
+// fuller stripe-client mock that exposes `webhooks.constructEvent` and the
+// invoice/customer fixtures, or move the revenue-tracking integration tests
+// down to the database layer where vi.mock(stripe) isn't needed.
 describe.skip('Revenue Tracking Integration Tests', () => {
   let server: HTTPServer;
   let app: any;

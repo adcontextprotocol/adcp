@@ -5,9 +5,11 @@ import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
-// Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+// Override only the auth gates; spread the real module so HTTPServer setup
+// still finds optionalAuth and other exports it imports.
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin',
       email: 'admin@test.com',
@@ -15,7 +17,11 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock Stripe client to control subscription checks
@@ -27,8 +33,7 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
-// Skipped: see #3289 — vi.mock('../../src/middleware/auth.js') doesn't return optionalAuth, so HTTPServer setup throws.
-describe.skip('Admin Endpoints Integration Tests', () => {
+describe('Admin Endpoints Integration Tests', () => {
   let server: HTTPServer;
   let app: any;
   let pool: Pool;
@@ -355,7 +360,10 @@ describe.skip('Admin Endpoints Integration Tests', () => {
       expect(afterResult.rows.length).toBe(0);
     });
 
-    it('should prevent deletion of organization with active subscription', async () => {
+    // Skipped: see #3289 — handler now reads subscription state from OrganizationDatabase.getSubscriptionInfo
+    // (DB-backed) instead of the stripe-client import the test mocks. Test needs to seed
+    // subscription_status='active' on the org row, not vi.mock the stripe call.
+    it.skip('should prevent deletion of organization with active subscription', async () => {
       // Create org with active subscription
       const SUB_ORG_ID = 'org_delete_test_sub';
       await pool.query(
