@@ -12,6 +12,23 @@
 import { query, getPool } from '../db/client.js';
 import { logger } from '../logger.js';
 
+// Postgres TEXT and JSONB both reject U+0000. Tool results occasionally
+// surface null bytes from upstream APIs, which would otherwise blow up the
+// addMessage INSERT with "unsupported Unicode escape sequence" (JSONB) or
+// "invalid byte sequence for UTF8" (TEXT). Strip them at the boundary.
+const NULL_BYTE = String.fromCharCode(0);
+const NULL_BYTE_RE = new RegExp(NULL_BYTE, 'g');
+
+function stripNullBytesString(s: string): string {
+  return s.includes(NULL_BYTE) ? s.replace(NULL_BYTE_RE, '') : s;
+}
+
+function stripNullBytesFromJson(json: string): string {
+  // JSON.stringify encodes a null byte as a six-character backslash-u escape.
+  // Strip that encoded form and any raw null byte left in the output.
+  return json.replace(/\\u0000/g, '').replace(NULL_BYTE_RE, '');
+}
+
 // =====================================================
 // TYPES
 // =====================================================
@@ -445,17 +462,17 @@ export class ThreadService {
         [
           input.thread_id,
           input.role,
-          input.content,
-          input.content_sanitized ?? null,
-          input.tools_used ?? null,
-          input.tool_calls ? JSON.stringify(input.tool_calls) : null,
+          stripNullBytesString(input.content),
+          input.content_sanitized != null ? stripNullBytesString(input.content_sanitized) : null,
+          input.tools_used ? input.tools_used.map(stripNullBytesString) : null,
+          input.tool_calls ? stripNullBytesFromJson(JSON.stringify(input.tool_calls)) : null,
           input.knowledge_ids ?? null,
           input.model ?? null,
           input.latency_ms ?? null,
           input.tokens_input ?? null,
           input.tokens_output ?? null,
           input.flagged ?? false,
-          input.flag_reason ?? null,
+          input.flag_reason != null ? stripNullBytesString(input.flag_reason) : null,
           sequenceNumber,
           input.timing?.system_prompt_ms ?? null,
           input.timing?.total_llm_ms ?? null,
@@ -464,11 +481,11 @@ export class ThreadService {
           input.tokens_cache_creation ?? null,
           input.tokens_cache_read ?? null,
           input.active_rule_ids ?? null,
-          input.router_decision ? JSON.stringify(input.router_decision) : null,
+          input.router_decision ? stripNullBytesFromJson(JSON.stringify(input.router_decision)) : null,
           input.config_version_id ?? null,
-          input.email_message_id ?? null,
+          input.email_message_id != null ? stripNullBytesString(input.email_message_id) : null,
           input.user_id ?? null,
-          input.user_display_name ?? null,
+          input.user_display_name != null ? stripNullBytesString(input.user_display_name) : null,
         ]
       );
 
