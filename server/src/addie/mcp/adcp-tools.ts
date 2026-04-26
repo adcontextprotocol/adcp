@@ -679,6 +679,12 @@ export function createAdcpToolHandlers(
 
     try {
       const { AdCPClient } = await import('@adcp/client');
+      const { getGcpKmsSigningProvider } = await import('../../security/gcp-kms-signer.js');
+
+      // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
+      // when configured. Verifiers fetch the public key from
+      // `${BASE_URL}/.well-known/jwks.json` (kid: aao-signing-2026-04).
+      const signingProvider = await getGcpKmsSigningProvider();
 
       const agentConfig = {
         id: 'target',
@@ -688,6 +694,15 @@ export function createAdcpToolHandlers(
         ...(authInfo?.authType === 'basic'
           ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
           : authInfo ? { auth_token: authInfo.token } : {}),
+        ...(signingProvider
+          ? {
+              request_signing: {
+                kind: 'provider' as const,
+                provider: signingProvider,
+                agent_url: getBaseUrl(),
+              },
+            }
+          : {}),
       };
 
       const multiClient = new AdCPClient(
