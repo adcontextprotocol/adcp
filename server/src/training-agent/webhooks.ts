@@ -3,22 +3,15 @@
  *
  * Uses `@adcp/client/server`'s `createWebhookEmitter` to post RFC 9421-signed
  * completion webhooks with stable `idempotency_key` per logical event and
- * retry/backoff on 5xx/429.
+ * retry/backoff on 5xx/429. The signer uses a single Ed25519 keypair sourced
+ * from `WEBHOOK_SIGNING_KEY_JWK` (a private JWK) when configured, or a
+ * freshly-generated key at startup for dev mode.
  *
- * Production (`GCP_KMS_WEBHOOK_KEY_VERSION` set): routes signing through a
- * GCP KMS-backed `SigningProvider`. Private key material never enters
- * process memory. Key separation per AdCP spec — a distinct
- * `cryptoKeyVersion` from the request-signing path.
- *
- * Dev (env unset): falls back to either `WEBHOOK_SIGNING_KEY_JWK` (a
- * stable private JWK) or a freshly-generated key at startup.
- *
- * Public key is published at the root `/.well-known/jwks.json` (with
- * `adcp_use: "webhook-signing"`) and at the training-agent's own
- * `/api/training-agent/.well-known/jwks.json` for legacy callers.
+ * Public key is published at `/.well-known/jwks.json` on the training agent
+ * router so buyers can verify incoming webhooks against a real JWKS endpoint.
  */
 
-import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   createWebhookEmitter,
   memoryWebhookKeyStore,
@@ -68,54 +61,100 @@ export const TOOL_TO_TASK_TYPE = {
   get_brand_identity: 'get_brand_identity',
   get_rights: 'get_rights',
   acquire_rights: 'acquire_rights',
-} as const;
+} as const satisfies Record<string, WebhookTaskType>;
 
-export type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
+type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
 
-export const TOOL_TO_PROTOCOL: Record<WebhookEmittingTool, 'mcp' | 'a2a'> = {
-  create_media_buy: 'mcp', update_media_buy: 'mcp', sync_creatives: 'mcp',
-  activate_signal: 'mcp', get_signals: 'mcp', create_property_list: 'mcp',
-  update_property_list: 'mcp', get_property_list: 'mcp', list_property_lists: 'mcp',
-  delete_property_list: 'mcp', sync_accounts: 'mcp', get_account_financials: 'mcp',
-  get_creative_delivery: 'mcp', sync_event_sources: 'mcp', sync_audiences: 'mcp',
-  sync_catalogs: 'mcp', log_event: 'mcp', get_brand_identity: 'mcp',
-  get_rights: 'mcp', acquire_rights: 'mcp',
+/** AdCP protocol domain for each webhook-emitting tool. Values are the kebab-case
+ *  enum from `enums/adcp-protocol.json`. Matches the spec's operational grouping:
+ *  creative operations bundled into a media-buy seller stamp as `media-buy`
+ *  (see `core/mcp-webhook-payload.json` example where `sync_creatives` → `media-buy`);
+ *  dedicated brand / signals / governance tools stamp their own domain. The
+ *  `Record<WebhookEmittingTool, ...>` type forces this map to stay in sync with
+ *  `TOOL_TO_TASK_TYPE` — adding a tool there without a protocol here fails tsc. */
+type WebhookProtocol = 'media-buy' | 'signals' | 'governance' | 'creative' | 'brand' | 'sponsored-intelligence';
+
+const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+  create_media_buy: 'media-buy',
+  update_media_buy: 'media-buy',
+  sync_creatives: 'media-buy',
+  get_creative_delivery: 'media-buy',
+  sync_event_sources: 'media-buy',
+  sync_audiences: 'media-buy',
+  sync_catalogs: 'media-buy',
+  log_event: 'media-buy',
+  sync_accounts: 'governance',
+  get_account_financials: 'governance',
+  activate_signal: 'signals',
+  get_signals: 'signals',
+  create_property_list: 'governance',
+  update_property_list: 'governance',
+  get_property_list: 'governance',
+  list_property_lists: 'governance',
+  delete_property_list: 'governance',
+  get_brand_identity: 'brand',
+  get_rights: 'brand',
+  acquire_rights: 'brand',
 };
 
-/**
- * Extract the webhook URL from tool arguments. Caller drops the optional
- * `push_notification_config.{url,authentication}` fields onto the request;
- * we sign only the URL.
- */
 function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
-  const pnc = args.push_notification_config;
+  const pnc = args.push_notification_config as { url?: unknown } | undefined;
   if (!pnc || typeof pnc !== 'object') return undefined;
-  const url = (pnc as { url?: unknown }).url;
-  return typeof url === 'string' && url.length > 0 ? url : undefined;
+  return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
 }
 
-/** A stable, deterministic key for the operation a webhook represents. */
+/** Derive a stable logical event id for webhook idempotency. Two emissions
+ *  with the same operation_id reuse the same `idempotency_key` across retries.
+ *  Prefers a buyer-facing entity id from the response so retries from the same
+ *  buyer collapse; falls back to the request's idempotency_key.
+ *
+ *  Scoped by the caller's principal so two buyers sharing the public sandbox
+ *  token who happen to land on the same deterministic response entity id
+ *  (e.g. both get `mb_abc123`) produce distinct webhook idempotency_keys.
+ *  Without the prefix, a receiver that dedupes across tenants on
+ *  `idempotency_key` would drop the second buyer's event as a duplicate of
+ *  the first. The principal is the same scoped string the request-side
+ *  idempotency cache uses (`scopedPrincipal(auth, accountScope)`), so both
+ *  caches partition identically. */
 export function deriveWebhookOperationId(
   toolName: string,
   response: Record<string, unknown>,
   requestIdempotencyKey: string | undefined,
   principal: string,
 ): string {
-  const taskId = typeof response.task_id === 'string' ? response.task_id : null;
-  const seed = taskId ?? requestIdempotencyKey ?? randomUUID();
-  return createHash('sha256').update(principal).update('').update(toolName).update('').update(seed).digest('hex').slice(0, 32);
+  for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
+    const v = response[field];
+    if (typeof v === 'string' && v.length > 0) return `${principal}|${toolName}.${v}`;
+  }
+  if (requestIdempotencyKey) return `${principal}|${toolName}.${requestIdempotencyKey}`;
+  return `${principal}|${toolName}.${randomUUID()}`;
 }
 
-/** Fire-and-forget completion webhook emission. The `toolName` is `string`
- *  (not `WebhookEmittingTool`) because callers — `task-handlers.ts:3750`
- *  and `framework-server.ts:265` — operate on the AdCP server's full tool
- *  surface, not just the webhook-emitting subset. The runtime guard below
- *  filters to the subset before dispatching. */
+/**
+ * Fire a completion webhook for a successful tool call if the buyer supplied
+ * `push_notification_config.url` and the tool maps to a webhook task type.
+ *
+ * Fire-and-forget: the emitter handles RFC 9421 signing, `idempotency_key`
+ * stability across retries, and retry/backoff on 5xx/429 internally. Any
+ * delivery failure is logged but never surfaces to the caller — the sync
+ * response has already been returned.
+ *
+ * Shared between legacy dispatch (`task-handlers.ts`) and the framework
+ * adapter (`framework-server.ts`) so both paths emit byte-identical envelopes.
+ */
 export function maybeEmitCompletionWebhook(opts: {
   toolName: string;
   args: Record<string, unknown>;
   response: Record<string, unknown>;
   requestIdempotencyKey?: string;
+  /** Caller-uniqueness key for webhook idempotency. Pass the same value the
+   *  request-side idempotency store uses for this caller (legacy dispatch
+   *  passes `scopedPrincipal(auth, accountScope)`; the framework path passes
+   *  `auth` directly except for `static:public` where it scopes by account).
+   *  Two distinct callers MUST produce distinct strings here, otherwise
+   *  receivers that dedupe across tenants on `idempotency_key` may drop one
+   *  caller's webhook as a duplicate of another's. Empty strings are rejected
+   *  fail-fast — they would silently degrade scoping to "no partitioning". */
   principal: string;
 }): void {
   if (!opts.principal) {
@@ -193,6 +232,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
       key_ops: ['sign'],
     },
   };
+  // Public JWK is the private JWK minus `d`.
   const { d: _drop, ...publicOnly } = jwk;
   const pubJwk: AdcpJsonWebKey = {
     ...publicOnly,
@@ -207,11 +247,11 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
 /**
  * Synchronous SigningProvider wrapper around the lazy KMS-backed
  * webhook-signing provider. The wire identity (`keyid`, `algorithm`,
- * `fingerprint`) is known statically from committed constants, so we can
- * hand a fully-shaped provider to `createWebhookEmitter` without waiting
- * for the KMS round-trip. The first `sign()` call resolves the underlying
- * KMS provider (cached singleton in `gcp-kms-signer.ts`) and delegates;
- * the tripwire / algorithm assertion fires there.
+ * `fingerprint`) is known statically from committed constants, so we
+ * hand a fully-shaped provider to `createWebhookEmitter` without
+ * blocking on a KMS round-trip at startup. The first `sign()` call
+ * resolves the underlying KMS singleton in `gcp-kms-signer.ts`; the
+ * tripwire / algorithm assertion fires there.
  */
 function buildKmsWebhookProviderWrapper(keyVersion: string): SigningProvider {
   return {
@@ -230,35 +270,7 @@ function buildKmsWebhookProviderWrapper(keyVersion: string): SigningProvider {
   };
 }
 
-function ensureMaterial(): WebhookMaterial {
-  if (material) return material;
-  const kmsKeyVersion = process.env[KMS_WEBHOOK_ENV];
-  if (kmsKeyVersion) {
-    const publicJwk = buildPublicJwkFromPem(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID);
-    material = {
-      kind: 'kms',
-      signerProvider: buildKmsWebhookProviderWrapper(kmsKeyVersion),
-      publicJwk,
-    };
-    logger.info({ kid: WEBHOOK_SIGNING_KID }, 'Webhook signing routes through GCP KMS');
-    return material;
-  }
-  const raw = process.env[ENV_KEY];
-  const m = raw ? loadConfiguredKey(raw) : generateEphemeralKey();
-  if (!raw) {
-    logger.warn(
-      { kid: m.signer.keyid },
-      `Training agent webhook signing key generated ephemerally. Set ${ENV_KEY} or ${KMS_WEBHOOK_ENV} for stable keys across restarts.`,
-    );
-  }
-  material = { kind: 'inline', signerKey: m.signer, publicJwk: m.publicJwk };
-  return material;
-}
-
-function buildPublicJwkFromPem(pem: string, kid: string): AdcpJsonWebKey {
-  // Inline import to keep this module's own surface lean.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createPublicKey } = require('node:crypto') as typeof import('node:crypto');
+function publicJwkFromPem(pem: string, kid: string): AdcpJsonWebKey {
   const raw = createPublicKey(pem).export({ format: 'jwk' }) as { kty?: string; crv?: string; x?: string };
   if (raw.kty !== 'OKP' || raw.crv !== 'Ed25519' || typeof raw.x !== 'string') {
     throw new Error('Webhook public key is not Ed25519 OKP');
@@ -275,11 +287,35 @@ function buildPublicJwkFromPem(pem: string, kid: string): AdcpJsonWebKey {
   } as AdcpJsonWebKey;
 }
 
+function ensureMaterial(): WebhookMaterial {
+  if (material) return material;
+  const kmsKeyVersion = process.env[KMS_WEBHOOK_ENV];
+  if (kmsKeyVersion) {
+    material = {
+      kind: 'kms',
+      signerProvider: buildKmsWebhookProviderWrapper(kmsKeyVersion),
+      publicJwk: publicJwkFromPem(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID),
+    };
+    logger.info({ kid: WEBHOOK_SIGNING_KID }, 'Webhook signing routes through GCP KMS');
+    return material;
+  }
+  const raw = process.env[ENV_KEY];
+  const m = raw ? loadConfiguredKey(raw) : generateEphemeralKey();
+  if (!raw) {
+    logger.warn(
+      { kid: m.signer.keyid },
+      `Training agent webhook signing key generated ephemerally. Set ${ENV_KEY} or ${KMS_WEBHOOK_ENV} for stable keys across restarts.`,
+    );
+  }
+  material = { kind: 'inline', signerKey: m.signer, publicJwk: m.publicJwk };
+  return material;
+}
+
 export function getPublicJwks(): { keys: AdcpJsonWebKey[] } {
   return { keys: [ensureMaterial().publicJwk] };
 }
 
-/** Material handed to `createAdcpServer({ webhooks })` — exactly one of
+/** Expose the webhook signer to framework-server config — exactly one of
  *  `signerKey` or `signerProvider` per the SDK's discriminated config. */
 export function getWebhookSigningMaterial():
   | { signerKey: SignerKey }
