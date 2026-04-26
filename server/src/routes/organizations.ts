@@ -2400,11 +2400,11 @@ export function createOrganizationsRouter(): Router {
         roleSlug: role || 'member',
       });
 
-      // Persist seat_type intent for when the invitation is accepted
+      // Persist seat_type intent + provisioning source for when the invitation is accepted
       await query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, 'invited')
+         ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
         [invitation.id, orgId, email, seatType]
       );
 
@@ -2575,10 +2575,10 @@ export function createOrganizationsRouter(): Router {
         roleSlug: 'member',
       });
 
-      // Persist seat_type intent for the new invitation
+      // Persist seat_type intent + provisioning source for the new invitation
       await query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, 'invited')`,
         [newInvitation.id, orgId, invitation.email, preservedSeatType]
       );
 
@@ -2751,12 +2751,13 @@ export function createOrganizationsRouter(): Router {
           roleSlug: 'member',
         });
 
-        // Persist seat_type intent so the webhook handler picks it up when the
-        // invitee accepts (mirrors the existing /invitations endpoint).
+        // Persist seat_type intent + provisioning source so the webhook
+        // handler picks them up when the invitee accepts (mirrors the
+        // existing /invitations endpoint).
         await query(
-          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
+          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+           VALUES ($1, $2, $3, $4, 'invited')
+           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
           [invitation.id, orgId, normalizedEmail, seatType],
         );
 
@@ -2835,9 +2836,9 @@ export function createOrganizationsRouter(): Router {
         );
         const stagingKey = `direct_${orgId}_${targetUserId}`;
         await query(
-          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
+          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+           VALUES ($1, $2, $3, $4, 'admin_added')
+           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
           [stagingKey, orgId, normalizedEmail, seatType],
         );
 

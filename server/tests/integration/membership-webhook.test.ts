@@ -264,15 +264,15 @@ describe('Membership webhook DB operations', () => {
   // =========================================================================
 
   describe('consumeInvitationSeatType', () => {
-    it('returns and deletes the pending seat type', async () => {
+    it('returns and deletes the pending seat type and source', async () => {
       await pool.query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
-        ['inv_test_1', TEST_ORG_ID, 'invited@test.com', 'contributor'],
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, $5)`,
+        ['inv_test_1', TEST_ORG_ID, 'invited@test.com', 'contributor', 'invited'],
       );
 
       const result = await consumeInvitationSeatType(TEST_ORG_ID, 'invited@test.com');
-      expect(result).toBe('contributor');
+      expect(result).toEqual({ seat_type: 'contributor', source: 'invited' });
 
       // Should be consumed (deleted)
       const second = await consumeInvitationSeatType(TEST_ORG_ID, 'invited@test.com');
@@ -281,13 +281,26 @@ describe('Membership webhook DB operations', () => {
 
     it('matches case-insensitively', async () => {
       await pool.query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
-        ['inv_test_2', TEST_ORG_ID, 'CamelCase@Test.com', 'contributor'],
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, $5)`,
+        ['inv_test_2', TEST_ORG_ID, 'CamelCase@Test.com', 'contributor', 'invited'],
       );
 
       const result = await consumeInvitationSeatType(TEST_ORG_ID, 'camelcase@test.com');
-      expect(result).toBe('contributor');
+      expect(result?.seat_type).toBe('contributor');
+      expect(result?.source).toBe('invited');
+    });
+
+    it('returns null source when staging row predates the source column', async () => {
+      // Backward compatibility: rows written before migration 436 have NULL source.
+      await pool.query(
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
+         VALUES ($1, $2, $3, $4)`,
+        ['inv_test_legacy', TEST_ORG_ID, 'legacy@test.com', 'community_only'],
+      );
+
+      const result = await consumeInvitationSeatType(TEST_ORG_ID, 'legacy@test.com');
+      expect(result).toEqual({ seat_type: 'community_only', source: null });
     });
 
     it('returns null when no invitation exists', async () => {
@@ -570,6 +583,86 @@ describe('Membership webhook DB operations', () => {
       await pool.query(
         `DELETE FROM organization_memberships WHERE workos_organization_id = 'org_personal_autolink_user'`,
       );
+    });
+
+    it('stages provisioning_source=verified_domain so the webhook can record it', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).not.toBeNull();
+
+      // The staging row should now exist for the org+email pair so the
+      // organization_membership.created webhook can consume it.
+      const staged = await pool.query<{ seat_type: string; source: string | null }>(
+        `SELECT seat_type, source FROM invitation_seat_types
+         WHERE workos_organization_id = $1 AND lower(email) = lower($2)`,
+        [TEST_AUTOLINK_ORG_ID, 'matt@autolink.com'],
+      );
+      expect(staged.rows[0]).toBeDefined();
+      expect(staged.rows[0].seat_type).toBe('community_only');
+      expect(staged.rows[0].source).toBe('verified_domain');
+    });
+  });
+
+  describe('upsertOrganizationMembership provisioning_source', () => {
+    it('writes provisioning_source on insert', async () => {
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_source_test',
+        email: 'src@test.com',
+        first_name: 'Src',
+        last_name: 'Test',
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'verified_domain',
+      });
+
+      const row = await pool.query<{ provisioning_source: string | null }>(
+        'SELECT provisioning_source FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      expect(row.rows[0].provisioning_source).toBe('verified_domain');
+    });
+
+    it('preserves an existing provisioning_source on subsequent upserts', async () => {
+      // Initial insert tags the row.
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_pres_1',
+        email: 'pres@test.com',
+        first_name: null,
+        last_name: null,
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'admin_added',
+      });
+
+      // Subsequent webhook upsert with a less-specific source must not overwrite.
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_pres_1',
+        email: 'pres@test.com',
+        first_name: null,
+        last_name: null,
+        role: 'admin',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'webhook',
+      });
+
+      const row = await pool.query<{ provisioning_source: string | null; role: string }>(
+        'SELECT provisioning_source, role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      expect(row.rows[0].provisioning_source).toBe('admin_added');
+      // Role still updates normally.
+      expect(row.rows[0].role).toBe('admin');
     });
   });
 });
