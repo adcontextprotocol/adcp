@@ -251,15 +251,25 @@ export class PropertyDatabase {
            p.domain AS publisher_domain,
            prop->>'property_type' AS property_type,
            prop->>'name' AS name,
-           COALESCE(prop->'identifiers', '[]'::jsonb) AS identifiers,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
            COALESCE(
-             ARRAY(SELECT jsonb_array_elements_text(prop->'tags')),
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
              ARRAY[]::text[]
            ) AS tags,
            'adagents_json'::text AS source_type,
            1 AS src_priority
            FROM publishers p
-          CROSS JOIN LATERAL jsonb_array_elements(p.adagents_json->'properties') AS prop
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                 THEN p.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
            LEFT JOIN catalog_properties cp
                   ON cp.property_id = prop->>'property_id'
                  AND cp.created_by = 'adagents_json:' || p.domain
@@ -345,8 +355,12 @@ export class PropertyDatabase {
         SELECT
           publisher_domain as domain,
           COALESCE(source_type, 'hosted') as source,
-          COALESCE(jsonb_array_length(adagents_json->'properties'), 0)::int as property_count,
-          COALESCE(jsonb_array_length(adagents_json->'authorized_agents'), 0)::int as agent_count,
+          (CASE WHEN jsonb_typeof(adagents_json->'properties') = 'array'
+                THEN jsonb_array_length(adagents_json->'properties')
+                ELSE 0 END)::int as property_count,
+          (CASE WHEN jsonb_typeof(adagents_json->'authorized_agents') = 'array'
+                THEN jsonb_array_length(adagents_json->'authorized_agents')
+                ELSE 0 END)::int as agent_count,
           domain_verified as verified,
           0 as src_priority
         FROM hosted_properties
@@ -373,8 +387,12 @@ export class PropertyDatabase {
         SELECT
           p.domain as domain,
           'adagents_json'::text as source,
-          COALESCE(jsonb_array_length(p.adagents_json->'properties'), 0)::int as property_count,
-          COALESCE(jsonb_array_length(p.adagents_json->'authorized_agents'), 0)::int as agent_count,
+          (CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                THEN jsonb_array_length(p.adagents_json->'properties')
+                ELSE 0 END)::int as property_count,
+          (CASE WHEN jsonb_typeof(p.adagents_json->'authorized_agents') = 'array'
+                THEN jsonb_array_length(p.adagents_json->'authorized_agents')
+                ELSE 0 END)::int as agent_count,
           true as verified,
           2 as src_priority
         FROM publishers p

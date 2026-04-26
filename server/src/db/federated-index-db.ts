@@ -463,9 +463,15 @@ export class FederatedIndexDatabase {
            p.domain AS publisher_domain,
            prop->>'property_type' AS property_type,
            prop->>'name' AS name,
-           COALESCE(prop->'identifiers', '[]'::jsonb) AS identifiers,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
            COALESCE(
-             ARRAY(SELECT jsonb_array_elements_text(prop->'tags')),
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
              ARRAY[]::text[]
            ) AS tags,
            cp.created_at AS discovered_at,
@@ -473,7 +479,11 @@ export class FederatedIndexDatabase {
            p.expires_at AS expires_at,
            1 AS src_priority
            FROM publishers p
-          CROSS JOIN LATERAL jsonb_array_elements(p.adagents_json->'properties') AS prop
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                 THEN p.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
            LEFT JOIN catalog_properties cp
                   ON cp.property_id = prop->>'property_id'
                  AND cp.created_by = 'adagents_json:' || p.domain

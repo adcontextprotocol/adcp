@@ -77,6 +77,19 @@ export class PublisherDatabase {
     try {
       await client.query('BEGIN');
 
+      // Normalize array fields before caching. The validator only enforces
+      // `authorized_agents` shape, so a publisher serving a JSON-valid file
+      // with `properties: "x"` could otherwise land non-array JSONB that
+      // breaks downstream readers (jsonb_array_elements / jsonb_array_length
+      // error on non-arrays). Belt-and-suspenders for the SQL-side guards.
+      const safeManifest: AdagentsManifest = {
+        ...input.manifest,
+        properties: Array.isArray(input.manifest.properties) ? input.manifest.properties : [],
+        authorized_agents: Array.isArray(input.manifest.authorized_agents)
+          ? input.manifest.authorized_agents
+          : [],
+      };
+
       await client.query(
         `INSERT INTO publishers (domain, adagents_json, source_type, last_validated, expires_at)
          VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3)
@@ -86,10 +99,10 @@ export class PublisherDatabase {
            last_validated = NOW(),
            expires_at = EXCLUDED.expires_at,
            updated_at = NOW()`,
-        [domain, JSON.stringify(input.manifest), input.expiresAt ?? null]
+        [domain, JSON.stringify(safeManifest), input.expiresAt ?? null]
       );
 
-      const properties = Array.isArray(input.manifest.properties) ? input.manifest.properties : [];
+      const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];
       for (let i = 0; i < properties.length; i += 1) {
         const savepoint = `prop_${i}`;
         await client.query(`SAVEPOINT ${savepoint}`);
