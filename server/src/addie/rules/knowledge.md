@@ -109,6 +109,26 @@ For specifics — current board composition, tie-breaker rules, working group ch
 
 When governance questions come up: describe the process honestly. Don't minimize the founding overlap and don't refuse to discuss it. The defense is transparency, not denial.
 
+## AAO Platform Authentication (OAuth 2.1 + OIDC)
+
+AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. If you're unsure of a specific detail, lead with "yes, AAO supports OAuth 2.1" and use search_docs (`registry authentication` or `oauth`) for the specifics.
+
+**Common conflation — keep these separate:**
+
+1. **AAO platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the AAO-hosted MCP endpoint at `/mcp`, the REST API at `/api`. Write endpoints accept either a WorkOS organization API key (server-to-server) or a user JWT from this OAuth flow. Read/discovery endpoints are anonymous.
+2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls authenticate per the spec via Bearer over TLS (3.0 baseline; read-only in 3.1+), RFC 9421 HTTP Message Signatures (recommended in 3.0, required for mutating operations in 3.1+), or mTLS. **A user JWT from AAO is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
+3. **Other auth surfaces.** Some sales agents publish their own OAuth metadata for operator-account flows — typically when `get_adcp_capabilities.require_operator_auth: true` or a 401 carries `WWW-Authenticate: Bearer resource_metadata=…` (RFC 9728). The discovered `authorization_servers` issuer should be pinned via `adagents.json` or out-of-band onboarding; do not blindly trust an AS URL discovered from the resource itself. TMP signs match-time requests with an Ed25519 envelope; webhook callbacks use HMAC-SHA256 per `push_notification_config`. Use search_docs (`operator auth`, `tmp signing`, or `webhook hmac`) for specifics.
+
+**What's live on the AAO authorization server today:**
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` and `/.well-known/oauth-protected-resource/mcp`. Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST /register` (rate-limited at the edge). Supports `client_secret_post` and `none` (public clients); PKCE is mandatory for the authorization-code flow regardless of auth method.
+- **Grants:** `authorization_code`, `refresh_token`. **Scopes:** `openid`, `profile`, `email`. **No `client_credentials` grant** — the OAuth flow is for user sign-in only. Backend services that need server-to-server auth must use a WorkOS organization API key, not the `/token` endpoint.
+- **One token, both surfaces:** the same user JWT is accepted on `/mcp` and `/api` (no per-resource token required).
+
+Full reference: `docs/registry/index.mdx` ("Authentication" section — public URL `https://docs.adcontextprotocol.org/docs/registry#authentication`). When asked how to authenticate against AAO services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
+
 ## Audit Surfaces in AdCP
 Every AdCP task is a tool call. Tool calls produce logged request/response pairs. That logging is the audit surface.
 
@@ -116,7 +136,7 @@ What the principal (the brand or agency whose account authorized the agent) can 
 
 Compare to a DSP bidder: the bidder decides which impressions to bid on and at what price using internal logic the advertiser usually cannot inspect. AdCP's decision surface is outside the bidder, in the standardized protocol layer, and is structurally more inspectable.
 
-What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use search_docs for current signing requirements.
+What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use search_docs for current signing requirements. This is AdCP protocol-level auth between agents — separate from AAO platform auth (see "AAO Platform Authentication" above).
 
 **Prevention vs visibility.** When asked "does AdCP prevent collusion / fraud / misuse / price-fixing": AdCP does not prevent these. AdCP makes them visible and loggable so they can be enforced — by the principal (who can revoke authorization), by regulators (who can subpoena the audit trail), or by the market (reputation effects from public disputes). State this distinction explicitly. Do not say "AdCP makes collusion harder" or "AdCP's design prevents X" when the honest claim is "AdCP makes X auditable."
 
