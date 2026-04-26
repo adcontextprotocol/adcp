@@ -128,10 +128,9 @@ describe('Personal Workspace Restrictions', () => {
   });
 
   beforeEach(async () => {
-    // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
-    // via the new WorkOS() instance; return owner membership for test user in known org IDs.
-    // Note: the invitation test (team org) relies on community_only seat limit = 1 from DEFAULT_SEAT_LIMITS;
-    // org is created fresh each test so no prior invitations consume the slot.
+    // Reset per-test: handler calls workos!.userManagement.listOrganizationMemberships via the new
+    // WorkOS() instance; return owner membership for test user in known org IDs.
+    // Note: the invitation test (team org) relies on community_only seat limit = 1 from DEFAULT_SEAT_LIMITS.
     listOrganizationMemberships.mockReset().mockImplementation(({ organizationId }: { organizationId: string }) => {
       if (organizationId === TEST_PERSONAL_ORG_ID || organizationId === TEST_TEAM_ORG_ID) {
         return Promise.resolve({
@@ -158,7 +157,8 @@ describe('Personal Workspace Restrictions', () => {
   });
 
   afterEach(async () => {
-    // Clean up test data
+    // Clean up test data; invitation_seat_types has no FK to organizations so must be deleted explicitly.
+    await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id LIKE $1', ['org_team%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_personal%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_team%']);
   });
