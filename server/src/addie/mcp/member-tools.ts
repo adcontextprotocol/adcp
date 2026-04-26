@@ -18,6 +18,7 @@ import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-cli
 import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { invalidateMemberContextCache } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
@@ -75,6 +76,7 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
+import { recordAgentTestRun } from '../../db/agent-test-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -3584,6 +3586,30 @@ export function createMemberToolHandlers(
 
       output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
+      const workosUserIdForRecord = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForRecord) {
+        const evalOutcome = ((): 'pass' | 'fail' | 'partial' | 'error' => {
+          switch (result.overall_status) {
+            case 'passing': return 'pass';
+            case 'partial': return 'partial';
+            case 'failing': return 'fail';
+            default: return 'error';
+          }
+        })();
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForRecord,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: 'quality_evaluation',
+          outcome: evalOutcome,
+          duration_ms: result.total_duration_ms,
+        }).then(() => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) invalidateMemberContextCache(slackId);
+        }).catch(err => logger.warn({ err }, 'Could not record agent test run'));
+      }
+
       return output;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -3967,6 +3993,23 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+
+      const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForStoryboard) {
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForStoryboard,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: storyboardId,
+          outcome: result.overall_passed ? 'pass' : 'fail',
+          duration_ms: result.total_duration_ms,
+          storyboard_id: storyboardId,
+        }).then(() => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) invalidateMemberContextCache(slackId);
+        }).catch(err => logger.warn({ err }, 'Could not record storyboard run'));
+      }
 
       return output;
     } catch (error) {

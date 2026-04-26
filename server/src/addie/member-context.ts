@@ -25,6 +25,7 @@ import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
+import { getAgentTestingContext } from '../db/agent-test-db.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -512,6 +513,13 @@ export interface MemberContext {
     last_shown_at: Date | null;
     suppressed_until: Date | null;
   }>;
+
+  /** Agent testing history — used for staleness-aware suggested prompts (#2299 Stage 2) */
+  agent_testing?: {
+    last_test_at: Date | null;
+    total_tests_30d: number;
+    last_outcome: 'pass' | 'fail' | 'partial' | 'error' | null;
+  };
 }
 
 /**
@@ -880,6 +888,15 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
+    try {
+      const agentTesting = await getAgentTestingContext(workosUserId);
+      if (agentTesting) {
+        context.agent_testing = agentTesting;
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to get agent testing context');
+    }
+
     logger.debug(
       {
         slackUserId,
@@ -1135,6 +1152,15 @@ async function resolveContextFromLocalDb(
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie Web: Failed to get pending join requests count');
     }
+  }
+
+  try {
+    const agentTesting = await getAgentTestingContext(workosUserId);
+    if (agentTesting) {
+      context.agent_testing = agentTesting;
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get agent testing context');
   }
 
   logger.debug(
@@ -1493,6 +1519,19 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     } else {
       lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/account to make it visible on their community profile.');
     }
+  }
+
+  // Agent testing history
+  if (context.agent_testing) {
+    const outcomeLabels: Record<string, string> = { pass: 'passed', fail: 'failed', partial: 'partial', error: 'error' };
+    const outcomeLabel = context.agent_testing.last_outcome
+      ? outcomeLabels[context.agent_testing.last_outcome] ?? context.agent_testing.last_outcome
+      : 'unknown';
+    const lastRunLabel = context.agent_testing.last_test_at
+      ? context.agent_testing.last_test_at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'never';
+    lines.push('');
+    lines.push(`Agent testing: last run ${lastRunLabel}, outcome ${outcomeLabel}, ${context.agent_testing.total_tests_30d} test(s) in last 30 days.`);
   }
 
   // Slack linking status (only relevant for Slack-originated conversations)
