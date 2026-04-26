@@ -16,6 +16,7 @@ import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
@@ -648,6 +649,14 @@ export class HTTPServer {
     this.app.get('/.well-known/openapi.yaml', (_req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.redirect(302, '/openapi/registry.yaml');
+    });
+
+    // RFC 7517 JWKS publishing Addie's request-signing public key. Verifiers
+    // (sellers receiving signed AdCP requests from Addie) fetch this to
+    // resolve the `kid` carried in `Signature-Input`.
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(getPublicSigningJwks());
     });
 
     // RFC 9728 protected-resource metadata for the REST API. Points at the same

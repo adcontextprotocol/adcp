@@ -679,6 +679,25 @@ export function createAdcpToolHandlers(
 
     try {
       const { AdCPClient } = await import('@adcp/client');
+      const { getGcpKmsSigningProvider } = await import('../../security/gcp-kms-signer.js');
+
+      // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
+      // when configured. Verifiers fetch the public key from
+      // `${BASE_URL}/.well-known/jwks.json` (kid: aao-signing-2026-04).
+      //
+      // Init failures (KMS unreachable, wrong algorithm, tripwire mismatch,
+      // bad SA JSON) are fail-closed: structured-log the full error for
+      // operators, surface a generic message to the LLM. KMS error chains
+      // include the project ID, IAM principal email, and resource paths;
+      // those don't belong in the model's context window or in the tool
+      // result rendered to the end user.
+      let signingProvider;
+      try {
+        signingProvider = await getGcpKmsSigningProvider();
+      } catch (kmsErr) {
+        logger.error({ err: kmsErr, agentUrl, task }, 'GCP KMS signing provider init failed');
+        return '**Error:** Outbound AdCP signing is misconfigured. Operator: check structured logs for KMS init failure (gcp-kms-signer module).';
+      }
 
       const agentConfig = {
         id: 'target',
@@ -688,6 +707,15 @@ export function createAdcpToolHandlers(
         ...(authInfo?.authType === 'basic'
           ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
           : authInfo ? { auth_token: authInfo.token } : {}),
+        ...(signingProvider
+          ? {
+              request_signing: {
+                kind: 'provider' as const,
+                provider: signingProvider,
+                agent_url: getBaseUrl(),
+              },
+            }
+          : {}),
       };
 
       const multiClient = new AdCPClient(
