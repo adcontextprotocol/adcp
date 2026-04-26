@@ -426,6 +426,46 @@ while true:
 
 In-process lookup against the local copy is sub-microsecond. Daily feed pull is minutes of work for a desktop agent, KB on the wire.
 
+### Change-feed event shape
+
+`entity_type='authorization'` events carry three `change_kind` values:
+
+- **`granted`** — a new row is visible in the effective set. Fired on base-row insert, on `add`-override insert, or on `suppress`-override supersede (a row that was hidden becomes visible again).
+- **`revoked`** — a row is no longer in the effective set. Fired on base-row soft-delete, on `add`-override supersede, or on `suppress`-override insert (a row that was visible becomes hidden).
+- **`modified`** — a row's body changed but its identity didn't. Fired on base-row UPDATE that changes any of `authorized_for`, `expires_at`, or `disputed`. Override insert/supersede emits `granted`/`revoked` instead — the visibility transition is the relevant signal.
+
+The event payload is the `v_effective_agent_authorizations` row as it exists post-change (or pre-change for `revoked`):
+
+```json
+{
+  "event_id": "<UUIDv7>",
+  "entity_type": "authorization",
+  "entity_id": "<id from v_effective_agent_authorizations>",
+  "change_kind": "granted | revoked | modified",
+  "payload": {
+    "agent_url_canonical": "...",
+    "agent_url": "...",
+    "property_rid": "...",
+    "property_id_slug": "...",
+    "publisher_domain": "...",
+    "authorized_for": "...",
+    "evidence": "adagents_json | agent_claim | community | override",
+    "disputed": false,
+    "created_by": "...",
+    "expires_at": "...",
+    "override_applied": false,
+    "override_reason": null
+  }
+}
+```
+
+Two things to note:
+
+- **Consumers don't see override-vs-base distinction.** A `suppress` override that hides a row fires `revoked`; a moderator lifting that suppression fires `granted`. The `override_applied` + `override_reason` fields on the payload let consumers display provenance ("this row is suppressed: bad_actor"), but the change_kind itself is about effective-state transition. This is what most consumers actually want — they care that the auth is or isn't valid, not why.
+- **Override insert can fan out into many events.** A `suppress` override matching N base rows under one publisher fires N `revoked` events (one per affected base row) plus zero events for the override itself. An `add` override fires exactly one `granted` event (the override is the sole basis for the effective row). This keeps consumer logic simple — no special override handling; just apply each event's payload to the local copy.
+
+The change-feed PR (4b-feed) adds the `entity_type='authorization'` filter to the existing `/api/registry/feed` endpoint and the emitter that produces these events on writer transactions and override-table changes.
+
 ### Trust model
 
 The snapshot and feed inherit the registry's overall trust model. The change-feed spec (R-1, "Feed-event content signing") tracks the cryptographic attestation work for AdCP 4.0; until that lands, the snapshot is trust-the-registry-operator with a verify-by-refetch escape hatch — every effective row carries `publisher_domain`, and a paranoid consumer can re-fetch `https://<publisher_domain>/.well-known/adagents.json` directly to confirm. The `?include=raw` endpoint exists in part to support this audit path (it returns the base rows so consumers can compare to the manifest body).
@@ -458,17 +498,15 @@ Option B is reachable later as a degenerate case of Option A — drop the table,
 
 Option C is technically the most flexible substrate, but flexibility is paid for in every reader and on every sync consumer. The dominant patterns don't need it; the optionality value is largely speculative ("future evidence sources we haven't built yet"). If we do grow new evidence sources, they can land in Option A's table with a new `evidence` value — adding a row, not a new abstraction.
 
-## Open questions (defer to PR 4b-prereq schema review)
+## Open questions (defer to other PRs)
 
-Reviewer feedback has resolved most questions from the original draft (`confidence` dropped; `agent_claim` lives in the same table with `expires_at` and override-layer scoping; tombstone TTL pinned to change-feed retention; `seq_no` rotation enforced by trigger). The remaining open items:
+Reviewer feedback resolved the load-bearing decisions: `confidence` dropped, `agent_claim` lives in the same table with `expires_at` and override-layer scoping, tombstone TTL pinned to change-feed retention, `seq_no` rotation enforced by trigger, change-feed event shape pinned ("Change-feed event shape" above). The remaining open items aren't gating for the schema PR:
 
-1. **Override sequencing wire format in the change feed.** Design intent settled: when an override is inserted or superseded, the change-feed emitter generates `authorization.modified` events with synthetic UUIDv7 `event_id`s — one per base row whose effective state changed (suppressed/unsuppressed) plus one for the override itself (granted/revoked). Consumers don't see override-vs-base distinction; they see effective-state transitions. **What's open**: the event payload shape (which fields ship in the body, whether `override_reason` is exposed, whether `add`-overrides include the override's `property_id_slug` or just the resolved publisher_domain). Settled in PR 4b-feed.
+1. **Wildcard agent (`url = '*'`).** The CHECK explicitly allows `*` as a sentinel that bypasses URL canonicalization. Pinned by the PR 3 baseline. Open: the semantics ("any agent") are publisher-wide and global, but readers must know to expand wildcard rows during effective-set computation. Document the expansion rule in the schema migration's comments.
 
-2. **Wildcard agent (`url = '*'`).** The CHECK explicitly allows `*` as a sentinel that bypasses URL canonicalization. Pinned by the PR 3 baseline. Open: the semantics ("any agent") are publisher-wide and global, but readers must know to expand wildcard rows during effective-set computation. Document the expansion rule in the schema migration's comments.
+2. **`property_tags` and `inline_properties` projection.** Both are deferred from v1 (see "Authorization variants"). The legacy table continues to receive these rows; readers that need them go to the manifest body. When tag-scoped authorization becomes a real product requirement (signal-side first, probably), the projection model becomes its own design discussion — most likely a separate `catalog_tag_authorizations` table referencing the catalog's tag binding state.
 
-3. **`property_tags` and `inline_properties` projection.** Both are deferred from v1 (see "Authorization variants"). The legacy table continues to receive these rows; readers that need them go to the manifest body. When tag-scoped authorization becomes a real product requirement (signal-side first, probably), the projection model becomes its own design discussion — most likely a separate `catalog_tag_authorizations` table referencing the catalog's tag binding state.
-
-4. **Cross-publisher `publisher_properties` (third-party sales).** Refused at write time by the anchor rule. Re-opening this requires a corroboration mechanism — the spec for that lives downstream and doesn't gate this work. Track separately.
+3. **Cross-publisher `publisher_properties` (third-party sales).** Refused at write time by the anchor rule. Re-opening this requires a corroboration mechanism — the spec for that lives downstream and doesn't gate this work. Track separately.
 
 ## Sequencing
 
