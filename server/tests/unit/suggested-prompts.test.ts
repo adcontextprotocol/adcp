@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildSuggestedPrompts, pickPrompts } from '../../src/addie/home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage, ALL_RULES } from '../../src/addie/home/builders/rules/prompt-rules.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 const NOW = new Date('2026-04-23T12:00:00Z');
@@ -588,6 +589,40 @@ describe('buildSuggestedPrompts', () => {
     it('admin path returns admin rule IDs', () => {
       const { ruleIds } = pickPrompts(makeMember(), true);
       expect(ruleIds.every((id) => id.startsWith('admin.'))).toBe(true);
+    });
+  });
+
+  describe('matchRuleIdFromMessage (heuristic click detection)', () => {
+    it('matches a known prompt verbatim', () => {
+      const certRule = ALL_RULES.find((r) => r.id === 'cert.continue_in_progress');
+      expect(certRule).toBeDefined();
+      expect(matchRuleIdFromMessage(certRule!.prompt)).toBe('cert.continue_in_progress');
+    });
+
+    it('matches with surrounding whitespace trimmed', () => {
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      expect(matchRuleIdFromMessage('  ' + fallback.prompt + '  \n')).toBe('fallback.whats_new');
+    });
+
+    it('returns null for an unrelated message', () => {
+      expect(matchRuleIdFromMessage('hi can you help me with my agent')).toBeNull();
+    });
+
+    it('returns null for empty / null / undefined input', () => {
+      expect(matchRuleIdFromMessage(null)).toBeNull();
+      expect(matchRuleIdFromMessage(undefined)).toBeNull();
+      expect(matchRuleIdFromMessage('')).toBeNull();
+    });
+
+    it('does not match a paraphrase (intentional false-negative)', () => {
+      const rule = ALL_RULES.find((r) => r.id === 'cert.continue_in_progress')!;
+      const paraphrased = rule.prompt.replace(/\.$/, '!');
+      expect(matchRuleIdFromMessage(paraphrased)).toBeNull();
+    });
+
+    it('every rule has a unique prompt string (so the reverse index is unambiguous)', () => {
+      const prompts = ALL_RULES.map((r) => r.prompt);
+      expect(new Set(prompts).size).toBe(prompts.length);
     });
   });
 });

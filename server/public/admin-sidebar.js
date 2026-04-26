@@ -74,6 +74,7 @@
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/prompt-metrics', label: 'Prompt Metrics', icon: '📈' },
           { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
           { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
