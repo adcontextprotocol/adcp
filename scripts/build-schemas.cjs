@@ -691,20 +691,18 @@ function hoistDuplicateInlineEnums(schema) {
 
   function isPureEnum(s) {
     if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
-    const keys = Object.keys(s);
     return (
       s.type === 'string' &&
       Array.isArray(s.enum) &&
-      keys.length <= 4 &&
-      !keys.some(k => ['properties', 'items', 'oneOf', 'anyOf', 'allOf', 'not', '$ref', 'patternProperties'].includes(k))
+      !Object.keys(s).some(k => ['properties', 'items', 'oneOf', 'anyOf', 'allOf', 'not', '$ref', 'patternProperties'].includes(k))
     );
   }
 
   function fingerprint(s) {
     // Preserve enum value order — order-different arrays are distinct schemas.
-    // Sorting would risk silently merging two schemas that happen to share
-    // values but were authored with different orderings.
-    return JSON.stringify({ type: s.type, enum: s.enum });
+    // Include title so two enums with same values but different titles are NOT
+    // collapsed into one $ref (would silently rename one of them).
+    return JSON.stringify({ type: s.type, enum: s.enum, title: s.title || null });
   }
 
   // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
