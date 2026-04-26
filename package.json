@@ -12,6 +12,8 @@
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
     "build": "tsc --project server/tsconfig.json && mkdir -p dist/addie/rules && cp server/src/addie/rules/*.md dist/addie/rules/ && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
     "build:openapi": "tsx scripts/generate-openapi.ts",
+    "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts",
+    "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check",
     "build:schemas": "node scripts/build-schemas.cjs",
     "build:compliance": "node scripts/build-compliance.cjs",
     "build:protocol-tarball": "node scripts/build-protocol-tarball.cjs",
