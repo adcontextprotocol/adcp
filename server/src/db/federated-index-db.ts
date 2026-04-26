@@ -155,19 +155,33 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Check whether a publisher domain has a valid adagents.json (from crawl data).
-   * Returns true if any record for this domain has has_valid_adagents = true,
-   * null if the domain has never been discovered.
+   * Check whether a publisher domain has a valid adagents.json.
+   *
+   * Reads from both the catalog-side `publishers` overlay (PR 1 of #3177)
+   * and the legacy `discovered_publishers` table during the dual-write
+   * window. A presence in `publishers` with `source_type='adagents_json'`
+   * means the crawler successfully validated and cached the file — that
+   * always wins. Otherwise fall back to bool_or over discovered_publishers
+   * so the historical three-state contract (true / false / null) is
+   * preserved when only the legacy path has data.
    */
   async hasValidAdagents(domain: string): Promise<boolean | null> {
-    const result = await query<{ has_valid: boolean }>(
-      `SELECT bool_or(has_valid_adagents) as has_valid
-       FROM discovered_publishers
-       WHERE domain = $1`,
+    const result = await query<{ catalog_present: boolean; legacy_or: boolean | null }>(
+      `SELECT
+         EXISTS(
+           SELECT 1 FROM publishers
+            WHERE domain = $1 AND source_type = 'adagents_json'
+         ) AS catalog_present,
+         (SELECT bool_or(has_valid_adagents)
+            FROM discovered_publishers
+           WHERE domain = $1) AS legacy_or`,
       [domain]
     );
-    if (!result.rows[0] || result.rows[0].has_valid === null) return null;
-    return result.rows[0].has_valid;
+    const row = result.rows[0];
+    if (!row) return null;
+    if (row.catalog_present) return true;
+    if (row.legacy_or === null) return null;
+    return row.legacy_or;
   }
 
   /**
@@ -423,13 +437,68 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Get all properties for a publisher domain
+   * Get all properties for a publisher domain.
+   *
+   * UNION over the legacy `discovered_properties` table and the catalog-side
+   * `publishers.adagents_json` JSONB during the dual-write window of #3177.
+   * The legacy half wins on (publisher_domain, name, property_type)
+   * collisions so callers that hold a `discovered_properties.id` keep
+   * dereferencing it correctly. Catalog-only rows surface for properties
+   * that landed via the new writer path but didn't get a legacy row (e.g.
+   * post-seed gatavo.com / Setupad #218). After PR 5 the legacy half is
+   * removed and the query collapses to catalog-only.
    */
   async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
     const result = await query<DiscoveredProperty>(
-      `SELECT * FROM discovered_properties
-       WHERE publisher_domain = $1
-       ORDER BY property_type, name`,
+      `WITH unioned AS (
+         SELECT id, property_id, publisher_domain, property_type, name,
+                identifiers, tags, discovered_at, last_validated, expires_at,
+                0 AS src_priority
+           FROM discovered_properties
+          WHERE publisher_domain = $1
+         UNION ALL
+         SELECT
+           cp.property_rid AS id,
+           prop->>'property_id' AS property_id,
+           p.domain AS publisher_domain,
+           prop->>'property_type' AS property_type,
+           prop->>'name' AS name,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
+           COALESCE(
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
+             ARRAY[]::text[]
+           ) AS tags,
+           cp.created_at AS discovered_at,
+           p.last_validated AS last_validated,
+           p.expires_at AS expires_at,
+           1 AS src_priority
+           FROM publishers p
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                 THEN p.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+           LEFT JOIN catalog_properties cp
+                  ON cp.property_id = prop->>'property_id'
+                 AND cp.created_by = 'adagents_json:' || p.domain
+          WHERE p.domain = $1
+            AND p.source_type = 'adagents_json'
+            AND prop->>'name' IS NOT NULL
+            AND prop->>'property_type' IS NOT NULL
+       ), deduped AS (
+         SELECT DISTINCT ON (publisher_domain, name, property_type)
+                id, property_id, publisher_domain, property_type, name,
+                identifiers, tags, discovered_at, last_validated, expires_at
+           FROM unioned
+          ORDER BY publisher_domain, name, property_type, src_priority
+       )
+       SELECT * FROM deduped ORDER BY property_type, name`,
       [domain]
     );
     return result.rows.map(row => this.deserializeProperty(row));
