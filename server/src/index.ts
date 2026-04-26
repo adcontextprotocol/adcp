@@ -25,6 +25,20 @@ async function main() {
     }
   }
 
+  // Eager-init the GCP KMS signing provider before binding the port. If the
+  // KMS env is set (production), a misconfiguration (bad SA, unreachable
+  // KMS, wrong algorithm, public-key tripwire mismatch) crashes the boot
+  // here — Fly never sees a healthy machine, the deploy rolls back. No-op
+  // when env is unset (dev). Lazy fallback in `getGcpKmsSigningProvider`
+  // still applies if anything bypasses this path.
+  try {
+    const { eagerInitGcpKmsSigningProvider } = await import('./security/gcp-kms-signer.js');
+    await eagerInitGcpKmsSigningProvider();
+  } catch (error) {
+    logger.fatal({ err: error }, 'GCP KMS signing provider failed eager init at boot');
+    process.exit(1);
+  }
+
   // Start HTTP server first, then initialize Addie in the background.
   // initializeAddieBolt uses execSync (git clone) which blocks the event loop,
   // so it must not run before the server starts listening.

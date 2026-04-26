@@ -11,6 +11,16 @@ function isMember(ctx: MemberContext | null): boolean {
   return !!ctx?.is_member;
 }
 
+/**
+ * True for users who can act on org-level setup (owner or admin in WorkOS).
+ * Day-to-day org operations at most companies are run by admins, not the
+ * original owner — gating only on 'owner' would miss them.
+ */
+function isOrgOperator(ctx: MemberContext | null): boolean {
+  const role = ctx?.org_membership?.role;
+  return role === 'owner' || role === 'admin';
+}
+
 function isLinkedNonMember(ctx: MemberContext | null): boolean {
   return isMapped(ctx) && !isMember(ctx);
 }
@@ -192,6 +202,32 @@ export const MEMBER_RULES: PromptRule[] = [
       memberContext?.org_membership?.member_count === 1,
     label: 'Invite your team',
     prompt: 'Help me invite my team to the organization.',
+  },
+  {
+    id: 'org.owner_set_company_listing',
+    priority: 76,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      isOrgOperator(memberContext) &&
+      memberContext?.organization?.is_personal === false &&
+      memberContext?.adoption?.has_company_listing === false,
+    label: 'List my company in the directory',
+    prompt: 'Help me add my company to the directory.',
+  },
+  {
+    id: 'org.owner_team_wg_coverage_low',
+    priority: 73,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      if (!isOrgOperator(memberContext)) return false;
+      // Fire for any team of 3+ where less than half are in working groups.
+      // Below 3 people, coverage math is too noisy to act on.
+      if ((memberContext?.org_membership?.member_count ?? 0) < 3) return false;
+      const coverage = memberContext?.adoption?.team_wg_coverage;
+      return (coverage ?? 1) < 0.5;
+    },
+    label: 'Find working groups for my team',
+    prompt: 'Which working groups should my team join?',
   },
   {
     id: 'wg.find_groups',
