@@ -759,4 +759,338 @@ export function setupAccountsBillingRoutes(
       }
     }
   );
+
+  // POST /api/admin/accounts/:orgId/replace-subscription
+  // Out-of-band tier change for custom-contract pricing on an existing
+  // member's subscription. Uses Stripe's in-place subscription update
+  // (sub_id stays the same; pending_agreement_user_id and signed agreement
+  // version are untouched). Records an audit log entry with before/after
+  // state and the reason. The customer.subscription.updated webhook
+  // refreshes the org row.
+  apiRouter.post(
+    "/accounts/:orgId/replace-subscription",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      const {
+        lookup_key,
+        price_id,
+        coupon_id,
+        proration_behavior,
+        reason,
+      } = req.body as {
+        lookup_key?: string;
+        price_id?: string;
+        coupon_id?: string;
+        proration_behavior?: 'none' | 'create_prorations' | 'always_invoice';
+        reason?: string;
+      };
+
+      try {
+        if (!stripe) {
+          return res.status(503).json({
+            error: "Stripe not configured",
+            message: "Subscription updates require Stripe to be configured.",
+          });
+        }
+
+        if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+          return res.status(400).json({
+            error: "Reason required",
+            message:
+              "A reason of at least 10 characters is required for the audit record.",
+          });
+        }
+
+        // Exactly one of lookup_key / price_id must be provided. Custom
+        // ad-hoc prices are out of scope for v1 — operators create those in
+        // the Stripe Dashboard first, then pass the resulting price_id.
+        // Trim before counting so whitespace-only strings count as empty.
+        const trimmedLookupKey = lookup_key?.trim();
+        const trimmedPriceId = price_id?.trim();
+        const priceSourceCount = [trimmedLookupKey, trimmedPriceId].filter(Boolean).length;
+        if (priceSourceCount !== 1) {
+          return res.status(400).json({
+            error: "Price source required",
+            message:
+              "Provide exactly one of `lookup_key` or `price_id` for the new subscription price.",
+          });
+        }
+
+        const orgDb = new OrganizationDatabase();
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The specified organization does not exist",
+          });
+        }
+
+        if (!org.stripe_customer_id || !org.stripe_subscription_id) {
+          return res.status(400).json({
+            error: "No active subscription",
+            message:
+              "Organization has no Stripe subscription to replace. Use the normal intake flow to create one.",
+          });
+        }
+
+        // Resolve the target price.
+        let targetPrice: Stripe.Price;
+        try {
+          if (trimmedPriceId) {
+            targetPrice = await stripe.prices.retrieve(trimmedPriceId);
+          } else {
+            const list = await stripe.prices.list({
+              lookup_keys: [trimmedLookupKey!],
+              active: true,
+              limit: 2,
+            });
+            if (list.data.length === 0) {
+              return res.status(400).json({
+                error: "Price not found",
+                message: `No active Stripe price with lookup_key "${lookup_key}".`,
+              });
+            }
+            if (list.data.length > 1) {
+              return res.status(400).json({
+                error: "Ambiguous lookup_key",
+                message: `Multiple active prices share lookup_key "${lookup_key}". Pass price_id to disambiguate.`,
+              });
+            }
+            targetPrice = list.data[0];
+          }
+        } catch (err) {
+          logger.warn({ err, orgId, lookup_key, price_id }, "Failed to resolve target price");
+          return res.status(400).json({
+            error: "Price lookup failed",
+            message: "Unable to resolve the target Stripe price. Verify the lookup_key/price_id.",
+          });
+        }
+
+        if (!targetPrice.active) {
+          return res.status(400).json({
+            error: "Price inactive",
+            message: `Price ${targetPrice.id} is not active in Stripe.`,
+          });
+        }
+
+        // Validate coupon if provided. Confirms it exists and is still
+        // redeemable so we surface the failure before mutating Stripe.
+        if (coupon_id) {
+          try {
+            const coupon = await stripe.coupons.retrieve(coupon_id);
+            if (!coupon.valid) {
+              return res.status(400).json({
+                error: "Coupon invalid",
+                message: `Coupon ${coupon_id} is no longer valid.`,
+              });
+            }
+          } catch (err) {
+            logger.warn({ err, orgId, coupon_id }, "Failed to resolve coupon");
+            return res.status(400).json({
+              error: "Coupon not found",
+              message: `No Stripe coupon with id "${coupon_id}".`,
+            });
+          }
+        }
+
+        // Read the existing sub so we can target the right item id and
+        // capture the before-state for the audit log.
+        let existingSub: Stripe.Subscription;
+        try {
+          existingSub = await stripe.subscriptions.retrieve(org.stripe_subscription_id);
+        } catch (err) {
+          logger.error(
+            { err, orgId, stripeSubId: org.stripe_subscription_id },
+            "Failed to retrieve subscription for replace",
+          );
+          return res.status(400).json({
+            error: "Subscription not found in Stripe",
+            message:
+              "The org's tracked subscription id was not found in Stripe. Run /sync or /reset-subscription-state first.",
+          });
+        }
+
+        // Refuse to update a sub in a non-live state. Stripe's retrieve
+        // returns canceled subs for ~30 days, so the prior catch doesn't
+        // surface the case — we'd hit a confusing 400 from update instead.
+        if (
+          !(TIER_PRESERVING_STATUSES as readonly string[]).includes(existingSub.status)
+        ) {
+          return res.status(400).json({
+            error: "Subscription not live",
+            message:
+              `Subscription ${existingSub.id} is in status "${existingSub.status}". Replace requires a live subscription (active/trialing/past_due). Use the normal intake flow to create a new one.`,
+            current_status: existingSub.status,
+          });
+        }
+
+        const existingItem = existingSub.items.data[0];
+        if (!existingItem) {
+          return res.status(400).json({
+            error: "Subscription has no items",
+            message: "The existing subscription has no price items. Manual cleanup needed.",
+          });
+        }
+
+        // Capture the existing discounts so the response/audit shows what
+        // was overwritten when the caller passes a new coupon. The update
+        // call below replaces all discounts when `discounts` is set, which
+        // is the documented Stripe behavior — we surface it explicitly.
+        const existingDiscounts = (
+          existingSub.discounts as Array<string | { id?: string; coupon?: { id?: string } }> | undefined
+        ) ?? [];
+        const existingDiscountIds = existingDiscounts.map((d) =>
+          typeof d === 'string' ? d : d?.coupon?.id ?? d?.id ?? null,
+        );
+
+        const beforeState = {
+          subscription_id: existingSub.id,
+          status: existingSub.status,
+          item_id: existingItem.id,
+          price_id: existingItem.price.id,
+          price_lookup_key: existingItem.price.lookup_key ?? null,
+          unit_amount: existingItem.price.unit_amount,
+          interval: existingItem.price.recurring?.interval ?? null,
+          collection_method: existingSub.collection_method,
+          cancel_at_period_end: existingSub.cancel_at_period_end ?? false,
+          discount_ids: existingDiscountIds,
+        };
+
+        // Default proration_behavior to 'none' for custom contracts — the
+        // sales-side has already negotiated the dollars; auto-prorating
+        // would create a confusing extra invoice.
+        const effectiveProration = proration_behavior ?? 'none';
+
+        // Stripe metadata values are capped at 500 chars per value. Reason
+        // is user-controlled, so truncate before sending; the audit log
+        // captures the full untruncated text.
+        const reasonForStripe = reason.trim().slice(0, 500);
+
+        let updatedSub: Stripe.Subscription;
+        try {
+          updatedSub = await stripe.subscriptions.update(existingSub.id, {
+            items: [{ id: existingItem.id, price: targetPrice.id }],
+            proration_behavior: effectiveProration,
+            // Preserve the renewal cadence so the new sub bills on the same
+            // anchor the customer is already used to.
+            billing_cycle_anchor: 'unchanged',
+            ...(coupon_id ? { discounts: [{ coupon: coupon_id }] } : {}),
+            metadata: {
+              ...(existingSub.metadata ?? {}),
+              replaced_by_admin: req.user!.id,
+              replaced_by_email: req.user!.email,
+              replaced_at: new Date().toISOString(),
+              replace_reason: reasonForStripe,
+            },
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          logger.error(
+            { err, orgId, subId: existingSub.id, targetPriceId: targetPrice.id },
+            "Stripe subscription update failed",
+          );
+          return res.status(502).json({
+            error: "Stripe update failed",
+            message: `Stripe rejected the subscription update: ${message}`,
+          });
+        }
+
+        // Stripe write succeeded — record the audit entry. If audit-log
+        // INSERT fails after this point we still return success because
+        // the change is real, but ops will see the audit gap in logs.
+        try {
+          const updatedItem = updatedSub.items.data[0];
+          const afterState = {
+            subscription_id: updatedSub.id,
+            status: updatedSub.status,
+            item_id: updatedItem?.id ?? null,
+            price_id: updatedItem?.price.id ?? null,
+            price_lookup_key: updatedItem?.price.lookup_key ?? null,
+            unit_amount: updatedItem?.price.unit_amount ?? null,
+            interval: updatedItem?.price.recurring?.interval ?? null,
+            collection_method: updatedSub.collection_method,
+            coupon_id: coupon_id ?? null,
+            proration_behavior: effectiveProration,
+          };
+
+          const pool = getPool();
+          await pool.query(
+            `INSERT INTO registry_audit_log
+             (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              orgId,
+              req.user!.id,
+              "subscription_replaced",
+              "subscription",
+              updatedSub.id,
+              JSON.stringify({
+                org_name: org.name,
+                admin_email: req.user!.email,
+                reason: reason.trim(),
+                before_state: beforeState,
+                after_state: afterState,
+              }),
+            ]
+          );
+        } catch (auditErr) {
+          // Don't fail the request — the Stripe change is committed. Log
+          // loudly so ops can manually reconcile the audit trail.
+          logger.error(
+            { err: auditErr, orgId, subId: updatedSub.id },
+            "Subscription replaced in Stripe but audit log INSERT failed — manual reconciliation needed",
+          );
+        }
+
+        logger.info(
+          {
+            orgId,
+            orgName: org.name,
+            subId: updatedSub.id,
+            oldPriceId: beforeState.price_id,
+            newPriceId: targetPrice.id,
+            adminEmail: req.user!.email,
+          },
+          "Subscription replaced via admin route",
+        );
+
+        // Surface coupon-replacement explicitly. When the caller passes a
+        // new coupon, Stripe's `discounts: [{coupon}]` parameter clobbers
+        // any existing discounts on the sub — admins should see this.
+        const replacedDiscountIds = coupon_id
+          ? existingDiscountIds.filter((id) => id !== null)
+          : [];
+        const warnings: string[] = [];
+        if (replacedDiscountIds.length > 0) {
+          warnings.push(
+            `Replaced ${replacedDiscountIds.length} existing discount(s) on the subscription: ${replacedDiscountIds.join(', ')}.`,
+          );
+        }
+
+        res.json({
+          success: true,
+          message: `Subscription updated for ${org.name}. Webhook will refresh the org row shortly.`,
+          subscription_id: updatedSub.id,
+          before: beforeState,
+          after: {
+            price_id: targetPrice.id,
+            price_lookup_key: targetPrice.lookup_key,
+            unit_amount: targetPrice.unit_amount,
+            interval: targetPrice.recurring?.interval ?? null,
+            coupon_id: coupon_id ?? null,
+            proration_behavior: effectiveProration,
+          },
+          ...(warnings.length > 0 ? { warnings } : {}),
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId }, "Error replacing subscription");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to replace subscription",
+        });
+      }
+    }
+  );
 }
