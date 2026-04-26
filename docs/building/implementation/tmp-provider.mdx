@@ -1,0 +1,272 @@
+---
+title: Building a TMP provider
+sidebarTitle: TMP provider
+description: "How to implement a TMP provider — the buyer-side agent that handles Context Match and Identity Match requests from publisher routers."
+"og:title": "AdCP — Building a TMP provider"
+---
+
+<Note>
+**Experimental.** TMP is an experimental AdCP surface. It may change between 3.x releases with at least 6 weeks' notice. See [experimental status](/docs/reference/experimental-status).
+</Note>
+
+A TMP provider is the buyer-side service that publishers call during ad decisioning. When a publisher's TMP Router fans out a request, your provider evaluates it and returns an offer (for context match) or an eligibility list (for identity match).
+
+This guide covers implementing both endpoints, registering with a publisher's router, and testing locally.
+
+## What your provider exposes
+
+A provider is an HTTPS service with one or both of these endpoints:
+
+| Endpoint | Operation | Input | Output |
+|---|---|---|---|
+| `POST /context` | Context Match | Page content, geo, available packages | Offers for matched packages |
+| `POST /identity` | Identity Match | User identity tokens, all active package IDs | Eligible package IDs + TTL |
+
+The router calls both endpoints with JSON bodies and expects JSON responses. Both use the same base URL — the router appends `/context` or `/identity` when dispatching.
+
+## Context Match
+
+### What the publisher sends
+
+Context Match requests carry page or content context. They **never** carry user identity — no user IDs, no session tokens, no device fingerprints.
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-7f3a",
+  "property_rid": "01916f3a-7b2c-7000-8000-000000000001",
+  "property_id": "publisher-web",
+  "property_type": "website",
+  "placement_id": "article-mid",
+  "artifact_refs": [
+    { "type": "url_hash", "value": "sha256:a3b4..." }
+  ],
+  "context_signals": {
+    "topics": ["632"],
+    "keywords": ["cold brew", "iced coffee"],
+    "sentiment": "positive",
+    "summary": "Article about cold brew coffee trends"
+  },
+  "geo": { "country": "US", "region": "US-CA" }
+}
+```
+
+Your provider evaluates the context against its active packages for this placement and property. Package metadata — including formats and targeting criteria — was synced at media buy time; the router does not resend it per-request.
+
+### What your provider returns
+
+Return an offer for each package that matches the context. An empty `offers` array is valid — it means no packages matched.
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-7f3a",
+  "offers": [
+    {
+      "package_id": "pkg-cold-brew-q2",
+      "brand": {
+        "domain": "brand.example.com",
+        "brand_id": "acme_beverages"
+      },
+      "summary": "Cold brew coffee — Acme Beverages Q2 campaign",
+      "price": { "cpm": 12.50, "currency": "USD" }
+    }
+  ],
+  "cache_ttl": 300
+}
+```
+
+The `cache_ttl` field is optional. When present, the router caches this response for that many seconds (0 = no cache). The default is 300 seconds.
+
+For GAM-integrated publishers, the `signals` field on the response carries key-value pairs to pass through to the ad server:
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-7f3a",
+  "offers": [{ "package_id": "pkg-cold-brew-q2" }],
+  "signals": {
+    "segments": ["acme-beverages-ctx"],
+    "targeting_kvs": [{ "key": "tmp_pkg", "value": "pkg-cold-brew-q2" }]
+  }
+}
+```
+
+### Latency budget
+
+The default per-provider timeout is **50ms**. Publishers may configure a higher `timeout_ms` in your provider registration, but you should aim to respond in under 50ms for the context path. The router skips providers that consistently exceed their budget.
+
+The context path is latency-sensitive — your response is on the critical path to ad render. Evaluate packages in-memory using synced state. Do not make external calls during context match.
+
+## Identity Match
+
+### What the publisher sends
+
+Identity Match requests carry user identity tokens and all active package IDs for the property. They **never** carry page context — no URLs, no content signals.
+
+```json
+{
+  "type": "identity_match_request",
+  "request_id": "id-8c2b",
+  "property_rid": "01916f3a-7b2c-7000-8000-000000000001",
+  "placement_id": "article-mid",
+  "identities": [
+    { "uid_type": "uid2", "user_token": "AgAAAA..." },
+    { "uid_type": "id5", "user_token": "ID5*..." }
+  ],
+  "package_ids": ["pkg-cold-brew-q2", "pkg-homepage-takeover", "pkg-seasonal"]
+}
+```
+
+The `package_ids` list contains every active package for this property — the full universe to evaluate. The router applies the result as a filter at decision time.
+
+### What your provider returns
+
+Return the package IDs the user is eligible for, plus a cache TTL. The router caches this result and does not re-query your provider until the TTL expires.
+
+```json
+{
+  "type": "identity_match_response",
+  "request_id": "id-8c2b",
+  "eligible_package_ids": ["pkg-cold-brew-q2"],
+  "ttl_sec": 3600
+}
+```
+
+Packages not listed in `eligible_package_ids` are considered ineligible. Your provider evaluates frequency caps, audience membership, and any other buyer-side signals — the eligibility reasons are opaque to the publisher.
+
+The `tmpx` field is optional. When present, it carries an HPKE-encrypted exposure token the publisher passes through to creative tracking URLs as `{TMPX}`. Your impression pixel receives it at serve time for per-user frequency state updates.
+
+### Request-ID isolation
+
+Identity Match `request_id` values **must not** be correlated with Context Match `request_id` values from the same page view. Generate separate IDs for each operation. The router enforces temporal decorrelation between the two operations to prevent timing-based join attacks.
+
+## Provider registration
+
+Publishers configure your provider in their router. The registration uses the [`provider-registration`](/schemas/latest/tmp/provider-registration.json) schema.
+
+**Context-only provider** (enrichment or contextual targeting):
+
+```json
+{
+  "provider_id": "acme-tmp-west",
+  "endpoint": "https://tmp.acme.example.com",
+  "context_match": true,
+  "timeout_ms": 45
+}
+```
+
+**Identity-only provider** (frequency capping):
+
+```json
+{
+  "provider_id": "acme-tmp-identity",
+  "endpoint": "https://tmp.acme.example.com",
+  "identity_match": true,
+  "countries": ["US", "CA", "GB"],
+  "uid_types": ["uid2", "id5"],
+  "timeout_ms": 80
+}
+```
+
+**Full provider** (handles both operations):
+
+```json
+{
+  "provider_id": "acme-tmp-full",
+  "endpoint": "https://tmp.acme.example.com",
+  "context_match": true,
+  "identity_match": true,
+  "countries": ["US", "CA"],
+  "uid_types": ["uid2", "id5"],
+  "timeout_ms": 60,
+  "priority": 0
+}
+```
+
+`countries` and `uid_types` are **required** when `identity_match` is true — the router cannot route Identity Match requests without them.
+
+### Scoping to properties
+
+By default, your registration applies to all properties on the router. To limit your provider to specific properties:
+
+```json
+{
+  "provider_id": "acme-tmp-retail",
+  "endpoint": "https://tmp.acme.example.com",
+  "context_match": true,
+  "properties": ["01916f3a-7b2c-7000-8000-000000000001"]
+}
+```
+
+`properties` is a list of property RIDs (UUID v7). When present, the router only sends requests from those properties to your provider.
+
+## Health endpoint
+
+Expose `GET /health` at your base URL. The router calls this:
+
+- **On startup** — before including your provider in fan-out
+- **On config reload** — after a publisher updates your registration
+- **Periodically** — on a background interval (typically every 30 seconds)
+
+Return HTTP 200 when your provider is ready to handle requests. The body is not parsed by the router.
+
+Providers that fail consecutive health checks are temporarily excluded from fan-out and automatically re-included when health recovers.
+
+## Endpoint URL requirements
+
+Your `endpoint` URL must meet these requirements:
+
+- **HTTPS only** in production
+- No private/RFC 1918 addresses, link-local addresses, or cloud metadata IP ranges
+- Must pass DNS re-resolution pinning — the router pins the TCP connection to the validated IP
+
+See [Provider registration security](/docs/trusted-match/specification#provider-registration-security) for the full normative requirements.
+
+## Testing locally
+
+The `adcp-go` reference implementation includes a TMP router you can run locally against your provider:
+
+```bash
+# Start the reference router pointing at your local provider
+adcp-router --config tmp-router.yaml --port 8080
+```
+
+Configure `tmp-router.yaml` with your local endpoint to exercise both code paths:
+
+```yaml
+providers:
+  - provider_id: local-provider
+    endpoint: http://localhost:9090
+    context_match: true
+    identity_match: true
+    countries: ["US"]
+    uid_types: ["uid2"]
+latency_budget_ms: 200
+```
+
+Send test requests directly to your endpoint to validate schema compliance before connecting to a live router. Your `POST /context` handler should echo the `request_id` and return a valid `context_match_response`; your `POST /identity` handler should return `eligible_package_ids` and a `ttl_sec`.
+
+## Surface-specific considerations
+
+The TMP request format is identical across all surfaces. Surface-specific differences are in how publishers deliver the request and how they activate the response:
+
+- [Web (Prebid)](/docs/trusted-match/surfaces/web) — module integration, GAM targeting key-value activation
+- [Connected TV](/docs/trusted-match/surfaces/ctv) — SSAI integration, server-side context delivery
+- [Mobile](/docs/trusted-match/surfaces/mobile) — SDK integration, in-app context signals
+- [Retail media](/docs/trusted-match/surfaces/retail-media) — product catalog context, commerce-specific geo
+- [AI assistants](/docs/trusted-match/surfaces/ai-assistants) — conversation-turn artifacts, ephemeral context signals
+
+Your provider endpoints are the same regardless of surface — the router abstracts surface differences.
+
+## Reference
+
+- [TMP Specification](/docs/trusted-match/specification) — complete field tables, privacy requirements, conformance levels
+- [Router Architecture](/docs/trusted-match/router-architecture) — how the router handles fan-out, merging, and timeouts
+- [Context and Identity Match](/docs/trusted-match/context-and-identity) — worked example joining both operations
+- [Privacy Architecture](/docs/trusted-match/privacy-architecture) — structural separation, temporal decorrelation, TEE upgrade path
+- [`provider-registration` schema](/schemas/latest/tmp/provider-registration.json)
+- [`context-match-request` schema](/schemas/latest/tmp/context-match-request.json)
+- [`context-match-response` schema](/schemas/latest/tmp/context-match-response.json)
+- [`identity-match-request` schema](/schemas/latest/tmp/identity-match-request.json)
+- [`identity-match-response` schema](/schemas/latest/tmp/identity-match-response.json)

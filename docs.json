@@ -151,6 +151,7 @@
                       "docs/building/implementation/security",
                       "docs/building/implementation/webhook-verifier-tuning",
                       "docs/building/implementation/seller-integration",
+                      "docs/building/implementation/tmp-provider",
                       "docs/building/implementation/storyboard-troubleshooting",
                       "docs/building/implementation/known-ambiguities"
                     ]
@@ -657,6 +658,7 @@
                   "docs/building/implementation/security",
                   "docs/building/implementation/webhook-verifier-tuning",
                   "docs/building/implementation/seller-integration",
+                  "docs/building/implementation/tmp-provider",
                   "docs/building/implementation/storyboard-troubleshooting",
                   "docs/building/implementation/known-ambiguities"
                 ]
