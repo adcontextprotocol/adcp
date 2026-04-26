@@ -63,6 +63,8 @@ CREATE TABLE catalog_agent_authorizations (
   confidence      TEXT NOT NULL,              -- 'authoritative' | 'strong' | 'medium' | 'weak'
   disputed        BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- sync watermark
+  deleted_at      TIMESTAMPTZ,                          -- soft-delete tombstone for delta consumers
   CONSTRAINT chk_caa_agent_url_canonical
     CHECK (agent_url = lower(agent_url) AND agent_url NOT LIKE '%/'),
   UNIQUE (agent_url, COALESCE(property_rid::text, ''), publisher_domain, evidence)
@@ -71,7 +73,10 @@ CREATE INDEX idx_caa_by_agent     ON catalog_agent_authorizations (agent_url);
 CREATE INDEX idx_caa_by_publisher ON catalog_agent_authorizations (publisher_domain);
 CREATE INDEX idx_caa_by_property  ON catalog_agent_authorizations (property_rid)
   WHERE property_rid IS NOT NULL;
+CREATE INDEX idx_caa_sync         ON catalog_agent_authorizations (updated_at);
 ```
+
+`updated_at` and `deleted_at` are not strictly required for the reader cutover but are load-bearing for agent-side sync (see "Agent-side sync" below). Including them in the initial schema avoids a follow-up migration once the snapshot/delta endpoints ship.
 
 **Writer-side**: `cacheAdagentsManifest` extracts each `authorized_agents[]` entry from the manifest body and inserts one row per (agent, property) pair (with `property_rid` resolved from the property_id catalog lookup) plus one row per agent for the publisher-wide case. Same security guards as the existing `projectPropertyToCatalog` (cross-publisher refusal, anchor rule, etc.) — the hijack risk on agent claims is symmetric to the property-identifier case.
 
@@ -167,14 +172,94 @@ confidence=<confidence>
 | Disputes | Column on the row | No place | Another fact type |
 | Future flexibility | Good (add columns) | Limited | Best (new predicates) |
 | Complexity in readers (lines of SQL) | Lowest | Highest LATERAL | High |
+| Agent-side snapshot wire size (long-run) | ~150 MB gzipped | ~10 GB gzipped (full manifests) | ~150 MB gzipped |
+| Delta sync key | `updated_at` | `publishers.last_validated` (over-pulls) | `superseded_by` chain |
+
+## Agent-side sync
+
+Verification is the load-bearing query for buy-side and sell-side agents: "is agent X authorized to sell property Y?" answered inline during bid filtering, settlement, audit. Per-call API checks are too slow for inline use (network RTT dominates). The realistic deployment is **agent maintains a local copy** and refreshes it on a schedule.
+
+Option A is the only option that supports this cleanly.
+
+### Sizing
+
+Per-row footprint of `catalog_agent_authorizations`:
+
+| Field | Avg | p99 |
+|---|---|---|
+| id (uuid) | 16 B | 16 B |
+| agent_url (text) | ~80 B | ~256 B |
+| property_rid (uuid, nullable) | 8 B (50% null) | 16 B |
+| publisher_domain (text) | ~30 B | ~80 B |
+| authorized_for (text) | ~150 B | ~500 B |
+| property_ids (text[]) | ~50 B if present | ~200 B |
+| evidence + confidence (text) | ~30 B | ~30 B |
+| disputed + created_at + updated_at + deleted_at | ~30 B | ~30 B |
+| **row total** | **~400 B** | **~1.1 KB** |
+
+Cardinality:
+
+| Stage | Publishers | Agents/publisher | Properties/agent | Rows | Uncompressed | gz |
+|---|---|---|---|---|---|---|
+| Today | ~10K | ~5 | ~2 | ~100K | ~40 MB | ~5 MB |
+| Long-run | ~100K | ~10 | ~5 | ~5M | ~2 GB | **~150–300 MB** |
+
+Compression ratio is high because `agent_url` and `publisher_domain` repeat heavily across rows.
+
+### Sync endpoints (Option A)
+
+```
+GET /api/registry/authorizations/snapshot
+  → gz JSONL of v_effective_agent_authorizations
+  → Etag + X-Sync-Watermark: max(updated_at)
+  → ~150 MB on the wire at long-run scale, single sequential read
+
+GET /api/registry/authorizations/delta?since=<watermark>
+  → rows where updated_at > $1, including soft-deletes (deleted_at not null)
+  → KB to MB per call, indexed via idx_caa_sync
+  → consumer applies in updated_at order, advances its watermark
+
+GET /api/registry/authorizations?agent_url=<canonical>
+  → narrow pull for an agent that only cares about its own rows
+  → indexed via idx_caa_by_agent
+  → small even at scale (one agent ≤ a few hundred rows)
+```
+
+Delta consumer pseudocode:
+
+```
+local_watermark = persisted("last_sync_watermark") or epoch
+while true:
+  page = GET /delta?since=local_watermark
+  for row in page:
+    if row.deleted_at: local.delete(row.id)
+    else:              local.upsert(row)
+  local_watermark = max(row.updated_at for row in page)
+  persist("last_sync_watermark", local_watermark)
+  sleep(poll_interval)
+```
+
+In-process lookup against the local copy is sub-microsecond. Daily delta is minutes of work for a desktop agent, KB on the wire.
+
+### Why B and C don't get there
+
+**Option B (JSONB-only)** can't ship a snapshot smaller than the manifest universe. Average `publishers.adagents_json` body is ~10 KB; 100K publishers × 10 KB = ~1 GB on the wire just to deliver authorization metadata, most of it irrelevant (signals, placements, agent metadata, contact info). No reasonable delta key — `publishers.last_validated` fires on any manifest change including unrelated edits, so consumers over-pull on every poll. Per-agent narrow pull is `LATERAL` over every manifest with no usable index.
+
+**Option C (catalog_facts)** matches Option A on snapshot size and supports delta via `superseded_by`, but the consumer has to interpret supersession chains client-side rather than receiving a flat row stream with `deleted_at` tombstones. More state on the agent side and more places for sync logic to drift.
+
+### Soft-delete is load-bearing
+
+`deleted_at` is what makes delta sync work. Without it, a consumer cannot distinguish "no row in this delta" from "row was removed since my last sync." The delta endpoint emits the tombstone row (`deleted_at IS NOT NULL`) and the consumer applies the deletion locally. This is the same pattern `/registry/feed` uses for property-identity changes and is the reason both `updated_at` and `deleted_at` are in the schema from day one rather than added in a follow-up.
+
+Hard-deleting auth rows (rather than soft-deleting) is a sync data-loss bug that surfaces only in the worst case — agents quietly drifting from the canonical set, with no signal until verification fails downstream.
 
 ## Recommendation
 
-**Option A.** The dominant query patterns want index hits on `agent_url`, `publisher_domain`, and `property_rid`. The override layer was already designed to key on the same fields. Catalog disputes and the evidence/confidence vocabulary already exist on `catalog_identifiers` — Option A reuses both verbatim.
+**Option A.** The dominant query patterns want index hits on `agent_url`, `publisher_domain`, and `property_rid`. The override layer was already designed to key on the same fields. Catalog disputes and the evidence/confidence vocabulary already exist on `catalog_identifiers` — Option A reuses both verbatim. And — the load-bearing point for agent deployment — Option A is the only option that supports a sub-200 MB snapshot + KB-scale delta sync (see "Agent-side sync" above), which is what makes inline verification realistic.
 
-Option B is reachable later as a degenerate case of Option A — drop the table, add JSONB-driven readers — if the table proves to be redundant overhead. Going B → A means a schema migration plus a backfill plus a writer change. Going A → B is "remove the table." The asymmetric reversal cost favors picking A first.
+Option B is reachable later as a degenerate case of Option A — drop the table, add JSONB-driven readers — if the table proves to be redundant overhead. Going B → A means a schema migration plus a backfill plus a writer change. Going A → B is "remove the table." The asymmetric reversal cost favors picking A first. (B also can't ship a snapshot smaller than the full manifest universe, ~10× larger than A's, which closes the door on agent-side caching.)
 
-Option C is technically the most flexible substrate, but flexibility is paid for in every reader. The dominant patterns don't need it; the optionality value is largely speculative ("future evidence sources we haven't built yet"). If we do grow new evidence sources, they can land in Option A's table with a new `evidence` value — adding a row, not a new abstraction.
+Option C is technically the most flexible substrate, but flexibility is paid for in every reader and on every sync consumer. The dominant patterns don't need it; the optionality value is largely speculative ("future evidence sources we haven't built yet"). If we do grow new evidence sources, they can land in Option A's table with a new `evidence` value — adding a row, not a new abstraction.
 
 ## Open questions (defer to PR 4b implementation)
 
@@ -187,6 +272,10 @@ Option C is technically the most flexible substrate, but flexibility is paid for
 4. **Effective-set view name.** `v_effective_agent_authorizations` — apply override layer (`add` / `suppress`) to base `catalog_agent_authorizations`. Bikeshed name; the shape is settled.
 
 5. **Wildcard agent (`url = '*'`).** Already supported in the legacy reader and pinned by the PR 3 baseline (`bulkGetFirstAuthForAgents` test). Carry through unchanged — `agent_url = '*'` is just another row.
+
+6. **Sync endpoint auth model.** The snapshot/delta endpoints expose every publisher's authorized-agent set. Public read makes sense (the manifest body is already public via `.well-known/adagents.json`), but throttling, ETag/If-None-Match, and snapshot pagination need design. Likely follow-up after PR 4b lands the table.
+
+7. **Watermark vs sequence-number for delta.** `updated_at` is wall-clock and can have ties at sub-microsecond resolution under concurrent writes. For correctness under heavy ingest, a monotonic sequence number (e.g. `bigserial seq_no`) is safer than `updated_at` as the delta key. Keep `updated_at` for the schema as documented above; add `seq_no` if real concurrent-write rates warrant it.
 
 ## Sequencing
 
