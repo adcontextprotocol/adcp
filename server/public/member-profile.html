@@ -1053,6 +1053,53 @@
             </div>
           </div>
 
+          <!-- Cross-org claim callout: shown when the user tries to save a domain
+               that's already owned by another org (409 cross_org_ownership). Lets
+               an admin/owner self-service via the WorkOS DNS challenge instead of
+               waiting on the escalation queue. Visibility gated to admin/owner. -->
+          <div id="cross-org-claim-callout" style="display: none; margin-top: var(--space-4); background: var(--color-warning-50, #fef3c7); border: 1px solid var(--color-warning-200, #fde68a); border-radius: var(--radius-md); padding: var(--space-4);">
+            <div style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">
+              <span id="cross-org-claim-domain"></span> is registered to another organization
+            </div>
+            <p style="font-size: var(--text-sm); color: var(--color-text); margin: 0 0 var(--space-3) 0;">
+              We filed a brand-ownership escalation. <strong>If you actually control DNS for this domain</strong>, you can prove it now via a DNS TXT challenge and claim it yourself — no need to wait.
+            </p>
+            <div id="cross-org-claim-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm); margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); border-radius: var(--radius-md);"></div>
+
+            <!-- Step 1: issue button -->
+            <div id="cross-org-claim-issue-step">
+              <button type="button" id="cross-org-claim-issue-btn" onclick="requestCrossOrgChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Request DNS challenge</button>
+            </div>
+
+            <!-- Step 2: DNS instructions -->
+            <div id="cross-org-claim-instructions" style="display: none; margin-top: var(--space-3);">
+              <p style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-3);">Publish this DNS TXT record at your domain's registrar, then click <strong>Verify</strong> below.</p>
+              <div style="display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); font-family: monospace; font-size: var(--text-sm);">
+                <div style="color: var(--color-text-muted);">Name:</div>
+                <code id="cross-org-claim-record-name" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                <button type="button" onclick="copyCrossOrgClaimField('name', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+
+                <div style="color: var(--color-text-muted);">Type:</div>
+                <code style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);">TXT</code>
+                <span></span>
+
+                <div style="color: var(--color-text-muted);">Value:</div>
+                <code id="cross-org-claim-record-value" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                <button type="button" onclick="copyCrossOrgClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+              </div>
+
+              <label id="cross-org-claim-adopt-label" style="display: none; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                <input type="checkbox" id="cross-org-claim-adopt-prior" style="margin: 0;">
+                Start from the existing brand record (only check if you want to keep the prior org's logos and colors — most reclaims should leave this unchecked).
+              </label>
+
+              <div style="display: flex; gap: var(--space-3); align-items: center;">
+                <button type="button" id="cross-org-claim-verify-btn" onclick="verifyCrossOrgChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Verify</button>
+                <span id="cross-org-claim-status" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></span>
+              </div>
+            </div>
+          </div>
+
           <div class="preview-section" style="margin-top: var(--space-8);">
             <h3>Member card preview</h3>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);">This is how your organization will appear in the member directory:</p>
@@ -1764,6 +1811,14 @@
             showOrphanDecisionPrompt(conflictData);
             return; // caller will re-fire via the prompt buttons
           }
+          if (conflictData.code === 'cross_org_ownership') {
+            // The domain is owned by another org. If the caller actually
+            // controls DNS, surface the self-service DNS challenge inline
+            // so they don't have to dig through Addie or wait on the
+            // escalation queue. Admin-only — backend enforces the same gate.
+            showCrossOrgClaimCallout(conflictData, isNew);
+            return;
+          }
         }
 
         if (!response.ok) {
@@ -1998,6 +2053,145 @@
         '  https://agenticadvertising.org/member-profile\n';
       var original = btn.textContent;
       navigator.clipboard.writeText(block).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
+    }
+
+    // Cross-org claim flow (#3228) — surfaces the DNS challenge from the
+    // not-linked save error path so an admin reclaiming a domain owned by
+    // another org doesn't have to leave the page or wait on the escalation.
+    // Uses the typed/returned brand_domain rather than currentProfile because
+    // the user isn't linked yet.
+    let _crossOrgClaimDomain = null;
+
+    function showCrossOrgClaimCallout(conflictData, isNew) {
+      // Admin-only: backend gates /brand-claim/issue and /verify on
+      // admin/owner role; hide the affordance for members so they don't
+      // see a button that 401s.
+      if (currentOrgRole !== 'admin' && currentOrgRole !== 'owner') return;
+      var domain = conflictData.brand_domain || '';
+      _crossOrgClaimDomain = domain;
+      document.getElementById('cross-org-claim-domain').textContent = domain;
+      document.getElementById('cross-org-claim-callout').style.display = 'block';
+      // Reset to step 1 in case the user previously interacted with this.
+      document.getElementById('cross-org-claim-instructions').style.display = 'none';
+      document.getElementById('cross-org-claim-error').style.display = 'none';
+      document.getElementById('cross-org-claim-status').textContent = '';
+      var adoptLabel = document.getElementById('cross-org-claim-adopt-label');
+      if (adoptLabel) adoptLabel.style.display = 'none';
+      var adoptCheckbox = document.getElementById('cross-org-claim-adopt-prior');
+      if (adoptCheckbox) adoptCheckbox.checked = false;
+    }
+
+    function hideCrossOrgClaimCallout() {
+      var callout = document.getElementById('cross-org-claim-callout');
+      if (callout) callout.style.display = 'none';
+      _crossOrgClaimDomain = null;
+    }
+
+    function setCrossOrgClaimError(msg) {
+      var el = document.getElementById('cross-org-claim-error');
+      if (!msg) { el.style.display = 'none'; el.textContent = ''; }
+      else { el.textContent = msg; el.style.display = 'block'; }
+    }
+
+    async function requestCrossOrgChallenge() {
+      if (!_crossOrgClaimDomain) {
+        setCrossOrgClaimError('Internal error: domain context lost. Refresh and try again.');
+        return;
+      }
+      setCrossOrgClaimError('');
+      var btn = document.getElementById('cross-org-claim-issue-btn');
+      btn.disabled = true;
+      btn.textContent = 'Requesting...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: _crossOrgClaimDomain }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          throw new Error(data.message || data.error || 'Failed to issue challenge.');
+        }
+        var prefix = data.verification_prefix || '';
+        var token = data.verification_token || '';
+        var fqdn = prefix ? prefix + '.' + data.domain : data.domain;
+        document.getElementById('cross-org-claim-record-name').textContent = fqdn;
+        document.getElementById('cross-org-claim-record-value').textContent = token;
+        document.getElementById('cross-org-claim-instructions').style.display = 'block';
+        // Only show the adopt-prior checkbox when an orphaned manifest
+        // actually exists (matches the linked-state panel behavior).
+        var adoptLabel = document.getElementById('cross-org-claim-adopt-label');
+        var adoptCheckbox = document.getElementById('cross-org-claim-adopt-prior');
+        if (data.prior_manifest_exists) {
+          if (adoptLabel) adoptLabel.style.display = 'flex';
+        } else {
+          if (adoptLabel) adoptLabel.style.display = 'none';
+          if (adoptCheckbox) adoptCheckbox.checked = false;
+        }
+      } catch (err) {
+        setCrossOrgClaimError(err.message || 'Failed to issue challenge.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Request DNS challenge';
+      }
+    }
+
+    async function verifyCrossOrgChallenge() {
+      if (!_crossOrgClaimDomain) {
+        setCrossOrgClaimError('Internal error: domain context lost. Refresh and try again.');
+        return;
+      }
+      setCrossOrgClaimError('');
+      var statusEl = document.getElementById('cross-org-claim-status');
+      var btn = document.getElementById('cross-org-claim-verify-btn');
+      var adopt = document.getElementById('cross-org-claim-adopt-prior').checked;
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      statusEl.textContent = 'Checking DNS...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: _crossOrgClaimDomain, adopt_prior_manifest: adopt }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          if (data.code === 'still_pending') {
+            var hint = data.retry_after_seconds
+              ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
+              : '';
+            statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            return;
+          }
+          throw new Error(data.message || data.error || 'Failed to verify domain.');
+        }
+        // Success: hide the warning callout (it'd otherwise stack a green
+        // success line inside an orange "registered to another organization"
+        // panel) and refresh the profile so the brand renders as linked.
+        hideCrossOrgClaimCallout();
+        loadProfile();
+      } catch (err) {
+        setCrossOrgClaimError(err.message || 'Failed to verify domain.');
+        statusEl.textContent = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify';
+      }
+    }
+
+    function copyCrossOrgClaimField(field, btn) {
+      var id = field === 'name' ? 'cross-org-claim-record-name' : 'cross-org-claim-record-value';
+      var text = document.getElementById(id).textContent;
+      if (!text || !btn) return;
+      var original = btn.textContent;
+      navigator.clipboard.writeText(text).then(function() {
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = original; }, 2000);
       });
