@@ -1293,9 +1293,18 @@
       document.getElementById('contentModal').style.display = 'flex';
     }
 
-    function editContent(id) {
-      const item = myContent.find(c => c.id === id);
-      if (!item) return;
+    async function editContent(id) {
+      const ownItem = myContent.find(c => c.id === id);
+      let item = ownItem;
+      if (!item) {
+        item = adminContent.find(c => String(c.id) === String(id));
+        if (!item) return;
+        // Admin list items lack content/tags — fetch the full record before opening the edit modal
+        try {
+          const res = await fetch(`/api/admin/content/${encodeURIComponent(item.id)}`, { credentials: 'include' });
+          if (res.ok) { const full = await res.json(); item.content = full.content; item.tags = full.tags; }
+        } catch (e) { console.error('Failed to load full content for edit:', e); }
+      }
       editingContent = item;
       document.getElementById('modalTitle').textContent = 'Edit Content';
       document.getElementById('contentId').value = item.id;
@@ -1316,7 +1325,8 @@
       else if (st === 'pending_review') document.getElementById('statusSelect').value = 'pending_review';
       else document.getElementById('statusSelect').value = 'draft';
 
-      const colSlug = item.collection?.committee_slug || item.collection?.slug;
+      // Admin list items carry committee_slug as a flat field; myContent items nest it under collection
+      const colSlug = item.collection?.committee_slug || item.collection?.slug || item.committee_slug;
       if (colSlug) document.getElementById('collection').value = colSlug;
       setContentType(item.content_type || 'article');
       updatePreview();
