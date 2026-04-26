@@ -959,6 +959,32 @@ export class AgentContextDatabase {
   }
 
   /**
+   * Most recent agent test the user has run, across all of their saved
+   * agents. Powers the "agent not tested in X days" suggested-prompts
+   * rule for builder personas.
+   *
+   * Returns null if the user has never tested any registered agent.
+   * Tests against the public test agent or unsaved URLs are not
+   * recorded in agent_test_history (they don't have an agent_context),
+   * so they don't count here either — which is the right semantic for
+   * the rule's audience (builders with their own seller agent).
+   */
+  async getLatestTestForUser(workosUserId: string): Promise<{
+    started_at: Date;
+    overall_passed: boolean;
+  } | null> {
+    const result = await query<{ started_at: Date; overall_passed: boolean }>(
+      `SELECT started_at, overall_passed
+         FROM agent_test_history
+         WHERE user_id = $1
+         ORDER BY started_at DESC
+         LIMIT 1`,
+      [workosUserId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
    * Infer agent type from discovered tools
    */
   inferAgentType(tools: string[]): AgentType {

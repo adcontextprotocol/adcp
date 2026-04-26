@@ -3890,6 +3890,34 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
 
+      // Record the run in agent_test_history when we have a saved
+      // agent_context for this org+url. Mirrors evaluate_agent_quality's
+      // pattern; powers the "agent not tested in 14d" prompt rule.
+      // Storyboard runs don't carry a structured agent_profile (only
+      // evaluate_agent_quality probes get_adcp_capabilities), so we
+      // omit agent_profile_json — readers tolerate null.
+      if (organizationId) {
+        try {
+          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+          if (context) {
+            await agentContextDb.recordTest({
+              agent_context_id: context.id,
+              scenario: `storyboard:${sb.id}`,
+              overall_passed: result.overall_passed,
+              steps_passed: result.passed_count,
+              steps_failed: result.failed_count,
+              total_duration_ms: result.total_duration_ms,
+              summary: result.storyboard_title,
+              dry_run: dryRun,
+              triggered_by: 'user',
+              user_id: memberContext?.workos_user?.workos_user_id,
+            });
+          }
+        } catch (error) {
+          logger.debug({ error }, 'Could not record storyboard run');
+        }
+      }
+
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
 
