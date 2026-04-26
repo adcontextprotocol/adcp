@@ -835,16 +835,18 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Subscription details (for members)
+          // Subscription details
           subscription: org.subscription_status
             ? {
                 status: org.subscription_status,
+                stripe_subscription_id: org.stripe_subscription_id || null,
                 product_name: org.subscription_product_name,
                 amount: org.subscription_amount,
                 interval: org.subscription_interval,
                 currency: org.subscription_currency,
                 current_period_end: org.subscription_current_period_end,
                 canceled_at: org.subscription_canceled_at,
+                price_lookup_key: org.subscription_price_lookup_key || null,
               }
             : null,
 

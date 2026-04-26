@@ -36,7 +36,7 @@ test('classify: brand kit (auth.api_key only)', () => {
 });
 
 test('classify: runner contract (applies_to only)', () => {
-  const { hasApiKey, hasAppliesTo } = classify({ applies_to: { specialism: 'signed-requests' } });
+  const { hasApiKey, hasAppliesTo } = classify({ applies_to: { universal_storyboard: 'signed-requests' } });
   assert.equal(hasApiKey, false);
   assert.equal(hasAppliesTo, true);
 });
@@ -44,7 +44,7 @@ test('classify: runner contract (applies_to only)', () => {
 test('classify: hybrid (future branded-runner — both markers)', () => {
   const { hasApiKey, hasAppliesTo } = classify({
     auth: { api_key: 'demo-x-v1' },
-    applies_to: { specialism: 'signed-requests' },
+    applies_to: { universal_storyboard: 'signed-requests' },
   });
   assert.equal(hasApiKey, true);
   assert.equal(hasAppliesTo, true);

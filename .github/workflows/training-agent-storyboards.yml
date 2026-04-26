@@ -128,11 +128,32 @@ jobs:
           TRAINING_AGENT_USE_FRAMEWORK: ${{ matrix.flag_value }}
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
         run: |
+          set -euo pipefail
+          # `set -o pipefail` makes the storyboards-runner exit code propagate
+          # through the `tee` instead of getting swallowed. Without this a
+          # crash inside run-storyboards.ts would still report success here.
           npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log
+          # Disable -e for the parse pipelines — `grep` returning empty is
+          # not a fatal error, we want to detect that explicitly below.
+          set +e
           clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
           passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
+          set -e
+          if [ -z "${clean}" ] || [ -z "${passed}" ]; then
+            echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.mode }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
+            exit 1
+          fi
           echo "clean=${clean}" >> "$GITHUB_OUTPUT"
           echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload storyboards log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyboards-log-${{ matrix.mode }}
+          path: /tmp/storyboards.log
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Enforce non-regression (${{ matrix.mode }})
         env:
@@ -141,14 +162,79 @@ jobs:
           MIN_CLEAN: ${{ matrix.min_clean_storyboards }}
           MIN_PASSED: ${{ matrix.min_passing_steps }}
         run: |
+          set -euo pipefail
           echo "Mode: ${{ matrix.mode }} (flag=${{ matrix.flag_value }})"
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
           echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          # Helper that prints a uniform actionable next-step block whenever
+          # a floor is breached. Tells the contributor exactly which file
+          # and matrix key to edit, and where to download the log artifact
+          # to see *which* storyboards regressed.
+          regression_help() {
+            local metric="$1"
+            local observed="$2"
+            local floor="$3"
+            cat <<HELP
+          ::error::Regression: ${observed} ${metric} is below the ${floor} floor (mode: ${{ matrix.mode }}).
+
+          Next steps:
+            • If this drop is intentional (removed deprecated invariant, retired
+              storyboard, etc.): edit .github/workflows/training-agent-storyboards.yml,
+              find the matrix entry where mode == ${{ matrix.mode }}, and update the
+              floor to ${observed}. Add an entry to the comment block above noting
+              the transition (e.g. "${floor}→${observed} after <reason>").
+            • If unintentional: download the storyboards-log-${{ matrix.mode }} artifact
+              from this run to see which storyboards regressed and why.
+          HELP
+          }
           if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
-            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor."
+            regression_help "clean storyboards" "${CLEAN}" "${MIN_CLEAN}"
             exit 1
           fi
           if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
-            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor."
+            regression_help "passing steps" "${PASSED}" "${MIN_PASSED}"
             exit 1
+          fi
+          # Persist this matrix's results to an artifact so the summary
+          # job can compare framework vs legacy without rerunning anything.
+          mkdir -p /tmp/storyboard-results
+          printf '%s\n%s\n' "${CLEAN}" "${PASSED}" > /tmp/storyboard-results/results.txt
+
+      - name: Persist matrix results for summary job
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyboard-results-${{ matrix.mode }}
+          path: /tmp/storyboard-results/results.txt
+          retention-days: 1
+
+  asymmetric-invariant-check:
+    # Defense-in-depth gate: framework dispatch declares more capabilities
+    # than legacy, so it should run *more* passing steps. If that asymmetry
+    # ever silently inverts (framework_passed < legacy_passed) we want a
+    # visible signal — but only as a `::warning::`, not a hard fail. Hard-
+    # failing here would block legitimate dep-bump windows where the SDK
+    # introduces transient framework regressions before the fix lands
+    # (the 5.17→5.18 gap from #940 was exactly this).
+    needs: storyboards
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both matrix results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: storyboard-results-*
+          path: /tmp/storyboard-results
+
+      - name: Compare framework vs legacy passing-step count
+        run: |
+          set -euo pipefail
+          legacy_passed=$(sed -n '2p' /tmp/storyboard-results/storyboard-results-legacy/results.txt)
+          framework_passed=$(sed -n '2p' /tmp/storyboard-results/storyboard-results-framework/results.txt)
+          echo "Legacy passing steps:    ${legacy_passed}"
+          echo "Framework passing steps: ${framework_passed}"
+          if [ "${framework_passed}" -lt "${legacy_passed}" ]; then
+            echo "::warning::Asymmetric-mode invariant inverted: framework dispatch ran ${framework_passed} passing steps, fewer than legacy's ${legacy_passed}. Framework declares more capabilities than legacy and should run *more* steps. If this is a transient SDK regression (e.g. mid-bump), it'll resolve on the next bump. If it persists, investigate — the matrix comments in training-agent-storyboards.yml document which bumps drove past number changes."
+          else
+            echo "Asymmetric-mode invariant holds (framework >= legacy)."
           fi

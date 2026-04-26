@@ -968,6 +968,54 @@
                 <button onclick="copyBrandPointer()" style="position: absolute; top: var(--space-2); right: var(--space-2); padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
               </div>
             </div>
+
+            <!-- Domain ownership verification (DNS TXT challenge via WorkOS, #3176/#3189) -->
+            <div id="domain-claim-section" style="display: none; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Verify domain ownership</div>
+                  <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 4px 0 0 0;">Prove your organization controls this domain via a DNS TXT record. Required to claim a brand currently registered to another organization.</p>
+                </div>
+                <button type="button" id="domain-claim-toggle" onclick="toggleDomainClaim()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Start</button>
+              </div>
+
+              <div id="domain-claim-panel" style="display: none; margin-top: var(--space-4);">
+                <div id="domain-claim-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm); margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); border-radius: var(--radius-md);"></div>
+
+                <!-- Step 1: Issue challenge -->
+                <div id="domain-claim-issue-step">
+                  <button type="button" id="domain-claim-issue-btn" onclick="requestDomainChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Request DNS challenge</button>
+                </div>
+
+                <!-- Step 2: DNS instructions (shown after issue succeeds) -->
+                <div id="domain-claim-instructions" style="display: none;">
+                  <p style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-3);">Publish this DNS TXT record at your domain's registrar, then click <strong>Verify</strong> below. DNS propagation usually takes a few minutes.</p>
+                  <div style="display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); font-family: monospace; font-size: var(--text-sm);">
+                    <div style="color: var(--color-text-muted);">Name:</div>
+                    <code id="domain-claim-record-name" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                    <button type="button" onclick="copyDomainClaimField('name', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+
+                    <div style="color: var(--color-text-muted);">Type:</div>
+                    <code style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);">TXT</code>
+                    <span></span>
+
+                    <div style="color: var(--color-text-muted);">Value:</div>
+                    <code id="domain-claim-record-value" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                    <button type="button" onclick="copyDomainClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+                  </div>
+
+                  <label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                    <input type="checkbox" id="domain-claim-adopt-prior" style="margin: 0;">
+                    Inherit prior brand identity (only check if a previous owner relinquished this domain and you want their logos / colors / agents as a starting point — typical for acquisitions).
+                  </label>
+
+                  <div style="display: flex; gap: var(--space-3); align-items: center;">
+                    <button type="button" id="domain-claim-verify-btn" onclick="verifyDomainChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Verify</button>
+                    <span id="domain-claim-status" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Brand not linked state -->
@@ -1164,6 +1212,7 @@
     let slugCheckTimeout = null;
     let currentOrgId = null;
     let currentOrgName = null;
+    let currentOrgRole = null; // 'admin' | 'owner' | 'member' — gates domain-claim UI
 
     // Fetch with a timeout to prevent hanging on slow API responses
     function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
@@ -1287,6 +1336,7 @@
         // Determine is_personal from /api/me org data (already fetched, no extra call)
         const currentOrgInfo = meData?.organizations?.find(o => o.id === currentOrgId);
         const isPersonal = currentOrgInfo?.is_personal || false;
+        currentOrgRole = currentOrgInfo?.role || null;
 
         // Individual accounts use the community profile as their single profile
         if (isPersonal) {
@@ -1563,6 +1613,14 @@
           }, null, 2);
         }
 
+        // Domain ownership challenge: only org admins/owners can issue/verify.
+        // Backend enforces the same role gate; UI hides the panel for non-admins
+        // so members don't see a button that 401s.
+        const domainClaimEl = document.getElementById('domain-claim-section');
+        if (domainClaimEl) {
+          domainClaimEl.style.display = (currentOrgRole === 'admin' || currentOrgRole === 'owner') ? 'block' : 'none';
+        }
+
       } else {
         linkedEl.style.display = 'none';
         notLinkedEl.style.display = 'block';
@@ -1768,6 +1826,127 @@
       var ctx = _pendingOrphanSave;
       hideOrphanDecisionPrompt();
       saveBrandIdentity(ctx.isNew, { adoptPriorManifest: adopt });
+    }
+
+    // Domain ownership challenge (#3176/#3189) — DNS TXT challenge via WorkOS.
+    // Used to claim a brand currently registered to another org.
+    let _domainClaimOpen = false;
+    function toggleDomainClaim() {
+      _domainClaimOpen = !_domainClaimOpen;
+      var panel = document.getElementById('domain-claim-panel');
+      var toggle = document.getElementById('domain-claim-toggle');
+      panel.style.display = _domainClaimOpen ? 'block' : 'none';
+      toggle.textContent = _domainClaimOpen ? 'Cancel' : 'Start';
+    }
+
+    function setDomainClaimError(msg) {
+      var el = document.getElementById('domain-claim-error');
+      if (!msg) {
+        el.style.display = 'none';
+        el.textContent = '';
+      } else {
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+    }
+
+    async function requestDomainChallenge() {
+      var domain = currentProfile?.primary_brand_domain;
+      if (!domain) {
+        setDomainClaimError('Link a brand first.');
+        return;
+      }
+      setDomainClaimError('');
+      var btn = document.getElementById('domain-claim-issue-btn');
+      btn.disabled = true;
+      btn.textContent = 'Requesting...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: domain }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to issue challenge.');
+        }
+        // WorkOS returns the host part as verification_prefix and the TXT
+        // value as verification_token. Show the fully-qualified record name
+        // so DNS hosts that don't auto-append the apex are unambiguous.
+        var prefix = data.verification_prefix || '';
+        var token = data.verification_token || '';
+        var fqdn = prefix ? prefix + '.' + data.domain : data.domain;
+        document.getElementById('domain-claim-record-name').textContent = fqdn;
+        document.getElementById('domain-claim-record-value').textContent = token;
+        document.getElementById('domain-claim-instructions').style.display = 'block';
+        document.getElementById('domain-claim-status').textContent = '';
+      } catch (err) {
+        setDomainClaimError(err.message || 'Failed to issue challenge.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Request DNS challenge';
+      }
+    }
+
+    async function verifyDomainChallenge() {
+      var domain = currentProfile?.primary_brand_domain;
+      if (!domain) {
+        setDomainClaimError('Link a brand first.');
+        return;
+      }
+      setDomainClaimError('');
+      var statusEl = document.getElementById('domain-claim-status');
+      var btn = document.getElementById('domain-claim-verify-btn');
+      var adopt = document.getElementById('domain-claim-adopt-prior').checked;
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      statusEl.textContent = 'Checking DNS...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: domain, adopt_prior_manifest: adopt }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          // 'still_pending' is the common case — DNS hasn't propagated yet.
+          // Surface as inline status, not an error banner, so the user can
+          // just retry without losing the issued challenge.
+          if (data.code === 'still_pending') {
+            var hint = data.retry_after_seconds
+              ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
+              : '';
+            statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            return;
+          }
+          throw new Error(data.message || data.error || 'Failed to verify domain.');
+        }
+        statusEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; Domain verified' +
+          (data.adopted_prior_manifest ? ' &mdash; inherited prior brand identity.' : '.') + '</span>';
+        // Refresh the profile so brand-verified status / pointer callout update.
+        loadProfile();
+      } catch (err) {
+        setDomainClaimError(err.message || 'Failed to verify domain.');
+        statusEl.textContent = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify';
+      }
+    }
+
+    function copyDomainClaimField(field, btn) {
+      var id = field === 'name' ? 'domain-claim-record-name' : 'domain-claim-record-value';
+      var text = document.getElementById(id).textContent;
+      if (!text || !btn) return;
+      var original = btn.textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
     }
 
     async function loadCredentials() {
