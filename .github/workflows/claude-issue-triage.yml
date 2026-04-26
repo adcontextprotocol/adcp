@@ -197,7 +197,7 @@ jobs:
               (if $is_pr == "true" then
                 "is_pr: true\n" +
                 "pr: " + $pr_block + "\n" +
-                "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. If the comment requests a fix, apply it as a follow-up commit on the PR's head branch (do not open a new PR). If the comment asks a question, answer it as a reply comment. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
+                "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. If the comment requests a fix, apply it as a follow-up commit on the PR head branch — do not open a new PR. If the comment asks a question, answer it as a reply comment. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
               else
                 "is_pr: false\n"
               end) +
