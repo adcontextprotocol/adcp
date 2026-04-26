@@ -87,7 +87,9 @@ See [static/schemas/README.md](./static/schemas/README.md) for validation exampl
 
 ## Governance
 
-AdCP is a project of [AgenticAdvertising.Org](https://agenticadvertising.org), a pending 501(c)(6) nonprofit trade association incorporated in Delaware. The Foundation operates with four equally-weighted voting classes (brands, agencies, publishers, technology providers) and an open Working Group that develops AdCP.
+AdCP is a project of [AgenticAdvertising.Org](https://agenticadvertising.org), a pending 501(c)(6) nonprofit trade association incorporated in Delaware. The Foundation operates with four equally-weighted voting classes (brands, agencies, publishers, technology providers) and an open Working Group that develops AdCP. Reference sell-side implementation is maintained by the [Prebid](https://www.prebid.org/) community — spec governance (AAO) and reference-implementation development (Prebid) are intentionally separate organizations.
+
+All contributions are under [Apache 2.0](./LICENSE), which includes an express patent grant from contributors. Examples in docs and test vectors use fictional brands only — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 - [CHARTER.md](./CHARTER.md) — Foundation structure, voting classes, Board, specification lifecycle, and conduct rules
 - [IPR_POLICY.md](./IPR_POLICY.md) — Copyright, patent grants, trademark, and contribution terms

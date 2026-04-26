@@ -10,10 +10,11 @@ track: core
 # programmatic gates that fail the storyboard at runtime rather than
 # waiting on human review. `idempotency.conflict_no_payload_leak` catches
 # the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
-# catches credential echo on any step's response. Runners must
-# `import '@adcp/adcp/compliance/assertions'` (or the equivalent module
-# path in their consumer) before calling `runStoryboard` so these ids
-# resolve.
+# catches credential echo on any step's response. Both ship as default
+# assertions in `@adcp/client` 5.9+ — `import '@adcp/client/testing'`
+# auto-registers them; no additional module loading required. Consumers
+# who need stricter per-repo checks can re-register with their own spec
+# via `registerAssertion(spec, { override: true })` (adcp-client#752).
 invariants:
   - idempotency.conflict_no_payload_leak
   - context.no_secret_echo
@@ -42,6 +43,18 @@ narrative: |
      IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
   4. A request with a different key is treated as a new request, even if the payload
      is identical — the key is what makes retries safe, not payload equivalence.
+  5. Error responses (returned envelopes, thrown envelopes, and uncaught exceptions)
+     do not cache. The next request carrying the same key re-executes the handler.
+     This applies to every recovery class, including terminal — terminal states in
+     AdCP are mostly state-dependent (e.g., ACCOUNT_SUSPENDED flips after buyer
+     remediation) and cached error replay would mask legitimate recovery. Handler
+     authors must mutate state last: a handler that writes state then returns or
+     throws an error envelope will double-write on retry. See
+     security.mdx#idempotency rule 3 ("Only successful responses are cached"),
+     which this storyboard validates structurally via the reviewer check on
+     key_reuse_conflict. An end-to-end phase that drives a deterministic terminal
+     error and replays the key is deferred pending a generic force-error controller
+     verb (see adcontextprotocol/adcp#2760).
 
   Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
   Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
@@ -239,6 +252,15 @@ phases:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
+          # Both the initial call and the replay below use the SAME webhook URL
+          # so the canonical payload hash matches across the two calls. A
+          # different URL between the two requests would hash differently and
+          # trip IDEMPOTENCY_CONFLICT instead of exercising replay. The URL
+          # template resolves against the runner's ephemeral webhook receiver
+          # (webhook_receiver_runner contract); runners without a receiver
+          # grade `no_duplicate_webhooks_on_replay` as not_applicable.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
 
           context:
             correlation_id: "idempotency--create_media_buy_initial"
@@ -248,10 +270,17 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Agent returns a media_buy_id for the initial request"
-          - check: field_value
+          # Per `protocol-envelope.json`, fresh execution MAY omit
+          # `replayed` entirely; agents that do report it MUST NOT
+          # report `true` on a fresh call. `field_value_or_absent`
+          # (adcp-client#873, shipped in 5.16) asserts that tolerance:
+          # passes when absent OR present-and-matching. The replay
+          # step below asserts the positive side (`replayed: true`
+          # on replay) with plain `field_value`.
+          - check: field_value_or_absent
             path: "replayed"
             allowed_values: [false]
-            description: "Initial execution sets replayed: false (or omits the field)"
+            description: "If reported on fresh execution, replayed must be false"
 
           - check: field_present
             path: "context"
@@ -301,6 +330,11 @@ phases:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
+          # Byte-identical to the initial call above — same URL, same step id
+          # token — so the canonical payload hash matches and the request
+          # lands on the replay branch rather than IDEMPOTENCY_CONFLICT.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
 
           context:
             correlation_id: "idempotency--create_media_buy_replay"
@@ -350,9 +384,17 @@ phases:
           re-executes on replay emits a second set, catchable only by live
           observation.
         task: expect_webhook
-        triggered_by: create_media_buy_replay
-        filter:
-          operation_id: "{{prior_step.create_media_buy_initial.operation_id}}"
+        # `triggered_by` points at the initial call (not the replay) because the
+        # default filter resolves `step_id` + `operation_id` from `stepOperationIds`
+        # for that step — which is populated when the initial sample_request's
+        # `push_notification_config.url` expanded `{{runner.webhook_url:create_media_buy_initial}}`
+        # above. The execution-order wait still spans the replay window: this
+        # step runs after `create_media_buy_replay` in YAML order and `wait_all`
+        # drains the full `timeout_seconds` so any webhook re-fired by the
+        # replay is captured and counted against the cap below. A non-conformant
+        # seller that re-executes on replay would deliver a second webhook with
+        # a fresh idempotency_key and trip `duplicate_webhook_on_replay`.
+        triggered_by: create_media_buy_initial
         timeout_seconds: 30
         expect_max_deliveries_per_logical_event: 1
         requires_contract: webhook_receiver_runner
@@ -429,6 +471,7 @@ phases:
         reviewer_checks:
           - "Error body MUST NOT include the cached payload, the original request, or any fingerprint (hash, digest, field diff). Leaking cached state turns key-reuse into a read oracle for attackers who stole a key."
           - "Error body MAY include code + message only. No `field` json-pointer — even a pointer like `/packages/0/budget` reveals schema shape."
+          - "Reviewer MUST confirm the seller's documentation states that errored requests release the idempotency claim, or manually probe the behavior (force a deterministic terminal error, then retry with the same key and a valid payload — the seller MUST return a fresh success, not IDEMPOTENCY_CONFLICT and not the cached error). See security.mdx#idempotency rule 3."
 
   - id: fresh_key_new_resource
     title: "Different key creates a new resource"
@@ -481,6 +524,13 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Fresh key returns a media_buy_id"
+          # Fresh-key execution is a non-replay call — same tolerance as
+          # create_media_buy_initial applies: `replayed` MAY be omitted,
+          # but if present MUST NOT be `true`.
+          - check: field_value_or_absent
+            path: "replayed"
+            allowed_values: [false]
+            description: "If reported on fresh-key execution, replayed must be false"
 
           - check: field_present
             path: "context"

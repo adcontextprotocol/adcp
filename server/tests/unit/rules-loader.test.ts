@@ -20,7 +20,10 @@ describe('Rules Loader', () => {
     const rules = loadRules();
     const sections = rules.split('\n\n---\n\n');
 
-    expect(sections.length).toBe(5);
+    // Five hardcoded rule files + any injected sections (current-context,
+    // expert-panel) loaded from .agents/ and .claude/agents/. Only the
+    // minimum-five contract is load-bearing here.
+    expect(sections.length).toBeGreaterThanOrEqual(5);
   });
 
   it('should include key rules from each section', () => {
@@ -35,7 +38,6 @@ describe('Rules Loader', () => {
     expect(rules).toContain('## Partner Directory');
 
     // Knowledge
-    expect(rules).toContain('## AdCP Agent Types');
     expect(rules).toContain('## Prebid Expertise');
     expect(rules).toContain('## Trusted Match Protocol (TMP)');
 

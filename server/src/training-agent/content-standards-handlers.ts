@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, ContentStandardsState } from './types.js';
 import { getSession, sessionKeyFromArgs, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -50,6 +51,13 @@ export const CONTENT_STANDARDS_TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Filter by channel' },
         languages: { type: 'array', items: { type: 'string' }, description: 'Filter by language' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Filter by country (ISO 3166-1 alpha-2)' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100, description: 'Max standards per page (default 50, cap 100).' },
+            cursor: { type: 'string', description: 'Continuation token from a previous list_content_standards response.' },
+          },
+        },
       },
     },
   },
@@ -221,7 +229,12 @@ export async function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
+  const req = args as {
+    channels?: string[];
+    languages?: string[];
+    countries?: string[];
+    pagination?: { max_results?: number; cursor?: string };
+  };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let standards = [...session.contentStandards.values()];
@@ -244,8 +257,24 @@ export async function handleListContentStandards(
     );
   }
 
+  const totalMatching = standards.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeOffsetCursor('content_standards', req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageStandards = standards.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
   return {
-    standards: standards.map(toStandardsResponse),
+    standards: pageStandards.map(toStandardsResponse),
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeOffsetCursor('content_standards', pageEnd) }),
+    },
   };
 }
 
@@ -322,6 +351,48 @@ export async function handleCalibrateContent(
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
     return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+  }
+
+  // Sandbox heuristic: scan the artifact's text fields for must-rule keywords
+  // and mark the relevant feature fail. Real calibration runs policy
+  // classifiers; the training agent returns a deterministic verdict so
+  // storyboards can exercise both pass and fail paths without shipping a
+  // classifier. Keywords match the content_standards storyboard's fail
+  // artifacts (violent, gambling, alcohol).
+  const artifactText = JSON.stringify(req.artifact ?? {}).toLowerCase();
+  const violations: Array<{ keyword: string; rule: string }> = [];
+  const MUST_RULE_KEYWORDS: Array<{ keyword: string; rule: string }> = [
+    { keyword: 'violent', rule: 'No violent or controversial imagery (must)' },
+    { keyword: 'gambling', rule: 'No gambling-related content (must)' },
+    { keyword: 'alcohol', rule: 'No alcohol references in youth-facing inventory (must)' },
+    { keyword: 'stock photo', rule: 'Original photography required (must)' },
+    { keyword: 'without alt text', rule: 'Accessibility: alt text required on all images (must)' },
+  ];
+  for (const entry of MUST_RULE_KEYWORDS) {
+    if (artifactText.includes(entry.keyword)) violations.push(entry);
+  }
+
+  if (violations.length > 0) {
+    const first = violations[0];
+    return {
+      verdict: 'fail',
+      confidence: 0.92,
+      explanation: `Artifact violates policy: ${first.rule}.`,
+      features: [
+        {
+          feature_id: 'brand_safety',
+          status: 'failed',
+          explanation: `Detected "${first.keyword}" content; violates must-rule "${first.rule}".`,
+          remediation: 'Remove or replace the violating content and resubmit for calibration.',
+        },
+        {
+          feature_id: 'policy_compliance',
+          status: 'failed',
+          explanation: `Must-rule failure referencing ${first.rule}.`,
+          remediation: 'Align artifact with the declared content standards.',
+        },
+      ],
+    };
   }
 
   return {

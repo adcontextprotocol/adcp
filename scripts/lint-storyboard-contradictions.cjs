@@ -240,6 +240,7 @@ const FIXTURE_CATEGORY_PRIMARY_ID = {
   products: 'product_id',
   pricing_options: 'pricing_option_id',
   creatives: 'creative_id',
+  creative_formats: 'format_id',
   plans: 'plan_id',
   media_buys: 'media_buy_id',
 };
@@ -454,6 +455,7 @@ function classifyOutcome(step) {
       check === 'response_schema' ||
       check === 'field_present' ||
       check === 'field_value' ||
+      check === 'field_value_or_absent' ||
       check === 'http_status' ||
       check === 'http_status_in'
     );

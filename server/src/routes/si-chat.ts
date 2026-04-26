@@ -12,6 +12,7 @@ import { optionalAuth } from "../middleware/auth.js";
 import { siDb, type SiSession } from "../db/si-db.js";
 import { siAgentService } from "../addie/services/si-agent-service.js";
 import { query } from "../db/client.js";
+import { resolveBrandFromJson } from "../db/brand-db.js";
 import { sanitizeInput } from "../addie/security.js";
 
 const logger = createLogger("si-chat-routes");
@@ -53,19 +54,16 @@ async function getBrandProfile(memberProfileId: string): Promise<{
 
   if (result.rows.length === 0) return null;
   const row = result.rows[0];
-  const bj = row.brand_json as Record<string, unknown> | null;
-  const brands = bj?.brands as Array<Record<string, unknown>> | undefined;
-  const primaryBrand = brands?.[0];
-  const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-  const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+  const bj = (row.brand_json as Record<string, unknown> | null) ?? {};
+  const resolved = resolveBrandFromJson(row.slug, bj, false);
   return {
     id: row.id,
     display_name: row.display_name,
     slug: row.slug,
     tagline: row.tagline,
     description: row.description,
-    logo_url: (logos?.[0]?.url as string | undefined) ?? null,
-    brand_color: (colors?.primary as string | undefined) ?? null,
+    logo_url: resolved.logo_url ?? null,
+    brand_color: resolved.brand_color ?? null,
   };
 }
 

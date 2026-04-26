@@ -5,11 +5,17 @@
  * without external dependencies (API calls, database, etc.)
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
+
+vi.mock('../../server/src/services/pipes.js', () => ({
+  getGitHubAccessToken: vi.fn(),
+  getGitHubAuthorizeUrl: vi.fn(),
+}));
 
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
+import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../server/src/services/pipes.js';
 
 describe('MEMBER_TOOLS definitions', () => {
   it('exports an array of tools', () => {
@@ -274,6 +280,234 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('too long for a pre-filled URL');
       expect(result).toContain('create the issue manually');
+    });
+
+    it('accepts adcp-client as a valid repo', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        repo: 'adcp-client',
+      });
+
+      expect(result).toContain('github.com/adcontextprotocol/adcp-client/issues/new');
+    });
+
+    it('routes invented repo names to adcp with a subproject note in the body', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'Original body',
+        repo: 'creative-agent',
+      });
+
+      expect(result).toContain('github.com/adcontextprotocol/adcp/issues/new');
+      expect(result).not.toContain('github.com/adcontextprotocol/creative-agent');
+      expect(result).toContain('Subproject');
+      expect(result).toContain('creative-agent');
+      expect(result).toContain('Original body');
+    });
+  });
+
+  describe('create_github_issue handler', () => {
+    const loggedInContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_abc',
+        email: 'jane@example.com',
+        first_name: 'Jane',
+        last_name: 'Doe',
+      },
+      organization: { name: 'Acme Corp' },
+    } as unknown as MemberContext;
+
+    let fetchMock: ReturnType<typeof vi.fn>;
+    const getTokenMock = vi.mocked(getGitHubAccessToken);
+    const getAuthorizeUrlMock = vi.mocked(getGitHubAuthorizeUrl);
+
+    beforeEach(() => {
+      fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      getTokenMock.mockReset();
+      getAuthorizeUrlMock.mockReset();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('requires a logged-in user', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('logged in');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(getTokenMock).not.toHaveBeenCalled();
+    });
+
+    it("leads with the Connect offer when user hasn't connected GitHub", async () => {
+      getTokenMock.mockResolvedValue({ status: 'not_connected' });
+      getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/abc');
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(getTokenMock).toHaveBeenCalledWith('user_abc');
+      expect(getAuthorizeUrlMock).toHaveBeenCalledWith('user_abc', expect.stringContaining('/member-hub'));
+      expect(result).toContain('[Connect GitHub](https://workos.example/pipes/authorize/abc)');
+      expect(result).toContain('draft_github_issue');
+      // Lead line should be the offer, not the failure reason.
+      const firstLine = result.split('\n')[0];
+      expect(firstLine).toContain('Connect GitHub');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns Reconnect URL when connection needs reauthorization', async () => {
+      getTokenMock.mockResolvedValue({ status: 'needs_reauthorization', missingScopes: ['public_repo'] });
+      getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/xyz');
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('re-authorization');
+      expect(result).toContain('[Reconnect GitHub](https://workos.example/pipes/authorize/xyz)');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('gracefully degrades when Pipes getAccessToken throws', async () => {
+      getTokenMock.mockRejectedValue(new Error('workos api down'));
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('unavailable');
+      expect(result).toContain('draft_github_issue');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('gracefully degrades when Pipes authorize URL lookup fails', async () => {
+      getTokenMock.mockResolvedValue({ status: 'not_connected' });
+      getAuthorizeUrlMock.mockRejectedValue(new Error('workos unavailable'));
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('unavailable');
+      expect(result).toContain('draft_github_issue');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('creates an issue via the GitHub API using the Pipes user token', async () => {
+      getTokenMock.mockResolvedValue({ status: 'ok', accessToken: 'gho_pipes_token', scopes: ['public_repo'], missingScopes: [] });
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({ html_url: 'https://github.com/adcontextprotocol/adcp/issues/4242', number: 4242 }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'Bug report', body: 'Something broke.' });
+
+      expect(result).toContain('#4242');
+      expect(result).toContain('https://github.com/adcontextprotocol/adcp/issues/4242');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.github.com/repos/adcontextprotocol/adcp/issues');
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer gho_pipes_token');
+      const payload = JSON.parse(init.body as string) as { title: string; body: string; labels: string[] };
+      expect(payload.title).toBe('Bug report');
+      expect(payload.body).toBe('Something broke.');
+      expect(payload.body).not.toContain('Filed by Addie');
+      expect(payload.labels).toEqual(['community-reported']);
+    });
+
+    it('rejects unknown repos and defaults to adcp', async () => {
+      getTokenMock.mockResolvedValue({ status: 'ok', accessToken: 'gho_pipes_token', scopes: [], missingScopes: [] });
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({ html_url: 'https://github.com/adcontextprotocol/adcp/issues/1', number: 1 }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      await handler({ title: 'T', body: 'B', repo: 'adcp-client' });
+
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.github.com/repos/adcontextprotocol/adcp/issues');
+    });
+
+    it('retries without labels when GitHub rejects an unknown label', async () => {
+      getTokenMock.mockResolvedValue({ status: 'ok', accessToken: 'gho_pipes_token', scopes: [], missingScopes: [] });
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response('validation failed: label does not exist', { status: 422 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ html_url: 'https://github.com/adcontextprotocol/adcp/issues/77', number: 77 }),
+            { status: 201, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('#77');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const retryBody = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
+      expect(retryBody).not.toHaveProperty('labels');
+    });
+
+    it('returns a fallback message on non-ok responses', async () => {
+      getTokenMock.mockResolvedValue({ status: 'ok', accessToken: 'gho_pipes_token', scopes: [], missingScopes: [] });
+      fetchMock.mockResolvedValue(new Response('server error', { status: 500 }));
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('500');
+      expect(result).toContain('draft_github_issue');
+    });
+
+    it('returns a network-error message when fetch throws', async () => {
+      getTokenMock.mockResolvedValue({ status: 'ok', accessToken: 'gho_pipes_token', scopes: [], missingScopes: [] });
+      fetchMock.mockRejectedValue(new Error('connection refused'));
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('network error');
+      expect(result).toContain('draft_github_issue');
     });
   });
 

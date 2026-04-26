@@ -1,11 +1,15 @@
 /**
  * Addie Billing Tools
  *
- * Tools for Addie to help users with membership billing:
- * - Find appropriate membership products based on company type and size
- * - Generate payment links
- * - Send invoices
- * - Access Stripe Customer Portal (receipts, invoices, payment methods)
+ * Tools for the authenticated member to act on their own organization's
+ * billing. All identity (email, user id, org id, billing address) is sourced
+ * from the signed-in session and the org row — these tools do not accept
+ * caller-supplied identity for any field that touches a Stripe write.
+ *
+ * Admin-initiated billing for prospects (people who are not yet signed in)
+ * lives in `send_payment_request` (admin-tools.ts), and is invite-only:
+ * the recipient signs in, accepts the agreement, and the invoice/checkout
+ * is then issued in their authenticated session.
  */
 
 import { createLogger } from '../../logger.js';
@@ -54,21 +58,17 @@ You should ask about their company type and approximate revenue to find the righ
   },
   {
     name: 'create_payment_link',
-    description: `Create a Stripe checkout payment link for a membership product.
-Use this after finding the right product to give the user a direct link to pay.
-Returns a URL the user can click to complete payment.
-The user must have an account (signed up at agenticadvertising.org) before a payment link can be created.
-If the user doesn't have an account, tell them to sign up first.`,
+    description: `Create a Stripe checkout payment link for the authenticated member's own organization.
+The link is issued to the signed-in member only — the customer email and identity are taken from the
+authenticated session, never from caller-supplied input. The member must be signed in at
+agenticadvertising.org and have a workspace; if not, refuse and direct them to sign up first.
+This tool cannot generate payment links on behalf of other people or organizations.`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
-        },
-        customer_email: {
-          type: 'string',
-          description: 'Customer email address (optional fallback — the authenticated user email is preferred and used automatically)',
         },
       },
       required: ['lookup_key'],
@@ -76,41 +76,16 @@ If the user doesn't have an account, tell them to sign up first.`,
   },
   {
     name: 'send_invoice',
-    description: `Preview an invoice for a membership product so the customer can confirm before it is sent.
-Use this when the customer needs to pay by invoice/PO instead of credit card.
-This does NOT send the invoice — it returns the amount and billing email for confirmation.
-After calling this, confirm the details with the customer, then call confirm_send_invoice with the same billing info to send it.`,
+    description: `Preview an invoice for the authenticated member's own organization so they can
+confirm the amount and billing email before it is sent. The contact email and company are taken from
+the signed-in session, never from caller-supplied input. After calling this and the member confirms,
+call confirm_send_invoice to send.`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
-        },
-        company_name: {
-          type: 'string',
-          description: 'Company name for the invoice',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Contact person name',
-        },
-        contact_email: {
-          type: 'string',
-          description: 'Contact email address',
-        },
-        billing_address: {
-          type: 'object',
-          description: 'Billing address',
-          properties: {
-            line1: { type: 'string', description: 'Street address line 1' },
-            line2: { type: 'string', description: 'Street address line 2 (optional)' },
-            city: { type: 'string', description: 'City' },
-            state: { type: 'string', description: 'State/Province' },
-            postal_code: { type: 'string', description: 'Postal/ZIP code' },
-            country: { type: 'string', description: 'Country code (e.g., US)' },
-          },
-          required: ['line1', 'city', 'state', 'postal_code', 'country'],
         },
         coupon_id: {
           type: 'string',
@@ -121,54 +96,22 @@ After calling this, confirm the details with the customer, then call confirm_sen
           enum: [30, 45, 60, 90],
           description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
         },
-        invoice_date: {
-          type: 'string',
-          description: 'Invoice date as YYYY-MM-DD for backdating. Must be in the past. Controls the date shown on the invoice PDF.',
-        },
-        due_date: {
-          type: 'string',
-          description: 'Explicit due date as YYYY-MM-DD. Overrides the date calculated from payment_terms.',
-        },
       },
-      required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
+      required: ['lookup_key'],
     },
   },
   {
     name: 'confirm_send_invoice',
-    description: `Send an invoice after the customer has confirmed the billing details shown by send_invoice.
-Use this only after the customer explicitly confirms the email address and amount are correct.
-Pass the same billing information as send_invoice.`,
+    description: `Send an invoice for the authenticated member's own organization after they have
+confirmed the details shown by send_invoice. The contact email, company, and billing address come
+from the signed-in session — they cannot be overridden. The org must already have a billing address
+on file (set via the dashboard or invite-acceptance flow).`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
-        },
-        company_name: {
-          type: 'string',
-          description: 'Company name for the invoice',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Contact person name',
-        },
-        contact_email: {
-          type: 'string',
-          description: 'Contact email address confirmed by the customer',
-        },
-        billing_address: {
-          type: 'object',
-          description: 'Billing address',
-          properties: {
-            line1: { type: 'string', description: 'Street address line 1' },
-            line2: { type: 'string', description: 'Street address line 2 (optional)' },
-            city: { type: 'string', description: 'City' },
-            state: { type: 'string', description: 'State/Province' },
-            postal_code: { type: 'string', description: 'Postal/ZIP code' },
-            country: { type: 'string', description: 'Country code (e.g., US)' },
-          },
-          required: ['line1', 'city', 'state', 'postal_code', 'country'],
         },
         coupon_id: {
           type: 'string',
@@ -179,16 +122,8 @@ Pass the same billing information as send_invoice.`,
           enum: [30, 45, 60, 90],
           description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
         },
-        invoice_date: {
-          type: 'string',
-          description: 'Invoice date as YYYY-MM-DD for backdating. Must be in the past. Controls the date shown on the invoice PDF.',
-        },
-        due_date: {
-          type: 'string',
-          description: 'Explicit due date as YYYY-MM-DD. Overrides the date calculated from payment_terms.',
-        },
       },
-      required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
+      required: ['lookup_key'],
     },
   },
   {
@@ -300,32 +235,32 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
   });
 
-  // Create payment link
+  // Create payment link — issued to the authenticated member's org only.
+  // Email and user identity come from memberContext, never from caller input,
+  // so an LLM-supplied email cannot become the Stripe customer.
   handlers.set('create_payment_link', async (input) => {
     const lookupKey = input.lookup_key as string;
-    const customerEmail = input.customer_email as string | undefined;
 
-    // Require org context to ensure the subscription gets linked
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
+
+    if (!workosUserId || !memberEmail) {
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot create a payment link without a signed-in account. Ask the user to sign in at https://agenticadvertising.org first, then try again.',
+      });
+    }
     if (!orgId) {
-      // Distinguish "no account at all" from "account exists but no workspace"
-      const hasAccount = !!memberContext?.workos_user?.workos_user_id;
-      const error = hasAccount
-        ? 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated. Please escalate this if the user needs help.'
-        : 'Cannot create a payment link without an account. Please ask the user to sign up at https://agenticadvertising.org first, then try again.';
-      return JSON.stringify({ success: false, error });
+      return JSON.stringify({
+        success: false,
+        error: 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated.',
+      });
     }
 
-    // Use actual member email from context, falling back to AI-provided email.
-    // This prevents hallucinated emails (e.g., user@example.com) from being used.
-    const effectiveEmail = memberContext?.workos_user?.email
-      || memberContext?.slack_user?.email
-      || customerEmail;
-
-    logger.info({ lookupKey, orgId, hasEmail: !!effectiveEmail }, 'Addie: Creating payment link');
+    logger.info({ lookupKey, orgId, workosUserId }, 'Addie: Creating payment link for signed-in member');
 
     try {
-      // First get the price ID from the lookup key
       const priceId = await getPriceByLookupKey(lookupKey);
       if (!priceId) {
         return JSON.stringify({
@@ -334,31 +269,26 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         });
       }
 
-      // Look up org to get Stripe customer ID and discount info
       const org = await orgDb.getOrganization(orgId);
 
       // Ensure a Stripe customer exists with org metadata before creating the
-      // checkout session so that subscription webhooks can link the payment.
-      let customerId: string | undefined;
-      if (effectiveEmail) {
-        customerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
-          createStripeCustomer({
-            email: effectiveEmail,
-            name: org?.name || 'Unknown',
-            metadata: { workos_organization_id: orgId },
-          })
-        ) || undefined;
-      } else {
-        customerId = org?.stripe_customer_id || undefined;
-      }
+      // checkout session so the subscription webhook can link back to the org.
+      const customerId = (await orgDb.getOrCreateStripeCustomer(orgId, () =>
+        createStripeCustomer({
+          email: memberEmail,
+          name: org?.name || 'Unknown',
+          metadata: { workos_organization_id: orgId, workos_user_id: workosUserId },
+        })
+      )) || undefined;
 
       const session = await createCheckoutSession({
         priceId,
-        customerId: customerId || undefined,
-        customerEmail: customerId ? undefined : effectiveEmail,
+        customerId,
+        customerEmail: customerId ? undefined : memberEmail,
         successUrl: 'https://agenticadvertising.org/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}',
         cancelUrl: 'https://agenticadvertising.org/dashboard?checkout=cancelled',
         workosOrganizationId: orgId,
+        workosUserId,
         isPersonalWorkspace: org?.is_personal || false,
         couponId: org?.stripe_coupon_id || undefined,
         promotionCode: !org?.stripe_coupon_id ? (org?.stripe_promotion_code || undefined) : undefined,
@@ -374,7 +304,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: true,
         payment_url: session.url,
-        message: 'Payment link created successfully. Share this URL with the customer.',
+        message: 'Payment link created. Share this URL with the signed-in member to complete checkout.',
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error creating payment link');
@@ -386,49 +316,50 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
   });
 
-  // Preview invoice details for customer confirmation (no Stripe mutations)
+  // Preview invoice for the authenticated member's own org (no Stripe mutations).
+  // Contact email and company come from memberContext + the org row, never from
+  // caller input, so an LLM-supplied email cannot become the invoice recipient.
   handlers.set('send_invoice', async (input) => {
     const lookupKey = input.lookup_key as string;
-    const contactEmail = input.contact_email as string;
     const explicitCouponId = input.coupon_id as string | undefined;
-    const companyName = input.company_name as string;
     const paymentTerms = input.payment_terms as number | undefined;
-    const invoiceDate = input.invoice_date as string | undefined;
-    const dueDate = input.due_date as string | undefined;
 
-    // Use authenticated org context directly; fall back to name search for Slack-only users
-    let effectiveCouponId = explicitCouponId;
-    let orgDiscount: string | undefined;
-
-    try {
-      const orgId = memberContext?.organization?.workos_organization_id;
-      const org = orgId
-        ? await orgDb.getOrganization(orgId)
-        : (await orgDb.searchOrganizations({ query: companyName, limit: 1 })
-            .then(results => results.length > 0 ? orgDb.getOrganization(results[0].workos_organization_id) : null));
-
-      if (org && !explicitCouponId && org.stripe_coupon_id) {
-        effectiveCouponId = org.stripe_coupon_id;
-        orgDiscount = org.discount_percent
-          ? `${org.discount_percent}% off`
-          : org.discount_amount_cents
-            ? `$${org.discount_amount_cents / 100} off`
-            : undefined;
-        logger.info(
-          { orgId: org.workos_organization_id, couponId: effectiveCouponId, discount: orgDiscount },
-          'Addie: Using org stored discount for invoice preview'
-        );
-      }
-    } catch (orgLookupError) {
-      logger.debug({ error: orgLookupError }, 'Could not look up org discount for invoice preview');
+    const memberEmail = memberContext?.workos_user?.email;
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (!memberEmail || !orgId) {
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
     }
 
-    logger.info({ lookupKey, contactEmail, hasCoupon: !!effectiveCouponId }, 'Addie: Previewing invoice');
+    let effectiveCouponId = explicitCouponId;
+    let orgDiscount: string | undefined;
+    let companyName: string | undefined;
+
+    try {
+      const org = await orgDb.getOrganization(orgId);
+      if (org) {
+        companyName = org.name;
+        if (!explicitCouponId && org.stripe_coupon_id) {
+          effectiveCouponId = org.stripe_coupon_id;
+          orgDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : org.discount_amount_cents
+              ? `$${org.discount_amount_cents / 100} off`
+              : undefined;
+        }
+      }
+    } catch (orgLookupError) {
+      logger.debug({ error: orgLookupError }, 'Could not look up org for invoice preview');
+    }
+
+    logger.info({ lookupKey, orgId, hasCoupon: !!effectiveCouponId }, 'Addie: Previewing invoice for signed-in member');
 
     try {
       const preview = await validateInvoiceDetails({
         lookupKey,
-        contactEmail,
+        contactEmail: memberEmail,
         couponId: effectiveCouponId,
       });
 
@@ -447,14 +378,13 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: true,
         amount,
-        contact_email: contactEmail,
+        contact_email: memberEmail,
+        company_name: companyName,
         product_name: preview.productName,
         discount_applied: preview.discountApplied,
         discount_description: orgDiscount,
         discount_warning: preview.discountWarning,
         payment_terms: paymentTerms ?? 30,
-        invoice_date: invoiceDate ?? 'today',
-        due_date: dueDate ?? 'calculated from payment terms',
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error previewing invoice');
@@ -465,66 +395,75 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
   });
 
-  // Create and send invoice after customer confirms the details
+  // Send invoice after the authenticated member confirms.
+  // Contact email, company, and billing address all come from the signed-in
+  // session and the org row — caller input cannot redirect the invoice.
   handlers.set('confirm_send_invoice', async (input) => {
     const lookupKey = input.lookup_key as string;
-    const companyName = input.company_name as string;
-    const contactName = input.contact_name as string;
-    const contactEmail = input.contact_email as string;
-    const billingAddress = input.billing_address as {
-      line1: string;
-      line2?: string;
-      city: string;
-      state: string;
-      postal_code: string;
-      country: string;
-    };
     const explicitCouponId = input.coupon_id as string | undefined;
     const paymentTerms = input.payment_terms as number | undefined;
-    const invoiceDate = input.invoice_date as string | undefined;
-    const dueDate = input.due_date as string | undefined;
 
-    // Same org coupon lookup as send_invoice
-    let effectiveCouponId = explicitCouponId;
-    let orgDiscount: string | undefined;
-    let workosOrgId: string | undefined;
-
-    try {
-      const orgId = memberContext?.organization?.workos_organization_id;
-      const org = orgId
-        ? await orgDb.getOrganization(orgId)
-        : (await orgDb.searchOrganizations({ query: companyName, limit: 1 })
-            .then(results => results.length > 0 ? orgDb.getOrganization(results[0].workos_organization_id) : null));
-
-      if (org) {
-        workosOrgId = org.workos_organization_id;
-        if (!explicitCouponId && org.stripe_coupon_id) {
-          effectiveCouponId = org.stripe_coupon_id;
-          orgDiscount = org.discount_percent
-            ? `${org.discount_percent}% off`
-            : org.discount_amount_cents
-              ? `$${org.discount_amount_cents / 100} off`
-              : undefined;
-        }
-      }
-    } catch (orgLookupError) {
-      logger.debug({ error: orgLookupError }, 'Could not look up org discount for invoice send');
+    const memberEmail = memberContext?.workos_user?.email;
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (!memberEmail || !orgId) {
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
     }
 
-    logger.info({ lookupKey, contactEmail, companyName, hasCoupon: !!effectiveCouponId }, 'Addie: Sending confirmed invoice');
+    const memberFirstName = memberContext?.workos_user?.first_name;
+    const memberLastName = memberContext?.workos_user?.last_name;
+    const contactName =
+      [memberFirstName, memberLastName].filter(Boolean).join(' ') || memberEmail;
+
+    let org: Awaited<ReturnType<OrganizationDatabase['getOrganization']>> | null = null;
+    try {
+      org = await orgDb.getOrganization(orgId);
+    } catch (orgLookupError) {
+      logger.error({ error: orgLookupError, orgId }, 'Failed to load org for invoice send');
+    }
+
+    if (!org) {
+      return JSON.stringify({
+        success: false,
+        error: 'Could not load your organization. Please contact finance@agenticadvertising.org.',
+      });
+    }
+
+    if (!org.billing_address || !org.billing_address.line1) {
+      return JSON.stringify({
+        success: false,
+        error: 'Your organization does not have a billing address on file. Please add one in the dashboard at https://agenticadvertising.org/dashboard/membership before requesting an invoice.',
+      });
+    }
+
+    let effectiveCouponId = explicitCouponId;
+    let orgDiscount: string | undefined;
+    if (!explicitCouponId && org.stripe_coupon_id) {
+      effectiveCouponId = org.stripe_coupon_id;
+      orgDiscount = org.discount_percent
+        ? `${org.discount_percent}% off`
+        : org.discount_amount_cents
+          ? `$${org.discount_amount_cents / 100} off`
+          : undefined;
+    }
+
+    logger.info(
+      { lookupKey, orgId, contactEmail: memberEmail, hasCoupon: !!effectiveCouponId },
+      'Addie: Sending invoice for signed-in member',
+    );
 
     try {
       const result = await createAndSendInvoice({
         lookupKey,
-        companyName,
+        companyName: org.name,
         contactName,
-        contactEmail,
-        billingAddress,
+        contactEmail: memberEmail,
+        billingAddress: org.billing_address,
         couponId: effectiveCouponId,
-        workosOrganizationId: workosOrgId,
+        workosOrganizationId: orgId,
         daysUntilDue: paymentTerms,
-        invoiceDate,
-        dueDate,
       });
 
       if (!result) {

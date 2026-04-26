@@ -1,3 +1,6 @@
+// lint-allow-test-imports-file: TODO(#3118-followup) — this suite uses
+// dynamic-import-after-vi.mock to grab fresh mock refs per test. Convert to
+// the vi.hoisted pattern so it can drop the resetModules + dynamic imports.
 import { describe, test, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
@@ -190,19 +193,16 @@ describe('billing-tools', () => {
   });
 
   describe('create_payment_link', () => {
-    test('returns error when no account context is provided', async () => {
+    test('returns error when no signed-in member context', async () => {
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({
-        lookup_key: 'aao_membership_corporate_5m',
-        customer_email: 'test@example.com',
-      });
+      const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('Cannot create a payment link without an account');
+      expect(parsed.error).toMatch(/sign(?:ed)? in/i);
     });
 
     test('returns workspace-specific error when user has account but no organization', async () => {
@@ -222,10 +222,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(contextWithUserNoOrg);
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({
-        lookup_key: 'aao_membership_individual',
-        customer_email: 'james@example.com',
-      });
+      const result = await createLink({ lookup_key: 'aao_membership_individual' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -233,7 +230,7 @@ describe('billing-tools', () => {
       expect(parsed.error).toContain('complete onboarding');
     });
 
-    test('creates payment link using memberContext email by default', async () => {
+    test('creates payment link using memberContext email and stamps workosUserId', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as Mock).mockResolvedValue({
@@ -244,94 +241,61 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
-      // Even when AI passes a different email, the real user email from context is used
+      // The tool schema no longer accepts customer_email; even if a caller sneaks
+      // an extra property in, the handler must ignore it and use only the
+      // memberContext email + user_id.
       const result = await createLink({
         lookup_key: 'aao_membership_corporate_5m',
         customer_email: 'hallucinated@example.com',
-      });
+      } as unknown as Record<string, unknown>);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
       expect(parsed.payment_url).toBe('https://checkout.stripe.com/c/pay/cs_test_xxx');
-      expect(parsed.message).toContain('Payment link created successfully');
 
       expect(getPriceByLookupKey).toHaveBeenCalledWith('aao_membership_corporate_5m');
-      // Should pre-create a Stripe customer with the memberContext email
+      // Stripe customer is created with memberContext email + user_id metadata,
+      // never the caller-supplied "hallucinated@example.com".
       expect(createStripeCustomer).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'irina@solutionsmarketingconsulting.com',
-          metadata: { workos_organization_id: 'org_test_123' },
+          metadata: expect.objectContaining({
+            workos_organization_id: 'org_test_123',
+            workos_user_id: 'user_test_123',
+          }),
         })
       );
+      // workosUserId is also passed through to checkout-session creation so the
+      // subscription-created webhook can attribute deterministically via
+      // resolveWorkosUserForSubscription.
       expect(createCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({
           priceId: 'price_abc123',
           customerId: 'cus_new_123',
           workosOrganizationId: 'org_test_123',
+          workosUserId: 'user_test_123',
           isPersonalWorkspace: false,
         })
       );
     });
 
-    test('falls back to AI-provided email when memberContext has no email', async () => {
+    test('refuses when memberContext has org but no workos_user email', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
       });
 
-      // Member context without email info
-      const contextWithoutEmail: MemberContext = {
-        is_mapped: true,
-        is_member: true,
-        slack_linked: false,
-        organization: {
-          workos_organization_id: 'org_test_123',
-          name: 'Test Corp',
-          subscription_status: 'active',
-          is_personal: false,
-        },
-      };
-
-      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers(contextWithoutEmail);
-      const createLink = handlers.get('create_payment_link')!;
-
-      await createLink({
-        lookup_key: 'aao_membership_corporate_5m',
-        customer_email: 'user@company.com',
-      });
-
-      // Should pre-create a Stripe customer with the AI-provided email
-      expect(createStripeCustomer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: 'user@company.com',
-          metadata: { workos_organization_id: 'org_test_123' },
-        })
-      );
-      expect(createCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          customerId: 'cus_new_123',
-        })
-      );
-    });
-
-    test('falls back to AI-provided email when slack_user.email is null', async () => {
-      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as Mock).mockResolvedValue('price_abc123');
-      (createCheckoutSession as Mock).mockResolvedValue({
-        url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
-      });
-
-      // Member context with slack_user but null email
-      const contextWithNullEmail: MemberContext = {
-        is_mapped: true,
-        is_member: true,
+      // Slack-only context (no WorkOS user) — must refuse rather than fall
+      // back to a Slack email or caller input.
+      const slackOnlyContext: MemberContext = {
+        is_mapped: false,
+        is_member: false,
         slack_linked: true,
         slack_user: {
           slack_user_id: 'U123',
-          display_name: 'Irina',
-          email: null,
+          display_name: 'Slack User',
+          email: 'someone@slack.example.com',
         },
         organization: {
           workos_organization_id: 'org_test_123',
@@ -342,26 +306,16 @@ describe('billing-tools', () => {
       };
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers(contextWithNullEmail);
+      const handlers = createBillingToolHandlers(slackOnlyContext);
       const createLink = handlers.get('create_payment_link')!;
 
-      await createLink({
-        lookup_key: 'aao_membership_corporate_5m',
-        customer_email: 'user@company.com',
-      });
+      const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
+      const parsed = JSON.parse(result);
 
-      // Should pre-create a Stripe customer with the AI-provided email
-      expect(createStripeCustomer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: 'user@company.com',
-          metadata: { workos_organization_id: 'org_test_123' },
-        })
-      );
-      expect(createCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          customerId: 'cus_new_123',
-        })
-      );
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toMatch(/sign(?:ed)? in/i);
+      expect(createStripeCustomer).not.toHaveBeenCalled();
+      expect(createCheckoutSession).not.toHaveBeenCalled();
     });
 
     test('returns error when price not found', async () => {
@@ -399,7 +353,7 @@ describe('billing-tools', () => {
   });
 
   describe('send_invoice', () => {
-    test('returns invoice preview without creating Stripe resources', async () => {
+    test('returns invoice preview using memberContext identity (no caller-supplied fields)', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockResolvedValue({
         amountDue: 150000,
@@ -407,61 +361,62 @@ describe('billing-tools', () => {
         productName: 'Corporate Membership',
         discountApplied: false,
       });
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        stripe_coupon_id: null,
+        discount_percent: null,
+        discount_amount_cents: null,
+      });
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({
-        lookup_key: 'aao_membership_corporate_5m',
-        company_name: 'Ebiquity Plc',
-        contact_name: 'Ruben Schreurs',
-        contact_email: 'ruben.schreurs@ebiquity.com',
-        billing_address: {
-          line1: '123 Test Street',
-          city: 'London',
-          state: 'Greater London',
-          postal_code: 'EC1A 1BB',
-          country: 'GB',
-        },
-      });
+      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.contact_email).toBe('ruben.schreurs@ebiquity.com');
+      // Email comes from memberContext, not caller input
+      expect(parsed.contact_email).toBe('irina@solutionsmarketingconsulting.com');
+      expect(parsed.company_name).toBe('Test Corp');
       expect(parsed.amount).toContain('1,500');
       expect(parsed.product_name).toBe('Corporate Membership');
-      // No invoice_id — no Stripe resources created
       expect(parsed.invoice_id).toBeUndefined();
 
       expect(validateInvoiceDetails).toHaveBeenCalledWith({
         lookupKey: 'aao_membership_corporate_5m',
-        contactEmail: 'ruben.schreurs@ebiquity.com',
+        contactEmail: 'irina@solutionsmarketingconsulting.com',
         couponId: undefined,
       });
+    });
+
+    test('refuses without a signed-in member context', async () => {
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers();
+      const sendInvoice = handlers.get('send_invoice')!;
+
+      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toMatch(/sign(?:ed)? in/i);
     });
 
     test('returns error when product not found', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockResolvedValue(null);
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        stripe_coupon_id: null,
+      });
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({
-        lookup_key: 'invalid_key',
-        company_name: 'Test Corp',
-        contact_name: 'Test User',
-        contact_email: 'test@example.com',
-        billing_address: {
-          line1: '123 Test Street',
-          city: 'New York',
-          state: 'NY',
-          postal_code: '10001',
-          country: 'US',
-        },
-      });
+      const result = await sendInvoice({ lookup_key: 'invalid_key' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -471,24 +426,17 @@ describe('billing-tools', () => {
     test('handles exceptions gracefully', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
       (validateInvoiceDetails as Mock).mockRejectedValue(new Error('Stripe API error'));
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        stripe_coupon_id: null,
+      });
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({
-        lookup_key: 'aao_membership_corporate_5m',
-        company_name: 'Test Corp',
-        contact_name: 'Test User',
-        contact_email: 'test@example.com',
-        billing_address: {
-          line1: '123 Test Street',
-          city: 'New York',
-          state: 'NY',
-          postal_code: '10001',
-          country: 'US',
-        },
-      });
+      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -497,11 +445,12 @@ describe('billing-tools', () => {
   });
 
   describe('confirm_send_invoice', () => {
-    const billingInput = {
-      lookup_key: 'aao_membership_corporate_5m',
-      company_name: 'Ebiquity Plc',
-      contact_name: 'Ruben Schreurs',
-      contact_email: 'ruben.schreurs@ebiquity.com',
+    const orgWithBillingAddress = {
+      workos_organization_id: 'org_test_123',
+      name: 'Test Corp',
+      stripe_coupon_id: null,
+      discount_percent: null,
+      discount_amount_cents: null,
       billing_address: {
         line1: '123 Test Street',
         city: 'London',
@@ -511,7 +460,7 @@ describe('billing-tools', () => {
       },
     };
 
-    test('creates and sends invoice after confirmation', async () => {
+    test('creates and sends invoice using memberContext identity + org billing address', async () => {
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
       (createAndSendInvoice as Mock).mockResolvedValue({
         invoiceId: 'in_abc123',
@@ -519,32 +468,68 @@ describe('billing-tools', () => {
         subscriptionId: 'sub_xyz789',
         discountApplied: false,
       });
+      mockGetOrganization.mockResolvedValue(orgWithBillingAddress);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend(billingInput);
+      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
       expect(parsed.invoice_id).toBe('in_abc123');
-      expect(parsed.invoice_url).toBe('https://invoice.stripe.com/i/acct_xxx/test_xxx');
+      // Identity comes only from memberContext + org row, never from caller input
       expect(createAndSendInvoice).toHaveBeenCalledWith(expect.objectContaining({
         lookupKey: 'aao_membership_corporate_5m',
-        contactEmail: 'ruben.schreurs@ebiquity.com',
+        contactEmail: 'irina@solutionsmarketingconsulting.com',
+        companyName: 'Test Corp',
+        billingAddress: orgWithBillingAddress.billing_address,
+        workosOrganizationId: 'org_test_123',
       }));
+    });
+
+    test('refuses when org has no billing address on file', async () => {
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      mockGetOrganization.mockResolvedValue({
+        ...orgWithBillingAddress,
+        billing_address: null,
+      });
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(mockMemberContext);
+      const confirmSend = handlers.get('confirm_send_invoice')!;
+
+      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toMatch(/billing address/i);
+      expect(createAndSendInvoice).not.toHaveBeenCalled();
+    });
+
+    test('refuses without a signed-in member context', async () => {
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers();
+      const confirmSend = handlers.get('confirm_send_invoice')!;
+
+      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toMatch(/sign(?:ed)? in/i);
     });
 
     test('returns error when invoice send fails', async () => {
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
       (createAndSendInvoice as Mock).mockResolvedValue(null);
+      mockGetOrganization.mockResolvedValue(orgWithBillingAddress);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend(billingInput);
+      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);

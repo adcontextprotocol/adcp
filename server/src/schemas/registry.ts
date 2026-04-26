@@ -22,6 +22,41 @@ export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
 
+/**
+ * Extended error shape for endpoints whose parser can tag rejections with
+ * a stable `code` + `field` pointer (see `parseOAuthClientCredentialsInput`).
+ * Consumers map codes to localized prose and highlight the offending field.
+ * Generic 500s / non-parser 400s still use `ErrorSchema`.
+ */
+export const CredentialSaveValidationErrorSchema = z
+  .object({
+    error: z.string(),
+    code: z
+      .enum([
+        "invalid_blob_shape",
+        "missing_field",
+        "invalid_field_type",
+        "field_too_long",
+        "invalid_url",
+        "invalid_env_reference",
+        "invalid_auth_method_value",
+      ])
+      .openapi({ description: "Stable rejection tag. UI maps this to operator-friendly prose." }),
+    field: z
+      .enum([
+        "oauth_client_credentials",
+        "token_endpoint",
+        "client_id",
+        "client_secret",
+        "scope",
+        "resource",
+        "audience",
+        "auth_method",
+      ])
+      .openapi({ description: "Field the UI should scroll to + highlight." }),
+  })
+  .openapi("CredentialSaveValidationError");
+
 export const LocalizedNameSchema = z
   .record(z.string(), z.string())
   .openapi("LocalizedName");
@@ -233,6 +268,7 @@ export const AgentComplianceDetailSchema = z
     agent_url: z.string(),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
+    compliance_opt_out: z.boolean().optional(),
     tracks: z.record(z.string(), z.string()).optional(),
     streak_days: z.number().int().optional(),
     last_checked_at: z.string().nullable().optional(),
@@ -533,10 +569,11 @@ export const AgentAuthStatusSchema = z
   .object({
     has_auth: z.boolean(),
     agent_context_id: z.string().nullable(),
-    auth_type: z.enum(["bearer", "basic", "oauth"]).nullable(),
+    auth_type: z.enum(["bearer", "basic", "oauth", "oauth_client_credentials"]).nullable(),
     has_oauth_token: z.boolean(),
     has_valid_oauth: z.boolean(),
     oauth_token_expires_at: z.string().nullable(),
+    has_oauth_client_credentials: z.boolean(),
   })
   .openapi("AgentAuthStatus");
 

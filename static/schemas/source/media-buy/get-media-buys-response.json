@@ -98,17 +98,7 @@
             "type": "array",
             "description": "Actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now.",
             "items": {
-              "type": "string",
-              "enum": [
-                "pause",
-                "resume",
-                "cancel",
-                "update_budget",
-                "update_dates",
-                "update_packages",
-                "add_packages",
-                "sync_creatives"
-              ]
+              "$ref": "/schemas/enums/media-buy-valid-action.json"
             }
           },
           "history": {

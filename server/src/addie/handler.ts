@@ -7,6 +7,7 @@
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { buildSlackCostScope } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -75,6 +76,14 @@ import {
   PROPERTY_TOOLS,
   createPropertyToolHandlers,
 } from './mcp/property-tools.js';
+import {
+  GOOGLE_DOCS_TOOLS,
+  createGoogleDocsToolHandlers,
+} from './mcp/google-docs.js';
+import {
+  ILLUSTRATION_TOOLS,
+  createIllustrationToolHandlers,
+} from './mcp/illustration-tools.js';
 import {
   COMMITTEE_LEADER_TOOLS,
   createCommitteeLeaderToolHandlers,
@@ -211,6 +220,21 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
+  // Register Google Docs tools — mirror bolt-app so web Addie can call
+  // read_google_doc too. `createGoogleDocsToolHandlers` returns null
+  // when GOOGLE_* env vars are missing, so dev environments without
+  // Google credentials simply skip registration (matches bolt-app).
+  const googleDocsHandlers = createGoogleDocsToolHandlers();
+  if (googleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = googleDocsHandlers[tool.name];
+      if (handler) {
+        claudeClient.registerTool(tool, handler);
+      }
+    }
+    logger.info('Addie (web): Google Docs tools registered');
+  }
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie: Ready');
 }
@@ -339,6 +363,30 @@ async function createUserScopedTools(
   const adcpHandlers = createAdcpToolHandlers(memberContext);
   allTools.push(...ADCP_TOOLS);
   for (const [name, handler] of adcpHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Re-register Google Docs tools with user context so per-user rate
+  // limits (see tool-rate-limiter.ts) apply to web chat / slack DM
+  // sessions. The boot-time registration in initializeAddie remains as
+  // a fallback for non-user-scoped callers, but this per-request copy
+  // shadows it whenever we have a real user (requestTools.handlers
+  // beats this.toolHandlers in claude-client allHandlers merge).
+  const userIdForRateLimit = memberContext?.workos_user?.workos_user_id ?? null;
+  const scopedGoogleDocsHandlers = createGoogleDocsToolHandlers(userIdForRateLimit);
+  if (scopedGoogleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = scopedGoogleDocsHandlers[tool.name];
+      if (handler) allHandlers.set(tool.name, handler);
+    }
+  }
+
+  // Register illustration tools. These check their own permissions
+  // (must be author of the perspective) and carry a monthly per-user
+  // quota in addition to the tool-level rate limit — see #2783.
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
     allHandlers.set(name, handler);
   }
 
@@ -549,8 +597,13 @@ export async function handleAssistantMessage(
     // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {
@@ -716,8 +769,13 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // Create user-scoped tools (these can only operate on behalf of this user)
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {

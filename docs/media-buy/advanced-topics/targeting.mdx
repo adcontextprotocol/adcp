@@ -239,7 +239,7 @@ Use for **legal compliance** requirements:
 }
 ```
 
-**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/latest/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
+**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/v3/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
 - `facial_age_estimation` - AI-based age estimation (Yoti, etc.)
 - `id_document` - Government ID scan
 - `digital_id` - Verified digital identity credentials
@@ -260,7 +260,7 @@ Use for **technical requirements**:
 }
 ```
 
-**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/latest/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
+**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v3/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
 - Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
 - CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
 - Other: `unknown`
@@ -287,7 +287,7 @@ Use for **performance optimization** targeting by hardware category rather than 
 }
 ```
 
-**Available types** (defined in [`device-type.json`](https://adcontextprotocol.org/schemas/latest/enums/device-type.json)):
+**Available types** (defined in [`device-type.json`](https://adcontextprotocol.org/schemas/v3/enums/device-type.json)):
 - `desktop`, `mobile`, `tablet`, `ctv`, `dooh`, `unknown`
 
 **Device type vs device platform**: `device_type` targets form factors (mobile, desktop, CTV). `device_platform` targets operating systems (iOS, Android, tvOS). Use `device_type` for performance optimization; use `device_platform` for technical compatibility.

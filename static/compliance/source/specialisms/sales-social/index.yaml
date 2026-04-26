@@ -9,6 +9,14 @@ required_tools:
   - sync_audiences
   - sync_catalogs
   - sync_creatives
+  - sync_event_sources
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. approved → processing on a creative asset or
+# active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
 
 narrative: |
   You run a social media platform — Snap, Meta, TikTok, Pinterest, or any walled garden that
@@ -418,6 +426,61 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--sync_dpa_creative"
             description: "Context correlation_id returned unchanged"
+  - id: event_setup
+    title: "Event source setup"
+    narrative: |
+      Before sending conversion events, the buyer registers the event sources the platform
+      should expect events from — a website pixel, a mobile SDK, or a server-to-server feed.
+      The platform returns setup instructions and binds the event_source_id that later
+      log_event calls will reference.
+
+    steps:
+      - id: sync_event_sources
+        title: "Register conversion event sources"
+        narrative: |
+          The buyer tells the platform where conversion events will come from. The
+          platform records each event_source_id, returns integration code, and will
+          accept log_event calls that reference it.
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return event sources with:
+          - event_source_id and seller_id
+          - setup.snippet: integration code (JavaScript pixel, HTML tag, or pixel URL)
+          - setup.instructions: human-readable integration guide
+          - action: created or updated
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "acmeoutdoor_website"
+              name: "Acme Outdoor Website"
+              event_types: ["purchase", "add_to_cart", "page_view", "lead"]
+              allowed_domains: ["acmeoutdoor.example"]
+
+          idempotency_key: "$generate:uuid_v4#sales_social_event_setup_sync_event_sources"
+          context:
+            correlation_id: "sales_social--sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].setup.snippet"
+            description: "Event source includes setup snippet"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_social--sync_event_sources"
+            description: "Context correlation_id returned unchanged"
   - id: event_logging
     title: "Conversion event tracking"
     narrative: |
@@ -447,10 +510,11 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website"
           events:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
-              timestamp: "2026-04-05T14:30:00Z"
+              event_time: "2026-04-05T14:30:00Z"
               value: 149.99
               currency: "USD"
 

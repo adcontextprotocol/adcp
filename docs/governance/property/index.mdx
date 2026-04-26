@@ -5,11 +5,7 @@ description: "AdCP Property Governance standardizes identification, authorizatio
 sidebarTitle: Overview
 ---
 
-<Info>
-**AdCP 3.0 Proposal** - This protocol is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
-</Info>
-
-Property Governance standardizes how advertising properties (websites, apps, CTV, podcasts, billboards) are identified, authorized, enriched with data, and selected for campaigns.
+Property Governance standardizes how advertising properties (websites, apps, CTV, podcasts, billboards) are identified, authorized, enriched with data, and selected for campaigns. Ships in 3.0 as the `property-lists` specialism under the `governance` protocol.
 
 Property lists and [collection lists](/docs/governance/collection/index) together form the **inventory list** system — property lists control *where* ads run (technical surfaces), while collection lists control *what content* ads run in (programs, shows, series). Both are setup-time artifacts managed by governance agents with the same lifecycle pattern.
 
@@ -36,7 +32,7 @@ Publishers declare their properties, authorize sales agents, and reference gover
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "properties": [
     {
       "property_id": "example_site",

@@ -3,11 +3,16 @@
   "$id": "/schemas/tmp/offer.json",
   "title": "Offer",
   "description": "A buyer's response to a context match request. Generalizes package activation — a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "package_id": {
       "type": "string",
       "description": "Package identifier from the media buy."
+    },
+    "seller_agent": {
+      "$ref": "/schemas/core/seller-agent-ref.json",
+      "description": "Optional echo of the package's seller agent from sync-time metadata. Provided for publisher-side observability so log pipelines can attribute offers to sellers without round-tripping to the media-buy store. Non-authoritative: the binding on the cached AvailablePackage is source of truth. When omitted, the router MAY stamp this field from its cached package→seller map."
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",

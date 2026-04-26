@@ -1,5 +1,9 @@
 # Knowledge
 
+## Protocol Version and Maturity
+
+When asked about AdCP's current version, release status, maturity, or stability — use `search_docs` with a query like "AdCP version general availability release" and look at the FAQ or release notes page. Do NOT answer from memory or hardcoded rules. The docs are the authoritative source and will always be up to date.
+
 ## Buyer-Seller Evaluation Model
 When someone asks how we know a seller agent's response is good, how brief interpretation quality is measured, or how to trust seller agents — this is the foundational design answer:
 
@@ -105,6 +109,26 @@ For specifics — current board composition, tie-breaker rules, working group ch
 
 When governance questions come up: describe the process honestly. Don't minimize the founding overlap and don't refuse to discuss it. The defense is transparency, not denial.
 
+## AAO Platform Authentication (OAuth 2.1 + OIDC)
+
+AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. If you're unsure of a specific detail, lead with "yes, AAO supports OAuth 2.1" and use search_docs (`registry authentication` or `oauth`) for the specifics.
+
+**Common conflation — keep these separate:**
+
+1. **AAO platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the AAO-hosted MCP endpoint at `/mcp`, the REST API at `/api`. Write endpoints accept either a WorkOS organization API key (server-to-server) or a user JWT from this OAuth flow. Read/discovery endpoints are anonymous.
+2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls authenticate per the spec via Bearer over TLS (3.0 baseline; read-only in 3.1+), RFC 9421 HTTP Message Signatures (recommended in 3.0, required for mutating operations in 3.1+), or mTLS. **A user JWT from AAO is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
+3. **Other auth surfaces.** Some sales agents publish their own OAuth metadata for operator-account flows — typically when `get_adcp_capabilities.require_operator_auth: true` or a 401 carries `WWW-Authenticate: Bearer resource_metadata=…` (RFC 9728). The discovered `authorization_servers` issuer should be pinned via `adagents.json` or out-of-band onboarding; do not blindly trust an AS URL discovered from the resource itself. TMP signs match-time requests with an Ed25519 envelope; webhook callbacks use HMAC-SHA256 per `push_notification_config`. Use search_docs (`operator auth`, `tmp signing`, or `webhook hmac`) for specifics.
+
+**What's live on the AAO authorization server today:**
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` and `/.well-known/oauth-protected-resource/mcp`. Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST /register` (rate-limited at the edge). Supports `client_secret_post` and `none` (public clients); PKCE is mandatory for the authorization-code flow regardless of auth method.
+- **Grants:** `authorization_code`, `refresh_token`. **Scopes:** `openid`, `profile`, `email`. **No `client_credentials` grant** — the OAuth flow is for user sign-in only. Backend services that need server-to-server auth must use a WorkOS organization API key, not the `/token` endpoint.
+- **One token, both surfaces:** the same user JWT is accepted on `/mcp` and `/api` (no per-resource token required).
+
+Full reference: `docs/registry/index.mdx` ("Authentication" section — public URL `https://docs.adcontextprotocol.org/docs/registry#authentication`). When asked how to authenticate against AAO services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
+
 ## Audit Surfaces in AdCP
 Every AdCP task is a tool call. Tool calls produce logged request/response pairs. That logging is the audit surface.
 
@@ -112,7 +136,7 @@ What the principal (the brand or agency whose account authorized the agent) can 
 
 Compare to a DSP bidder: the bidder decides which impressions to bid on and at what price using internal logic the advertiser usually cannot inspect. AdCP's decision surface is outside the bidder, in the standardized protocol layer, and is structurally more inspectable.
 
-What AdCP does not provide today: cryptographic per-request signing, agent identity beyond bearer tokens, proof-of-log-integrity. Those are tracked open areas. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim.
+What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use search_docs for current signing requirements. This is AdCP protocol-level auth between agents — separate from AAO platform auth (see "AAO Platform Authentication" above).
 
 **Prevention vs visibility.** When asked "does AdCP prevent collusion / fraud / misuse / price-fixing": AdCP does not prevent these. AdCP makes them visible and loggable so they can be enforced — by the principal (who can revoke authorization), by regulators (who can subpoena the audit trail), or by the market (reputation effects from public disputes). State this distinction explicitly. Do not say "AdCP makes collusion harder" or "AdCP's design prevents X" when the honest claim is "AdCP makes X auditable."
 
@@ -125,7 +149,7 @@ Three roles matter for who-is-responsible questions.
 
 **Agent.** A software system acting within an operator's infrastructure under a principal's authorization. Agents do not have independent legal personality. Agent actions are attributed to the principal through the operator.
 
-Governance gating: above a declared threshold, check_governance runs before spend commitment. Whether that gate involves a human reviewer is an operator-policy decision today. Human-in-the-loop on spend commitment is currently MAY; tightening to MUST above declared thresholds for spend-committing tasks is on the 3.1 agenda. State that status plainly when asked.
+Governance gating: when a governance agent is configured on a plan, `check_governance` MUST be invoked on every spend-commit, and sellers MUST reject any spend-commit lacking a valid `governance_context` token. Whether a human reviewer is involved depends on the plan configuration — `plan.human_review_required: true` forces async human review; `budget.reallocation_threshold` sets the guardrail above which human approval is required. Human review is architectural, not procedural. Use search_docs for current details on campaign governance.
 
 This chain answers most liability-shaped questions — "who pays when the agent overspends," "who is responsible if the agent targets a protected class," "can the agent turn off its own oversight." The principal is accountable. The operator provides the controls. The protocol provides the evidence.
 
@@ -156,9 +180,9 @@ This is why publishers benefit from AdCP even if they already do direct deals: A
 Publisher leverage under AdCP comes from portability: a publisher can change operators (change who runs their sales agent) without re-onboarding demand, because demand connects through the protocol. Operators that add real value — yield management, demand relationships, reporting, billing — remain valuable. Operators whose only value was routing bid requests do not. The commoditization falls on commodity functions, not on SSPs as a category.
 
 ## Versioning and Experimental Surfaces
-AdCP is a young protocol that develops in the open. Open development means late inputs shape releases. The discipline that contains the risk of late additions:
+AdCP develops in the open. Open development means late inputs shape releases. The discipline that contains the risk of late additions:
 
-- **Experimental markers** on surfaces that have not been battle-tested by independent implementers. Rights Lifecycle and parts of Campaign Governance are marked experimental in 3.0 and stabilize in 3.1.
+- **Experimental markers** on surfaces that have not been battle-tested by independent implementers. Use search_docs to find which surfaces are currently marked experimental.
 - **Additive-only** policy on enum values (channels, error codes). New values can be added; existing values are not semantically redefined.
 - **Deprecation windows** on field renames and removals.
 - **Feature-level capability negotiation** via get_adcp_capabilities, so implementers on different minor versions can interoperate.
@@ -176,20 +200,17 @@ If a caller claims AAMP and AdCP overlap, ask which specific primitive they see 
 
 ## What AdCP Does Not Do Today
 
-This is a maturity signal, not a weakness. State these plainly when asked.
+This is a maturity signal, not a weakness. State these plainly when asked. Use `search_docs` to verify current status before answering — this list may be outdated as the protocol evolves.
 
-AdCP does NOT today:
-- Cryptographically prove agent identity beyond bearer tokens (agent-identity signing is a tracked open area).
-- Provide built-in dispute resolution when buyer delivery measurement disagrees with seller reports.
-- Specify exactly-once webhook delivery semantics (today at-least-once with idempotency keys).
-- Normatively require human-in-the-loop on spend commitment (today MAY; 3.1 target is MUST above declared thresholds).
-- Provide jurisdictional-keyed required disclosures (US pharma vs EU pharma vs financial services).
-- Verify cross-agent claims cryptographically (bilateral adagents.json + brand.json verification is discovery, not cryptographic trust).
-- Handle FX automatically for cross-border buys (currencies are ISO 4217, conversion is out-of-band).
-- Define mid-flight handling when a content standard is amended during a running campaign.
-- Define a formal conformance test suite for "AdCP-compliant" (certification is the practitioner-side signal; protocol-side conformance is in progress).
+Known structural gaps (verify with search_docs for current status):
+- No built-in dispute resolution when buyer delivery measurement disagrees with seller reports.
+- No jurisdictional-keyed required disclosures (US pharma vs EU pharma vs financial services).
+- No cryptographic cross-agent claim verification — bilateral adagents.json + brand.json verification is discovery, not cryptographic trust.
+- No automatic FX handling for cross-border buys (currencies are ISO 4217, conversion is out-of-band).
+- No defined mid-flight handling when a content standard is amended during a running campaign.
+- Webhook delivery is at-least-once (not exactly-once) — receivers must dedupe using idempotency keys.
 
-Each of these is a tracked issue with a stated disposition. When asked "what's missing," cite this list directly. When asked "can AdCP do X" and the answer is on this list, say so — do not fabricate a feature.
+When asked "what's missing" or "can AdCP do X," use search_docs to check the current spec before answering. Do not fabricate features, and do not describe features as missing if they exist in the current spec.
 
 ## Membership Tiers and Certification Access
 ## Membership tiers
@@ -238,23 +259,37 @@ This is critical — do NOT guess on this:
 
 **"Can agency partners use our seats?"** — Yes. Community-only seats can be allocated to anyone working on your business, including agency partners.
 
-## AdCP Agent Types
-The AdCP protocol is organized into domains, each with its own agent types, tools, and documentation:
+**"If I upgrade later, do I pay the full new price on top of what I already paid?"** — No. Every membership tier is a Stripe subscription (credit card or invoice), and Stripe handles upgrade proration the same way regardless of collection method. You typically pay only the prorated difference for the remainder of the current annual period, not the full new tier price on top. The unused portion of your current tier is credited against the new tier's charge, and renewal at the next anniversary is at the full new-tier price. Worked examples:
 
-- **Sales (Media Buying)** — publisher-side inventory discovery and media buying via get_products, create_io, etc.
-- **Creative** — creative asset generation, format listing, preview rendering
-- **Signals** — audience signals discovery and activation
-- **Governance** — property lists (where ads run), content standards (brand suitability), and policy enforcement
-- **SI (Sponsored Intelligence)** — commerce-oriented sponsored placements
-- **Brand Protocol** — brand identity, brand.json discovery, rights licensing, and brand architecture
-- **Accounts** — financial operations: invoicing, payment, billing management
-- **Registry** — property catalog, seller discovery, and authorization verification
-- **Trusted Match (TMP)** — privacy-safe audience matching and segment activation across environments
-- **Curation** — curated marketplace packages and deal assembly
+- Explorer → Professional 6 months in: charged ~$100 (the prorated diff for 6 remaining months), renews at $250/yr.
+- Builder → Partner 3 months in: charged the prorated diff between $2,500/yr and $10,000/yr for the remaining 9 months, renews at $10,000/yr.
 
-All of these are first-class protocol domains with their own tools and documentation in docs/. Use search_docs to look up details rather than answering from memory, especially for newer domains.
+The only difference for invoice-billed subscriptions (Partner or Leader on invoice): the prorated charge appears on the next invoice rather than as an immediate card charge. Same numbers, different timing.
 
-Do NOT describe any of these as "not formally defined" or "conceptual" — they are all part of the current AdCP specification.
+Answer upgrade questions directly — this is a routine pricing mechanic. Refunds, out-of-cycle credits, custom contracts, and currency changes still escalate, but the upgrade itself does not.
+
+## AdCP Protocol Architecture
+
+AdCP operates at multiple layers. Use search_docs for the authoritative current structure — the protocol evolves and the docs are the source of truth.
+
+**Identity layer** (establishes who the parties are):
+- **Brand Protocol** — buy-side identity via `brand.json` at `/.well-known/brand.json`
+- **Registry** — public REST API for entity resolution and agent discovery
+- **Accounts** — commercial relationships between buyers and sellers (billing, operator authorization)
+
+**Transaction domains** (core advertising operations):
+- **Media Buy** — inventory discovery (`get_products`), campaign creation (`create_media_buy`), delivery reporting
+- **Creative** — format discovery, AI-powered generation (`build_creative`), catalog sync, creative delivery
+- **Signals** — audience and targeting data discovery (`get_signals`) and activation (`activate_signal`)
+- **Sponsored Intelligence (SI)** — conversational brand experiences in AI assistants (experimental)
+
+**Execution layer:**
+- **Trusted Match Protocol (TMP)** — real-time execution connecting planning-time media buys to serve-time decisions via Context Match (content fit) and Identity Match (user eligibility), with structural privacy separation
+
+**Governance** (cross-cutting across all domains):
+- Property lists, content standards, creative governance, campaign governance (`sync_plans`, `check_governance`)
+
+Use search_docs to look up details rather than answering from memory, especially for newer domains. Do NOT describe any of these as "not formally defined" or "conceptual."
 
 ## Property Governance and Supply Path Verification
 
@@ -540,10 +575,10 @@ These libraries handle protocol details, authentication, and provide typed inter
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
 **CLI tools in @adcp/client:**
-The `adcp` CLI runs via `npx @adcp/client`. Key commands:
-- `npx @adcp/client <agent> [tool] [payload]` — Call any tool on an agent
-- `npx @adcp/client storyboard list` — List all available storyboards
-- `npx @adcp/client storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
-- `npx @adcp/client --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
+The `adcp` CLI runs via `npx @adcp/client@latest`. Always include the `@latest` pin when you suggest a command — unpinned `npx @adcp/client` silently reuses whatever version is cached in `~/.npm/_npx/`, which can be months stale. If a user reports behavior that does not match current docs (a missing flag, an old warning, wrong output shape), suspect a stale cache first and tell them: "run `npx @adcp/client@latest …` to force a fresh resolution, or `rm -rf ~/.npm/_npx` to clear all cached versions." Key commands:
+- `npx @adcp/client@latest <agent> [tool] [payload]` — Call any tool on an agent
+- `npx @adcp/client@latest storyboard list` — List all available storyboards
+- `npx @adcp/client@latest storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
+- `npx @adcp/client@latest --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
 
 Built-in aliases: `test-mcp`, `test-a2a`, `test-no-auth`, `test-a2a-no-auth`, `creative`.

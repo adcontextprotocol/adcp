@@ -25,5 +25,5 @@
   "required": [
     "lists"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

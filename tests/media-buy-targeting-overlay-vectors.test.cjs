@@ -63,7 +63,7 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
   let rootSchema;
 
   before(async () => {
-    const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: loadExternalSchema });
+    const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
     rootSchema = await loadExternalSchema(data.schema);
     validate = await ajv.compileAsync(rootSchema);

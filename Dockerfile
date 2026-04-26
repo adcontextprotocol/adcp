@@ -39,6 +39,7 @@ git clone --depth=1 --branch main https://github.com/prebid/salesagent.git sales
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/signals-agent.git signals-agent & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client.git adcp-client & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client-python.git adcp-client-python & pids="$pids $!"
+git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-go.git adcp-go & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/a2aproject/A2A.git a2a & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/a2aproject/a2a-samples.git a2a-samples & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/modelcontextprotocol/modelcontextprotocol.git mcp-spec & pids="$pids $!"
@@ -106,6 +107,15 @@ COPY --from=builder /app/server/src/creative-agent/reference-formats.json ./dist
 COPY --from=builder /app/server/src/addie/rules/*.md ./dist/addie/rules/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
+
+# Skill docs read at runtime by Addie's ask_about_adcp_task / call_adcp_task loader.
+COPY --from=builder /app/skills ./skills
+
+# Shared agent-infrastructure read at Addie prompt-assembly time (rules/index.ts)
+# and by the triage routines. These are committed repo files; without them,
+# loadRules() silently degrades.
+COPY --from=builder /app/.agents ./.agents
+COPY --from=builder /app/.claude/agents ./.claude/agents
 
 # Copy pre-cloned repos (warm cache for Addie)
 COPY --from=repos /repos ./.addie-repos

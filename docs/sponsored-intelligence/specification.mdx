@@ -86,7 +86,7 @@ If a host calls `si_get_offering`:
 
 1. The request MUST NOT include user PII
 2. The request MUST include `offering_id`
-3. The request MAY include `context` for personalized results (e.g., "mens size 14 near Cincinnati")
+3. The request MAY include `intent` for personalized results (e.g., "mens size 14 near Cincinnati")
 4. The request MAY set `include_products: true` to get matching products
 5. Brand agents MUST return an `offering_token` if available
 6. Brand agents SHOULD return a `ttl_seconds` indicating validity duration
@@ -107,7 +107,7 @@ If a host receives an `offering_token`:
 
 ### Matching Products
 
-When `include_products` is true and `context` is provided, the response MAY include matching products:
+When `include_products` is true and `intent` is provided, the response MAY include matching products:
 
 ```json
 {
@@ -136,7 +136,7 @@ This enables hosts to show rich previews before session initiation.
 
 ### Session States
 
-**Schema**: [`enums/si-session-status.json`](https://adcontextprotocol.org/schemas/latest/enums/si-session-status.json)
+**Schema**: [`enums/si-session-status.json`](https://adcontextprotocol.org/schemas/v3/enums/si-session-status.json)
 
 SI sessions progress through the following states. Terminal states (`complete`, `terminated`) allow no further messages.
 
@@ -197,7 +197,7 @@ The `si_initiate_session` task establishes a new SI session.
 
 Hosts MUST include:
 
-- `context` - Natural language description of user intent
+- `intent` - Natural language description of user intent — the conversation handoff from host to brand agent
 - `identity` - User identity with consent status
 
 Hosts SHOULD include:
@@ -456,7 +456,7 @@ Brand agents MUST return errors in the `errors` array using the standard error s
 
 SI uses both standard AdCP error codes and SI-specific codes:
 
-**Standard AdCP error codes** (from [`enums/error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json)):
+**Standard AdCP error codes** (from [`enums/error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json)):
 
 | Code | Description |
 |------|-------------|

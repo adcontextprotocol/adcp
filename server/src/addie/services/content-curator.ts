@@ -21,9 +21,7 @@ import { query } from '../../db/client.js';
 import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
 import {
   isGoogleDocsUrl,
-  createGoogleDocsToolHandlers,
-  GOOGLE_DOCS_ERROR_PREFIX,
-  GOOGLE_DOCS_ACCESS_DENIED_PREFIX,
+  createGoogleDocsReader,
 } from '../mcp/google-docs.js';
 
 const addieDb = new AddieDatabase();
@@ -100,30 +98,29 @@ async function fetchUrlContent(url: string): Promise<string> {
  * Fetch content from Google Docs using the Google Docs API
  */
 async function fetchGoogleDocsContent(url: string): Promise<string> {
-  const handlers = createGoogleDocsToolHandlers();
+  const reader = createGoogleDocsReader();
 
-  if (!handlers) {
+  if (!reader) {
     throw new Error('Google Docs API not configured - missing credentials');
   }
 
-  const result = await handlers.read_google_doc({ url });
-
-  // Check for errors in the result (using exported constants for reliable detection)
-  if (result.startsWith(GOOGLE_DOCS_ERROR_PREFIX) || result.startsWith(GOOGLE_DOCS_ACCESS_DENIED_PREFIX)) {
-    throw new Error(result);
+  const result = await reader(url);
+  switch (result.status) {
+    case 'ok':
+    case 'empty': {
+      const content = result.body ?? '';
+      const maxLength = 50000;
+      if (content.length > maxLength) {
+        return content.substring(0, maxLength) + '\n\n[Content truncated...]';
+      }
+      return content;
+    }
+    case 'access_denied':
+    case 'invalid_input':
+    case 'unsupported_type':
+    case 'error':
+      throw new Error(result.message ?? 'Unable to read Google Doc');
   }
-
-  // Strip the title/format header if present (e.g., "**Document Name** (txt)\n\n")
-  const contentMatch = result.match(/^\*\*[^*]+\*\*[^\n]*\n\n([\s\S]*)$/);
-  const content = contentMatch ? contentMatch[1] : result;
-
-  // Limit content length
-  const maxLength = 50000;
-  if (content.length > maxLength) {
-    return content.substring(0, maxLength) + '\n\n[Content truncated...]';
-  }
-
-  return content;
 }
 
 /**

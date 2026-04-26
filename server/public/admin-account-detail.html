@@ -682,8 +682,7 @@
             <div id="headerSubtitle" class="header-subtitle"></div>
           </div>
           <div style="display: flex; gap: var(--space-2);">
-            <button class="btn btn-secondary" onclick="openPaymentLinkModal()">Pay Link</button>
-            <button class="btn btn-secondary" onclick="openInvoiceModal()">Invoice</button>
+            <button class="btn btn-secondary" onclick="openInvoiceModal()">Send Invite</button>
             <button class="btn btn-secondary" onclick="openEditModal()">Edit</button>
             <button class="btn btn-secondary" onclick="openMergeSearch()" title="Merge another organization into this one">Merge with...</button>
             <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
@@ -850,6 +849,7 @@
                 Sync from Stripe
               </button>
               <button class="btn btn-sm btn-secondary" onclick="openPaymentHistory()">Payment History</button>
+              <button class="btn btn-sm btn-secondary" onclick="openDedupHistory()">Dedup Events</button>
               <button class="btn btn-sm btn-danger" onclick="openDeleteWorkspaceModal()" style="margin-left: auto;">
                 Delete Workspace
               </button>
@@ -891,6 +891,14 @@
           <div class="card" id="registryActivityCard" style="display: none;">
             <h2 class="collapsible" onclick="toggleSection(this)">Registry activity</h2>
             <div class="collapsible-content" id="registryActivityContent">
+              <div class="empty-state">Loading...</div>
+            </div>
+          </div>
+
+          <!-- New-member announcement state (Workflow B) -->
+          <div class="card" id="announcementCard" style="display: none;">
+            <h2 class="collapsible" onclick="toggleSection(this)">New-member announcement</h2>
+            <div class="collapsible-content" id="announcementContent">
               <div class="empty-state">Loading...</div>
             </div>
           </div>
@@ -1246,152 +1254,52 @@
     </div>
   </div>
 
-  <!-- Payment Link Modal -->
-  <div id="paymentLinkModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-header">
-        <h2>Generate Payment Link</h2>
-        <button class="modal-close" onclick="closeModal('paymentLinkModal')">&times;</button>
-      </div>
-
-      <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
-
-      <!-- Discount notice -->
-      <div id="paymentLinkDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
-        <div style="font-size: var(--text-sm);">
-          <strong style="color: var(--color-success-700);">Discount will be applied:</strong>
-          <span id="paymentLinkDiscountText"></span>
-        </div>
-        <div style="margin-top: var(--space-2);">
-          <label style="font-size: var(--text-sm);">
-            <input type="checkbox" id="applyDiscountToPaymentLink" checked>
-            Include discount in payment link
-          </label>
-        </div>
-      </div>
-
-      <div id="paymentLinkProducts" style="margin-bottom: var(--space-4);">
-        Loading products...
-      </div>
-
-      <div id="paymentLinkResult" style="display: none;">
-        <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
-          <strong style="color: var(--color-success-700);">Payment Link Generated!</strong>
-          <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
-            Copy this link and send it to the prospect:
-          </p>
-        </div>
-        <div style="display: flex; gap: var(--space-2);">
-          <input type="text" id="paymentLinkUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
-          <button class="btn btn-primary btn-sm" onclick="copyPaymentLink()">Copy</button>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('paymentLinkModal')">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Invoice Modal -->
+  <!-- Membership Invite Modal -->
   <div id="invoiceModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-content" style="max-width: 520px;">
       <div class="modal-header">
-        <h2>Generate Invoice</h2>
+        <h2>Send Membership Invitation</h2>
         <button class="modal-close" onclick="closeModal('invoiceModal')">&times;</button>
       </div>
 
-      <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
-
-      <!-- Discount notice -->
-      <div id="invoiceDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
-        <div style="font-size: var(--text-sm);">
-          <strong style="color: var(--color-success-700);">Discount available:</strong>
-          <span id="invoiceDiscountText"></span>
-        </div>
-        <div style="margin-top: var(--space-2);">
-          <label style="font-size: var(--text-sm);">
-            <input type="checkbox" id="applyDiscountToInvoice" checked>
-            Apply discount to invoice
-          </label>
-        </div>
-      </div>
+      <p id="invoiceOrgName" style="margin-bottom: var(--space-3); color: var(--color-text-secondary);"></p>
+      <p style="margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted);">
+        The prospect receives an email with a link. They sign in, review the membership agreement, confirm billing details, and an invoice is issued automatically.
+      </p>
 
       <form id="invoiceForm" onsubmit="submitInvoice(event)">
-        <!-- Product Selection -->
         <div id="invoiceProductSection">
           <div class="form-group">
-            <label>Select Product</label>
+            <label>Select Tier</label>
             <div id="invoiceProducts" style="margin-bottom: var(--space-4);">
               Loading products...
             </div>
           </div>
         </div>
 
-        <!-- Billing Details (shown after product selection) -->
         <div id="invoiceBillingSection" style="display: none;">
           <div class="form-group">
-            <label>Selected Product</label>
+            <label>Selected Tier</label>
             <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Contact Name *</label>
-              <input type="text" id="invoiceContactName" required>
+              <label>Contact Name (optional)</label>
+              <input type="text" id="invoiceContactName" placeholder="For the email greeting">
             </div>
             <div class="form-group">
               <label>Contact Email *</label>
               <input type="email" id="invoiceContactEmail" required>
             </div>
           </div>
-
-          <div class="form-group">
-            <label>Company Name *</label>
-            <input type="text" id="invoiceCompanyName" required>
-          </div>
-
-          <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing Address</h4>
-
-          <div class="form-group">
-            <label>Street Address *</label>
-            <input type="text" id="invoiceAddressLine1" required>
-          </div>
-
-          <div class="form-group">
-            <label>Address Line 2</label>
-            <input type="text" id="invoiceAddressLine2">
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>City *</label>
-              <input type="text" id="invoiceCity" required>
-            </div>
-            <div class="form-group">
-              <label>State/Province *</label>
-              <input type="text" id="invoiceState" required>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Postal Code *</label>
-              <input type="text" id="invoicePostalCode" required>
-            </div>
-            <div class="form-group">
-              <label>Country *</label>
-              <input type="text" id="invoiceCountry" value="US" required>
-            </div>
-          </div>
         </div>
 
-        <!-- Success Message -->
         <div id="invoiceResult" style="display: none;">
           <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
-            <strong style="color: var(--color-success-700);">Invoice Sent!</strong>
+            <strong style="color: var(--color-success-700);">Invitation sent!</strong>
             <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
-              The invoice has been emailed to the contact. You can also share this link:
+              The prospect has 30 days to accept. Share the link directly if helpful:
             </p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
@@ -1402,7 +1310,7 @@
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>
-          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invitation</button>
         </div>
       </form>
     </div>
@@ -1491,6 +1399,19 @@
       </div>
       <div id="paymentHistoryBody" style="padding: var(--space-4);">
         <div class="empty-state">Loading payment history...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedup Events Modal — webhook-side duplicate-subscription guard history -->
+  <div id="dedupHistoryModal" class="modal">
+    <div class="modal-content" style="max-width: 760px;">
+      <div class="modal-header">
+        <h2 id="dedupHistoryTitle">Subscription Dedup Events</h2>
+        <button class="modal-close" onclick="closeModal('dedupHistoryModal')">&times;</button>
+      </div>
+      <div id="dedupHistoryBody" style="padding: var(--space-4);">
+        <div class="empty-state">Loading dedup events...</div>
       </div>
     </div>
   </div>
@@ -1864,8 +1785,129 @@
       // Billing (Stripe link, sync, payment history, delete workspace)
       renderBillingCard();
 
+      // New-member announcement state (Workflow B)
+      renderAnnouncement();
+
       // Populate team dropdowns
       populateTeamDropdowns();
+    }
+
+    function renderAnnouncement() {
+      const a = accountData.announcement;
+      const card = document.getElementById('announcementCard');
+      const content = document.getElementById('announcementContent');
+      if (!a) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = '';
+
+      // `_label` strings come from the server and are either a literal
+      // `<@U…>` Slack mention or a plain-text fallback like "an AAO
+      // admin". We treat both as already-formatted display text — the
+      // server is trusted since it assembled them from typed columns,
+      // not free-form draft content.
+      const byLabel = (label) => label ? ` by ${escapeHtml(label)}` : '';
+      const rows = [];
+      if (a.skipped) {
+        rows.push(`<div>⊘ <strong>Skipped</strong>${byLabel(a.skipper_label)}${a.skipped_at ? ` on ${escapeHtml(new Date(a.skipped_at).toLocaleString())}` : ''}</div>`);
+      } else {
+        rows.push(
+          a.slack_posted
+            ? `<div>✓ <strong>Slack posted</strong>${byLabel(a.slack_approver_label)}${a.slack_channel_id ? ` to <code>${escapeHtml(a.slack_channel_id)}</code>` : ''}</div>`
+            : `<div>⏳ Slack pending</div>`,
+        );
+        rows.push(
+          a.linkedin_posted
+            ? `<div>✓ <strong>LinkedIn posted</strong>${byLabel(a.linkedin_marker_label)}${a.linkedin_marked_at ? ` on ${escapeHtml(new Date(a.linkedin_marked_at).toLocaleString())}` : ''}</div>`
+            : `<div>⏳ LinkedIn pending</div>`,
+        );
+      }
+
+      // `Mark posted to LinkedIn` is only offered when Slack is done,
+      // LinkedIn hasn't been marked, and the draft wasn't skipped. The
+      // same button exists in the editorial-review Slack card; clicking
+      // either converges on one `announcement_published` row through the
+      // shared advisory-lock path.
+      const canMarkLinkedin = a.slack_posted && !a.linkedin_posted && !a.skipped;
+      const button = canMarkLinkedin
+        ? `<button class="btn btn-primary btn-sm" id="markLinkedInBtn" onclick="markAnnouncementLinkedIn()" aria-busy="false" style="margin-top: var(--space-3);">Mark posted to LinkedIn</button>`
+        : '';
+
+      content.innerHTML = `
+        <div aria-live="polite" style="display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm);">
+          ${rows.join('')}
+        </div>
+        ${button}
+        <div id="announcementMessage" role="status" style="display: none; margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--text-sm);"></div>
+      `;
+    }
+
+    function showAnnouncementMessage(text, kind) {
+      const box = document.getElementById('announcementMessage');
+      if (!box) return;
+      // `kind` is 'error' | 'info'. Inline messages (vs alert) keep the
+      // context next to the action so an admin can read the server's
+      // 409 `refused` reason without the modal stealing focus.
+      const colors = kind === 'error'
+        ? { bg: 'var(--color-red-50, #fef2f2)', fg: 'var(--color-red-700, #b91c1c)' }
+        : { bg: 'var(--color-gray-100)', fg: 'var(--color-text-secondary)' };
+      box.style.background = colors.bg;
+      box.style.color = colors.fg;
+      box.style.display = '';
+      box.textContent = text;
+    }
+
+    async function markAnnouncementLinkedIn() {
+      const btn = document.getElementById('markLinkedInBtn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.textContent = 'Marking…';
+      try {
+        const response = await manageFetch(`/api/admin/accounts/${accountId}/announcement/linkedin`, {
+          method: 'POST',
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          // Log to console so an admin on a support call can screenshot
+          // DevTools with status + body rather than an ephemeral alert.
+          console.error('markAnnouncementLinkedIn failed', response.status, body);
+          showAnnouncementMessage(
+            body.message || body.error || `Failed (${response.status})`,
+            'error',
+          );
+          btn.disabled = false;
+          btn.setAttribute('aria-busy', 'false');
+          btn.textContent = 'Mark posted to LinkedIn';
+          return;
+        }
+        // Optimistic patch so the status line flips immediately. The
+        // subsequent loadAccount() reconciles with the server.
+        if (accountData.announcement) {
+          accountData.announcement.linkedin_posted = true;
+          accountData.announcement.linkedin_marked_at = new Date().toISOString();
+          accountData.announcement.linkedin_marker_label = 'an AAO admin';
+        }
+        renderAnnouncement();
+        if (body.already_done) {
+          showAnnouncementMessage(
+            body.message || 'Already recorded — no duplicate row created.',
+            'info',
+          );
+        }
+        // Background reconcile — no await; the optimistic render already
+        // updated the visible state.
+        loadAccount().catch((err) => {
+          console.error('Account refetch after markAnnouncementLinkedIn failed', err);
+        });
+      } catch (err) {
+        console.error('markAnnouncementLinkedIn failed', err);
+        showAnnouncementMessage('Network error — please retry.', 'error');
+        btn.disabled = false;
+        btn.setAttribute('aria-busy', 'false');
+        btn.textContent = 'Mark posted to LinkedIn';
+      }
     }
 
     function renderOwner() {
@@ -2781,6 +2823,9 @@
         else if (result.workos?.error) parts.push(`WorkOS: ${result.workos.error}`);
         if (result.stripe?.success) parts.push('Stripe ✓');
         else if (result.stripe?.error) parts.push(`Stripe: ${result.stripe.error}`);
+        if (typeof result.revenue_events_synced === 'number') {
+          parts.push(`${result.revenue_events_synced} payment${result.revenue_events_synced === 1 ? '' : 's'} synced`);
+        }
 
         statusEl.textContent = parts.join(' · ');
         statusEl.className = `sync-status ${result.success ? 'sync-success' : 'sync-error'}`;
@@ -2843,6 +2888,101 @@
               </div>
               ${p.product_name ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(p.product_name)}</div>` : ''}
               ${p.stripe_invoice_id ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Invoice: ${escapeHtml(p.stripe_invoice_id)}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state" style="color: var(--color-error-600);">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function openDedupHistory() {
+      const modal = document.getElementById('dedupHistoryModal');
+      const body = document.getElementById('dedupHistoryBody');
+      const title = document.getElementById('dedupHistoryTitle');
+      title.textContent = `Subscription Dedup Events - ${accountData?.name || 'Account'}`;
+      body.innerHTML = '<div class="empty-state">Loading dedup events...</div>';
+      modal.classList.add('show');
+
+      try {
+        const params = new URLSearchParams({
+          organization_id: accountId,
+          action: 'subscription_dedup',
+          limit: '50',
+        });
+        const response = await fetch(`/api/admin/audit-logs?${params}`);
+        if (!response.ok) throw new Error('Failed to load dedup events');
+        const result = await response.json();
+        const entries = result.entries || [];
+
+        if (entries.length === 0) {
+          body.innerHTML = `
+            <div class="empty-state">
+              <p>No subscription dedup events recorded for this org.</p>
+              <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
+                Events are written when the webhook helper auto-cancels a duplicate or escalates a duplicate to manual review.
+              </p>
+            </div>`;
+          return;
+        }
+
+        const kindLabels = {
+          canceled_new: 'Canceled new (duplicate intake)',
+          canceled_existing: 'Canceled existing (swap to new)',
+          manual_review: 'Manual review (could not auto-decide)',
+        };
+        const kindColors = {
+          canceled_new: 'var(--color-warning-300)',
+          canceled_existing: 'var(--color-success-500)',
+          manual_review: 'var(--color-error-300)',
+        };
+
+        body.innerHTML = entries.map((e) => {
+          const d = e.details || {};
+          const kind = d.kind || 'unknown';
+          const label = kindLabels[kind] || kind;
+          const color = kindColors[kind] || 'var(--color-gray-300)';
+          const date = new Date(e.created_at).toLocaleString();
+          const facts = d.canceled_facts || {};
+          const amountStr = typeof facts.amountCents === 'number'
+            ? `$${(facts.amountCents / 100).toFixed(2)}`
+            : '—';
+          const cancelOk = facts.cancelSucceeded === false
+            ? '<span style="color: var(--color-error-600); font-weight: 600;">⚠ Stripe cancel FAILED — manual cleanup needed</span>'
+            : '';
+
+          let detailRows = '';
+          if (kind === 'canceled_new') {
+            detailRows = `
+              <div>Canceled new sub: <code>${escapeHtml(d.new_sub_id || '')}</code> (${amountStr}, ${escapeHtml(facts.lookupKey || 'no lookup_key')})</div>
+              <div>Surviving existing sub${(d.existing_live_sub_ids || []).length > 1 ? 's' : ''}: ${(d.existing_live_sub_ids || []).map((id) => `<code>${escapeHtml(id)}</code>`).join(', ') || '—'}</div>
+              ${d.surviving_tier_label ? `<div>Surviving tier: <strong>${escapeHtml(d.surviving_tier_label)}</strong></div>` : ''}
+            `;
+          } else if (kind === 'canceled_existing') {
+            detailRows = `
+              <div>Canceled existing sub: <code>${escapeHtml(d.canceled_sub_id || '')}</code> (${amountStr}, ${escapeHtml(facts.lookupKey || 'no lookup_key')})</div>
+              <div>Surviving new sub: <code>${escapeHtml(d.surviving_new_sub_id || '')}</code></div>
+              ${d.surviving_tier_label ? `<div>Surviving tier: <strong>${escapeHtml(d.surviving_tier_label)}</strong></div>` : ''}
+            `;
+          } else if (kind === 'manual_review') {
+            detailRows = `
+              <div>New sub: <code>${escapeHtml(d.new_sub_id || '')}</code></div>
+              <div>All live sub IDs: ${(d.all_live_sub_ids || []).map((id) => `<code>${escapeHtml(id)}</code>`).join(', ') || '—'}</div>
+              <div style="color: var(--color-text-secondary); font-style: italic;">Reason: ${escapeHtml(d.reason || '')}</div>
+            `;
+          }
+
+          return `
+            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${color}; background: var(--color-gray-50); border-radius: var(--radius-sm);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
+                <div style="font-weight: 600;">${escapeHtml(label)}</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">${escapeHtml(date)}</div>
+              </div>
+              <div style="font-size: var(--text-sm);">${detailRows}</div>
+              ${cancelOk ? `<div style="margin-top: var(--space-2); font-size: var(--text-sm);">${cancelOk}</div>` : ''}
+              <div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">
+                Customer: <code>${escapeHtml(d.customer_id || '')}</code>
+              </div>
             </div>
           `;
         }).join('');
@@ -3514,168 +3654,6 @@
     }
 
     // =========================================================================
-    // Payment Link Functions
-    // =========================================================================
-
-    function openPaymentLinkModal() {
-      document.getElementById('paymentLinkOrgName').textContent = `For: ${accountData?.name || 'Unknown'}`;
-      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
-      document.getElementById('paymentLinkProducts').style.display = 'block';
-      document.getElementById('paymentLinkResult').style.display = 'none';
-
-      // Show discount notice if org has a discount
-      const discountNotice = document.getElementById('paymentLinkDiscountNotice');
-      if (accountData.discount_percent || accountData.discount_amount_cents) {
-        discountNotice.style.display = 'block';
-        let discountText = '';
-        if (accountData.discount_percent) {
-          discountText = `${accountData.discount_percent}% off`;
-        } else {
-          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
-        }
-        if (accountData.stripe_promotion_code) {
-          discountText += ` (code: ${accountData.stripe_promotion_code})`;
-        }
-        document.getElementById('paymentLinkDiscountText').textContent = discountText;
-        document.getElementById('applyDiscountToPaymentLink').checked = true;
-      } else {
-        discountNotice.style.display = 'none';
-      }
-
-      openModal('paymentLinkModal');
-      loadPaymentLinkProducts();
-    }
-
-    async function loadPaymentLinkProducts() {
-      try {
-        const response = await fetch(`/api/admin/prospects/${accountId}/payment-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to load products');
-        }
-
-        const data = await response.json();
-
-        if (data.needs_selection && data.products) {
-          paymentLinkProductsData = data.products;
-          renderPaymentLinkProducts(data.products);
-        }
-      } catch (error) {
-        console.error('Error loading products:', error);
-        document.getElementById('paymentLinkProducts').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
-      }
-    }
-
-    let paymentLinkProductsData = [];
-
-    function renderPaymentLinkProducts(products) {
-      const container = document.getElementById('paymentLinkProducts');
-
-      if (products.length === 0) {
-        container.innerHTML = '<p style="color: var(--color-text-secondary);">No products available for this account type.</p>';
-        return;
-      }
-
-      container.innerHTML = products.map((product, index) => {
-        const price = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(product.amount_cents / 100);
-
-        const displayName = escapeHtml(product.display_name);
-        const tiers = product.revenue_tiers?.length > 0
-          ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${product.revenue_tiers.map(t => escapeHtml(t)).join(', ')})</span>`
-          : '';
-
-        return `
-          <button class="product-select-btn" data-product-index="${index}" style="
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: var(--space-3);
-            margin-bottom: var(--space-2);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            background: var(--color-bg-card);
-            cursor: pointer;
-            transition: var(--transition-all);
-          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
-            <strong>${displayName}</strong> ${tiers}
-            <br>
-            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}/year</span>
-          </button>
-        `;
-      }).join('');
-
-      // Event delegation for product selection
-      container.onclick = function(e) {
-        const btn = e.target.closest('[data-product-index]');
-        if (!btn) return;
-        const index = parseInt(btn.dataset.productIndex, 10);
-        const product = paymentLinkProductsData[index];
-        if (product) {
-          generatePaymentLink(product.lookup_key);
-        }
-      };
-    }
-
-    async function generatePaymentLink(lookupKey) {
-      const container = document.getElementById('paymentLinkProducts');
-      container.innerHTML = '<p>Generating payment link...</p>';
-
-      try {
-        const applyDiscount = document.getElementById('applyDiscountToPaymentLink')?.checked;
-        const body = { lookup_key: lookupKey };
-
-        if (applyDiscount && accountData.stripe_coupon_id) {
-          body.coupon_id = accountData.stripe_coupon_id;
-        } else if (applyDiscount && accountData.stripe_promotion_code) {
-          body.promotion_code = accountData.stripe_promotion_code;
-        }
-
-        const response = await fetch(`/api/admin/prospects/${accountId}/payment-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || data.error || 'Failed to generate payment link');
-        }
-
-        if (data.success && data.payment_url) {
-          container.style.display = 'none';
-          document.getElementById('paymentLinkDiscountNotice').style.display = 'none';
-          document.getElementById('paymentLinkUrl').value = data.payment_url;
-          document.getElementById('paymentLinkResult').style.display = 'block';
-        } else {
-          throw new Error(data.message || 'Unknown error');
-        }
-      } catch (error) {
-        console.error('Error generating payment link:', error);
-        container.innerHTML = `<p style="color: var(--color-error-600);">Error: ${escapeHtml(error.message)}</p>`;
-      }
-    }
-
-    function copyPaymentLink() {
-      const input = document.getElementById('paymentLinkUrl');
-      input.select();
-      navigator.clipboard.writeText(input.value).then(() => {
-        showToast('Payment link copied to clipboard!');
-      }).catch(() => {
-        document.execCommand('copy');
-        showToast('Payment link copied to clipboard!');
-      });
-    }
-
-    // =========================================================================
     // Invoice Functions
     // =========================================================================
 
@@ -3693,33 +3671,9 @@
       document.getElementById('sendInvoiceBtn').style.display = 'none';
       document.getElementById('invoiceForm').reset();
 
-      // Show discount notice if org has a discount
-      const invoiceDiscountNotice = document.getElementById('invoiceDiscountNotice');
-      if (accountData.discount_percent || accountData.discount_amount_cents) {
-        invoiceDiscountNotice.style.display = 'block';
-        let discountText = '';
-        if (accountData.discount_percent) {
-          discountText = `${accountData.discount_percent}% off`;
-        } else {
-          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
-        }
-        if (accountData.stripe_promotion_code) {
-          discountText += ` (code: ${accountData.stripe_promotion_code})`;
-        }
-        document.getElementById('invoiceDiscountText').textContent = discountText;
-        document.getElementById('applyDiscountToInvoice').checked = true;
-        document.getElementById('applyDiscountToInvoice').onchange = () => {
-          if (invoiceProductsData.length > 0) renderInvoiceProducts(invoiceProductsData);
-        };
-      } else {
-        invoiceDiscountNotice.style.display = 'none';
-      }
-
-      // Pre-fill from account data
       if (accountData) {
         document.getElementById('invoiceContactName').value = accountData.prospect_contact_name || '';
         document.getElementById('invoiceContactEmail').value = accountData.prospect_contact_email || '';
-        document.getElementById('invoiceCompanyName').value = accountData.name || '';
       }
 
       openModal('invoiceModal');
@@ -3742,21 +3696,6 @@
       }
     }
 
-    function invoiceDiscountActive() {
-      return document.getElementById('applyDiscountToInvoice')?.checked &&
-        (accountData.discount_percent || accountData.discount_amount_cents);
-    }
-
-    function applyInvoiceDiscount(amountCents) {
-      if (accountData.discount_percent) {
-        return Math.round(amountCents * (1 - accountData.discount_percent / 100));
-      }
-      if (accountData.discount_amount_cents) {
-        return Math.max(0, amountCents - accountData.discount_amount_cents);
-      }
-      return amountCents;
-    }
-
     function renderInvoiceProducts(products) {
       const container = document.getElementById('invoiceProducts');
 
@@ -3765,18 +3704,9 @@
         return;
       }
 
-      const hasDiscount = invoiceDiscountActive();
-
       container.innerHTML = products.map((product, index) => {
         const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
         const price = fmt(product.amount_cents);
-
-        let discountedPriceHtml = '';
-        if (hasDiscount) {
-          const discountedCents = applyInvoiceDiscount(product.amount_cents);
-          discountedPriceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted); font-weight: normal;">${price}</span> <span style="color: var(--color-success-700); font-weight: var(--font-semibold);">${fmt(discountedCents)}</span>`;
-        }
-
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
         const description = product.description ? escapeHtml(product.description) : '';
@@ -3796,16 +3726,12 @@
           " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
             <strong>${displayName}</strong>
             <br>
-            ${hasDiscount
-              ? `${discountedPriceHtml}${interval}`
-              : `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>`
-            }
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
       }).join('');
 
-      // Event delegation for product selection
       container.onclick = function(e) {
         const btn = e.target.closest('[data-product-index]');
         if (!btn) return;
@@ -3827,12 +3753,7 @@
 
       const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
       const price = fmt(product.amount_cents);
-
-      let priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
-      if (invoiceDiscountActive()) {
-        const discountedCents = applyInvoiceDiscount(product.amount_cents);
-        priceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted);">${price}</span> <span style="color: var(--color-success-700);">${fmt(discountedCents)}</span>`;
-      }
+      const priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
 
       document.getElementById('selectedProductDisplay').innerHTML = `
         <strong>${escapeHtml(displayName)}</strong> - ${priceHtml}
@@ -3847,7 +3768,7 @@
       event.preventDefault();
 
       if (!selectedInvoiceProduct) {
-        alert('Please select a product first');
+        alert('Please select a tier first');
         return;
       }
 
@@ -3855,25 +3776,14 @@
       btn.disabled = true;
       btn.textContent = 'Sending...';
 
-      const applyDiscount = document.getElementById('applyDiscountToInvoice')?.checked;
       const data = {
         lookup_key: selectedInvoiceProduct.lookupKey,
-        company_name: document.getElementById('invoiceCompanyName').value,
-        contact_name: document.getElementById('invoiceContactName').value,
         contact_email: document.getElementById('invoiceContactEmail').value,
-        billing_address: {
-          line1: document.getElementById('invoiceAddressLine1').value,
-          line2: document.getElementById('invoiceAddressLine2').value || undefined,
-          city: document.getElementById('invoiceCity').value,
-          state: document.getElementById('invoiceState').value,
-          postal_code: document.getElementById('invoicePostalCode').value,
-          country: document.getElementById('invoiceCountry').value,
-        },
-        coupon_id: applyDiscount && accountData.stripe_coupon_id ? accountData.stripe_coupon_id : null,
+        contact_name: document.getElementById('invoiceContactName').value || undefined,
       };
 
       try {
-        const response = await fetch(`/api/admin/prospects/${accountId}/invoice`, {
+        const response = await fetch(`/api/admin/accounts/${accountId}/invite-membership`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -3881,29 +3791,26 @@
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error || error.message || 'Failed to send invoice');
+          throw new Error(error.error || error.message || 'Failed to send invitation');
         }
 
         const result = await response.json();
 
-        if (result.success && result.invoice_url) {
+        if (result.success && result.invite?.url) {
           document.getElementById('invoiceBillingSection').style.display = 'none';
-          document.getElementById('invoiceDiscountNotice').style.display = 'none';
           document.getElementById('sendInvoiceBtn').style.display = 'none';
-          document.getElementById('invoiceUrl').value = result.invoice_url;
+          document.getElementById('invoiceUrl').value = result.invite.url;
           document.getElementById('invoiceResult').style.display = 'block';
-
-          // Refresh page to show the new pending invoice
-          setTimeout(() => location.reload(), 2000);
+          setTimeout(() => location.reload(), 2500);
         } else {
           throw new Error(result.message || 'Unknown error');
         }
       } catch (error) {
-        console.error('Error sending invoice:', error);
+        console.error('Error sending invitation:', error);
         alert('Error: ' + error.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Send Invoice';
+        btn.textContent = 'Send Invitation';
       }
     }
 
@@ -3911,10 +3818,10 @@
       const input = document.getElementById('invoiceUrl');
       input.select();
       navigator.clipboard.writeText(input.value).then(() => {
-        showToast('Invoice link copied to clipboard!');
+        showToast('Invitation link copied to clipboard!');
       }).catch(() => {
         document.execCommand('copy');
-        showToast('Invoice link copied to clipboard!');
+        showToast('Invitation link copied to clipboard!');
       });
     }
 

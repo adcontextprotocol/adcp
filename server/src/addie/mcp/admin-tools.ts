@@ -72,13 +72,12 @@ import {
 } from '../../slack/client.js';
 import {
   getProductsForCustomer,
-  createCheckoutSession,
-  createAndSendInvoice,
-  createStripeCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
+import { createMembershipInvite } from '../../db/membership-invites-db.js';
+import { sendMembershipInviteEmail } from '../../notifications/email.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
-import { workos } from '../../auth/workos-client.js';
+import { getWorkos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
 import {
@@ -113,10 +112,16 @@ import { assessHistoricalBehavior } from '../services/outreach-simulator.js';
 import { getMemberCapabilities } from '../../db/outbound-db.js';
 import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
 import { captureEvent } from '../../utils/posthog.js';
+import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
+import { rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
+import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
 const slackDb = new SlackDatabase();
+const brandLogoDb = new BrandLogoDatabase();
+const brandDbForLogos = new BrandDatabase();
 const wgDb = new WorkingGroupDatabase();
 
 // The slug for the AAO admin working group
@@ -451,25 +456,25 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'send_payment_request',
-    description: 'Send payment link or invoice to prospect. Finds/creates company, applies discounts, generates Stripe checkout URL or invoice. For invoices: use draft_invoice first, then send_invoice.',
+    description: `Find or create a prospect organization and either look up its products, draft an invoice for review, or send a membership invite. Admins cannot directly mint payment links or send invoices from this tool — those operations are only valid in the recipient's own authenticated session, after they accept the invite.
+
+Actions:
+- "lookup_only": find or create the org, list eligible products. Read-only.
+- "draft_invoice": preview what the invoice would look like (amount, discount). No Stripe write.
+- "send_invite": create a membership invite token and email it to the contact. This is NOT a direct invoice send — there is no admin path to issue invoices or payment links to non-signed-in recipients. The recipient signs in, accepts the agreement, and the invoice or checkout is then issued in their authenticated session — never under the admin's or a hallucinated email.`,
     input_schema: {
       type: 'object',
       properties: {
         company_name: { type: 'string', description: 'Company name' },
         domain: { type: 'string', description: 'Company domain' },
         contact_name: { type: 'string', description: 'Contact person name' },
-        contact_email: { type: 'string', description: 'Contact email (required for invoice)' },
+        contact_email: { type: 'string', description: 'Email of the human who will sign in to complete billing in their own session. Used only to deliver the invite — never used as a Stripe customer email or invoice recipient directly. Required for send_invite.' },
         contact_title: { type: 'string', description: 'Contact job title' },
-        action: { type: 'string', enum: ['payment_link', 'draft_invoice', 'send_invoice', 'lookup_only'], description: 'Action type (default: payment_link)' },
+        action: { type: 'string', enum: ['lookup_only', 'draft_invoice', 'send_invite'], description: 'Action type (default: lookup_only)' },
         lookup_key: { type: 'string', description: 'Product lookup_key from find_membership_products' },
-        billing_address: {
-          type: 'object',
-          description: 'Billing address (required for invoices)',
-          properties: { line1: { type: 'string' }, line2: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, postal_code: { type: 'string' }, country: { type: 'string' } },
-        },
-        discount_percent: { type: 'number', description: 'Percentage discount' },
-        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount' },
-        discount_reason: { type: 'string', description: 'Reason for discount' },
+        discount_percent: { type: 'number', description: 'Percentage discount (preview only in draft_invoice)' },
+        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount (preview only in draft_invoice)' },
+        discount_reason: { type: 'string', description: 'Reason for discount (required when applying one)' },
         use_existing_discount: { type: 'boolean', description: 'Use existing org discount (default: true)' },
       },
       required: ['company_name'],
@@ -1503,6 +1508,118 @@ For logo changes, use update_member_logo instead.`,
         },
       },
       required: [],
+    },
+  },
+
+  // ============================================
+  // BRAND LOGO REVIEW TOOLS
+  // ============================================
+  {
+    name: 'list_pending_brand_logos',
+    description: 'List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"',
+    usage_hints: 'Pair with review_brand_logo to approve or reject from the queue. Pending logos block the company-listing display until reviewed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum logos to return (default 25, max 100)',
+        },
+        offset: {
+          type: 'number',
+          description: 'Pagination offset (default 0)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_brand_logos',
+    description: 'List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand\'s logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.',
+    usage_hints: 'Use when a member reports their logo is "disappearing" or stuck on a known domain. Pending status means an admin must approve via review_brand_logo.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain (e.g., "thehook.es")',
+        },
+      },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'review_brand_logo',
+    description: 'Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand\'s company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.',
+    usage_hints: 'Get the logo_id from list_pending_brand_logos or list_brand_logos. Always include a short note explaining the decision so the uploader gets useful feedback.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain the logo belongs to',
+        },
+        logo_id: {
+          type: 'string',
+          description: 'Logo UUID (from list_pending_brand_logos)',
+        },
+        action: {
+          type: 'string',
+          enum: ['approve', 'reject', 'delete'],
+          description: 'approve = publish, reject = hide with reason, delete = tombstone',
+        },
+        note: {
+          type: 'string',
+          description: 'Reviewer note (max 500 chars). Required for reject/delete; helpful on approve.',
+        },
+      },
+      required: ['domain', 'logo_id', 'action'],
+    },
+  },
+
+  // ============================================
+  // BRAND REGISTRY TOOLS
+  // ============================================
+  {
+    name: 'transfer_brand_ownership',
+    description: `Transfer ownership of a brand domain from one organization to another. Records a revision for audit. Use after out-of-band verification (acquisition docs, support ticket, legal correspondence) confirms the new org should own the domain.
+
+Do not use to resolve unverified disputes — use the escalation queue for those. This is for confirmed transfers only.`,
+    usage_hints: 'Get new_org_id from get_account. Pair with resolve_escalation to close the related support ticket after transfer.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Brand domain to transfer (e.g., "nova-brands.com")',
+        },
+        new_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the new owner (e.g., "org_01HW...")',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for the transfer, recorded in the audit trail (e.g., "Acquisition by Pinnacle Agency — see ticket #4821")',
+        },
+      },
+      required: ['domain', 'new_org_id', 'reason'],
+    },
+  },
+  {
+    name: 'list_orphaned_brands',
+    description: `List brand domains in the orphaned state — a prior owner relinquished and the manifest is preserved for adoption. Use this to audit relinquished brands, see which ones have stale data, and trigger admin cleanup or reach out to potential adopters. Returns prior owner org name + id, when relinquished, and a manifest preview so admins can decide at a glance.`,
+    usage_hints: 'Use to answer "what brands are awaiting adoption?" or to find a specific orphaned domain. Pair with transfer_brand_ownership when an admin has confirmed the right next owner out of band.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum brands to return (default 50, max 200)',
+        },
+        offset: {
+          type: 'number',
+          description: 'Pagination offset (default 0)',
+        },
+      },
     },
   },
 ];
@@ -2769,7 +2886,11 @@ export function createAdminToolHandlers(
     return response;
   });
 
-  // Send payment request - the unified tool for getting prospects to pay
+  // Send membership invite to a prospect — admin-side entry to the billing flow.
+  // The admin can look up products, draft an invoice for review, or send an
+  // invite. The invite recipient signs in and accepts in their own session,
+  // and only then is an invoice or checkout issued — under their authenticated
+  // identity, never under the admin's email or a hallucinated address.
   handlers.set('send_payment_request', async (input) => {
 
     const companyName = input.company_name as string;
@@ -2777,21 +2898,21 @@ export function createAdminToolHandlers(
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
-    const action = (input.action as string) || 'payment_link';
+    const action = (input.action as string) || 'lookup_only';
     const lookupKey = input.lookup_key as string | undefined;
-    const billingAddress = input.billing_address as {
-      line1?: string;
-      line2?: string;
-      city?: string;
-      state?: string;
-      postal_code?: string;
-      country?: string;
-    } | undefined;
-    // Discount parameters
+    // Discount parameters (preview-only — applied during draft_invoice)
     const discountPercent = input.discount_percent as number | undefined;
     const discountAmountDollars = input.discount_amount_dollars as number | undefined;
     const discountReason = input.discount_reason as string | undefined;
     const useExistingDiscount = input.use_existing_discount !== false; // default true
+
+    // The admin invoking this tool. Their identity is used as
+    // `invited_by_user_id` on the membership invite. We never propagate it as
+    // the Stripe customer email — that comes from the recipient at acceptance.
+    const adminUserId = memberContext?.workos_user?.workos_user_id;
+    const adminEmail = memberContext?.workos_user?.email;
+    const adminFirstName = memberContext?.workos_user?.first_name;
+    const adminLastName = memberContext?.workos_user?.last_name;
 
     const pool = getPool();
     let org: {
@@ -2887,8 +3008,12 @@ export function createAdminToolHandlers(
       return `❌ Could not find or create organization "${companyName}"`;
     }
 
-    // Update contact info if provided
-    if (contactName || contactEmail || contactTitle) {
+    // Update contact name/title on the org for visibility. We deliberately do
+    // NOT mirror contact_email into prospect_contact_email here — that field
+    // was the source of the cross-org contact leak. The admin must pass
+    // contact_email explicitly to send_invite each time, and the invite
+    // recipient's authenticated identity is what becomes the Stripe customer.
+    if (contactName || contactTitle) {
       const updates: string[] = [];
       const values: unknown[] = [];
       let paramIndex = 1;
@@ -2896,10 +3021,6 @@ export function createAdminToolHandlers(
       if (contactName) {
         updates.push(`prospect_contact_name = $${paramIndex++}`);
         values.push(contactName);
-      }
-      if (contactEmail) {
-        updates.push(`prospect_contact_email = $${paramIndex++}`);
-        values.push(contactEmail);
       }
       if (contactTitle) {
         updates.push(`prospect_contact_title = $${paramIndex++}`);
@@ -2913,9 +3034,7 @@ export function createAdminToolHandlers(
           `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
           values
         );
-        // Update local object
         if (contactName) org.prospect_contact_name = contactName;
-        if (contactEmail) org.prospect_contact_email = contactEmail;
       }
     }
 
@@ -2929,9 +3048,6 @@ export function createAdminToolHandlers(
       [org.workos_organization_id]
     );
     const members = membersResult.rows;
-
-    // Determine the email to use
-    const emailToUse = contactEmail || org.prospect_contact_email || members[0]?.email;
 
     // Get available products
     const customerType = org.is_personal ? 'individual' : 'company';
@@ -2985,10 +3101,10 @@ export function createAdminToolHandlers(
     // Build response
     let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
 
-    // Show contacts/users
+    // Show contacts/users (read-only inspection)
     response += `### Contacts\n`;
     if (org.prospect_contact_name || org.prospect_contact_email) {
-      response += `**Primary Contact:** ${org.prospect_contact_name || 'Unknown'}`;
+      response += `**Last known contact on file:** ${org.prospect_contact_name || 'Unknown'}`;
       if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
       response += `\n`;
     }
@@ -3001,12 +3117,10 @@ export function createAdminToolHandlers(
       if (members.length > 3) {
         response += `  _...and ${members.length - 3} more_\n`;
       }
-    } else if (!org.prospect_contact_email) {
-      response += `_No contacts on file - add a contact_email to proceed._\n`;
     }
     response += `\n`;
 
-    // If lookup only, stop here
+    // Lookup-only stops here
     if (action === 'lookup_only') {
       response += `### Available Products\n`;
       for (const p of products.slice(0, 5)) {
@@ -3015,134 +3129,125 @@ export function createAdminToolHandlers(
         response += `• **${p.display_name}** - ${amount}${suggested}\n`;
         response += `  lookup_key: \`${p.lookup_key}\`\n`;
       }
-      response += `\n_Use this tool again with action="payment_link" or action="invoice" and the lookup_key to proceed._`;
+      response += `\n_Use this tool again with action="draft_invoice" to preview pricing or action="send_invite" with a contact_email to send the membership invite._`;
       return response;
     }
 
-    // Generate payment link
-    if (action === 'payment_link') {
-      if (!finalProduct) {
-        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+    // Send invite — admin-side billing entry point.
+    // The recipient must click the invite link, sign in, accept the agreement,
+    // and only then is an invoice/subscription issued under their authenticated
+    // identity. The admin's email never becomes the Stripe customer.
+    if (action === 'send_invite') {
+      if (!finalProduct || !finalProduct.lookup_key) {
+        return response + `\n❌ Pick a product first (call again with action="lookup_only" or pass a lookup_key).`;
+      }
+      if (!contactEmail) {
+        return response + `\n❌ contact_email is required for action="send_invite". The invite link will be emailed to this address.`;
+      }
+      if (!adminUserId) {
+        return response + `\n❌ Cannot send invite — no signed-in admin context. Sign in to agenticadvertising.org and try again.`;
+      }
+      if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+        return response + `\n⚠️ Discount parameters are preview-only on send_invite. To attach a discount, set the org's stored discount first (separate tool), then send the invite.`;
       }
 
-      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      const normalizedEmail = contactEmail.trim().toLowerCase();
+      if (!emailRegex.test(normalizedEmail)) {
+        return response + `\n❌ Invalid contact_email: ${contactEmail}`;
+      }
 
       try {
-        // Handle discounts
-        let couponId: string | undefined;
-        let appliedDiscount: string | undefined;
-
-        // Check if a new discount was requested
-        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
-          if (!discountReason) {
-            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
-          }
-
-          // Create a new discount/coupon for this org
-          const grantedBy = memberContext?.workos_user?.email || 'Addie';
-          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
-            percent_off: discountPercent,
-            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
-            duration: 'forever',
-            reason: discountReason,
-          });
-
-          if (stripeDiscount) {
-            couponId = stripeDiscount.coupon_id;
-            // Also save to the org record
-            await orgDb.setDiscount(org.workos_organization_id, {
-              discount_percent: discountPercent ?? null,
-              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
-              reason: discountReason,
-              granted_by: grantedBy,
-              stripe_coupon_id: stripeDiscount.coupon_id,
-              stripe_promotion_code: stripeDiscount.promotion_code,
-            });
-            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
-            logger.info({
-              orgId: org.workos_organization_id,
-              discount: appliedDiscount,
-              reason: discountReason,
-            }, 'Created discount for payment link');
-          }
-        } else if (useExistingDiscount && org.stripe_coupon_id) {
-          // Use the org's existing discount
-          couponId = org.stripe_coupon_id;
-          appliedDiscount = org.discount_percent
-            ? `${org.discount_percent}% off`
-            : `$${(org.discount_amount_cents || 0) / 100} off`;
-        }
-
-        // Ensure a Stripe customer exists with org metadata before creating the
-        // checkout session. Without this, Stripe creates a new customer during
-        // checkout that has no workos_organization_id metadata, so the subscription
-        // webhook can't link the payment back to the organization.
-        let customerId: string | undefined;
-        if (emailToUse) {
-          customerId = await orgDb.getOrCreateStripeCustomer(org.workos_organization_id, () =>
-            createStripeCustomer({
-              email: emailToUse,
-              name: org.name,
-              metadata: { workos_organization_id: org.workos_organization_id },
-            })
-          ) || undefined;
-        } else {
-          customerId = org.stripe_customer_id;
-        }
-
-        const session = await createCheckoutSession({
-          priceId: finalProduct.price_id,
-          customerId: customerId || undefined,
-          customerEmail: customerId ? undefined : (emailToUse || undefined),
-          successUrl: `${baseUrl}/dashboard?payment=success`,
-          cancelUrl: `${baseUrl}/membership?payment=cancelled`,
-          workosOrganizationId: org.workos_organization_id,
-          isPersonalWorkspace: org.is_personal,
-          couponId, // Pre-apply the discount if available
+        const invite = await createMembershipInvite({
+          workos_organization_id: org.workos_organization_id,
+          lookup_key: finalProduct.lookup_key,
+          contact_email: normalizedEmail,
+          contact_name: contactName?.trim() || undefined,
+          invited_by_user_id: adminUserId,
         });
 
-        if (!session?.url) {
-          return response + `\n❌ Failed to generate payment link. Stripe may not be configured.`;
-        }
+        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const inviteUrl = `${baseUrl}/invite/${invite.token}`;
+        const priceDisplay = finalProduct.amount_cents
+          ? `$${(finalProduct.amount_cents / 100).toLocaleString()}`
+          : 'Custom';
 
-        response += `### 💳 Payment Link Generated\n\n`;
-        response += `**Product:** ${finalProduct.display_name}\n`;
-        if (finalProduct.amount_cents) {
-          const originalAmount = finalProduct.amount_cents / 100;
-          response += `**Amount:** $${originalAmount.toLocaleString()}/year\n`;
-        }
-        if (appliedDiscount) {
-          response += `**Discount:** ${appliedDiscount} (pre-applied)\n`;
-        }
-        response += `\n**Payment Link:**\n${session.url}\n`;
-        response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
+        const invitedByName =
+          [adminFirstName, adminLastName].filter(Boolean).join(' ') ||
+          adminEmail || 'AAO Admin';
+
+        const emailSent = await sendMembershipInviteEmail({
+          to: normalizedEmail,
+          contactName: contactName?.trim() || null,
+          orgName: org.name,
+          tierDisplayName: finalProduct.display_name || finalProduct.lookup_key,
+          priceDisplay,
+          inviteUrl,
+          invitedByName,
+          invitedByEmail: adminEmail || 'admin@agenticadvertising.org',
+          expiresAt: invite.expires_at,
+        });
+
+        // Stamp invoice_requested_at and a non-PII contact name (if supplied)
+        // for admin-dashboard visibility. We deliberately do NOT mirror the
+        // invite's contact_email back onto the org row — it's stored on the
+        // membership_invites row and any future code that re-reads
+        // prospect_contact_email for billing would re-introduce the cross-org
+        // contamination this lockdown closes.
+        await pool.query(
+          `UPDATE organizations SET
+             invoice_requested_at = NOW(),
+             prospect_contact_name = COALESCE($1, prospect_contact_name),
+             updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [contactName?.trim() || null, org.workos_organization_id]
+        );
+
+        response += `### ✉️ Membership Invite Sent\n\n`;
+        response += `**Tier:** ${finalProduct.display_name}\n`;
+        response += `**Price:** ${priceDisplay}/year\n`;
+        response += `**Sent to:** ${normalizedEmail}\n`;
+        response += `**Invite expires:** ${invite.expires_at.toISOString().slice(0, 10)}\n`;
+        response += `**Email delivered:** ${emailSent ? 'yes' : 'no (Resend not configured)'}\n`;
+        response += `\n**Invite URL:**\n${inviteUrl}\n`;
+        response += `\n_The recipient signs in, accepts the membership agreement, and the invoice/checkout is issued under their authenticated identity — never under your email._`;
 
         logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
-          'Addie generated payment link'
+          {
+            orgId: org.workos_organization_id,
+            orgName: org.name,
+            inviteToken: invite.token.slice(0, 8) + '...',
+            contactEmail: normalizedEmail,
+            lookupKey: finalProduct.lookup_key,
+            invitedBy: adminUserId,
+            emailSent,
+          },
+          'Addie sent membership invite (admin tool)',
         );
 
         return response;
       } catch (err) {
-        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to create checkout session');
-        return response + `\n❌ Failed to create payment link: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send membership invite');
+        return response + `\n❌ Failed to send membership invite: ${err instanceof Error ? err.message : 'Unknown error'}`;
       }
     }
 
-    // Draft invoice - prepare and show for review (TWO-STEP PROCESS: Step 1)
+    // Draft invoice — pricing preview only.
+    // No Stripe writes happen here. The recipient supplies their own contact
+    // email and billing address at invite-acceptance time, so we don't quote
+    // either of those here. Discount parameters are previewed but only become
+    // attached to the org via a separate explicit call.
     if (action === 'draft_invoice') {
       if (!finalProduct) {
         return response + `\n❌ No membership products available. Please check Stripe configuration.`;
       }
 
-      // Determine what discount would be applied
       let appliedDiscount: string | undefined;
       let finalAmount = finalProduct.amount_cents || 0;
 
-      // Check if a new discount is being requested
       if (discountPercent !== undefined || discountAmountDollars !== undefined) {
         if (!discountReason) {
-          return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          return response + `\n❌ Please provide a discount_reason when previewing a discount.`;
         }
         appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
         if (discountPercent) {
@@ -3151,7 +3256,6 @@ export function createAdminToolHandlers(
           finalAmount = Math.max(0, finalAmount - (discountAmountDollars * 100));
         }
       } else if (useExistingDiscount && (org.discount_percent || org.discount_amount_cents)) {
-        // Use existing org discount
         appliedDiscount = org.discount_percent
           ? `${org.discount_percent}% off`
           : `$${(org.discount_amount_cents || 0) / 100} off`;
@@ -3162,10 +3266,8 @@ export function createAdminToolHandlers(
         }
       }
 
-      response += `### 📋 Draft Invoice for Review\n\n`;
+      response += `### 📋 Draft Invoice (Preview Only)\n\n`;
       response += `---\n\n`;
-
-      // Company info
       response += `**Company:** ${org.name}\n`;
       if (org.revenue_tier) {
         const tierLabels: Record<string, string> = {
@@ -3174,29 +3276,12 @@ export function createAdminToolHandlers(
           '5m_50m': '$5M-$50M',
           '50m_250m': '$50M-$250M',
           '250m_1b': '$250M-$1B',
-          '1b_plus': 'Over $1B'
+          '1b_plus': 'Over $1B',
         };
         response += `**Revenue Tier:** ${tierLabels[org.revenue_tier] || org.revenue_tier}\n`;
       }
 
-      // Contact info
-      response += `\n**Contact:** ${org.prospect_contact_name || contactName || '_Not set_'}\n`;
-      response += `**Email:** ${emailToUse || '_Not set - required for invoice_'}\n`;
-
-      // Billing address
-      response += `\n**Billing Address:**\n`;
-      if (billingAddress?.line1) {
-        response += `${billingAddress.line1}\n`;
-        if (billingAddress.line2) response += `${billingAddress.line2}\n`;
-        response += `${billingAddress.city || ''}, ${billingAddress.state || ''} ${billingAddress.postal_code || ''}\n`;
-        response += `${billingAddress.country || 'US'}\n`;
-      } else {
-        response += `_Not provided - required for invoice_\n`;
-      }
-
-      // Product and pricing
-      response += `\n---\n\n`;
-      response += `**Product:** ${finalProduct.display_name}\n`;
+      response += `\n**Product:** ${finalProduct.display_name}\n`;
       if (finalProduct.amount_cents) {
         const listPrice = finalProduct.amount_cents / 100;
         const netPrice = finalAmount / 100;
@@ -3214,168 +3299,21 @@ export function createAdminToolHandlers(
       }
       response += `**Payment Terms:** NET 30\n`;
 
-      // What's missing
-      const missingFields: string[] = [];
-      if (!emailToUse) missingFields.push('contact_email');
-      if (!billingAddress?.line1) missingFields.push('billing_address');
-
-      if (missingFields.length > 0) {
-        response += `\n---\n\n`;
-        response += `⚠️ **Missing required fields:** ${missingFields.join(', ')}\n`;
-        response += `\n_Please provide these fields to proceed._\n`;
-      } else {
-        response += `\n---\n\n`;
-        response += `✅ **Ready to send!**\n\n`;
-        response += `To send this invoice, confirm with the admin then call this tool again with:\n`;
-        response += `- \`action: "send_invoice"\`\n`;
-        response += `- Same company_name and all other parameters\n`;
-        response += `\nOr if changes are needed, ask the admin what to modify.\n`;
-      }
+      response += `\n---\n\n`;
+      response += `_The contact email and billing address come from the recipient when they accept the invite. To deliver this invoice, call this tool again with:_\n`;
+      response += `- \`action: "send_invite"\`\n`;
+      response += `- \`contact_email: <recipient email>\`\n`;
+      response += `- Same lookup_key\n`;
 
       logger.info(
         { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
-        'Addie prepared draft invoice'
+        'Addie prepared draft invoice (preview only)',
       );
 
       return response;
     }
 
-    // Send invoice - actually send after review (TWO-STEP PROCESS: Step 2)
-    // Also support legacy 'invoice' action for backward compatibility
-    if (action === 'send_invoice' || action === 'invoice') {
-      if (!emailToUse) {
-        return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
-      }
-
-      if (!billingAddress?.line1 || !billingAddress?.city || !billingAddress?.postal_code || !billingAddress?.country) {
-        response += `### 📄 Invoice - Need Billing Address\n\n`;
-        response += `To send an invoice, I need the full billing address:\n`;
-        response += `• line1 (street address)\n`;
-        response += `• city\n`;
-        response += `• state (if applicable)\n`;
-        response += `• postal_code\n`;
-        response += `• country (two-letter code, e.g., "US")\n`;
-        response += `\n_Call this tool again with the billing_address to send the invoice._`;
-        return response;
-      }
-
-      if (!finalProduct) {
-        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
-      }
-
-      try {
-        // Handle discounts for invoices (similar to payment links)
-        let couponId: string | undefined;
-        let appliedDiscount: string | undefined;
-
-        // Check if a new discount was requested
-        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
-          if (!discountReason) {
-            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
-          }
-
-          // Create a new discount/coupon for this org
-          const grantedBy = memberContext?.workos_user?.email || 'Addie';
-          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
-            percent_off: discountPercent,
-            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
-            duration: 'forever',
-            reason: discountReason,
-          });
-
-          if (stripeDiscount) {
-            couponId = stripeDiscount.coupon_id;
-            // Also save to the org record
-            await orgDb.setDiscount(org.workos_organization_id, {
-              discount_percent: discountPercent ?? null,
-              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
-              reason: discountReason,
-              granted_by: grantedBy,
-              stripe_coupon_id: stripeDiscount.coupon_id,
-              stripe_promotion_code: stripeDiscount.promotion_code,
-            });
-            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
-            logger.info({
-              orgId: org.workos_organization_id,
-              discount: appliedDiscount,
-              reason: discountReason,
-            }, 'Created discount for invoice');
-          }
-        } else if (useExistingDiscount && org.stripe_coupon_id) {
-          // Use the org's existing discount
-          couponId = org.stripe_coupon_id;
-          appliedDiscount = org.discount_percent
-            ? `${org.discount_percent}% off`
-            : `$${(org.discount_amount_cents || 0) / 100} off`;
-        }
-
-        const invoiceResult = await createAndSendInvoice({
-          companyName: org.name,
-          contactName: org.prospect_contact_name || contactName || 'Billing',
-          contactEmail: emailToUse,
-          billingAddress: {
-            line1: billingAddress.line1,
-            line2: billingAddress.line2,
-            city: billingAddress.city || '',
-            state: billingAddress.state || '',
-            postal_code: billingAddress.postal_code || '',
-            country: billingAddress.country || 'US',
-          },
-          lookupKey: finalProduct.lookup_key || '',
-          workosOrganizationId: org.workos_organization_id,
-          couponId, // Apply discount if available
-        });
-
-        if (!invoiceResult) {
-          return response + `\n❌ Failed to create invoice. Stripe may not be configured.`;
-        }
-
-        response += `### 📧 Invoice Sent!\n\n`;
-        response += `**Product:** ${finalProduct.display_name}\n`;
-        if (finalProduct.amount_cents) {
-          const originalAmount = finalProduct.amount_cents / 100;
-          response += `**Amount:** $${originalAmount.toLocaleString()}`;
-          if (appliedDiscount && invoiceResult.discountApplied) {
-            // Calculate discounted amount for display
-            let discountedAmount = originalAmount;
-            if (discountPercent) {
-              discountedAmount = originalAmount * (1 - discountPercent / 100);
-            } else if (discountAmountDollars) {
-              discountedAmount = originalAmount - discountAmountDollars;
-            } else if (org.discount_percent) {
-              discountedAmount = originalAmount * (1 - org.discount_percent / 100);
-            } else if (org.discount_amount_cents) {
-              discountedAmount = originalAmount - (org.discount_amount_cents / 100);
-            }
-            response += ` → **$${discountedAmount.toLocaleString()}** (${appliedDiscount} applied)`;
-          }
-          response += `\n`;
-        }
-        response += `**Sent to:** ${emailToUse}\n`;
-        response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
-        if (invoiceResult.invoiceUrl) {
-          response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
-        }
-        response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
-
-        // Warn if discount was requested but not applied
-        if (invoiceResult.discountWarning) {
-          response += `\n\n⚠️ **Warning:** ${invoiceResult.discountWarning}`;
-        }
-
-        logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId, discount: appliedDiscount },
-          'Addie sent invoice'
-        );
-
-        return response;
-      } catch (err) {
-        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send invoice');
-        return response + `\n❌ Failed to send invoice: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      }
-    }
-
-    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "draft_invoice", "send_invoice", or "lookup_only".`;
+    return response + `\n❌ Unknown action: ${action}. Use "lookup_only", "draft_invoice", or "send_invite".`;
   });
 
   // Search Lusha for prospects
@@ -4896,6 +4834,7 @@ Use add_committee_leader to assign a leader.`;
 
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {
+    const workos = getWorkos();
 
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
@@ -5244,7 +5183,10 @@ Use add_committee_leader to assign a leader.`;
       return '❌ organization_id is required. Use lookup_organization to find the org ID first.';
     }
 
-    if (!workos) {
+    let workos: ReturnType<typeof getWorkos>;
+    try {
+      workos = getWorkos();
+    } catch {
       return '❌ WorkOS is not configured. Domain management requires WorkOS to be set up.';
     }
 
@@ -5539,7 +5481,10 @@ Use add_committee_leader to assign a leader.`;
       return '❌ role must be "member", "admin", or "owner".';
     }
 
-    if (!workos) {
+    let workos: ReturnType<typeof getWorkos>;
+    try {
+      workos = getWorkos();
+    } catch {
       return '❌ WorkOS is not configured.';
     }
 
@@ -7686,22 +7631,8 @@ Use add_committee_leader to assign a leader.`;
       return '❌ Provide either org_name or slug to identify the member.';
     }
 
-    // Validate the logo URL
-    try {
-      const parsed = new URL(logoUrl);
-      if (parsed.protocol !== 'https:') {
-        return '❌ logo_url must use HTTPS.';
-      }
-    } catch {
-      return `❌ Invalid logo_url: "${logoUrl}". Provide a fully-qualified HTTPS URL.`;
-    }
-    if (logoUrl.length > 2000) {
-      return '❌ logo_url must be 2000 characters or less.';
-    }
-
     try {
       const mDb = new MemberDatabase();
-      const bDb = new BrandDatabase();
 
       // Find the member profile
       let profile = null;
@@ -7727,111 +7658,24 @@ Use add_committee_leader to assign a leader.`;
         return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
       }
 
-      // Determine brand domain: use existing link or derive from contact_website
-      let brandDomain = profile.primary_brand_domain;
-      if (!brandDomain) {
-        if (profile.contact_website) {
-          try {
-            brandDomain = new URL(profile.contact_website).hostname;
-          } catch {
-            brandDomain = undefined;
-          }
-        }
-        if (!brandDomain) {
-          return `❌ No brand domain set for **${profile.display_name}**. Ask them to add their website to their profile first, or set primary_brand_domain manually.`;
-        }
-      }
-
-      // Use a transaction so both the brand update and profile link succeed or fail together
-      const pool = getPool();
-      const client = await pool.connect();
-      let wasUpdate = false;
       try {
-        await client.query('BEGIN');
-
-        // Read inside transaction with row lock to prevent concurrent insert race
-        const existingResult = await client.query(
-          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
-          [brandDomain]
-        );
-        const existing = existingResult.rows[0] || null;
-        wasUpdate = !!existing;
-
-        // Warn if admin tool is crossing org boundaries
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
-          logger.warn(
-            { brandDomain, existingOrgId: existing.workos_organization_id, targetOrgId: profile.workos_organization_id },
-            'Admin tool updating brand owned by a different organization'
-          );
+        const result = await updateBrandIdentity({
+          workosOrganizationId: profile.workos_organization_id,
+          displayName: profile.display_name,
+          profile,
+          logoUrl,
+        });
+        invalidateMemberContextCache();
+        const action = result.wasUpdate ? 'updated' : 'set';
+        logger.info({ profileId: profile.id, brandDomain: result.brandDomain, logoUrl, action }, 'Member logo updated');
+        return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${result.brandDomain}\n- Logo: ${logoUrl}`;
+      } catch (err) {
+        if (err instanceof BrandIdentityError) {
+          return `❌ ${err.message}`;
         }
-
-        if (existing) {
-          // Update logo in existing hosted brand
-          const bj = { ...(existing.brand_json as Record<string, unknown>) };
-          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
-          if (brands.length > 0) {
-            const primaryBrand = { ...brands[0] };
-            const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
-            primaryBrand.logos = logos.length > 0
-              ? [{ ...logos[0], url: logoUrl }, ...logos.slice(1)]
-              : [{ url: logoUrl }];
-            bj.brands = [primaryBrand, ...brands.slice(1)];
-          } else {
-            bj.brands = [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
-              logos: [{ url: logoUrl }],
-              colors: {},
-            }];
-          }
-          await client.query(
-            'UPDATE brands SET brand_manifest = $1, updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id]
-          );
-        } else {
-          // Create a new hosted brand entry
-          const brandJson = {
-            house: { domain: brandDomain, name: profile.display_name },
-            brands: [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
-              logos: [{ url: logoUrl }],
-              colors: {},
-            }],
-          };
-          await client.query(
-            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
-             ON CONFLICT (domain) DO UPDATE SET
-               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
-               has_brand_manifest = true,
-               updated_at = NOW()`,
-            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
-          );
-        }
-
-        // Link the profile to this brand domain if not already set
-        if (!profile.primary_brand_domain) {
-          await client.query(
-            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-            [brandDomain, profile.id]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
+        logger.error({ error: err, orgName, slug, logoUrl }, 'Error updating member logo');
+        return `❌ Failed to update logo: ${err instanceof Error ? err.message : 'Unknown error'}`;
       }
-
-      invalidateMemberContextCache();
-      const action = wasUpdate ? 'updated' : 'set';
-      logger.info({ profileId: profile.id, brandDomain, logoUrl, action }, 'Member logo updated');
-      return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${brandDomain}\n- Logo: ${logoUrl}`;
     } catch (error) {
       logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
       return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -8375,6 +8219,226 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error fetching action items');
       throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // ============================================
+  // BRAND LOGO REVIEW HANDLERS
+  // ============================================
+
+  handlers.set('list_pending_brand_logos', async (input) => {
+    const limit = Math.min(Math.max((input.limit as number) ?? 25, 1), 100);
+    const offset = Math.max((input.offset as number) ?? 0, 0);
+
+    try {
+      const pending = await brandLogoDb.getPendingLogos(limit, offset);
+      if (pending.length === 0) {
+        return JSON.stringify({ success: true, message: 'No brand logos pending review.', count: 0, logos: [] });
+      }
+
+      const now = Date.now();
+      const logos = pending.map(l => ({
+        logo_id: l.id,
+        domain: l.domain,
+        brand_name: l.brand_name ?? null,
+        content_type: l.content_type,
+        source: l.source,
+        tags: l.tags,
+        width: l.width,
+        height: l.height,
+        uploaded_by_email: l.uploaded_by_email,
+        upload_note: l.upload_note,
+        created_at: l.created_at,
+        age_hours: Math.round((now - new Date(l.created_at).getTime()) / 3_600_000),
+        preview_url: `/logos/brands/${l.domain}/${l.id}`,
+      }));
+
+      return JSON.stringify({ success: true, count: logos.length, logos }, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error listing pending brand logos');
+      throw new ToolError(`Failed to list pending brand logos: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('list_brand_logos', async (input) => {
+    const rawDomain = input.domain as string;
+    if (!rawDomain) throw new ToolError('domain is required');
+    const domain = canonicalizeBrandDomain(rawDomain);
+
+    try {
+      const logos = await brandLogoDb.listBrandLogos(domain, { include_all_statuses: true });
+      const summary = logos.map(l => ({
+        logo_id: l.id,
+        review_status: l.review_status,
+        source: l.source,
+        content_type: l.content_type,
+        tags: l.tags,
+        width: l.width,
+        height: l.height,
+        uploaded_by_email: l.uploaded_by_email,
+        upload_note: l.upload_note,
+        review_note: l.review_note,
+        reviewed_at: l.reviewed_at,
+        created_at: l.created_at,
+        preview_url: `/logos/brands/${domain}/${l.id}`,
+      }));
+
+      const counts = summary.reduce<Record<string, number>>((acc, l) => {
+        acc[l.review_status] = (acc[l.review_status] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      return JSON.stringify({ success: true, domain, total: summary.length, by_status: counts, logos: summary }, null, 2);
+    } catch (error) {
+      logger.error({ error, domain }, 'Error listing brand logos');
+      throw new ToolError(`Failed to list logos for ${domain}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('review_brand_logo', async (input) => {
+    const rawDomain = input.domain as string;
+    const logoId = input.logo_id as string;
+    const action = input.action as string;
+    const note = typeof input.note === 'string' ? input.note.slice(0, 500) : undefined;
+
+    if (!rawDomain) throw new ToolError('domain is required');
+    if (!logoId) throw new ToolError('logo_id is required');
+    if (!action) throw new ToolError('action is required');
+
+    const domain = canonicalizeBrandDomain(rawDomain);
+    const statusMap: Record<string, 'approved' | 'rejected' | 'deleted'> = {
+      approve: 'approved',
+      reject: 'rejected',
+      delete: 'deleted',
+    };
+    const status = statusMap[action];
+    if (!status) throw new ToolError(`Invalid action "${action}". Must be approve, reject, or delete.`);
+
+    if ((status === 'rejected' || status === 'deleted') && !note) {
+      throw new ToolError(`A note is required when you ${action} a logo so the uploader gets useful feedback.`);
+    }
+
+    const reviewerId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+
+    try {
+      const updated = await brandLogoDb.updateLogoReviewStatus(logoId, domain, status, reviewerId, note);
+      if (!updated) {
+        throw new ToolError(`Logo ${logoId} not found for domain ${domain}.`);
+      }
+
+      if (status === 'approved') {
+        const hosted = await brandDbForLogos.getHostedBrandByDomain(domain);
+        if (!hosted || !hosted.domain_verified) {
+          await rebuildManifestLogos(domain, brandLogoDb, brandDbForLogos);
+        }
+        try {
+          await brandDbForLogos.editDiscoveredBrand(domain, {
+            edit_summary: `Logo approved by ${reviewerId}`,
+            editor_user_id: reviewerId,
+            editor_email: memberContext?.workos_user?.email ?? 'addie@agenticadvertising.org',
+          });
+        } catch {
+          // Non-critical — approval succeeded regardless
+        }
+      }
+
+      logger.info({ logoId, domain, action, reviewerId }, 'Addie: brand logo reviewed');
+      return JSON.stringify({
+        success: true,
+        logo_id: logoId,
+        domain,
+        review_status: status,
+        note: note ?? null,
+      }, null, 2);
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      logger.error({ error, logoId, domain, action }, 'Error reviewing brand logo');
+      throw new ToolError(`Failed to ${action} logo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  // ============================================
+  // BRAND REGISTRY HANDLERS
+  // ============================================
+
+  handlers.set('transfer_brand_ownership', async (input) => {
+    const rawDomain = input.domain as string;
+    const newOrgId = input.new_org_id as string;
+    const rawReason = input.reason as string;
+
+    if (!rawDomain) throw new ToolError('domain is required');
+    if (!newOrgId) throw new ToolError('new_org_id is required');
+    if (!/^org_[A-Z0-9]{20,}$/.test(newOrgId)) {
+      throw new ToolError(`new_org_id ${newOrgId} is not a valid WorkOS organization id (expected "org_..." format).`);
+    }
+    if (!rawReason || rawReason.length < 20) {
+      throw new ToolError('reason must be descriptive (at least 20 characters)');
+    }
+    // Cap so the audit revision can't be bloated to MB by a typo or
+    // prompt-injected long reason; matches review_brand_logo's note cap.
+    const reason = rawReason.slice(0, 1000);
+
+    const domain = canonicalizeBrandDomain(rawDomain);
+    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+    const adminEmail = memberContext?.workos_user?.email;
+    const adminName = memberContext?.workos_user?.first_name;
+
+    try {
+      const result = await brandDbForLogos.transferBrandOwnership(domain, newOrgId, reason, {
+        userId: adminUserId,
+        email: adminEmail,
+        name: adminName,
+      });
+
+      logger.info({ domain, oldOrgId: result.oldOrgId, newOrgId, adminUserId }, 'Addie: brand ownership transferred');
+
+      return JSON.stringify({
+        success: true,
+        domain,
+        old_org_id: result.oldOrgId,
+        new_org_id: newOrgId,
+        revision_number: result.revisionNumber,
+        reason,
+      }, null, 2);
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      logger.error({ error, domain, newOrgId }, 'Error transferring brand ownership');
+      throw new ToolError(`Failed to transfer ownership: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  handlers.set('list_orphaned_brands', async (input) => {
+    const limit = Math.min(Math.max((input.limit as number) ?? 50, 1), 200);
+    const offset = Math.max((input.offset as number) ?? 0, 0);
+    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+
+    try {
+      const orphaned = await brandDbForLogos.listOrphanedBrands(limit, offset);
+      // Log every invocation so a bulk-enumeration pattern (e.g., compromised
+      // admin token sweeping the orphan pool for relinquish signals) shows up
+      // in audit logs. Matches the pattern used by other admin list_* tools.
+      logger.info({ adminUserId, count: orphaned.length, limit, offset }, 'Addie: admin listed orphaned brands');
+
+      if (orphaned.length === 0) {
+        return JSON.stringify({ success: true, message: 'No orphaned brands awaiting adoption.', count: 0, brands: [] }, null, 2);
+      }
+
+      const now = Date.now();
+      const brands = orphaned.map(b => ({
+        domain: b.domain,
+        brand_name: b.brand_name,
+        prior_owner_org_id: b.prior_owner_org_id,
+        prior_owner_org_name: b.prior_owner_org_name,
+        last_updated_at: b.last_updated_at,
+        days_since_relinquished: Math.floor((now - new Date(b.last_updated_at).getTime()) / 86_400_000),
+        logo_url: b.manifest_preview.logo_url ?? null,
+        brand_color: b.manifest_preview.brand_color ?? null,
+      }));
+
+      return JSON.stringify({ success: true, count: brands.length, brands }, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error listing orphaned brands');
+      throw new ToolError(`Failed to list orphaned brands: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 

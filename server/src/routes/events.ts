@@ -10,6 +10,7 @@ import { Router, type Request, type Response } from "express";
 import { parse as parseCsvLib } from "csv-parse/sync";
 import DOMPurify from "isomorphic-dompurify";
 import { createLogger } from "../logger.js";
+import { isUuid } from "../utils/uuid.js";
 import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { eventsDb } from "../db/events-db.js";
@@ -1342,8 +1343,7 @@ export function createEventsRouter(): {
         const { id } = req.params;
 
         // Validate UUID format
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(id)) {
+        if (!isUuid(id)) {
           return res.status(400).json({
             error: "Invalid event ID",
             message: "Event ID must be a valid UUID",
@@ -1381,8 +1381,7 @@ export function createEventsRouter(): {
         const { name, create_slack_channel } = req.body;
 
         // Validate UUID format
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(id)) {
+        if (!isUuid(id)) {
           return res.status(400).json({
             error: "Invalid event ID",
             message: "Event ID must be a valid UUID",

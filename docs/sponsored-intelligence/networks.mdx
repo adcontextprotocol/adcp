@@ -184,7 +184,7 @@ The key fields at each leg:
 |---|---|---|
 | `media_buy_id` | Network's media buy ID | May differ or be omitted |
 | `offering_id` | Not set (platform doesn't know) | Brand-specific offering |
-| `context` | User intent from the conversation | Forwarded as-is |
+| `intent` | User intent from the conversation | Forwarded as-is |
 | `identity` | User identity (if consented) | Forwarded as-is |
 
 The network handles attribution correlation across the two legs. It knows which platform triggered the session (`placement`), which media buy funded it (`media_buy_id`), and which brand responded (`offering_id`). This lets the network provide unified delivery reporting to buyers via `get_media_buy_delivery` while each brand agent only sees its own sessions.

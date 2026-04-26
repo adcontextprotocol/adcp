@@ -10,8 +10,12 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 **Response Time**: ~60 seconds (reporting query)
 
-**Request Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json)
+## Scope
+
+`get_media_buy_delivery` works on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), regardless of how the underlying campaign was created. Sales agents MUST NOT refuse delivery reporting — or narrow its coverage — on the basis that the buy originated outside AdCP. If delivery data for a buy is genuinely unavailable (e.g., the ad server has not yet reported a flight), the seller returns the buy in `media_buy_deliveries` with zero or partial metrics; the seller does not omit it and does not return `MEDIA_BUY_NOT_FOUND` for an account-owned buy.
+
+**Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
 
 ## Request Parameters
 
@@ -59,7 +63,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
 
-See [schema](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for complete field list.
 
 ### Billing-grade vs best-effort numbers
 

@@ -8,7 +8,7 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getSandboxBrands } from '@adcp/client/testing';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs, findSessionMatching } from './state.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -805,7 +805,13 @@ export function handleGetRights(
 
   const queryLower = query.toLowerCase();
 
-  let candidates = brandId ? TALENT.filter(t => t.brand_id === brandId) : [...TALENT];
+  // brand_id in get_rights semantically means "talent brand identifier" (e.g. "yuki_tanaka"),
+  // but compliance runners and generic callers often inject the caller's account domain
+  // here instead. Treat a brand_id that matches no talent as "no filter" rather than
+  // returning an empty catalog — otherwise downstream `$context.rights_id` extraction
+  // yields undefined and the governance/acquire storyboards can't reach their assertions.
+  const brandMatches = brandId ? TALENT.filter(t => t.brand_id === brandId) : null;
+  let candidates = brandMatches && brandMatches.length > 0 ? brandMatches : [...TALENT];
 
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
@@ -947,7 +953,15 @@ export async function handleAcquireRights(
   // are spending events and MUST be governed under the same plan as media
   // buys. Without this check, the brand_rights/governance_denied storyboard
   // gets a success response instead of GOVERNANCE_DENIED.
-  const session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  let session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
+  // Framework-dispatch strips `account`, dropping the session to
+  // open:default while sync_plans wrote under open:<brand.domain>.
+  // Fall back to any session carrying governance plans so
+  // brand_rights/governance_denied still propagates the denial.
+  if (session.governancePlans.size === 0) {
+    const fallback = await findSessionMatching(s => s.governancePlans.size > 0);
+    if (fallback) session = fallback;
+  }
   if (session.governancePlans.size > 0) {
     // Estimate total commitment: flat-rate pricing uses `price` as the fixed
     // total; CPM-priced rights project to estimated_impressions (or a

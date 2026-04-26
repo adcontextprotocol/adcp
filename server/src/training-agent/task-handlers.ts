@@ -15,9 +15,11 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { PostgresTaskStore } from '@adcp/client';
+import { mergeSeedProduct } from '@adcp/client/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
   Proposal,
@@ -70,6 +72,7 @@ type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
   include_history?: number;
   include_snapshot?: boolean;
+  pagination?: { max_results?: number; cursor?: string };
 };
 
 type UpdateMediaBuyArgs = UpdateMediaBuyRequest & ToolArgs & {
@@ -168,6 +171,7 @@ import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
   runWithSessionContext, flushDirtySessions,
+  getComplianceCreatives, getComplianceCreative,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -206,6 +210,7 @@ import {
 } from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
+  handleListAccounts,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -229,6 +234,7 @@ import {
   handleComplyTestController,
   getDeliverySimulation,
   getAccountStatus,
+  getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 import {
@@ -237,17 +243,8 @@ import {
   scopedPrincipal,
   getIdempotencyStore,
 } from './idempotency.js';
-import { getWebhookEmitter } from './webhooks.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
-
-// MCP webhook envelope's `task_type` enum (core.generated TaskType — not re-exported).
-type WebhookTaskType =
-  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
-  | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
-  | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
-  | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
-  | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -335,62 +332,6 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
     }));
   }
   return details;
-}
-
-/** Map tool name → TaskType for webhook envelopes. Only tools that emit
- * webhooks need an entry — tools absent from this map never fire an emission
- * even if the caller supplies a push_notification_config.url. */
-const TOOL_TO_TASK_TYPE: Readonly<Record<string, WebhookTaskType>> = {
-  create_media_buy: 'create_media_buy',
-  update_media_buy: 'update_media_buy',
-  sync_creatives: 'sync_creatives',
-  activate_signal: 'activate_signal',
-  get_signals: 'get_signals',
-  create_property_list: 'create_property_list',
-  update_property_list: 'update_property_list',
-  get_property_list: 'get_property_list',
-  list_property_lists: 'list_property_lists',
-  delete_property_list: 'delete_property_list',
-  sync_accounts: 'sync_accounts',
-  get_account_financials: 'get_account_financials',
-  get_creative_delivery: 'get_creative_delivery',
-  sync_event_sources: 'sync_event_sources',
-  sync_audiences: 'sync_audiences',
-  sync_catalogs: 'sync_catalogs',
-  log_event: 'log_event',
-  get_brand_identity: 'get_brand_identity',
-  get_rights: 'get_rights',
-  acquire_rights: 'acquire_rights',
-};
-
-function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
-  const pnc = args.push_notification_config as { url?: unknown } | undefined;
-  if (!pnc || typeof pnc !== 'object') return undefined;
-  return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
-}
-
-/**
- * Derive a stable logical event id for webhook idempotency.
- *
- * The `operation_id` feeds `WebhookIdempotencyKeyStore` — two emissions with
- * the same operation_id reuse the same `idempotency_key`, which is the
- * cross-attempt invariant receiver-side dedup depends on. We prefer a
- * buyer-facing entity id from the response (media_buy_id, creative_id,
- * activation_id, etc.) so retries from the same buyer collapse; if the
- * response has none, we fall back to the request's idempotency_key which
- * is already unique per logical submission.
- */
-function deriveWebhookOperationId(
-  toolName: string,
-  response: Record<string, unknown>,
-  requestIdempotencyKey: string | undefined,
-): string {
-  for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
-    const v = response[field];
-    if (typeof v === 'string' && v.length > 0) return `${toolName}.${v}`;
-  }
-  if (requestIdempotencyKey) return `${toolName}.${requestIdempotencyKey}`;
-  return `${toolName}.${randomUUID()}`;
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -547,7 +488,13 @@ export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
   const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
+  if (!hasCreatives && mb.status !== 'completed') {
+    if (mb.complyControllerForced) {
+      mb.complyControllerForced = false;
+    } else {
+      return 'pending_creatives';
+    }
+  }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
@@ -599,6 +546,67 @@ export function invalidateCache(): void {
   cachedCatalog = null;
   cachedFormats = null;
   cachedProposals = null;
+}
+
+/**
+ * Canonicalize an agent URL for equality comparison: lowercase scheme + host,
+ * strip a single trailing slash, preserve path case. Used to decide whether
+ * a caller-supplied `format_id.agent_url` points at this agent.
+ */
+function canonicalizeAgentUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hostname = u.hostname.toLowerCase();
+    u.protocol = u.protocol.toLowerCase();
+    const s = u.toString();
+    return s.endsWith('/') ? s.slice(0, -1) : s;
+  } catch {
+    return url.replace(/\/$/, '');
+  }
+}
+
+/**
+ * Merge products and pricing options seeded via comply_test_controller
+ * (`seed_product`, `seed_pricing_option`) into the in-memory product map
+ * used for create/validate flows. Seeded fixtures are permissive objects
+ * (spec: additionalProperties: true) — we synthesize the minimum shape
+ * the handlers consult (pricing_options with pricing_model/floor_price/
+ * fixed_price/etc) so fixture-driven storyboards can reference products
+ * that don't live in the static catalog.
+ */
+function overlaySeededProducts(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, import('@adcp/client').Product>,
+): void {
+  const { seededProducts, seededPricingOptions } = session.complyExtensions;
+  if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
+
+  const pricingByProduct = new Map<string, Array<Record<string, unknown>>>();
+  for (const [key, pxFx] of seededPricingOptions) {
+    const sep = key.indexOf(':');
+    const productId = sep > 0 ? key.slice(0, sep) : key;
+    const list = pricingByProduct.get(productId) ?? [];
+    list.push(pxFx);
+    pricingByProduct.set(productId, list);
+  }
+
+  const productIds = new Set<string>([
+    ...seededProducts.keys(),
+    ...pricingByProduct.keys(),
+  ]);
+  for (const productId of productIds) {
+    const existing = productMap.get(productId) ?? {} as Partial<Product>;
+    const fixture = seededProducts.get(productId) as Partial<Product> | undefined;
+    const seededPricing = pricingByProduct.get(productId);
+    let merged = mergeSeedProduct(existing as Partial<Product>, fixture ?? null);
+    merged = { ...merged, product_id: productId } as Partial<Product>;
+    if (seededPricing && seededPricing.length > 0) {
+      merged = mergeSeedProduct(merged, {
+        pricing_options: seededPricing as unknown as Product['pricing_options'],
+      });
+    }
+    productMap.set(productId, merged as Product);
+  }
 }
 
 // ── Channel aliases for brief matching (module-scoped for perf) ──
@@ -718,6 +726,20 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook destination for async completion notification. RFC 9421 signed by default; HMAC-SHA256 fallback when authentication is populated.',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            authentication: {
+              type: 'object',
+              properties: {
+                schemes: { type: 'array', items: { type: 'string' } },
+                credentials: { type: 'string' },
+              },
+            },
+          },
+        },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -1023,7 +1045,20 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   }
 
   // Refine mode: apply include/omit/more_like_this/finalize
-  const refinementApplied: Array<{ status: string; notes?: string }> = [];
+  type RefineEntry =
+    | { scope: 'request'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
+
+  type RefinementAppliedEntry = {
+    scope: 'request' | 'product' | 'proposal';
+    product_id?: string;
+    proposal_id?: string;
+    status: 'applied' | 'partial' | 'unable';
+    notes?: string;
+  };
+
+  const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
@@ -1031,14 +1066,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
-    for (const op of req.refine) {
+    const askAckNotes = (ask?: string) =>
+      ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
+
+    for (const op of req.refine as unknown as RefineEntry[]) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') { omitIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        else if (op.action === 'include') { includeIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
-        // more_like_this: include the product plus similar channel products
-        else if (op.action === 'more_like_this') {
-          includeIds.add(op.id);
-          const source = previousProducts.find(p => p.product_id === op.id);
+        const action = op.action ?? 'include';
+        if (action === 'omit') {
+          omitIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
+        } else if (action === 'include') {
+          includeIds.add(op.product_id);
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'more_like_this') {
+          includeIds.add(op.product_id);
+          const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of getCatalog()) {
@@ -1047,32 +1089,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               }
             }
           }
-          refinementApplied.push({ status: 'applied' });
+          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         }
       } else if (op.scope === 'proposal') {
-        const proposalOp = op as { scope: 'proposal'; id: string; action: string; ask?: string };
-        const proposal = previousProposals.find(p => p.proposal_id === proposalOp.id);
+        const action = op.action ?? 'include';
+        const proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
         if (!proposal) {
-          refinementApplied.push({ status: 'unable', notes: `Proposal not found: ${proposalOp.id}` });
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
           continue;
         }
-        if (proposalOp.action === 'omit') {
-          proposalOmitIds.add(proposalOp.id);
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'include') {
-          // Include is a no-op for proposals already in the response
-          refinementApplied.push({ status: 'applied' });
-        } else if (proposalOp.action === 'finalize') {
+        if (action === 'omit') {
+          proposalOmitIds.add(op.proposal_id);
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
+        } else if (action === 'include') {
+          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+        } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
-            refinementApplied.push({ status: 'applied', notes: 'Proposal already committed' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
           } else if (status === 'draft') {
-            // Transition draft → committed: firm pricing, inventory hold, IO
             const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
             committed.proposal_status = 'committed';
-            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h hold
+            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-            // Attach insertion order for proposals with guaranteed products
             const hasGuaranteed = proposal.allocations.some(alloc => {
               const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
               return cp?.product.delivery_type === 'guaranteed';
@@ -1098,12 +1137,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               };
             }
 
-            // Update proposal in session context
             if (!session.lastGetProductsContext) {
               session.lastGetProductsContext = { products: [...products], proposals: [] };
             }
             const sessionProposals = session.lastGetProductsContext.proposals || [];
-            const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
+            const idx = sessionProposals.findIndex(p => p.proposal_id === op.proposal_id);
             const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
             if (idx >= 0) {
               sessionProposals[idx] = updatedProposal;
@@ -1112,14 +1150,13 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             }
             session.lastGetProductsContext.proposals = sessionProposals;
 
-            refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
           } else {
-            // No proposal_status means already ready to buy — finalize is a no-op
-            refinementApplied.push({ status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
           }
         }
       } else if (op.scope === 'request') {
-        refinementApplied.push({ status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
       }
     }
 
@@ -1176,31 +1213,99 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
-  let formats = getFormats();
 
-  // Filter by channels
-  if (req.channels?.length) {
-    const validIds = new Set<string>();
-    for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
-      if (fmtChannels.some(c => req.channels!.includes(c))) {
-        validIds.add(fmtId);
+  // When comply_test_controller.seed_creative_format has pre-populated formats,
+  // use the seeded catalog so pagination-integrity storyboards can pin
+  // has_more / cursor / total_count against a known set size. The seed pool is
+  // process-global (not session-scoped) because list_creative_formats has no
+  // tenant identity in its request schema — every call is a global catalog
+  // read. Other seed_* scenarios (seed_creative, seed_media_buy) target
+  // entities the listing call carries identity for and stay session-scoped.
+  // Falls back to the static catalog when the seed pool is empty so normal
+  // (non-compliance) callers are unaffected.
+  let formats: ReturnType<typeof getFormats>;
+  const seeded = getSeededCreativeFormats();
+  if (seeded.size > 0) {
+    // Seeded entries are stored as Record<string, unknown> with the format_id
+    // stamped at seed time. Storyboards seed complete TrainingFormat-shaped
+    // fixtures (name/description/renders/assets); the cast through unknown
+    // matches that contract without re-validating at read time.
+    formats = Array.from(seeded.values()) as unknown as ReturnType<typeof getFormats>;
+  } else {
+    formats = getFormats();
+
+    // Filter by channels (informal field; stripped by SDK in compliance runs,
+    // so this path is only reachable in non-SDK direct calls).
+    if (req.channels?.length) {
+      const validIds = new Set<string>();
+      for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
+        if (fmtChannels.some(c => req.channels!.includes(c))) {
+          validIds.add(fmtId);
+        }
       }
+      formats = formats.filter(f => validIds.has(f.format_id.id));
     }
-    formats = formats.filter(f => validIds.has(f.format_id.id));
   }
 
-  // Filter by format_ids
+  // Filter by format_ids (applies in both seeded and static paths)
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  return { formats };
+  const totalMatching = formats.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageFormats = formats.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    formats: pageFormats,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
+    },
+  };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+
+  // Consume any single-shot directive registered by
+  // comply_test_controller.force_create_media_buy_arm. Runs before all other
+  // gates so the storyboard's wire-shape probe is not confounded by governance
+  // or account-status checks; the directive is sandbox-only and the runner
+  // explicitly opted into this response shape. Cleared after read — a second
+  // create_media_buy from the same session resumes default behavior.
+  // Idempotency_key replay is unaffected: the SDK's request-idempotency cache
+  // wraps this handler, so a replayed request returns the cached submitted
+  // response without re-evaluating the (now-empty) directive slot.
+  const directive = session.complyExtensions.forcedCreateMediaBuyArm;
+  if (
+    directive
+    && directive.arm === 'submitted'
+    && typeof directive.taskId === 'string'
+    && directive.taskId.length > 0
+    && directive.taskId.length <= 128
+  ) {
+    session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    const responseMessage =
+      typeof directive.message === 'string' && directive.message.length <= 2000
+        ? directive.message
+        : undefined;
+    return {
+      status: 'submitted',
+      task_id: directive.taskId,
+      ...(responseMessage && { message: responseMessage }),
+    };
+  }
 
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
@@ -1303,6 +1408,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -1635,8 +1741,42 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const includeSnapshot = req.include_snapshot === true;
   const includeHistory = Number(req.include_history) || 0;
 
+  // Always emit a pagination block — per the cursor↔has_more invariant
+  // (universal/get-media-buys-pagination-integrity, schema/core/pagination-response.json).
+  // The SDK's storyboard request-builder injects `media_buy_ids: ["unknown"]`
+  // whenever context.media_buy_id is empty, so a "broad list query" reaches
+  // the agent as an ID-lookup. We honor the slice on broad queries (no
+  // filterIds) and emit a terminal pagination block on ID lookups (where
+  // pagination is semantically a no-op but a missing block is dishonest).
+  // Cursor/max_results are ignored on ID-lookup paths — direct lookup wins.
+  let pageBuys = buys;
+  let paginationBlock: Record<string, unknown>;
+
+  if (!filterIds?.length) {
+    const requestedMax = req.pagination?.max_results;
+    const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+    const offset = decodeOffsetCursor('media_buys', req.pagination?.cursor);
+    if (offset === null) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+      };
+    }
+    const pageEnd = Math.min(offset + maxResults, buys.length);
+    pageBuys = buys.slice(offset, pageEnd);
+    const hasMore = pageEnd < buys.length;
+    paginationBlock = {
+      has_more: hasMore,
+      total_count: buys.length,
+      ...(hasMore && { cursor: encodeOffsetCursor('media_buys', pageEnd) }),
+    };
+  } else {
+    // ID lookup: direct match, no pagination. Emit terminal block so the
+    // wire shape is honest (`has_more: false`, no cursor).
+    paginationBlock = { has_more: false, total_count: buys.length };
+  }
+
   return {
-    media_buys: buys.map(mb => {
+    media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const buy = {
@@ -1698,6 +1838,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       };
       return buy;
     }),
+    pagination: paginationBlock,
   };
 }
 
@@ -1892,6 +2033,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
+  const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -1906,8 +2048,25 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
-    // Validate format_id
-    if (formatId?.id && !validFormatIds.has(formatId.id)) {
+    // Reject clearly-malformed agent_urls before we persist them. Prevents
+    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
+    if (formatId?.agent_url !== undefined) {
+      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
+      }
+      if (!/^https?:\/\//i.test(formatId.agent_url)) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
+      }
+    }
+
+    // Validate format_id only when the format is claimed against this agent.
+    // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
+    // resolved by the referenced creative agent at render time — the seller
+    // just stores the pointer. Compare canonical forms so a trailing slash
+    // or case variant of the local URL still counts as local.
+    const isLocalFormat = !formatId?.agent_url
+      || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
+    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
@@ -1980,29 +2139,75 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   let creatives = Array.from(session.creatives.values());
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
+  } else if (creatives.length === 0) {
+    // Empty session falls back to compliance fixtures so storyboards that
+    // reference stable IDs (e.g., campaign_hero_video in creative_ad_server)
+    // resolve without the SDK's controller_seeding auto-fire. Sessions that
+    // have synced their own creatives return only those — no mixing.
+    creatives = getComplianceCreatives();
   }
 
-  const includePricing = req.include_pricing && req.account;
+  const totalMatching = creatives.length;
+  // Schema declares max_results min=1, max=100, default=50. Honor the cap;
+  // do not silently lift sub-1 values — those should surface as schema
+  // violations through the SDK's request validator, not be quietly corrected.
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeCreativeCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageCreatives = creatives.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  // Ad-server-capable sellers (creative.has_creative_library) quote per-
+  // creative pricing whenever an account is present, independent of the
+  // buyer setting include_pricing. Explicit `include_pricing: false` still
+  // suppresses — matches the spec wording while letting callers that omit
+  // the flag (e.g., SDK request builders that drop it) still receive pricing.
+  // Spec today says "When false or omitted, pricing is not computed"; the
+  // emission-on-omit behaviour here is deliberate per the has_creative_library
+  // gate in #2847 and tracks the spec-side clarification referenced there.
+  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
+  const agentUrl = getAgentUrl();
 
   return {
     query_summary: {
-      total_matching: creatives.length,
-      returned: creatives.length,
+      total_matching: totalMatching,
+      returned: pageCreatives.length,
     },
     pagination: {
-      has_more: false,
-      total_count: creatives.length,
+      has_more: hasMore,
+      total_count: totalMatching,
+      // Cursor MUST be present iff has_more is true — see
+      // static/schemas/source/core/pagination-response.json. Carrying a stale
+      // cursor on a terminal page invites callers to follow it past the end
+      // (caught by universal/pagination-integrity.yaml).
+      ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
-    creatives: creatives.map(c => {
+    creatives: pageCreatives.map(c => {
+      // Schema requires creatives[].name and creatives[].format_id.agent_url.
+      // sync_creatives accepts payloads missing either (buyer may omit name,
+      // SDK request builders occasionally drop agent_url), so stamp defaults
+      // at emit time: creative_id stands in for name, own agent_url stands
+      // in for format_id.agent_url. Keeps list_creatives response-schema
+      // valid regardless of what was synced.
+      const formatId = {
+        ...(c.formatId ?? { id: 'unknown' }),
+        agent_url: c.formatId?.agent_url ?? agentUrl,
+      };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        format_id: c.formatId,
-        name: c.name,
+        format_id: formatId,
+        name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
       };
-      if (includePricing) {
+      if (emitPricing && c.formatId?.id) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
@@ -2011,6 +2216,14 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       return base;
     }),
   };
+}
+
+function encodeCreativeCursor(offset: number): string {
+  return encodeOffsetCursor('creatives', offset);
+}
+
+function decodeCreativeCursor(cursor: string | undefined): number | null {
+  return decodeOffsetCursor('creatives', cursor);
 }
 
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
@@ -2289,7 +2502,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
-    specialisms: ['signed-requests'],
+    specialisms: [],
     request_signing: {
       supported: signingCap.supported,
       covers_content_digest: signingCap.covers_content_digest,
@@ -2367,11 +2580,37 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
+  const req = args as unknown as GetSignalsRequest & ToolArgs & {
+    brief?: string;
+    pagination?: { max_results?: number; cursor?: string };
+  };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
   const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
-  const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
+  // Pagination shape (pagination.max_results, schema cap 100) takes precedence
+  // over the legacy top-level `max_results` (no schema cap; this handler
+  // historically capped at 50 to keep semantic-search results focused). The two
+  // forms have different caps because they have different contracts —
+  // pagination.max_results is the standard envelope and matches the schema's
+  // documented 100 cap; top-level max_results is the predecessor and we
+  // preserve its tighter behavioral cap to avoid silently widening any caller
+  // currently relying on the 50 ceiling. Spec ambiguity on which form wins
+  // when both are present is tracked at adcontextprotocol/adcp#3113.
+  let maxResults: number;
+  const paginationMax = req.pagination?.max_results;
+  if (typeof paginationMax === 'number' && paginationMax >= 1) {
+    maxResults = Math.min(paginationMax, 100);
+  } else if (typeof req.max_results === 'number' && req.max_results >= 1) {
+    maxResults = Math.min(req.max_results, 50);
+  } else {
+    maxResults = MAX_SIGNAL_RESULTS;
+  }
+  const offset = decodeOffsetCursor('signals', req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   const allSignals = getAllSignals();
@@ -2424,8 +2663,13 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  // Cap results
-  results = results.slice(0, maxResults);
+  // Slice to the requested page after filters/sorts have settled. Iteration
+  // order is stable across calls within a session because getAllSignals()
+  // returns the static catalog and SYNONYM_MAP scoring is deterministic.
+  const totalMatching = results.length;
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  results = results.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
 
   // Build the training agent URL for deployment targets
   const agentUrl = getAgentUrl();
@@ -2488,7 +2732,21 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: { signals: SignalResponse[]; note?: string } = { signals };
+  const response: {
+    signals: SignalResponse[];
+    pagination: { has_more: boolean; total_count: number; cursor?: string };
+    note?: string;
+  } = {
+    signals,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      // Cursor MUST be present iff has_more is true — see
+      // static/schemas/source/core/pagination-response.json. universal/
+      // pagination-integrity catches stale tokens on terminal pages.
+      ...(hasMore && { cursor: encodeOffsetCursor('signals', pageEnd) }),
+    },
+  };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
@@ -2756,7 +3014,10 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  return { serving_tag: { content: html } };
+  // HTMLAsset in @adcp/client ≥5.10 has `asset_type: 'html'` as a required
+  // discriminator. Without it the union resolves ambiguously to MarkdownAsset
+  // and tsc fails build.
+  return { serving_tag: { asset_type: 'html', content: html } };
 }
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
@@ -2778,7 +3039,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
   // Mode 1: Library retrieval (creative_id)
   if (req.creative_id) {
-    const creative = session.creatives.get(req.creative_id);
+    const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
       return {
         errors: [{ code: 'NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
@@ -3058,7 +3319,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
-      const creative = session.creatives.get(record.creative_id);
+      const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
         continue;
@@ -3129,6 +3390,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,
+  list_accounts: handleListAccounts,
   sync_accounts: handleSyncAccounts,
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,
@@ -3333,12 +3595,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
       if (outcome.kind === 'conflict') {
         // Error body carries code + message only — no `field` json-pointer,
-        // no cached payload, no hash. Any shape hint turns key-reuse into
-        // a read oracle (security.mdx §IDEMPOTENCY_CONFLICT response shape).
+        // no cached payload, no hash, no `recovery` hint. Any shape hint
+        // turns key-reuse into a read oracle (security.mdx §IDEMPOTENCY_CONFLICT
+        // response shape). The universal idempotency storyboard's
+        // `idempotency.conflict_no_payload_leak` cross-step assertion
+        // enforces the allowlist on this specific error's envelope.
         return {
           result: adcpError('IDEMPOTENCY_CONFLICT', {
             message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
-            recovery: 'correctable',
           }, callerContext),
           flushable: true,
         };
@@ -3412,15 +3676,26 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       } else {
         // Inner response (what gets cached for replay). Per security.mdx:
         // "replayed: false" MAY be omitted on fresh executions and buyers
-        // MUST treat omission as false. Omitting keeps strict per-task
-        // response schemas (additionalProperties: false) passing.
+        // MUST treat omission as false. We emit it explicitly only on
+        // create_media_buy because the universal idempotency storyboard's
+        // `field_value allowed_values:[false]` check fails on omitted
+        // fields — scoping to this tool keeps the signal without tripping
+        // strict per-task response schemas on other tools (several SDK
+        // schemas are not passthrough and reject the extra key).
         const inner = result as Record<string, unknown>;
         cachableResponse = inner;
-        const response = callerContext !== undefined
-          ? { ...inner, context: callerContext }
-          : inner;
+        const envelope: Record<string, unknown> = {};
+        if (name === 'create_media_buy') envelope.replayed = false;
+        if (callerContext !== undefined) envelope.context = callerContext;
+        const response = { ...inner, ...envelope };
+        // `structuredContent` is authoritative on success so raw-probe
+        // callers (storyboard runner's rawMcpProbe) can validate envelope
+        // fields. `content` stays empty: the SDK unwrapper folds text
+        // content into `_message` on the returned object, which trips
+        // strict `additionalProperties: false` per-task response schemas.
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
+          content: [],
+          structuredContent: response,
         };
       }
     } catch (error) {
@@ -3466,33 +3741,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Fire completion webhook if the buyer supplied a push URL and the tool
     // mapped to a TaskType. Emission is fire-and-forget so the sync response
     // doesn't wait on the receiver; retries/backoff live inside the emitter.
-    const webhookUrl = extractWebhookUrl(handlerArgs);
-    const taskType = TOOL_TO_TASK_TYPE[name];
     if (
-      webhookUrl
-      && taskType
-      && cachableResponse !== null
+      cachableResponse !== null
       && !toolResult.isError
       && !handlerThrew
     ) {
-      const emitter = getWebhookEmitter();
-      const operationId = deriveWebhookOperationId(
-        name,
-        cachableResponse,
-        typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
-      );
-      const webhookTaskId = (cachableResponse.task_id as string | undefined)
-        ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
-      const payload: Record<string, unknown> = {
-        task_id: webhookTaskId,
-        task_type: taskType,
-        protocol: 'mcp',
-        status: 'completed',
-        timestamp: new Date().toISOString(),
-        result: cachableResponse,
-      };
-      void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
-        .catch(err => logger.warn({ err, tool: name, url: webhookUrl }, 'Webhook emission failed'));
+      maybeEmitCompletionWebhook({
+        toolName: name,
+        args: handlerArgs,
+        response: cachableResponse,
+        requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+      });
     }
 
     // If not task-augmented, return result directly.

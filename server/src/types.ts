@@ -349,12 +349,31 @@ export function isValidMemberOffering(value: string | undefined | null): boolean
 }
 
 /**
+ * Agent visibility tiers.
+ *   - private: owner-only, not listed anywhere
+ *   - members_only: visible to members with API access (Professional+),
+ *     not on the public web
+ *   - public: listed in the public directory and reflected in brand.json
+ */
+export type AgentVisibility = 'private' | 'members_only' | 'public';
+
+export const VALID_AGENT_VISIBILITIES: readonly AgentVisibility[] = [
+  'private',
+  'members_only',
+  'public',
+] as const;
+
+export function isValidAgentVisibility(value: unknown): value is AgentVisibility {
+  return typeof value === 'string' && (VALID_AGENT_VISIBILITIES as readonly string[]).includes(value);
+}
+
+/**
  * Agent configuration stored in member profiles
- * Each agent has a URL and visibility settings
+ * Each agent has a URL and a visibility tier.
  */
 export interface AgentConfig {
   url: string;
-  is_public: boolean;
+  visibility: AgentVisibility;
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType | 'buyer';
@@ -454,6 +473,10 @@ export interface HostedBrand {
   domain_verified: boolean;
   verification_token?: string;
   is_public: boolean;
+  /** True when a prior owner relinquished and the manifest is awaiting adoption. */
+  manifest_orphaned?: boolean;
+  /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
+  prior_owner_org_id?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -487,6 +510,10 @@ export interface DiscoveredBrand {
   domain_verified?: boolean;
   verification_token?: string;
   is_public?: boolean;
+  /** True when a prior owner relinquished and the manifest is awaiting adoption. */
+  manifest_orphaned?: boolean;
+  /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
+  prior_owner_org_id?: string;
 }
 
 /**

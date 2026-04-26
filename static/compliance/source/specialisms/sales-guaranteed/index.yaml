@@ -17,6 +17,12 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a sell-side platform that requires human approval before guaranteed media buys go
   live. When a buyer creates a guaranteed buy, your platform returns an A2A task in the
@@ -55,6 +61,31 @@ prerequisites:
     The test kit provides a sample brand (Acme Outdoor) with campaign parameters
     suitable for testing the guaranteed approval flow.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_preroll_q2_guaranteed"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "outdoor_ctv_q2_guaranteed"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "sports_preroll_q2_guaranteed"
+      pricing_option_id: "cpm_guaranteed_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 35.0
+    - product_id: "outdoor_ctv_q2_guaranteed"
+      pricing_option_id: "cpm_guaranteed_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 45.0
 
 phases:
   - id: capability_discovery
@@ -277,7 +308,9 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "sales-guaranteed-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_create_buy_submitted_create_media_buy"
           context:

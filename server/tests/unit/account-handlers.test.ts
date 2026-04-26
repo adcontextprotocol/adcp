@@ -36,8 +36,10 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
-  const result = parsed.adcp_error ?? parsed;
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  const result = (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
   return {
     result,
     isError: response.isError,

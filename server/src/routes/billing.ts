@@ -1157,11 +1157,17 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
   /**
    * GET /api/admin/stripe-mismatches
-   * List Stripe customer mismatches where an org has a different customer ID in the DB
-   * than what Stripe metadata says it should have.
+   * List Stripe customer mismatches where an org has a duplicate customer in
+   * Stripe. Three detection signals (see findStripeCustomerMismatches):
+   *   - metadata: orphan customer's metadata.workos_organization_id points
+   *     at the org
+   *   - email:    orphan shares the linked customer's email (case-insensitive)
+   *   - name:     orphan shares the linked customer's name AND has a live
+   *     subscription
    *
-   * This detects orgs that appear to have multiple Stripe customers.
-   * Returns activity data for both customers and suggests which one to keep.
+   * Each entry carries `match_reason` so admins see why the duplicate
+   * surfaced. Returns activity data for both customers and suggests which
+   * one to keep (manual review when both have activity).
    */
   apiRouter.get("/stripe-mismatches", requireAuth, requireAdmin, async (_req, res) => {
     try {

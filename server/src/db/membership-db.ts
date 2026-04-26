@@ -207,13 +207,16 @@ export interface DomainLinkResult {
 }
 
 /**
- * When a user has no WorkOS organization memberships, check whether their
- * email domain matches a verified domain on an organization with an active
- * subscription. If so, create the WorkOS membership automatically.
+ * Check whether a user's email domain matches a verified domain on an
+ * organization with an active subscription. If so, create a WorkOS membership
+ * for them.
  *
- * This closes the gap where a subscription is purchased for an org but the
- * user was never added as a member in WorkOS (e.g. webhook failure, manual
- * provisioning that skipped the membership step).
+ * Idempotent: short-circuits when the user is already in the candidate org's
+ * local membership cache, and treats `organization_membership_already_exists`
+ * from WorkOS as success. Safe to call on every authenticated request.
+ *
+ * Honors the per-org `auto_provision_verified_domain` opt-out: orgs that
+ * prefer explicit invites only set this to false.
  */
 export async function autoLinkByVerifiedDomain(
   workos: WorkOS,
@@ -224,11 +227,10 @@ export async function autoLinkByVerifiedDomain(
   const emailDomain = email.split('@')[1]?.toLowerCase();
   if (!emailDomain) return null;
 
-  // Find an org with a verified domain matching the user's email and an active subscription
   const result = await pool.query<{
     workos_organization_id: string;
     org_name: string;
-    has_admin: boolean;
+    user_already_member: boolean;
   }>(`
     SELECT
       od.workos_organization_id,
@@ -236,31 +238,42 @@ export async function autoLinkByVerifiedDomain(
       EXISTS (
         SELECT 1 FROM organization_memberships om
         WHERE om.workos_organization_id = od.workos_organization_id
-          AND om.role IN ('admin', 'owner')
-      ) AS has_admin
+          AND om.workos_user_id = $2
+      ) AS user_already_member
     FROM organization_domains od
     JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
     WHERE LOWER(od.domain) = $1
       AND od.verified = true
       AND o.subscription_status = 'active'
       AND o.subscription_canceled_at IS NULL
+      AND COALESCE(o.auto_provision_verified_domain, true) = true
     LIMIT 1
-  `, [emailDomain]);
+  `, [emailDomain, userId]);
 
   if (result.rows.length === 0) return null;
 
-  const { workos_organization_id: orgId, org_name: orgName, has_admin: hasAdmin } = result.rows[0];
-  const role = hasAdmin ? 'member' : 'owner';
+  const {
+    workos_organization_id: orgId,
+    org_name: orgName,
+    user_already_member: userAlreadyMember,
+  } = result.rows[0];
 
+  if (userAlreadyMember) return null;
+
+  // Always create as member. Auto-promotion to owner for ownerless orgs is
+  // handled atomically by upsertOrganizationMembership when the
+  // organization_membership.created webhook fires — that path uses a NOT EXISTS
+  // subquery against the live membership table, which is race-safe and not
+  // vulnerable to the local-cache skew that a `has_admin` lookup here would be.
   try {
     await workos.userManagement.createOrganizationMembership({
       userId,
       organizationId: orgId,
-      roleSlug: role,
+      roleSlug: 'member',
     });
 
-    logger.info({ userId, email, orgId, orgName, role }, 'Auto-linked user to organization via verified domain');
-    return { organizationId: orgId, organizationName: orgName, role };
+    logger.info({ userId, email, orgId, orgName }, 'Auto-linked user to organization via verified domain');
+    return { organizationId: orgId, organizationName: orgName, role: 'member' };
   } catch (err: any) {
     if (err?.code === 'organization_membership_already_exists') {
       // Membership exists but wasn't returned by list — return as success

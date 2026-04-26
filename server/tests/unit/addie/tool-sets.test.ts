@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS } from '../../../src/addie/tool-sets.js';
+import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
@@ -61,5 +61,88 @@ describe('getToolsForSets', () => {
       const tools = getToolsForSets(['knowledge'], false, true);
       expect(tools).toContain('search_docs');
     });
+  });
+
+  describe('github issue tools always available', () => {
+    it('includes draft_github_issue regardless of routed sets', () => {
+      const tools = getToolsForSets(['knowledge'], false, false);
+      expect(tools).toContain('draft_github_issue');
+    });
+
+    it('includes create_github_issue regardless of routed sets', () => {
+      const tools = getToolsForSets(['knowledge'], false, false);
+      expect(tools).toContain('create_github_issue');
+    });
+
+    it('includes github issue tools in public channels', () => {
+      const tools = getToolsForSets([], false, true);
+      expect(tools).toContain('draft_github_issue');
+      expect(tools).toContain('create_github_issue');
+    });
+  });
+
+  describe('content set description does not claim ownership of github issuing', () => {
+    it('omits "draft GitHub issues" from the description', () => {
+      expect(TOOL_SETS.content.description).not.toMatch(/github issue/i);
+    });
+  });
+
+  describe('ALWAYS_AVAILABLE overlap invariant', () => {
+    it('no always-available tool (regular or admin) appears in any set tools array', () => {
+      // If a guaranteed tool is also in a set's tools array, that set's
+      // description will (by construction) describe that capability. When the
+      // set appears in the unavailable-sets hint, Sonnet reads the description
+      // and hallucinates that the capability is off — even though the tool is
+      // loaded via ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS.
+      // Keeping these arrays disjoint is the only way to prevent that class of
+      // hallucination. See #2998.
+      const always = new Set([...ALWAYS_AVAILABLE_TOOLS, ...ALWAYS_AVAILABLE_ADMIN_TOOLS]);
+      for (const [setName, set] of Object.entries(TOOL_SETS)) {
+        for (const tool of set.tools) {
+          expect(
+            always.has(tool),
+            `${setName}.tools contains "${tool}" which is also in ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS. ` +
+            `Remove it from the set's tools array — it is already guaranteed and duplicating it ` +
+            `causes Sonnet to hallucinate unavailability from set descriptions.`,
+          ).toBe(false);
+        }
+      }
+    });
+  });
+});
+
+describe('buildUnavailableSetsHint', () => {
+  it('returns empty when all sets are selected', () => {
+    const allSets = Object.keys(TOOL_SETS);
+    expect(buildUnavailableSetsHint(allSets, true)).toBe('');
+  });
+
+  it('lists an always-available escape-hatch section when sets are unavailable', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    expect(hint).toContain('Always Available');
+    expect(hint).toContain('draft_github_issue');
+    expect(hint).toContain('create_github_issue');
+    expect(hint).toContain('escalate_to_admin');
+  });
+
+  it('never describes the content set as owning GitHub issue filing', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    const contentSection = hint.match(/- \*\*content\*\*:[^\n]*/)?.[0] ?? '';
+    expect(contentSection).not.toMatch(/github issue/i);
+  });
+
+  it('never advertises tools that are not actually in ALWAYS_AVAILABLE_TOOLS (drift guard)', () => {
+    const hint = buildUnavailableSetsHint(['knowledge'], false);
+    // Extract tool names from the "Always Available" section: lines of the
+    // form `- <tool_name> — blurb`.
+    const section = hint.split('## Capabilities That ARE Always Available')[1] ?? '';
+    const advertised = [...section.matchAll(/^- (\w+) — /gm)].map((m) => m[1]);
+    expect(advertised.length).toBeGreaterThan(0);
+    for (const tool of advertised) {
+      expect(
+        ALWAYS_AVAILABLE_TOOLS,
+        `Hint advertised "${tool}" as always-available but it is not in ALWAYS_AVAILABLE_TOOLS`,
+      ).toContain(tool);
+    }
   });
 });

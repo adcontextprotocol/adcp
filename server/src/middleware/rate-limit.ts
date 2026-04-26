@@ -6,6 +6,28 @@ import { CachedPostgresStore } from './pg-rate-limit-store.js';
 const logger = createLogger('rate-limit');
 
 /**
+ * Parse a `Retry-After` header value into delta-seconds. Handles both
+ * the number form (express-rate-limit with `standardHeaders: true`
+ * emits seconds as a number) and the string form. Returns `undefined`
+ * for anything that doesn't look like a positive integer — including
+ * zero, which we treat as "no meaningful wait" rather than exposing
+ * a degenerate countdown value.
+ *
+ * Callers surface the value in the 429 body as a proxy-stripped
+ * fallback for the header (#2804).
+ */
+export function parseRetryAfterSeconds(raw: number | string | string[] | undefined): number | undefined {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+  }
+  if (typeof raw === 'string') {
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Generate a rate limit key from request, preferring user ID over IP.
  * Uses proper IPv6 subnet masking when falling back to IP addresses.
  */
@@ -201,6 +223,53 @@ export const storyboardStepRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for per-agent dashboard reads (compliance state + history).
+ * The Agents dashboard fans out these two reads per saved agent on load,
+ * so a member with 10+ agents hits the bulk-resolve cap immediately —
+ * those requests aren't bulk, they're idempotent per-item reads.
+ * Separate limiter with a ceiling high enough for normal dashboard use
+ * (60-agent load × 2 endpoints = 120 req) while still bounding a script
+ * that tries to enumerate compliance state for every registered agent.
+ * (The sibling auth-status endpoint runs under complianceWriteMiddleware
+ * and isn't gated by this limiter.)
+ */
+export const agentReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 240, // 4/sec sustained; a 60-agent × 2-endpoint burst (120 req) fits with headroom
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('agent-read:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for agent dashboard reads');
+
+    // standardHeaders emits `Retry-After` / `RateLimit-Reset` with the
+    // real remaining window — that's the authoritative signal. We also
+    // surface the same value in the JSON body as a proxy-stripped
+    // fallback (#2804): some reverse proxies drop non-standard
+    // headers, and the dashboard needs SOMETHING to key its countdown
+    // off. `retryAfter` is seconds-to-retry, matching the header's
+    // delta-seconds format.
+    //
+    // The HTTP spec (RFC 9110 §10.2.3) also allows an HTTP-date here,
+    // but express-rate-limit only emits delta-seconds — so a parseInt
+    // is sufficient. If that ever changes (e.g., we swap limiter
+    // libraries), the fallback below would need a second parse path.
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */
@@ -297,6 +366,41 @@ export const newsletterConfirmRateLimiter = rateLimit({
     }, 'Rate limit exceeded for newsletter confirm');
 
     res.redirect('/welcome-subscribed.html?error=expired');
+  },
+});
+
+/**
+ * Rate limiter for content submission endpoint (POST /api/content/propose).
+ * Limits: 20 submissions per 10 minutes per user.
+ *
+ * Protects the editorial queue from accidental floods (member accidentally
+ * double-clicks submit) and abuse (scripted member spamming the review
+ * channel). 20 submissions in 10 minutes is well above any legitimate
+ * editorial cadence — Mary-like one-off drafts aren't affected.
+ *
+ * Also bounds the downstream Slack notifications and auto-cover-image
+ * Gemini calls fired per submission.
+ */
+export const contentProposeRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('content-propose:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for content submission');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Content submission rate limit exceeded (20 per 10 minutes). Please try again later.',
+      retryAfter: Math.ceil(10 * 60),
+    });
   },
 });
 

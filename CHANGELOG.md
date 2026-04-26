@@ -1,5 +1,205 @@
 # Changelog
 
+## 3.0.0
+
+See [release notes](docs/reference/release-notes.mdx) for migration guidance, or [prerelease upgrade notes](docs/reference/migration/prerelease-upgrades.mdx) for rc.3 adopters.
+
+### Breaking Changes — trust surface
+
+- 43586d6, c1d2ff1: Require `idempotency_key` on all mutating requests; formalize seller declaration as discriminated oneOf (#2315, #2436, #2447). Every mutating task now requires an `idempotency_key` in the request envelope, matching `^[A-Za-z0-9_.:-]{16,255}$`; AdCP Verified additionally requires a cryptographically-random UUID v4. Fresh key per logical operation; reuse only to retry a failed request with the identical payload.
+
+  Sellers declare dedup semantics on `get_adcp_capabilities` as `adcp.idempotency = { supported: true, replay_ttl_seconds: <1h–7d, 24h recommended> }` OR `{ supported: false }`. When `supported: true`, sellers respond `replayed: true` on exact replay, `IDEMPOTENCY_CONFLICT` when the same key accompanies a different payload, and `IDEMPOTENCY_EXPIRED` after the declared TTL. **When `supported: false`, sending an `idempotency_key` is a no-op — the seller will NOT return conflict/expired errors, and a naive retry WILL double-process.** Buyers must use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations against non-supporting sellers. Clients MUST NOT assume a default — a seller without this block is non-compliant.
+
+  Since `supported: true` is a trust-bearing claim, buyers and conformance runners SHOULD probe by replaying with a deliberately-mutated payload — a conformant seller MUST return `IDEMPOTENCY_CONFLICT`. Sellers declaring `supported: true` MUST pass this probe in the baseline compliance storyboard before the declaration is considered verified.
+
+- aaace06: Model IO approval at the task layer, not as a media-buy status (#2270, #2351). `MediaBuy.pending_approval` is removed. Approvals are now modeled as explicit approval tasks with their own lifecycle, state, and audit trail — decoupled from the media-buy state machine. Enables `sales-guaranteed` sellers to implement human-in-the-loop approval without overloading media-buy status semantics.
+
+- e6dd73a: GDPR Art 22 / EU AI Act Annex III enforced as JSON Schema invariants (#2310, #2338). `budget.authority_level` enum is removed and replaced by two orthogonal fields: `budget.reallocation_threshold` (number ≥ 0, or `reallocation_unlimited: true`) for budget autonomy, and `plan.human_review_required` (boolean) for per-decision review under Art 22. Cross-field `if/then` rejects `human_review_required: false` when `policy_categories` contains `fair_housing`, `fair_lending`, `fair_employment`, or `pharmaceutical_advertising`, or when any resolved policy carries `requires_human_review: true`. `revisionHistory` is append-only; downgrading `human_review_required` requires a `human_override` artifact (≥20-char reason, email approver, 24h-fresh `approved_at`). `eu_ai_act_annex_iii` seeded as a registry regulation. `data_subject_contestation` on `brand.json` (and inline on `brand-ref.json`) satisfies Art 22(3) discovery.
+
+- ec06d47, 31aab3a: Specialism taxonomy finalized (#2332, #2336). `inventory-lists` specialism renamed to `property-lists`. New `collection-lists` specialism split out as a sibling under `governance`. Account migration on specialism declarations complete — agents declare specialism ownership via the account surface. `audience-sync` already reclassified from `governance` to `media-buy` in #2300.
+
+- 84b322c: Rename compliance taxonomy `domains` → `protocols` (#2300). `/compliance/{version}/domains/` becomes `/compliance/{version}/protocols/`. `supported_protocols` value maps to compliance path via snake_case → kebab-case (e.g. `media_buy` → `protocols/media-buy/`). `audience-sync` reclassified from `governance` to `media-buy` to match its tool family. Compliance runner path resolution, index.json structure, and catalog documentation all reflect the rename.
+
+### Breaking Changes
+
+- 80ecf76: Simplify capabilities model for 3.0 (#2143). Remove redundant boolean gates — object presence is the signal. Make table-stakes fields required.
+
+  **Removed fields:**
+
+  - `media_buy.reporting` (product-level `reporting_capabilities` is source of truth)
+  - `features.content_standards` / `features.audience_targeting` / `features.conversion_tracking` (object presence replaces booleans)
+  - `content_standards_detail` → renamed to `content_standards`
+  - `brand.identity` (implied by brand protocol)
+  - `trusted_match.supported` (object presence)
+  - `targeting.device_platform` / `targeting.device_type` (implied by media_buy)
+  - `targeting.audience_include` / `targeting.audience_exclude` (implied by audience_targeting)
+
+  **Required fields:**
+
+  - `reporting_capabilities` on every product (see `product.json`)
+
+- a90700f: Revert geo capability flattening (#2157). Restore `geo_countries` and `geo_regions` (booleans) and `geo_metros` and `geo_postal_areas` (typed objects with `additionalProperties: false`) as primary capability fields. Remove flat array alternatives (`supported_geo_levels`, `supported_metro_systems`, `supported_postal_systems`) introduced in #2143.
+
+- 95f1174: Media buy status lifecycle (#2034). Rename `pending_activation` → `pending_start`. Add `pending_creatives` status for approved buys with no creatives assigned. Add top-level `compliance_testing: { scenarios: [...] }` capability block (not a `supported_protocols` value) for declaring `comply_test_controller` support.
+
+- 100b740: Move storyboards into the protocol as `/compliance/{version}/` (#2176). Add `specialisms` field to `get_adcp_capabilities` with 21 specialisms across 6 domains (media-buy, creative, signals, governance, brand, sponsored_intelligence). Promote `sponsored_intelligence` from specialism to full protocol in `supported_protocols`. Rename `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`. Merge `property-governance` + `collection-governance` into `inventory-lists`. Add `status: preview` marker for 3.1 archetypes (`sales-streaming-tv`, `sales-exchange`, `sales-retail-media`, `measurement-verification`). Publish per-version protocol tarball at `/protocol/{version}.tgz` for bulk sync. New `enums/specialism.json` and `enums/adcp-domain.json`.
+
+- 07d82dd: Require `account` on `update_media_buy` for governance and account resolution parity with `create_media_buy` (#2179). Flatten `preview_creative` union schema into single object with `request_type` discriminant.
+
+- b674082: Add `GOVERNANCE_DENIED` to standard error codes with correctable recovery (#2194). Make `signal_id` required on `get-signals-response` signal items. Add `context` and `ext` fields to all request/response schemas (governance, collection, property, sponsored-intelligence, content-standards).
+
+- 60f2a9e: Generalize governance to all purchase types (#2014). Remove `media_buy_id` from governance schemas — `governance_context` is the sole lifecycle correlator. Add `purchase_type` field on `check_governance` and `report_plan_outcome`. Add budget allocations on plans for per-type budget partitioning. Audit logs group by `governance_context` instead of `media_buy_id`.
+
+### Minor Changes — trust surface
+
+- 9e1b0eb: **RFC 9421 request signing profile (optional in 3.0, mandatory under AdCP Verified)** (#2323). Agents MAY sign mutating requests using RFC 9421 HTTP Message Signatures with Ed25519 over a canonicalized covered-component list (including method, target URI, `content-digest`, and protocol-level fields). Published test vectors (`request-signing/positive/*`, `request-signing/negative/*`) and a 15-step verification checklist (alg allowlist, `keyid` cap-before-crypto, JWKS resolution via SSRF-validated fetch, replay dedup via `jti`). sf-binary encoding pinned (#2341) and URL canonicalization tightened (#2343) so independent implementations produce bit-identical canonical inputs. Verifier guidance at `docs/building/implementation/security.mdx`; test vectors at `static/compliance/source/test-vectors/request-signing/`.
+
+- 2e3ec71: **Signed JWS `governance_context`** (#2316). `governance_context` is a signed JWS produced by the governance agent and echoed by the buyer in the media-buy envelope. Sellers verify the signature using the governance agent's JWKS (resolved via `sync_governance`) and bind decisions to a specific buyer, plan, phase, and time. Replaces the opaque-string carrier from earlier 3.0 drafts. Enables sellers to reject stale or forged governance decisions without round-tripping to the governance agent. Fields: `alg`, `typ`, `iss`, `sub`, `aud`, `phase`, `exp`, `iat`, `jti`, plus governance-specific claims.
+
+- f2918f4: **Signed-requests runner harness contract** (#2350, #2353). Compliance runner declares a `signed_requests` harness profile: given a seller endpoint and a signing keypair, the runner issues a battery of signed requests and validates conformance to RFC 9421 + the AdCP profile. Covers positive cases, tampering (header injection, body mutation, timestamp skew), replay (`jti` reuse), and `keyid`-cap-before-crypto path. Runner output conforms to `static/compliance/source/runner-output.json`.
+
+- feat(compliance): Universal security baseline storyboard (#2304). Every AdCP agent now runs `/compliance/{version}/universal/security.yaml` regardless of claimed protocols or specialisms. Covers unauthenticated rejection, API key enforcement (when declared), OAuth discovery per RFC 9728, audience binding, and the request-signing harness when signing is declared. Failing the security storyboard fails overall compliance.
+
+- 7eacbc3: Require cross-instance state persistence (#2363). Architecture specification now REQUIRES that agent state (tasks, media buys, plans, signed artifacts, idempotency keys) be persistent across horizontally-scaled instances. In-memory-only state is non-compliant for any production agent. Enables idempotency semantics, task resumption, and multi-instance fleets to behave consistently from a buyer's perspective.
+
+- 8856f2e: Security narrative, threat model, and principal terminology retirement (#2381). New `docs/building/implementation/security.mdx` explains the 3.0 trust model end-to-end: transport auth (MCP bearer, OAuth 2.1 + RFC 9728), request-level auth (RFC 9421 signing), governance-level auth (signed JWS `governance_context`), and idempotency semantics. Retires ambiguous "principal" terminology in favor of three explicit roles: brand (who the campaign is for), operator (who runs the campaign on the brand's behalf), and agent (what software places the buy).
+
+- ab95109: Runner output contract + security hardening (#2352, #2364). Compliance runner produces a signed, structured output artifact (`runner-output.json`) that third parties can verify independently. Output includes per-storyboard verdicts with evidence, the agent's declared capabilities at evaluation time, and a hash chain over the test-kit corpus so tampering is detectable.
+
+- da1bc66: **Unify webhook signing on the AdCP RFC 9421 profile** (#2423). Webhooks are now a symmetric variant of request signing — the seller signs outbound webhook requests with a key published at its `jwks_uri` (discoverable via `brand.json` `agents[]`), and the buyer verifies against that JWKS. No shared secret crosses the wire. `push_notification_config.authentication` is optional (was required); 14-step webhook verifier checklist with `webhook_signature_*` error codes covers trust-anchor scoping, downgrade resistance, and per-keyid replay dedup (100K / 10M caps). Baseline-required in 3.0 — sellers emitting webhooks MUST sign. HMAC-SHA256 remains a legacy fallback for 3.x; removed in 4.0.
+
+- 14a3864: **Require `idempotency_key` on every webhook payload** (#2416, #2417). Webhooks use at-least-once delivery, so receivers must dedupe. Every webhook payload now carries a required sender-generated `idempotency_key` stable across retries of the same event, using the same name and format as the request-side field (16-255 chars, cryptographically random UUID v4 required — predictable keys allow pre-seeding a receiver's dedup cache). Replaces fragile `(task_id, status, timestamp)` tuples. Schemas updated: `mcp-webhook-payload`, `collection-list-changed-webhook`, `property-list-changed-webhook`, `artifact-webhook-payload`, `revocation-notification` (renames `notification_id` → `idempotency_key` to unify protocol-wide dedup vocabulary).
+
+- 7aaf579: Tighten the governance-invocation threshold (#2403, #2419). When a governance agent is configured on the plan, sellers MUST call `check_governance` before committing budget, and MUST reject a spend-commit lacking a valid `governance_context` with `PERMISSION_DENIED`. Closes the loophole where execution-path governance could be skipped on partial spends.
+
+- d874136: **Experimental status mechanism** (#2422). New `status: experimental` marker for protocol fields and tasks that are in production-tested use but not yet covered by full stability guarantees. Implementations MAY adopt experimental features; breaking changes remain possible within the 3.x line. `custom` pricing-model escape hatch added on signals so non-standard pricing constructs can round-trip through the protocol without blocking stable-model adoption.
+
+### Minor Changes
+
+- 57d6e6c: Add collection lists for program-level brand safety (#2005). Collection lists are a parallel construct to property lists using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching. Supports content rating and genre filters. New targeting overlay fields (`collection_list`, `collection_list_exclude`) enable both inclusion and exclusion. New genre taxonomy enum. 16 new collection schemas.
+
+- 63dba34: Broadcast TV support (#2046). Ad-ID identifiers via `industry_identifiers` on creative assets and manifests. `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`). Broadcast spot formats (:15, :30, :60). `agency_estimate_number` on media buys and packages. Measurement windows (Live, C3, C7) on `reporting_capabilities` and `billing_measurement`. `is_final` and `measurement_window` on per-package delivery data.
+
+- e628d69: Structured measurement terms and cancellation policy for guaranteed buys (#1962). New `measurement_terms` schema for billing measurement vendor, IVT threshold, and viewability floor negotiation. New `cancellation_policy` schema for guaranteed products with notice periods and penalties. New `viewability-standard` enum. `TERMS_REJECTED` error code.
+
+- 7086cc2: Unified vendor pricing across creative, governance, and property list agents (#1937). New `vendor-pricing-option.json` and `creative-consumption.json` schemas. Add `pricing_options[]` to `list_creatives` response, `build_creative` response, `get_creative_features` response, and `property-list.json`. Add `account` and `include_pricing` to `list_creatives` request. Add `pricing_option_id`, `vendor_cost`, and `consumption` to `build_creative` response.
+
+- 7736865: Per-request version declaration (#1959). Add `adcp_major_version` field to all 56+ request schemas. Buyers declare which major version their payloads conform to. Sellers validate against `major_versions` and return `VERSION_UNSUPPORTED` if unsupported. When omitted, sellers assume their highest supported version.
+
+- 106831c: Broadcast forecast schema (#1853). Add `measurement_source`, `packages`, and `guaranteed_impressions` to `DeliveryForecast`. New `forecast-range-unit` and `forecastable-metric` enums.
+
+- 38957fa: Formalize offline/bucket reporting delivery (#2198). Add `reporting_delivery_methods` to capabilities, `reporting_bucket` to accounts, `supports_offline_delivery` to product `reporting_capabilities`. New `cloud-storage-protocol` enum.
+
+- 457a5ba: Add Avro and ORC as file format options for offline reporting delivery (#2205).
+
+- f0083c3: TMPX exposure tracking, country-partitioned identity, and macro connectivity (#2079). Add `agent-encryption-key` schema. Update `identity-match-request` and `identity-match-response` schemas. Add new universal macros.
+
+- 89cb946: Add TMP provider registration schema (`provider-registration.json`) with provider endpoint, capabilities, lifecycle status (active/inactive/draining), and timeout budgets. Health endpoint (`GET /health`). Dual discovery models (static config and dynamic API) (#2210).
+
+- 5dec4a4: TMP Identity Match supports multiple identity tokens per request (#2251). Replaces single `user_token` + `uid_type` with an `identities` array (minItems 1, maxItems 3). Router filters per provider and re-signs; `identities_hash` and cache key use RFC 8785 JCS canonicalization. `consent_hash` partitions cache by consent state. Adds `rampid_derived` to `uid-type` enum. TMP remains pre-release in 3.0; stable surface targeted for 3.1.0.
+
+- a497d02: Add `border_radius`, `elevation`, `spacing`, and extended color roles to `brand.json` visual tokens (#1871).
+
+- 4ffb1c1: Add `station_id` and `facility_id` identifier types for broadcast stations. Add `linear_tv` as a property type (#1912).
+
+- cf4e9ee: Extend brand fonts with structured definitions including `weight`, `style`, `stretch`, `optical_size`, and `usage` (#1856).
+
+- 5e9a748: Add generic `agents` array to `brand.json` schema with `brand-agent-type` enum for declaring brand-associated agents (#1973).
+
+- b674082: Flatten `comply_test_controller` from oneOf union to flat object with scenario discriminant and if/then conditional validation (#2194).
+
+### Patch Changes
+
+- 399fd77: Add `relationship` field to brand.json property definition (`owned`, `direct`, `delegated`, `ad_network`) for bilateral verification with `adagents.json` delegation types (#2171).
+
+- ea313bb: Restore `sales` to `brand-agent-type` enum for publisher-side sales agents (#2125).
+
+- 3c23472: Per-item errors in `sync_creatives`, `sync_catalogs`, and `sync_event_sources` responses now use `error.json` ref instead of bare strings (#2060).
+
+- 4bc686d: Add "Required tasks by protocol" reference page consolidating required, conditional, and optional tasks across all AdCP protocols by agent role (#2204).
+
+- 91eeb76: Add managed network deployment guide for `adagents.json` at scale covering `authoritative_location` pointer files, delegation types, and deployment patterns (#2169).
+
+- 3c7cc57: Deprecate `X-Dry-Run` header documentation, standardize on sandbox mode (#2092).
+
+- 475c2f6: Clarify TMP uses path-based endpoints, not type-based dispatch (#2031).
+
+- b95ac19: Document `MediaBuyStatus` breaking change (`pending_activation` split) and migration guide (#2035).
+
+- 601f1dd: Add "Operating an Agent" guide (#2202, #2362) for publishers without engineering teams — three paths: partner with a managed platform, self-host a prebuilt agent, or build your own.
+
+- f916b00: Publish named release cadence policy (#2312, #2313, #2359). AdCP follows semver with predictable cadence: patch releases monthly for security and doc fixes, minor quarterly for additive features, major annually if needed. v2 EOL August 1, 2026.
+
+- 532578f, 601f1dd: Publish `CHARTER.md` (#2309, #2321). Formal governance charter linked from README, IPR, and intro.
+
+- bec4e4b: Harden creative lifecycle for 3.0 (#2357). Decouple creative state from assignment so inline and library flows can reference the same creative without state conflicts.
+
+- 679ff68: Populate signals protocol baseline storyboard phases (#2365). Makes the signals domain baseline executable under the compliance runner.
+
+- 84b322c: Scope3 Common Sense renamed to CSBS (Common Sense Brand Suitability) throughout the policy registry (#2305, #2318).
+
+- 02b4a59, 60e31f8: AI disclosure page and footer transparency on the main site (#2311, #2329, #2382).
+
+- 39977c9: Registry publication-completeness linter (#2319, #2361) — catches policy entries missing required fields before they reach the registry.
+
+- cae0ead: Spec-hardening pass: trust, commerce, and governance semantics (#2415). Closes the hostile-reviewer punch list identified during 3.0 spec review.
+
+- 91334fe: Lint storyboards for `idempotency_key` on mutating steps (#2372, #2373). Ensures compliance storyboards model idempotency correctly.
+
+- b508749: Schema-mutating lint + `past_start_date` split (#2376, #2377). Separate error for start-date-in-the-past vs schema validation failures.
+
+- 40aacfc: Pin sf-binary encoding + tighten URL canonicalization (#2341, #2343) — signing-profile consistency.
+
+- 8be601f: Clarify request-signing checklist step 9a — per-keyid cap before crypto (#2339, #2342). Defense against DoS via unbounded signature verification.
+
+- 251beea: Training agent: enforce idempotency replay/conflict/expired semantics (#2346, #2367).
+
+- 73958aa: Drop non-spec `escalated` status from `check_governance` in training agent (#2354).
+
+- 83b623d: Training agent + storyboard fixes: comply session persistence, `sync_plans` field drift (#2266, #2274, #2345).
+
+- 45650e1: Register brand-protocol tools under `tasks.*` in schema index (#2245, #2358).
+
+- 0b6f271: Declare `auth.api_key` and `auth.probe_task` on fictional test kits (#2317, #2360).
+
+- 6fe61b8: Wire 3.0 scenarios into `sales-*` specialisms (#2228, #2344).
+
+- 9c19239: Correct stale `Content-Digest` in request-signing test vector `positive/002` (#2337).
+
+- 9e38124: Capability-driven storyboard selection; retire `platform_type` in favor of declared capabilities (#2277, #2282).
+
+- 298fa5a: Add a `submitted` branch to `create_media_buy` and `ai_generated_image` right-use pattern (#2425). Clarifies the `submitted` state on async media-buy creation (the seller has accepted the payload for processing but has not yet confirmed the order) and specifies the right-use pattern for AI-generated images.
+
+- 28a6991: Time semantics + `activate_signal` idempotency row (#2407). Tightens the spec-completeness story — unifies time-field semantics across the protocol and adds `activate_signal` to the required idempotency table.
+
+- 46c19d9: Known-limitations, privacy-considerations, and why-not FAQs (#2427). Three new reference pages plus a platform-agnostic lint that prevents vendor-specific language from creeping into the spec.
+
+- 5b52bf8: Tighten three audited claims (#2385, #2404). Scope-truthfulness pass on specific protocol claims surfaced during spec review.
+
+- 08210ff: Add `webhook_mode_mismatch` and `webhook_target_uri_malformed` reason codes to the webhook verifier checklist (#2467).
+
+- fa3835c: Fix webhook test vectors 004/005 to apply full `@target-uri` canonicalization (#2470).
+
+- af67104: Inline the `@authority` Host-header rule at step 10 of the request-signing verification checklist (#2471). Closes an ambiguity about which header value binds signature verification.
+
+- 3f07492: C2PA foundation for signing AAO-generated imagery (#2370 stage 1, #2453). Groundwork for verifying the provenance of AdCP-generated creative assets.
+
+- c360ed5: Stop characterizing unsalted `hashed_email` as privacy-preserving (#2454, #2469). Updates privacy-considerations language to match what hashing actually provides.
+
+- 30f8344: Add `REQUOTE_REQUIRED` error for envelope-breach on `update_media_buy` (#2456, #2472). Scoped to 3.1 — seller returns this when an update would require re-pricing rather than a silent amend.
+
+- 5111aac: Known-limitations entry: "No key-transparency anchoring in the registry" (#2458). Documents the CT-log gap for signing-key publication.
+
+- 6710bb5: `push-notification-config` schema note — `idempotency_key` lives in the webhook payload, not in the config (#2457).
+
+- 7567e27: Compliance fix — webhook-emission capability-discovery check (#2468).
+
+- cc99243: Compliance lint — positive `schema_ref` on mutating storyboard steps (#2451).
+
+- 4b7e314: Security example updated to use `Set.has()` instead of `Array.includes()` in the auth-precheck path (performance + correctness).
+
+---
+
 ## 3.0.0-rc.3
 
 ### Major Changes

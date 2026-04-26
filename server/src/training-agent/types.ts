@@ -186,6 +186,33 @@ export interface ComplyExtensions {
   siSessions: Map<string, { status: string; terminationReason?: string }>;
   deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
   budgetSimulations: Map<string, ComplyBudgetSimulation>;
+  /** Products seeded via comply_test_controller.seed_product. Session-scoped overlay
+   * on the static catalog so storyboards can reference fixture IDs without
+   * polluting the shared catalog. Merged into get_products output. */
+  seededProducts: Map<string, Record<string, unknown>>;
+  /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
+  seededPricingOptions: Map<string, Record<string, unknown>>;
+  /** Creative formats seeded via comply_test_controller.seed_creative_format.
+   * Replaces the static format catalog for list_creative_formats when non-empty,
+   * giving storyboards a deterministic, size-controlled result set for
+   * pagination-integrity assertions. Keyed by the format's id string. */
+  seededCreativeFormats: Map<string, Record<string, unknown>>;
+  /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
+   * Consumed by the next create_media_buy call from this session and cleared. A second
+   * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
+   * idempotency_key replay still wins — the seller's request idempotency cache replays
+   * the cached response without re-evaluating against an empty directive slot.
+   *
+   * Only `arm: 'submitted'` is modeled today. `arm: 'input-required'` is reserved in
+   * the spec but cannot be expressed on a conformant create-media-buy response — there
+   * is no INPUT_REQUIRED value in the canonical error-code enum (it's a task-status)
+   * and the response schema has no fourth oneOf branch for an input-required envelope.
+   * The controller rejects that arm with INVALID_PARAMS until the spec resolves it. */
+  forcedCreateMediaBuyArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
 }
 
 export interface SessionState {
@@ -282,6 +309,10 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
+  /** Set by comply_test_controller after a forced status write. Consumed and
+   * cleared on the first deriveStatus read so subsequent real-workflow reads
+   * see the normal pending_creatives guard. Never set by production code paths. */
+  complyControllerForced?: boolean;
 }
 
 export interface PackageState {

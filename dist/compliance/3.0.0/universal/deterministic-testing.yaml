@@ -1,0 +1,1318 @@
+id: deterministic_testing
+version: '1.0.0'
+title: 'Deterministic testing'
+category: core
+summary: 'Uses comply_test_controller to force state transitions and simulate delivery/budget, verifying state machines and reporting.'
+track: core
+required_tools:
+  - comply_test_controller
+platform_types:
+  - display_ad_server
+  - video_ad_server
+  - social_platform
+  - retail_media
+  - search_platform
+  - audio_platform
+  - linear_tv_platform
+  - dsp
+  - pmax_platform
+  - ai_ad_network
+  - ai_platform
+  - generative_dsp
+
+narrative: |
+  Sellers that implement the comply_test_controller tool enable deterministic compliance
+  testing. The controller forces server-side state transitions without relying on real
+  async workflows, letting the test harness verify state machine behavior, operation
+  gating, and reporting accuracy.
+
+  This storyboard covers the full controller surface: scenario listing, account state
+  machines, media buy lifecycle, creative status transitions, SI session management,
+  delivery simulation, and budget spend simulation.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_test_controller
+  examples:
+    - 'Any seller with comply_test_controller'
+
+caller:
+  role: buyer_agent
+  example: 'Comply test harness'
+
+prerequisites:
+  description: |
+    The seller must expose the comply_test_controller tool. The controller is detected
+    via list_scenarios before any state transitions are attempted. Phases that require
+    specific scenarios are skipped if the controller does not support them.
+  test_kit: 'test-kits/acme-outdoor.yaml'
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before running deterministic test scenarios.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "deterministic_testing--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: controller_validation
+    title: 'Controller validation'
+    narrative: |
+      Validates that the comply_test_controller is functional and responds correctly
+      to scenario discovery, unknown scenarios, missing parameters, and nonexistent
+      entity references.
+
+    steps:
+      - id: list_scenarios
+        title: 'List supported scenarios'
+        requires_tool: comply_test_controller
+        narrative: |
+          Call the controller with scenario: list_scenarios to discover which
+          force_* and simulate_* scenarios the seller supports.
+        task: comply_test_controller
+        comply_scenario: controller_validation
+        stateful: false
+        context_outputs:
+          - name: supported_scenarios
+            path: 'scenarios'
+        expected: |
+          Return a list of supported scenarios. The response should include:
+          - success: true
+          - scenarios: array or object of scenario names
+
+        sample_request:
+          scenario: 'list_scenarios'
+
+          context:
+            correlation_id: "deterministic_testing--list_scenarios"
+        validations:
+          - check: field_present
+            path: 'scenarios'
+            description: 'Controller returns supported scenarios'
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'list_scenarios succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--list_scenarios"
+            description: "Context correlation_id returned unchanged"
+      - id: unknown_scenario
+        title: 'Unknown scenario returns error'
+        requires_tool: comply_test_controller
+        narrative: |
+          Send a nonexistent scenario name. The controller should return
+          UNKNOWN_SCENARIO error code.
+        task: comply_test_controller
+        comply_scenario: controller_validation
+        stateful: false
+        expect_error: true
+        expected: |
+          Return an error response with:
+          - success: false
+          - error: UNKNOWN_SCENARIO
+
+        sample_request:
+          scenario: 'nonexistent_scenario'
+          params: {}
+
+          context:
+            correlation_id: "deterministic_testing--unknown_scenario"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Unknown scenario fails'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'UNKNOWN_SCENARIO'
+            description: 'Error code is UNKNOWN_SCENARIO'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--unknown_scenario"
+            description: "Context correlation_id returned unchanged"
+      - id: missing_params
+        title: 'Missing params returns error'
+        requires_tool: comply_test_controller
+        narrative: |
+          Call force_creative_status with empty params. The controller should
+          return INVALID_PARAMS error code.
+        task: comply_test_controller
+        comply_scenario: controller_validation
+        stateful: false
+        expect_error: true
+        expected: |
+          Return an error response with:
+          - success: false
+          - error: INVALID_PARAMS
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params: {}
+
+          context:
+            correlation_id: "deterministic_testing--missing_params"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Missing params fails'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'INVALID_PARAMS'
+            description: 'Error code is INVALID_PARAMS'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--missing_params"
+            description: "Context correlation_id returned unchanged"
+      - id: not_found_entity
+        title: 'Nonexistent entity returns NOT_FOUND'
+        requires_tool: comply_test_controller
+        narrative: |
+          Call force_creative_status with a nonexistent creative_id. The controller
+          should return NOT_FOUND error code.
+        task: comply_test_controller
+        comply_scenario: controller_validation
+        stateful: false
+        expect_error: true
+        expected: |
+          Return an error response with:
+          - success: false
+          - error: NOT_FOUND
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: 'comply-test-nonexistent-000000000000'
+            status: 'approved'
+
+          context:
+            correlation_id: "deterministic_testing--not_found_entity"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Nonexistent entity fails'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'NOT_FOUND'
+            description: 'Error code is NOT_FOUND'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--not_found_entity"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_account
+    title: 'Deterministic account state machine'
+    narrative: |
+      Forces account status transitions via the controller and verifies them through
+      list_accounts. Tests suspension gating (operations blocked when suspended),
+      payment_required state, and reactivation.
+
+    steps:
+      - id: sync_accounts_for_state
+        title: 'Create sandbox account for state machine test'
+        requires_tool: comply_test_controller
+        narrative: |
+          Sync a sandbox account so the state machine has an entity to
+          force transitions on.
+        task: sync_accounts
+        schema_ref: 'account/sync-accounts-request.json'
+        response_schema_ref: 'account/sync-accounts-response.json'
+        comply_scenario: deterministic_account
+        stateful: true
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: 'test.example'
+              operator: 'test.example'
+              billing: 'operator'
+              sandbox: true
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_account_sync_accounts_for_state"
+          context:
+            correlation_id: "deterministic_testing--sync_accounts_for_state"
+        validations:
+          - check: field_present
+            path: 'accounts[0].account_id'
+            description: 'Account sync returns account_id'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--sync_accounts_for_state"
+            description: "Context correlation_id returned unchanged"
+      - id: list_accounts_for_state
+        title: 'Find account for state machine test'
+        requires_tool: comply_test_controller
+        narrative: |
+          List accounts to find an active account for state transitions.
+        task: list_accounts
+        comply_scenario: deterministic_account
+        stateful: false
+        context_outputs:
+          - name: account_id
+            path: 'accounts[0].account_id'
+        expected: |
+          Return at least one account with an account_id.
+
+        sample_request:
+          context:
+            correlation_id: "deterministic_testing--list_accounts_for_state"
+
+        validations:
+          - check: field_present
+            path: 'accounts[0].account_id'
+            description: 'At least one account exists'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--list_accounts_for_state"
+            description: "Context correlation_id returned unchanged"
+      - id: force_account_suspended
+        title: 'Force account to suspended'
+        requires_tool: comply_test_controller
+        narrative: |
+          Use the controller to force the account into suspended state. Operations
+          like create_media_buy should be blocked while the account is suspended.
+        task: comply_test_controller
+        comply_scenario: deterministic_account
+        stateful: true
+        expected: |
+          Return a successful state transition:
+          - success: true
+          - previous_state: the account's prior status
+          - current_state: suspended
+
+        sample_request:
+          scenario: 'force_account_status'
+          params:
+            account_id: '$context.account_id'
+            status: 'suspended'
+
+          context:
+            correlation_id: "deterministic_testing--force_account_suspended"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Account suspension succeeds'
+          - check: field_value
+            path: 'current_state'
+            allowed_values:
+              - 'suspended'
+            description: 'Account is now suspended'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_account_suspended"
+            description: "Context correlation_id returned unchanged"
+      - id: force_account_active
+        title: 'Reactivate account'
+        requires_tool: comply_test_controller
+        narrative: |
+          Restore the account to active state. Verify the transition from suspended
+          back to active succeeds.
+        task: comply_test_controller
+        comply_scenario: deterministic_account
+        stateful: true
+        expected: |
+          Return a successful state transition:
+          - success: true
+          - previous_state: suspended
+          - current_state: active
+
+        sample_request:
+          scenario: 'force_account_status'
+          params:
+            account_id: '$context.account_id'
+            status: 'active'
+
+          context:
+            correlation_id: "deterministic_testing--force_account_active"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Account reactivation succeeds'
+          - check: field_value
+            path: 'current_state'
+            allowed_values:
+              - 'active'
+            description: 'Account is now active'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_account_active"
+            description: "Context correlation_id returned unchanged"
+      - id: force_account_payment_required
+        title: 'Force account to payment_required'
+        requires_tool: comply_test_controller
+        narrative: |
+          Force the account into payment_required state. This tests a distinct
+          non-terminal blocked state.
+        task: comply_test_controller
+        comply_scenario: deterministic_account
+        stateful: true
+        expected: |
+          Return a successful state transition to payment_required.
+
+        sample_request:
+          scenario: 'force_account_status'
+          params:
+            account_id: '$context.account_id'
+            status: 'payment_required'
+
+          context:
+            correlation_id: "deterministic_testing--force_account_payment_required"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Transition to payment_required succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_account_payment_required"
+            description: "Context correlation_id returned unchanged"
+      - id: restore_account_active
+        title: 'Restore account to active'
+        requires_tool: comply_test_controller
+        narrative: |
+          Restore the account to active state after the payment_required test.
+        task: comply_test_controller
+        comply_scenario: deterministic_account
+        stateful: true
+        expected: |
+          Account restored to active state.
+
+        sample_request:
+          scenario: 'force_account_status'
+          params:
+            account_id: '$context.account_id'
+            status: 'active'
+
+          context:
+            correlation_id: "deterministic_testing--restore_account_active"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Account restored to active'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--restore_account_active"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_media_buy
+    title: 'Deterministic media buy state machine'
+    narrative: |
+      Creates a media buy through the normal flow, then uses the controller to force
+      it through status transitions: active, completed (terminal). Verifies that
+      terminal states reject further transitions.
+
+    steps:
+      - id: create_media_buy
+        title: 'Create media buy for state machine test'
+        requires_tool: comply_test_controller
+        narrative: |
+          Create a media buy through the standard create_media_buy task. The resulting
+          media_buy_id is used for controller-driven state transitions.
+        task: create_media_buy
+        schema_ref: 'media-buy/create-media-buy-request.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
+        doc_ref: '/media-buy/task-reference/create_media_buy'
+        comply_scenario: deterministic_media_buy
+        stateful: true
+        context_outputs:
+          - name: media_buy_id
+            path: 'media_buy_id'
+        expected: |
+          Create a media buy and return a media_buy_id for state machine testing.
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          brand:
+            domain: 'acmeoutdoor.example'
+          start_time: '2026-04-01T00:00:00Z'
+          end_time: '2026-06-30T23:59:59Z'
+          packages:
+            - product_id: 'test-product'
+              budget: 5000
+              pricing_option_id: 'test-pricing'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_media_buy_create_media_buy"
+          context:
+            correlation_id: "deterministic_testing--create_media_buy"
+        validations:
+          - check: response_schema
+            description: 'Response matches create-media-buy-response.json schema'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: force_media_buy_active
+        title: 'Force media buy to active'
+        requires_tool: comply_test_controller
+        narrative: |
+          Use the controller to force the media buy into active state.
+        task: comply_test_controller
+        comply_scenario: deterministic_media_buy
+        stateful: true
+        expected: |
+          Return a successful state transition to active.
+
+        sample_request:
+          scenario: 'force_media_buy_status'
+          params:
+            media_buy_id: '$context.media_buy_id'
+            status: 'active'
+
+          context:
+            correlation_id: "deterministic_testing--force_media_buy_active"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Media buy activation succeeds'
+          - check: field_value
+            path: 'current_state'
+            allowed_values:
+              - 'active'
+            description: 'Media buy is now active'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_media_buy_active"
+            description: "Context correlation_id returned unchanged"
+      - id: verify_media_buy_active
+        title: 'Verify media buy status via get_media_buys'
+        requires_tool: comply_test_controller
+        narrative: |
+          Call get_media_buys to confirm the controller-forced status is reflected
+          in the standard API.
+        task: get_media_buys
+        schema_ref: 'media-buy/get-media-buys-request.json'
+        response_schema_ref: 'media-buy/get-media-buys-response.json'
+        doc_ref: '/media-buy/task-reference/get_media_buys'
+        comply_scenario: deterministic_media_buy
+        stateful: true
+        expected: |
+          Return the media buy with status: active.
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          media_buy_ids:
+            - '$context.media_buy_id'
+
+          context:
+            correlation_id: "deterministic_testing--verify_media_buy_active"
+        validations:
+          - check: response_schema
+            description: 'Response matches get-media-buys-response.json schema'
+          - check: field_present
+            path: 'media_buys[0].status'
+            description: 'Media buy has a status field'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--verify_media_buy_active"
+            description: "Context correlation_id returned unchanged"
+      - id: force_media_buy_completed
+        title: 'Force media buy to completed (terminal)'
+        requires_tool: comply_test_controller
+        narrative: |
+          Force the media buy to completed, a terminal state. No further transitions
+          should be allowed.
+        task: comply_test_controller
+        comply_scenario: deterministic_media_buy
+        stateful: true
+        expected: |
+          Return a successful transition to completed.
+
+        sample_request:
+          scenario: 'force_media_buy_status'
+          params:
+            media_buy_id: '$context.media_buy_id'
+            status: 'completed'
+
+          context:
+            correlation_id: "deterministic_testing--force_media_buy_completed"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Transition to completed succeeds'
+          - check: field_value
+            path: 'current_state'
+            allowed_values:
+              - 'completed'
+            description: 'Media buy is now completed'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_media_buy_completed"
+            description: "Context correlation_id returned unchanged"
+      - id: invalid_transition_from_terminal
+        title: 'Reject transition from terminal state'
+        requires_tool: comply_test_controller
+        narrative: |
+          Attempt to force the completed media buy back to active. The controller
+          should reject this with INVALID_TRANSITION.
+        task: comply_test_controller
+        comply_scenario: deterministic_media_buy
+        stateful: true
+        expect_error: true
+        expected: |
+          Return an error response:
+          - success: false
+          - error: INVALID_TRANSITION
+
+        sample_request:
+          scenario: 'force_media_buy_status'
+          params:
+            media_buy_id: '$context.media_buy_id'
+            status: 'active'
+
+          context:
+            correlation_id: "deterministic_testing--invalid_transition_from_terminal"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Terminal state rejects transition'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'INVALID_TRANSITION'
+            description: 'Error code is INVALID_TRANSITION'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--invalid_transition_from_terminal"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_creative
+    title: 'Deterministic creative state machine'
+    narrative: |
+      Syncs a creative, then uses the controller to force it through status
+      transitions: approved, archived (terminal). Verifies terminal state rejection
+      and rejection with reason.
+
+    steps:
+      - id: sync_creative_for_state
+        title: 'Sync creative for state machine test'
+        requires_tool: comply_test_controller
+        narrative: |
+          Push a test creative via sync_creatives. The creative_id is captured
+          for controller-driven transitions.
+        task: sync_creatives
+        schema_ref: 'creative/sync-creatives-request.json'
+        response_schema_ref: 'creative/sync-creatives-response.json'
+        doc_ref: '/creative/task-reference/sync_creatives'
+        comply_scenario: deterministic_creative
+        stateful: true
+        context_outputs:
+          - name: creative_id
+            path: 'creatives[0].creative_id'
+        expected: |
+          Accept the creative and return a creative_id for state machine testing.
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          creatives:
+            - creative_id: 'comply-state-test-creative'
+              name: 'Comply State Test Creative'
+              format_id:
+                agent_url: 'https://your-platform.example.com'
+                id: 'display_300x250'
+              assets:
+                image:
+                  asset_type: 'image'
+                  url: 'https://via.placeholder.com/300x250'
+                  width: 300
+                  height: 250
+                  mime_type: 'image/png'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_creative_sync_creative_for_state"
+          context:
+            correlation_id: "deterministic_testing--sync_creative_for_state"
+        validations:
+          - check: response_schema
+            description: 'Response matches sync-creatives-response.json schema'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--sync_creative_for_state"
+            description: "Context correlation_id returned unchanged"
+      - id: force_creative_approved
+        title: 'Force creative to approved'
+        requires_tool: comply_test_controller
+        narrative: |
+          Use the controller to force the creative into approved state.
+        task: comply_test_controller
+        comply_scenario: deterministic_creative
+        stateful: true
+        expected: |
+          Successful transition to approved.
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: '$context.creative_id'
+            status: 'approved'
+
+          context:
+            correlation_id: "deterministic_testing--force_creative_approved"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Creative approval succeeds'
+          - check: field_value
+            path: 'current_state'
+            allowed_values:
+              - 'approved'
+            description: 'Creative is now approved'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_creative_approved"
+            description: "Context correlation_id returned unchanged"
+      - id: force_creative_archived
+        title: 'Force creative to archived (terminal)'
+        requires_tool: comply_test_controller
+        narrative: |
+          Force the creative to archived, a terminal state.
+        task: comply_test_controller
+        comply_scenario: deterministic_creative
+        stateful: true
+        expected: |
+          Successful transition to archived.
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: '$context.creative_id'
+            status: 'archived'
+
+          context:
+            correlation_id: "deterministic_testing--force_creative_archived"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Transition to archived succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_creative_archived"
+            description: "Context correlation_id returned unchanged"
+      - id: invalid_creative_transition
+        title: 'Reject archived to processing'
+        requires_tool: comply_test_controller
+        narrative: |
+          Attempt to force the archived creative back to processing. The controller
+          should reject this with INVALID_TRANSITION.
+        task: comply_test_controller
+        comply_scenario: deterministic_creative
+        stateful: true
+        expect_error: true
+        expected: |
+          Return error with INVALID_TRANSITION.
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: '$context.creative_id'
+            status: 'processing'
+
+          context:
+            correlation_id: "deterministic_testing--invalid_creative_transition"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Terminal state rejects transition'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'INVALID_TRANSITION'
+            description: 'Error code is INVALID_TRANSITION'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--invalid_creative_transition"
+            description: "Context correlation_id returned unchanged"
+      - id: sync_fresh_creative_for_rejection
+        title: 'Sync a fresh creative to exercise rejection'
+        requires_tool: sync_creatives
+        narrative: |
+          The preceding phase archived the first creative — a terminal state
+          that cannot transition to rejected. Sync a second, fresh creative so
+          the rejection path starts from processing rather than archived.
+        task: sync_creatives
+        schema_ref: "media-buy/sync-creatives-request.json"
+        response_schema_ref: "media-buy/sync-creatives-response.json"
+        doc_ref: "/media-buy/task-reference/sync_creatives"
+        comply_scenario: deterministic_creative
+        stateful: true
+        expected: |
+          A new creative with a distinct creative_id, reusable by downstream
+          force_creative_status calls.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "deterministic-rejection-probe"
+              name: "Creative for rejection probe"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
+                  width: 300
+                  height: 250
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_sync_fresh_creative_for_rejection"
+          context:
+            correlation_id: "deterministic_testing--sync_fresh_creative_for_rejection"
+        context_outputs:
+          - path: "creatives[0].creative_id"
+            key: "fresh_creative_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Response includes the seller's creative_id for the fresh creative"
+
+      - id: force_creative_rejected
+        title: 'Force fresh creative to rejected with reason'
+        requires_tool: comply_test_controller
+        narrative: |
+          Reject the fresh creative (captured as $context.fresh_creative_id)
+          with a reason string. Verifies the controller supports rejection
+          reasons. Uses the fresh id — NOT the archived one from the prior
+          phase, since archived→rejected is not a valid creative-state
+          transition.
+        task: comply_test_controller
+        comply_scenario: deterministic_creative
+        stateful: true
+        expected: |
+          Successful transition to rejected with reason preserved.
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: '$context.fresh_creative_id'
+            status: 'rejected'
+            rejection_reason: 'Brand safety policy violation (comply test)'
+
+          context:
+            correlation_id: "deterministic_testing--force_creative_rejected"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Creative rejection succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_creative_rejected"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_session
+    title: 'Deterministic SI session state machine'
+    narrative: |
+      Initiates an SI session, then uses the controller to force session timeout.
+      Verifies that messaging on a terminated session fails appropriately.
+
+    steps:
+      - id: initiate_session
+        title: 'Initiate SI session'
+        requires_tool: si_initiate_session
+        narrative: |
+          Create an SI session via si_initiate_session. The session_id is captured
+          for controller-driven termination.
+        task: si_initiate_session
+        schema_ref: 'sponsored-intelligence/si-initiate-session-request.json'
+        response_schema_ref: 'sponsored-intelligence/si-initiate-session-response.json'
+        comply_scenario: deterministic_session
+        stateful: true
+        context_outputs:
+          - name: session_id
+            path: 'session_id'
+        expected: |
+          Return a session with a session_id.
+
+        sample_request:
+          intent: "comply test — initiate deterministic SI session"
+          identity:
+            consent_granted: true
+            user_type: 'consumer'
+          supported_capabilities:
+            response_formats:
+              - 'text'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_session_initiate_session"
+          context:
+            correlation_id: "deterministic_testing--initiate_session"
+        validations:
+          - check: field_present
+            path: 'session_id'
+            description: 'Session has a session_id'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--initiate_session"
+            description: "Context correlation_id returned unchanged"
+      - id: force_session_terminated
+        title: 'Force session timeout'
+        requires_tool: comply_test_controller
+        narrative: |
+          Use the controller to force the session into terminated state with
+          termination_reason: session_timeout.
+        task: comply_test_controller
+        comply_scenario: deterministic_session
+        stateful: true
+        expected: |
+          Successful transition to terminated.
+
+        sample_request:
+          scenario: 'force_session_status'
+          params:
+            session_id: '$context.session_id'
+            status: 'terminated'
+            termination_reason: 'session_timeout'
+
+          context:
+            correlation_id: "deterministic_testing--force_session_terminated"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Session termination succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--force_session_terminated"
+            description: "Context correlation_id returned unchanged"
+      - id: verify_terminated_session
+        title: 'Verify messaging fails on terminated session'
+        requires_tool: comply_test_controller
+        narrative: |
+          Attempt to send a message on the terminated session. The agent should
+          return an error or terminated status.
+        task: si_send_message
+        schema_ref: 'sponsored-intelligence/si-send-message-request.json'
+        response_schema_ref: 'sponsored-intelligence/si-send-message-response.json'
+        comply_scenario: deterministic_session
+        stateful: true
+        expected: |
+          The request should fail or return session_status: terminated. The agent
+          must not accept messages on a terminated session.
+
+        sample_request:
+          session_id: '$context.session_id'
+          message: 'comply test — session should be terminated'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_session_verify_terminated_session"
+          context:
+            correlation_id: "deterministic_testing--verify_terminated_session"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Message on terminated session fails'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--verify_terminated_session"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_delivery
+    title: 'Deterministic delivery simulation'
+    narrative: |
+      Creates a media buy, simulates delivery data via the controller, then verifies
+      the simulated metrics are reflected in get_media_buy_delivery.
+
+    steps:
+      - id: create_media_buy_for_delivery
+        title: 'Create media buy for delivery test'
+        requires_tool: comply_test_controller
+        narrative: |
+          Create a media buy to receive simulated delivery data.
+        task: create_media_buy
+        schema_ref: 'media-buy/create-media-buy-request.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
+        doc_ref: '/media-buy/task-reference/create_media_buy'
+        comply_scenario: deterministic_delivery
+        stateful: true
+        context_outputs:
+          - name: delivery_media_buy_id
+            path: 'media_buy_id'
+        expected: |
+          Create a media buy and return a media_buy_id.
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          brand:
+            domain: 'acmeoutdoor.example'
+          start_time: '2026-04-01T00:00:00Z'
+          end_time: '2026-06-30T23:59:59Z'
+          packages:
+            - product_id: 'test-product'
+              budget: 5000
+              pricing_option_id: 'test-pricing'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_delivery_create_media_buy_for_delivery"
+          context:
+            correlation_id: "deterministic_testing--create_media_buy_for_delivery"
+        validations:
+          - check: response_schema
+            description: 'Response matches create-media-buy-response.json schema'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--create_media_buy_for_delivery"
+            description: "Context correlation_id returned unchanged"
+      - id: simulate_delivery
+        title: 'Simulate delivery data'
+        requires_tool: comply_test_controller
+        narrative: |
+          Inject simulated delivery metrics (impressions, clicks, spend) into the
+          media buy via the controller.
+        task: comply_test_controller
+        comply_scenario: deterministic_delivery
+        stateful: true
+        expected: |
+          Return success with simulated delivery metrics acknowledged.
+
+        sample_request:
+          scenario: 'simulate_delivery'
+          params:
+            media_buy_id: '$context.delivery_media_buy_id'
+            impressions: 10000
+            clicks: 150
+            reported_spend:
+              amount: 150.00
+              currency: 'USD'
+
+          context:
+            correlation_id: "deterministic_testing--simulate_delivery"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: 'Delivery simulation succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--simulate_delivery"
+            description: "Context correlation_id returned unchanged"
+      - id: verify_delivery
+        title: 'Verify delivery via get_media_buy_delivery'
+        requires_tool: comply_test_controller
+        narrative: |
+          Call get_media_buy_delivery and verify the simulated metrics are reflected
+          in the response. Expect at least 10000 impressions.
+        task: get_media_buy_delivery
+        schema_ref: 'media-buy/get-media-buy-delivery-request.json'
+        response_schema_ref: 'media-buy/get-media-buy-delivery-response.json'
+        doc_ref: '/media-buy/task-reference/get_media_buy_delivery'
+        comply_scenario: deterministic_delivery
+        stateful: true
+        expected: |
+          Return delivery metrics reflecting the simulated data:
+          - impressions >= 10000
+          - clicks and spend data present
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          media_buy_ids:
+            - '$context.delivery_media_buy_id'
+
+          context:
+            correlation_id: "deterministic_testing--verify_delivery"
+        validations:
+          - check: response_schema
+            description: 'Response matches get-media-buy-delivery-response.json schema'
+          - check: field_present
+            path: 'media_buy_deliveries'
+            description: 'Response contains delivery data'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--verify_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: deterministic_budget
+    title: 'Deterministic budget simulation'
+    narrative: |
+      Creates a media buy, then uses the controller to simulate budget spend at 95%
+      and 100%. Verifies the agent handles near-depletion and full depletion.
+
+    steps:
+      - id: create_media_buy_for_budget
+        title: 'Create media buy for budget test'
+        requires_tool: comply_test_controller
+        narrative: |
+          Create a media buy with a known budget for spend simulation.
+        task: create_media_buy
+        schema_ref: 'media-buy/create-media-buy-request.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
+        doc_ref: '/media-buy/task-reference/create_media_buy'
+        comply_scenario: deterministic_budget
+        stateful: true
+        context_outputs:
+          - name: budget_media_buy_id
+            path: 'media_buy_id'
+        expected: |
+          Create a media buy and return a media_buy_id.
+
+        sample_request:
+          account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
+          brand:
+            domain: 'acmeoutdoor.example'
+          start_time: '2026-04-01T00:00:00Z'
+          end_time: '2026-06-30T23:59:59Z'
+          packages:
+            - product_id: 'test-product'
+              budget: 10000
+              pricing_option_id: 'test-pricing'
+
+          idempotency_key: "$generate:uuid_v4#deterministic_testing_deterministic_budget_create_media_buy_for_budget"
+          context:
+            correlation_id: "deterministic_testing--create_media_buy_for_budget"
+        validations:
+          - check: response_schema
+            description: 'Response matches create-media-buy-response.json schema'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--create_media_buy_for_budget"
+            description: "Context correlation_id returned unchanged"
+      - id: simulate_budget_95
+        title: 'Simulate 95% budget spend'
+        requires_tool: comply_test_controller
+        narrative: |
+          Simulate 95% of the media buy budget being spent. The agent should
+          handle near-depletion state.
+        task: comply_test_controller
+        comply_scenario: deterministic_budget
+        stateful: true
+        expected: |
+          Return success with budget spend simulated to 95%.
+
+        sample_request:
+          scenario: 'simulate_budget_spend'
+          params:
+            media_buy_id: '$context.budget_media_buy_id'
+            spend_percentage: 95
+
+          context:
+            correlation_id: "deterministic_testing--simulate_budget_95"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: '95% budget simulation succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--simulate_budget_95"
+            description: "Context correlation_id returned unchanged"
+      - id: simulate_budget_100
+        title: 'Simulate 100% budget depletion'
+        requires_tool: comply_test_controller
+        narrative: |
+          Simulate complete budget depletion. The agent should handle the fully
+          spent state.
+        task: comply_test_controller
+        comply_scenario: deterministic_budget
+        stateful: true
+        expected: |
+          Return success with budget fully depleted.
+
+        sample_request:
+          scenario: 'simulate_budget_spend'
+          params:
+            media_buy_id: '$context.budget_media_buy_id'
+            spend_percentage: 100
+
+          context:
+            correlation_id: "deterministic_testing--simulate_budget_100"
+        validations:
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - true
+            description: '100% budget depletion simulation succeeds'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "deterministic_testing--simulate_budget_100"
+            description: "Context correlation_id returned unchanged"

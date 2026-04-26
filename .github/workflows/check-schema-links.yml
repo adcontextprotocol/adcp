@@ -33,6 +33,16 @@ jobs:
             fi
           done
 
+          # Also flag /schemas/latest/ in docs/. Docs describe a specific
+          # major version and must pin to its alias (e.g. /schemas/v3/) so
+          # links stay stable across major releases. The one historical
+          # reference in release-notes.mdx documenting the alias concept
+          # itself is excluded.
+          LATEST_MATCHES=$(grep -rn "schemas/latest/" docs/ --include='*.md' --include='*.mdx' | grep -v 'docs/reference/release-notes' || true)
+          if [ -n "$LATEST_MATCHES" ]; then
+            STALE_FOUND="$STALE_FOUND\n$LATEST_MATCHES"
+          fi
+
           if [ -n "$STALE_FOUND" ]; then
             echo "❌ Found stale schema version references in docs/ (current major version is v${CURRENT_MAJOR}):"
             echo -e "$STALE_FOUND"
@@ -159,21 +169,34 @@ jobs:
           COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
           COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
           
-          if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
+          # Warnings (unreleased-but-in-source schemas) are expected on pre-release
+          # docs PRs and self-resolve on the next release. Surface them on the job
+          # summary only — never as a PR comment — to avoid email noise. Errors
+          # still post a PR comment because they require author action.
+          if [ -n "$WARNINGS" ]; then
+            # Count top-level bullet entries (one per flagged URL).
+            WARNING_COUNT=$(echo -e "$WARNINGS" | grep -c '^- `' || true)
+            {
+              echo "## Schema Link Check — ${WARNING_COUNT} Warning(s)"
+              echo ""
+              echo "$COMMIT_INFO"
+              echo ""
+              echo "### ⚠️ Warnings (schema not yet released)"
+              echo ""
+              echo "These schemas exist in source but haven't been released yet. The links will work after the next version is published."
+              echo ""
+              echo -e "$WARNINGS"
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Surface on the PR's Checks tab without emailing the author.
+            echo "::notice title=Schema link warnings::${WARNING_COUNT} schema link(s) reference unreleased schemas — see job summary"
+          fi
+
+          if [ -n "$ERRORS" ]; then
             echo "has_issues=true" >> $GITHUB_OUTPUT
             
-            COMMENT="## Schema Link Check Results\n\n$COMMIT_INFO\n\n"
-            
-            if [ -n "$ERRORS" ]; then
-              HAS_ERRORS="true"
-              COMMENT="$COMMENT### ❌ Errors (schema not found)\n\nThese schemas do not exist and the links will be broken:\n$ERRORS\n\n"
-            fi
-            
-            if [ -n "$WARNINGS" ]; then
-              COMMENT="$COMMENT### ⚠️ Warnings (schema not yet released)\n\nThese schemas exist in source but haven't been released yet. The links will be broken until the next version is published:\n$WARNINGS\n\n"
-              COMMENT="$COMMENT---\n\n**To fix**: Either:\n1. Wait for the next release and merge this PR after the release is published\n2. Use \`latest\` instead of a version alias if you need the link to work immediately (note: \`latest\` is the development version and may change)\n3. Coordinate with maintainers to cut a new release before merging"
-            fi
-            
+            HAS_ERRORS="true"
+            COMMENT="## Schema Link Check Results\n\n$COMMIT_INFO\n\n### ❌ Errors (schema not found)\n\nThese schemas do not exist and the links will be broken:\n$ERRORS\n"
+
             # Escape for GitHub Actions
             COMMENT=$(echo -e "$COMMENT" | sed 's/"/\\"/g')
             echo "comment<<EOF" >> $GITHUB_OUTPUT
@@ -181,7 +204,7 @@ jobs:
             echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "has_issues=false" >> $GITHUB_OUTPUT
-            echo "✅ All $TOTAL_URLS schema links are valid"
+            echo "✅ All $TOTAL_URLS schema links are valid (warnings, if any, on job summary)"
           fi
           
           echo "has_errors=$HAS_ERRORS" >> $GITHUB_OUTPUT

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/core/cancellation-policy.json",
+  "title": "Cancellation Policy",
+  "description": "Seller-declared cancellation terms for a product. Declares the minimum notice period required before cancellation takes effect and the cancellation fee for insufficient notice. Buyers accept these terms by creating a media buy against the product.",
+  "type": "object",
+  "properties": {
+    "notice_period": {
+      "$ref": "/schemas/3.0.0/core/duration.json",
+      "description": "Minimum notice period before cancellation takes effect (e.g., { interval: 30, unit: 'days' }). A guaranteed buy canceled without sufficient notice incurs the declared cancellation fee."
+    },
+    "cancellation_fee": {
+      "type": "object",
+      "description": "Fee applied when the notice period is not met.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["percent_remaining", "full_commitment", "fixed_fee", "none"],
+          "description": "Fee calculation method. 'percent_remaining': percentage of remaining uncommitted spend. 'full_commitment': buyer owes the full committed budget regardless of delivery. 'fixed_fee': flat monetary amount. 'none': no financial fee (cancellation with notice is free)."
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fee rate as a decimal proportion of remaining committed spend. Required when type is 'percent_remaining' (e.g., 0.5 means 50% of remaining spend)."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Fixed fee amount in the buy's currency. Required when type is 'fixed_fee'."
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["notice_period", "cancellation_fee"],
+  "additionalProperties": true
+}

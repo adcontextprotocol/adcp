@@ -1,3 +1,6 @@
+// lint-allow-test-imports-file: TODO(#3118-followup) — this suite uses
+// dynamic-import-after-vi.mock to grab fresh mock refs per test. Convert to
+// the vi.hoisted pattern so it can drop the resetModules + dynamic imports.
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
 // Mock the database client

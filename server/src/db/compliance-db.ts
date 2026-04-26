@@ -14,6 +14,58 @@ export type OverallRunStatus = 'passing' | 'failing' | 'partial';
 export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook';
 export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
 
+/**
+ * Auth shape resolved from an agent_context for outbound compliance/test
+ * requests. Matches the SDK's `TestOptions.auth` union in `@adcp/client/testing`.
+ * Resolvers return `ResolvedOwnerAuth | undefined`; `undefined` is not part
+ * of the domain type so post-null-check call sites don't carry the
+ * possibility forward.
+ */
+export type ResolvedOwnerAuth =
+  | { type: 'bearer'; token: string }
+  | { type: 'basic'; username: string; password: string }
+  | {
+      type: 'oauth';
+      tokens: { access_token: string; refresh_token: string; expires_at?: string };
+      client?: { client_id: string; client_secret?: string };
+    }
+  | {
+      /**
+       * OAuth 2.0 client credentials (RFC 6749 §4.4). The SDK exchanges at
+       * `credentials.token_endpoint` before every call and refreshes on 401.
+       * `credentials.client_secret` may be a `$ENV:ADCP_OAUTH_<NAME>`
+       * reference — the SDK resolves at exchange time.
+       */
+      type: 'oauth_client_credentials';
+      credentials: {
+        token_endpoint: string;
+        client_id: string;
+        client_secret: string;
+        scope?: string;
+        resource?: string;
+        audience?: string;
+        auth_method?: 'basic' | 'body';
+      };
+    };
+
+/**
+ * Decode an HTTP Basic Authorization credential (base64(`username:password`))
+ * into a typed shape. Returns null when the payload has no `:` separator —
+ * callers should fall back to treating the raw token as bearer.
+ */
+export function decodeBasicCredentials(
+  token: string,
+): { type: 'basic'; username: string; password: string } | null {
+  const decoded = Buffer.from(token, 'base64').toString();
+  const colonIndex = decoded.indexOf(':');
+  if (colonIndex < 0) return null;
+  return {
+    type: 'basic',
+    username: decoded.slice(0, colonIndex),
+    password: decoded.slice(colonIndex + 1),
+  };
+}
+
 export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
@@ -546,22 +598,40 @@ export class ComplianceDatabase {
    * Resolve auth credentials for an agent from the owning organization's
    * saved tokens in agent_contexts. Only uses credentials from the org
    * that owns the agent (via member_profiles.agents), not arbitrary orgs.
+   *
+   * Returns the full `oauth` shape when a refresh token is saved so the
+   * @adcp/client SDK can refresh on 401 instead of failing once the access
+   * token drifts near expiry. Without a refresh token, returns the raw
+   * access token as a bearer so callers surface a clear 401 from the agent
+   * rather than sending no Authorization header at all.
    */
-  async resolveOwnerAuth(
-    agentUrl: string,
-  ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
+  async resolveOwnerAuth(agentUrl: string): Promise<ResolvedOwnerAuth | undefined> {
     try {
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
-                ac.oauth_token_expires_at
+                ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
+                ac.oauth_token_expires_at,
+                ac.oauth_client_id,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
+                ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
+                ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
          WHERE ac.agent_url = $1
            AND mp.agents @> $2::jsonb
-           AND (ac.auth_token_encrypted IS NOT NULL OR ac.oauth_access_token_encrypted IS NOT NULL)
+           AND (
+             ac.auth_token_encrypted IS NOT NULL
+             OR ac.oauth_access_token_encrypted IS NOT NULL
+             OR (
+               ac.oauth_cc_token_endpoint IS NOT NULL
+               AND ac.oauth_cc_client_id IS NOT NULL
+               AND ac.oauth_cc_client_secret_encrypted IS NOT NULL
+             )
+           )
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
@@ -575,36 +645,88 @@ export class ComplianceDatabase {
         const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, row.organization_id);
 
         if (row.auth_type === 'basic') {
-          const decoded = Buffer.from(token, 'base64').toString();
-          const colonIndex = decoded.indexOf(':');
-          if (colonIndex >= 0) {
-            return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
-          }
+          const basic = decodeBasicCredentials(token);
+          if (basic) return basic;
         }
 
         return { type: 'bearer', token };
       }
 
-      // Fall back to OAuth access token
       if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {
-        // Check expiration with 5-minute buffer
-        if (row.oauth_token_expires_at) {
-          const expiresAt = new Date(row.oauth_token_expires_at);
-          if (expiresAt.getTime() - Date.now() <= 5 * 60 * 1000) {
-            logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon for compliance auth');
-            return undefined;
-          }
-        } else {
-          logger.debug({ agentUrl }, 'OAuth token has no expiration recorded');
+        const accessToken = decryptToken(
+          row.oauth_access_token_encrypted,
+          row.oauth_access_token_iv,
+          row.organization_id,
+        );
+
+        const refreshToken = row.oauth_refresh_token_encrypted && row.oauth_refresh_token_iv
+          ? decryptToken(row.oauth_refresh_token_encrypted, row.oauth_refresh_token_iv, row.organization_id)
+          : undefined;
+
+        if (!refreshToken) {
+          return { type: 'bearer', token: accessToken };
         }
 
-        const token = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, row.organization_id);
-        return { type: 'bearer', token };
+        const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        };
+        if (row.oauth_token_expires_at) {
+          tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
+        }
+
+        const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = { type: 'oauth', tokens };
+        if (row.oauth_client_id) {
+          const client: { client_id: string; client_secret?: string } = { client_id: row.oauth_client_id };
+          if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
+            client.client_secret = decryptToken(
+              row.oauth_client_secret_encrypted,
+              row.oauth_client_secret_iv,
+              row.organization_id,
+            );
+          }
+          oauth.client = client;
+        }
+        return oauth;
+      }
+
+      if (
+        row.oauth_cc_token_endpoint &&
+        row.oauth_cc_client_id &&
+        row.oauth_cc_client_secret_encrypted &&
+        row.oauth_cc_client_secret_iv
+      ) {
+        const clientSecret = decryptToken(
+          row.oauth_cc_client_secret_encrypted,
+          row.oauth_cc_client_secret_iv,
+          row.organization_id,
+        );
+        const credentials: Extract<ResolvedOwnerAuth, { type: 'oauth_client_credentials' }>['credentials'] = {
+          token_endpoint: row.oauth_cc_token_endpoint,
+          client_id: row.oauth_cc_client_id,
+          client_secret: clientSecret,
+        };
+        if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
+        if (row.oauth_cc_resource) credentials.resource = row.oauth_cc_resource;
+        if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
+        if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
+          credentials.auth_method = row.oauth_cc_auth_method;
+        } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
+          // Drop values outside the SDK's accepted enum rather than poisoning
+          // the return type — but log it. An unexpected value here means a
+          // write path bypassed validation, which is a latent bug worth
+          // surfacing before it spreads.
+          logger.warn(
+            { agentUrl, orgId: row.organization_id, value: row.oauth_cc_auth_method },
+            'Dropped unrecognized oauth_cc_auth_method from agent_context',
+          );
+        }
+        return { type: 'oauth_client_credentials', credentials };
       }
 
       return undefined;
     } catch (error) {
-      logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
+      logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
   }

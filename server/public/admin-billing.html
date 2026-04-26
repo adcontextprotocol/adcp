@@ -384,7 +384,12 @@
         <button class="btn btn-secondary" id="auto-resolve-btn" style="display: none;" onclick="autoResolveAll()">Auto-Resolve Safe</button>
       </div>
       <div class="conflict-info-box">
-        A mismatch occurs when an organization has a Stripe customer in our database, but a <strong>different</strong> Stripe customer's metadata claims to belong to that same organization. This typically means the org has multiple Stripe customers (duplicate accounts).<br><br>
+        A mismatch occurs when an organization has multiple Stripe customers. Detected via three signals (the badge on each duplicate shows which):
+        <ul style="margin: 6px 0 6px 18px;">
+          <li><strong>Metadata</strong> — orphan's <code>metadata.workos_organization_id</code> points at this org</li>
+          <li><strong>Email</strong> — orphan shares the linked customer's email</li>
+          <li><strong>Name + active sub</strong> — orphan shares the linked customer's name and has a live subscription</li>
+        </ul>
         <strong>Auto-resolve:</strong> If only one customer has activity (invoices/subscriptions), the inactive one can be safely archived.
       </div>
       <table class="conflicts-table">
@@ -392,7 +397,7 @@
           <tr>
             <th>Organization</th>
             <th>DB Customer</th>
-            <th>Metadata Customer</th>
+            <th>Duplicate Customer</th>
             <th>Suggested Action</th>
           </tr>
         </thead>
@@ -481,7 +486,7 @@
     function escapeHtml(str) {
       const div = document.createElement('div');
       div.textContent = str;
-      return div.innerHTML;
+      return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function showError(message) {
@@ -919,6 +924,18 @@
       }
     }
 
+    function matchReasonLabel(reason) {
+      if (reason === 'email') return 'Match: email';
+      if (reason === 'name') return 'Match: name + active sub';
+      return 'Match: metadata';
+    }
+
+    function matchReasonTooltip(reason) {
+      if (reason === 'email') return "This duplicate shares the linked customer's email.";
+      if (reason === 'name') return "This duplicate shares the linked customer's name and has a live subscription.";
+      return "This duplicate's metadata.workos_organization_id points at this org.";
+    }
+
     function renderCustomerActivity(customer, isActive) {
       if (!customer) return '<span style="color: var(--color-text-muted);">Unable to fetch</span>';
       const badges = [];
@@ -1030,7 +1047,7 @@
             <td style="border-left: 3px solid ${metadataIsKeep ? 'var(--color-success-500)' : 'var(--color-gray-200)'};">
               <div style="margin-bottom: 4px;">
                 <strong>${mismatch.stripe_metadata_customer_id}</strong>
-                <span class="badge badge-gray">Metadata</span>
+                <span class="badge badge-gray" title="${matchReasonTooltip(mismatch.match_reason)}">${matchReasonLabel(mismatch.match_reason)}</span>
                 ${metadataActivity?.has_activity ? '<span class="badge badge-warning">Has Activity</span>' : ''}
               </div>
               <div style="font-size: 11px; margin-bottom: 4px;">

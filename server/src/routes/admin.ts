@@ -32,9 +32,12 @@ import { setupAccountsBillingRoutes } from "./admin/accounts-billing.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
+import { setupAnnouncementsRoutes } from "./admin/announcements.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
+import { setupAddieCostRoutes } from "./admin/addie-costs.js";
+import { setupIntegrityRoutes } from "./admin/integrity.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
 // Ensure newsletters register themselves before routes mount
@@ -162,6 +165,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // GEO visibility routes (LLM Pulse integration)
   setupGeoRoutes(apiRouter);
 
+  // Workflow B backlog page + API
+  setupAnnouncementsRoutes(pageRouter, apiRouter);
+
   // Relationship and person events routes
   setupRelationshipRoutes(apiRouter);
 
@@ -170,6 +176,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Perspective illustration generation routes
   setupIllustrationRoutes(apiRouter);
+
+  // Addie cost-cap observability (per-user Anthropic spend)
+  setupAddieCostRoutes(apiRouter);
+
+  // Cross-system integrity invariants (WorkOS ↔ Stripe ↔ AAO Postgres)
+  setupIntegrityRoutes(apiRouter, { workos });
 
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {

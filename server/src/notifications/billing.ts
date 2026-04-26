@@ -35,6 +35,19 @@ function maskEmail(email: string | null | undefined): string {
 }
 
 /**
+ * Strip Slack mrkdwn formatting chars and HTML-encode special chars so
+ * untrusted user input (e.g. WorkOS firstName) can't inject markup or links
+ * into a notification.
+ */
+function sanitizeMrkdwn(s: string): string {
+  return s
+    .replace(/[*_~`|]/g, '')
+    .replace(/[<>&]/g, (c) =>
+      c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;'
+    );
+}
+
+/**
  * Helper to create a header block
  */
 function headerBlock(text: string): SlackBlock {
@@ -77,7 +90,7 @@ async function sendBillingNotification(
   }
 
   try {
-    const result = await sendChannelMessage(billingChannel.channel_id, { text, blocks });
+    const result = await sendChannelMessage(billingChannel.channel_id, { text, blocks }, { requirePrivate: true });
     if (result.ok) {
       logger.info({ channel: billingChannel.channel_name }, 'Billing notification sent');
       return true;
@@ -192,21 +205,31 @@ export async function notifySubscriptionCancelled(data: {
 export async function notifyInvoiceSent(data: {
   organizationName: string;
   contactEmail: string;
+  contactName?: string;
   amount: number;
   currency: string;
   productName?: string;
+  invoiceId?: string;
 }): Promise<boolean> {
+  const safeOrg = sanitizeMrkdwn(data.organizationName);
+  const safeName = data.contactName ? sanitizeMrkdwn(data.contactName) : null;
+  const requestedBy = safeName
+    ? `${safeName} (${maskEmail(data.contactEmail)})`
+    : maskEmail(data.contactEmail);
+
+  const fields = [
+    { label: 'Organization', value: safeOrg },
+    { label: 'Requested By', value: requestedBy },
+    { label: 'Amount', value: formatAmount(data.amount, data.currency) },
+    { label: 'Product', value: data.productName || 'Membership' },
+  ];
+  if (data.invoiceId) {
+    fields.push({ label: 'Invoice ID', value: data.invoiceId });
+  }
+
   return sendBillingNotification(
-    `Invoice Sent: ${formatAmount(data.amount, data.currency)} to ${data.organizationName}`,
-    [
-      headerBlock('Invoice Sent'),
-      sectionBlock([
-        { label: 'Organization', value: data.organizationName },
-        { label: 'Sent To', value: maskEmail(data.contactEmail) },
-        { label: 'Amount', value: formatAmount(data.amount, data.currency) },
-        { label: 'Product', value: data.productName || 'Membership' },
-      ]),
-    ]
+    `Invoice Sent: ${formatAmount(data.amount, data.currency)} to ${safeOrg}`,
+    [headerBlock('Invoice Sent'), sectionBlock(fields)]
   );
 }
 

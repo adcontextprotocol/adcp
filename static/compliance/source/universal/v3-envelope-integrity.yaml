@@ -1,0 +1,103 @@
+id: v3_envelope_integrity
+version: "1.0.0"
+title: "v3 envelope integrity — no legacy status fields"
+category: schema_validation
+summary: "v3 protocol envelopes MUST NOT carry task_status or response_status — v2 legacy field names that have no semantics in v3."
+track: core
+required_tools: []  # protocol-level: get_adcp_capabilities is mandatory for all agents
+
+narrative: |
+  AdCP 3.0 normalises all task lifecycle state onto a single `status` field (values
+  defined in the task-status enum). The v2 `task_status` and `response_status` field
+  names have no semantics in v3 — carrying them on a v3 envelope is a normative
+  MUST NOT per the migration guide, task-lifecycle.mdx, and the protocol-envelope
+  schema. See docs/reference/migration/index.mdx and
+  docs/building/implementation/task-lifecycle.mdx.
+
+  This storyboard documents the machine-check assertion and asserts the canonical v3
+  `status` field is present. The explicit envelope-root field-absence checks
+  (asserting task_status and response_status are absent) require `field_absent`
+  runner support in @adcp/client — those checks are marked TODO below and are not
+  executed until the runner ships that check type. The schema-level constraint
+  (protocol-envelope.json marking both fields as `not: {}`) is the immediately
+  effective enforcement path for any schema-aware validator operating on the full
+  protocol envelope.
+
+  Scope: envelope top-level only. Domain data inside `payload` (e.g., a reporting
+  row carrying a field named task_status) is outside this prohibition and is not
+  checked here.
+
+agent:
+  interaction_model: "*"  # applies to every agent regardless of protocol or specialism
+  examples:
+    - "Any AdCP agent (seller, signals, creative, retail media, SI, governance)"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No test-kit credentials required. get_adcp_capabilities is a public operation
+    that every AdCP agent must expose without authentication.
+
+phases:
+  - id: envelope_integrity_check
+    title: "v3 envelope must not carry legacy v2 status field names"
+    narrative: |
+      Call get_adcp_capabilities and verify the response envelope carries the
+      canonical v3 status field. The complementary absence assertions for
+      task_status and response_status require field_absent runner support
+      (see TODO comments on the validation steps below).
+
+    steps:
+      - id: no_legacy_status_fields
+        title: "Envelope carries canonical v3 status; no legacy v2 status field names"
+        narrative: |
+          get_adcp_capabilities is the lightest call every agent supports and
+          requires no credentials. The response envelope must carry the canonical
+          v3 `status` field and must not carry task_status or response_status.
+          The protocol-envelope.json schema marks both fields as forbidden
+          (`not: {}`) to make this constraint detectable by schema-aware validators.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: envelope_integrity
+        stateful: false
+        expected: |
+          Response envelope:
+          - MUST contain status (the v3 canonical field)
+          - MUST NOT contain task_status (v2 legacy, no v3 semantics)
+          - MUST NOT contain response_status (v2 legacy, no v3 semantics)
+          Both forbidden fields are marked not: {} in protocol-envelope.json so
+          any schema-aware validator that validates the full protocol envelope
+          will detect violations.
+
+        sample_request:
+          context:
+            correlation_id: "v3_envelope_integrity--no_legacy_status"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "status"
+            description: "Envelope carries the canonical v3 status field"
+          # TODO: restore these as field_absent checks once @adcp/client runner ships
+          # the field_absent check type. Until then, the schema-level not: {} constraint
+          # in protocol-envelope.json is the enforcement path for schema-aware validators.
+          #
+          # - check: field_absent
+          #   path: "task_status"
+          #   description: "Envelope root MUST NOT carry task_status (v2 legacy; no v3 semantics)"
+          # - check: field_absent
+          #   path: "response_status"
+          #   description: "Envelope root MUST NOT carry response_status (v2 legacy; no v3 semantics)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "v3_envelope_integrity--no_legacy_status"
+            description: "Context correlation_id returned unchanged"

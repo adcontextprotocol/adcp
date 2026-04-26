@@ -16,7 +16,7 @@
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",
-      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. Managed by the protocol layer."
+      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. Managed by the protocol layer. Agents MUST NOT emit the legacy task_status or response_status fields alongside this field — the status field is the single authoritative task state."
     },
     "message": {
       "type": "string",
@@ -47,6 +47,14 @@
       "type": "object",
       "description": "The actual task-specific response data. This is the content defined in individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). Contains only domain-specific data without protocol-level fields.",
       "additionalProperties": true
+    },
+    "task_status": {
+      "$comment": "Explicitly forbidden: v2 legacy field name with no semantics in v3. MUST NOT appear on v3 protocol envelopes. See docs/reference/migration/index.mdx and docs/building/implementation/task-lifecycle.mdx.",
+      "not": {}
+    },
+    "response_status": {
+      "$comment": "Explicitly forbidden: v2 legacy field name with no semantics in v3. MUST NOT appear on v3 protocol envelopes. See docs/reference/migration/index.mdx and docs/building/implementation/task-lifecycle.mdx.",
+      "not": {}
     }
   },
   "required": [
@@ -54,6 +62,12 @@
     "payload"
   ],
   "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["task_status"] },
+      { "required": ["response_status"] }
+    ]
+  },
   "examples": [
     {
       "description": "Synchronous task response with immediate results",

@@ -5,6 +5,11 @@
   "description": "Webhook for server-side dynamic content rendering (DCO)",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "webhook",
+      "description": "Discriminator identifying this as a webhook asset. See /schemas/creative/asset-types for the registry."
+    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -25,7 +30,7 @@
     "supported_macros": {
       "type": "array",
       "items": {
-        "oneOf": [
+        "anyOf": [
           { "$ref": "/schemas/enums/universal-macro.json" },
           { "type": "string", "description": "Custom or publisher-specific macro name" }
         ]
@@ -35,7 +40,7 @@
     "required_macros": {
       "type": "array",
       "items": {
-        "oneOf": [
+        "anyOf": [
           { "$ref": "/schemas/enums/universal-macro.json" },
           { "type": "string", "description": "Custom or publisher-specific macro name" }
         ]
@@ -73,6 +78,7 @@
     }
   },
   "required": [
+    "asset_type",
     "url",
     "response_type",
     "security"

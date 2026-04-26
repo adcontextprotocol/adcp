@@ -123,27 +123,74 @@ export async function validateCrawlDomain(domain: string): Promise<string> {
 }
 
 /**
+ * Validate an externally-reachable URL the server will contact on the caller's
+ * behalf (agent endpoints, OAuth token endpoints, etc.). Returns the raw URL on
+ * success, null when it fails any check. Behaves as a synchronous pre-flight
+ * (no DNS) so it can be used in request handlers without adding latency.
+ *
+ * Rules:
+ * - Must parse as a URL.
+ * - Protocol must be http or https.
+ * - Cloud metadata hosts are always blocked, every environment (AWS/GCP).
+ * - In production only: localhost/loopback and RFC1918 private IPv4 ranges
+ *   are blocked. Development keeps them allowed so local agents and local
+ *   auth servers are reachable.
+ *
+ * For stronger SSRF guarantees (DNS rebind defence, redirect-hop validation,
+ * IPv6, CGNAT, link-local), prefer `safeFetch` at fetch time.
+ */
+export function validateExternalUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+
+    const hostname = url.hostname.toLowerCase();
+
+    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') return null;
+
+    if (process.env.NODE_ENV === 'production') {
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+        return null;
+      }
+      const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+      if (ipMatch) {
+        const [, a, b] = ipMatch.map(Number);
+        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
+      }
+    }
+
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SSRF-safe fetch: validates the URL and all redirect hops against private IP ranges,
  * then returns the response. Encapsulates the full validation + fetch cycle so that
  * callers receive a Response with no tainted URL flowing to fetch().
  */
 export async function safeFetch(
   url: string,
-  options?: { headers?: Record<string, string>; maxRedirects?: number },
+  options?: { headers?: Record<string, string>; maxRedirects?: number; method?: 'GET' | 'HEAD'; signal?: AbortSignal },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
   await validateFetchUrl(parsedUrl);
 
   const headers = options?.headers ?? {};
   const maxRedirects = options?.maxRedirects ?? 5;
+  const method = options?.method ?? 'GET';
+  const signal = options?.signal;
 
-  let response = await fetch(sanitizeUrl(parsedUrl), { headers, redirect: 'manual' });
+  // URL is validated above by validateFetchUrl (rejects private IPs, link-local, etc).
+  let response = await fetch(sanitizeUrl(parsedUrl), { method, headers, redirect: 'manual', signal });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
+    // validateRedirectTarget re-validates the resolved hop against the same private-IP rules.
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), { headers, redirect: 'manual' });
+    response = await fetch(sanitizeUrl(redirectUrl), { method, headers, redirect: 'manual', signal });
   }
 
   return response;

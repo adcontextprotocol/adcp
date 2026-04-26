@@ -17,7 +17,7 @@ import type {
   GovernanceCondition,
 } from './types.js';
 import type { BrandReference } from '@adcp/client';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from './state.js';
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 
@@ -352,6 +352,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         caller: { type: 'string', format: 'uri' },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
@@ -377,6 +379,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
@@ -397,6 +401,8 @@ export const GOVERNANCE_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string', description: 'Single plan ID (convenience alias for plan_ids)' },
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
@@ -610,8 +616,15 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
+  // Framework strips `account`, dropping the session to open:default.
+  // When the primary lookup misses, scan every session for the plan so
+  // sync_plans (which does carry account) remains reachable.
+  if (planId && !session.governancePlans.has(planId)) {
+    const fallback = await findGovernancePlanAcrossSessions(planId);
+    if (fallback) session = fallback;
+  }
   const caller = req.caller;
   const purchaseType = req.purchase_type || 'media_buy';
   const tool = req.tool;
@@ -1117,7 +1130,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
   const req = args as ReportPlanOutcomeInput;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const checkId = req.check_id;
   const governanceContext = req.governance_context;
@@ -1130,7 +1143,17 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     return { errors: [{ code: 'validation_error', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
-  const plan = session.governancePlans.get(planId);
+  let plan = session.governancePlans.get(planId);
+  if (!plan) {
+    // Framework-dispatch request schemas omit `account`, so the session
+    // key falls to open:default while sync_plans wrote under
+    // open:<brand.domain>. Fall back to a cross-session scan.
+    const fallback = await findGovernancePlanAcrossSessions(planId);
+    if (fallback) {
+      session = fallback;
+      plan = fallback.governancePlans.get(planId);
+    }
+  }
   if (!plan) {
     return { errors: [{ code: 'not_found', message: `Plan not found: ${planId}` }] };
   }
@@ -1380,7 +1403,8 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           purchase_type: check.purchaseType || 'media_buy',
           ...(check.governanceContext && { governance_context: check.governanceContext }),
           status: check.status,
-          binding: check.binding,
+          check_type: check.binding === 'committed' ? 'execution' : 'intent',
+          ...(check.mode && { mode: check.mode }),
           explanation: check.explanation,
           policies_evaluated: check.policiesEvaluated,
           categories_evaluated: check.categoriesEvaluated,
@@ -1522,7 +1546,6 @@ function buildCheckResponse(check: GovernanceCheckState) {
   return {
     check_id: check.checkId,
     status: check.status,
-    binding: check.binding,
     plan_id: check.planId,
     explanation: check.explanation,
     mode: check.mode,

@@ -1,0 +1,4 @@
+{
+  "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only. Pass `--allow-grow` only when adding a deliberate, newly-identified drift is the explicit intent; never hand-edit to silence a new violation.",
+  "entries": {}
+}

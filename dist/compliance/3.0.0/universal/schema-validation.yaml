@@ -1,0 +1,514 @@
+id: schema_validation
+version: "1.0.0"
+title: "Schema compliance and temporal validation"
+category: schema_validation
+summary: "Validates that agent responses conform to AdCP schemas and that temporal constraints are enforced."
+track: core
+required_tools:
+  - get_products
+
+narrative: |
+  Every AdCP agent must return responses that match the published JSON schemas. Fields defined
+  in the spec — product_id, delivery_type, pricing_options — must be present and correctly typed.
+  Agents must also enforce temporal constraints: flight dates must be logically consistent
+  (end after start) and start dates should not be in the past.
+
+  This storyboard checks schema compliance on get_products responses and enforces temporal
+  constraints on create_media_buy — reversed dates must always be rejected, and past
+  start_time must be either rejected or accepted-with-adjustment (never silently accepted).
+  These are foundational requirements that every agent must satisfy regardless of platform
+  type.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for product discovery requests.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before validating response schemas.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "schema_validation--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: schema_compliance
+    title: "Response schema compliance"
+    narrative: |
+      The buyer sends a standard get_products request and validates that the response
+      matches the published schema. Each product must have the required fields defined
+      in the AdCP spec.
+
+    steps:
+      - id: get_products_schema
+        title: "Validate get_products response schema"
+        narrative: |
+          Send a brief and validate the response structure. Every product in the response
+          must conform to the get-products-response.json schema, with required v3 fields
+          present.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product must have:
+          - product_id: unique identifier
+          - name: human-readable name
+          - delivery_type: guaranteed or non_guaranteed
+          - pricing_options: at least one pricing option
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show all available advertising products"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "schema_validation--get_products_schema"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed or non_guaranteed delivery"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_products_schema"
+            description: "Context correlation_id returned unchanged"
+      - id: pricing_options_present
+        title: "Validate pricing options structure"
+        narrative: |
+          Verify that products include pricing_options with the required fields:
+          pricing_option_id and pricing_model. These are required for buyers to
+          construct valid create_media_buy requests.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Products include pricing_options with:
+          - pricing_option_id: unique identifier for the pricing option
+          - pricing_model: CPM, CPC, flat_rate, etc.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium display inventory with pricing details"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "schema_validation--pricing_options_present"
+        validations:
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options have a pricing_option_id"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_model"
+            description: "Pricing options declare a pricing_model"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--pricing_options_present"
+            description: "Context correlation_id returned unchanged"
+  - id: format_id_reconciliation
+    title: "Format ID and pricing option reconciliation"
+    narrative: |
+      Identifiers returned by get_products must be accepted back by the same agent in
+      subsequent calls. Two common reconciliation failures:
+
+      1. Format IDs: the seller returns format_id objects in products that their own
+         validation rejects when the buyer echoes them back in sync_creatives.
+      2. Pricing option IDs: the seller returns pricing_option_id values in products
+         that create_media_buy rejects when the buyer references them.
+
+      These validations confirm structural correctness — that required fields exist and
+      are well-formed. Full roundtrip verification (echoing a product's format_id into
+      sync_creatives and confirming acceptance) requires a stateful multi-step test,
+      which is covered by the media_buy_seller storyboard's creative_sync phase.
+
+    steps:
+      - id: get_products_for_formats
+        title: "Get products and verify identifiers"
+        narrative: |
+          Request products and verify that each product includes format_ids and
+          pricing_options with the required fields. These identifiers will be echoed
+          back in create_media_buy and sync_creatives — if they are malformed or
+          missing, the buyer cannot complete the purchase.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return products with format_ids and pricing_options. Each format_id must have:
+          - agent_url: URI of the agent that defines the format
+          - id: format identifier within that agent's namespace
+          - Optional: width, height, duration_ms for parameterized formats
+
+          Each pricing_option must have:
+          - pricing_option_id: unique identifier echoed in create_media_buy
+          - pricing_model: CPM, CPC, flat_rate, etc.
+
+          These identifiers must be accepted unchanged in subsequent requests.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show all available advertising products with creative format requirements"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "schema_validation--get_products_for_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids array"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options include pricing_option_id — must be accepted in create_media_buy"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_model"
+            description: "Pricing options include pricing_model"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--get_products_for_formats"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_formats_match
+        title: "Verify format catalog includes product formats"
+        narrative: |
+          Call list_creative_formats and verify that the formats returned include
+          the same agent_url as the format_ids on products. The seller's format
+          catalog must cover every format referenced by its products.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return formats matching the agent's own product format_ids:
+          - format_id.agent_url must match the agent's own URL
+          - format_id.id values must include those referenced by products
+          - Each format must define asset requirements (types, dimensions, mime types)
+
+          If the agent returns format_ids in products that don't appear in
+          list_creative_formats, buyers cannot construct valid sync_creatives requests.
+
+        sample_request:
+          context:
+            correlation_id: "schema_validation--list_formats_match"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Formats include format_id with agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Formats include format_id with id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--list_formats_match"
+            description: "Context correlation_id returned unchanged"
+
+  - id: temporal_validation
+    title: "Temporal constraint enforcement"
+    narrative: |
+      The buyer sends media buy requests with invalid temporal constraints. The agent
+      must reject reversed dates (end before start) and handle past start dates
+      appropriately.
+
+    steps:
+      - id: reversed_dates
+        title: "Reject reversed flight dates"
+        narrative: |
+          Send a create_media_buy request where end_time is before start_time. The agent
+          must reject this with an INVALID_REQUEST error.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject the request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating the date constraint violation
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-12-31T00:00:00Z"
+          end_time: "2026-01-01T00:00:00Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "schema_validation--reversed_dates"
+        validations:
+          - check: field_present
+            path: "adcp_error"
+            description: "Response contains an error for reversed dates"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--reversed_dates"
+            description: "Context correlation_id returned unchanged"
+  - id: past_start_reject_path
+    title: "Past start date — reject path"
+    narrative: |
+      Some agents reject past start dates with INVALID_REQUEST. This phase
+      exercises that path. Passing agents that reject here contribute
+      `past_start_handled`; passing agents that accept-with-adjustment do so
+      in the parallel adjust path below. Either path satisfies the temporal
+      enforcement assertion at the end.
+    optional: true
+    branch_set:
+      id: past_start_handled
+      semantics: any_of
+
+    steps:
+      - id: create_buy_past_start_reject
+        title: "Submit a past-start create_media_buy — expect rejection"
+        narrative: |
+          Send a create_media_buy whose start_time is years in the past. An
+          agent on this path rejects with INVALID_REQUEST. The request
+          carries a valid `idempotency_key` so the rejection is
+          unambiguously about the temporal constraint — without a key the
+          agent could also legitimately reject for missing-key (per
+          universal/idempotency.yaml), and the storyboard couldn't tell
+          which rule fired.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        expect_error: true
+        stateful: false
+        contributes: true
+        expected: |
+          Reject the request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating the past start_time violation
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2020-01-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          idempotency_key: "$generate:uuid_v4#schema_validation_past_start_reject"
+          context:
+            correlation_id: "schema_validation--past_start_date_reject"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Past start_time rejected with INVALID_REQUEST"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--past_start_date_reject"
+            description: "Context correlation_id returned unchanged"
+
+  - id: past_start_adjust_path
+    title: "Past start date — adjust path"
+    narrative: |
+      Some agents accept past start dates and auto-adjust them forward to a
+      legal flight window. This phase exercises that path. Passing agents
+      contribute `past_start_handled`; the parallel reject path above covers
+      agents that chose rejection instead.
+
+      The response doesn't carry the adjusted start_time directly, so the
+      validation here is success-envelope + context echo — a conformant
+      accept-with-adjustment response returns a media_buy_id, and the agent
+      is trusted to have adjusted the date per its own policy.
+    optional: true
+    branch_set:
+      id: past_start_handled
+      semantics: any_of
+
+    steps:
+      - id: create_buy_past_start_adjust
+        title: "Submit a past-start create_media_buy — expect accept-and-adjust"
+        narrative: |
+          Same request as the reject path. An agent on this path accepts it,
+          auto-adjusts the start_time forward, and returns a media_buy_id.
+          idempotency_key is present because the request is a real mutation.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: temporal_validation
+        stateful: false
+        contributes: true
+        expected: |
+          Accept the request with auto-adjusted dates:
+          - Response matches create-media-buy-response.json schema
+          - media_buy_id present
+          - context.correlation_id echoed
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2020-01-01T00:00:00Z"
+          end_time: "2026-12-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          idempotency_key: "$generate:uuid_v4#schema_validation_past_start_adjust"
+          context:
+            correlation_id: "schema_validation--past_start_date_adjust"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response carries a media_buy_id (accept branch)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation--past_start_date_adjust"
+            description: "Context correlation_id returned unchanged"
+
+  - id: past_start_enforcement
+    title: "Past start date — require handling"
+    narrative: |
+      An agent that silently accepts a past start_time without either
+      rejecting or acknowledging an adjustment is non-conformant. Either
+      optional path above must succeed. This phase asserts the
+      `past_start_handled` contribution was set by at least one of them.
+
+      Note: the spec (docs/media-buy/task-reference/create_media_buy.mdx,
+      §Flight date validation) explicitly mandates INVALID_REQUEST for
+      reversed/out-of-range dates but is silent on past start_time,
+      which is why either-or is the current conformant stance. If a
+      future spec revision commits to one behavior, this phase
+      collapses to a single required path.
+
+    steps:
+      - id: assert_past_start_handled
+        title: "Require past_start_handled from either path"
+        narrative: |
+          Synthetic assertion over accumulated flags from the two optional
+          phases. Fails only if neither path contributed past_start_handled.
+        task: assert_contribution
+        comply_scenario: temporal_validation
+        stateful: false
+        expected: |
+          At least one of past_start_reject_path or past_start_adjust_path
+          contributed `past_start_handled`.
+
+        validations:
+          - check: any_of
+            allowed_values: ["past_start_handled"]
+            description: "Agent must either reject the past start_time (reject path) or accept-and-adjust (adjust path). Silent acceptance without either outcome is non-conformant."

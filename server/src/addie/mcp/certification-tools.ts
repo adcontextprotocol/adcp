@@ -19,6 +19,7 @@ function safeSubscriptionStatus(status: string | null | undefined): string | nul
   return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
 }
 import * as certDb from '../../db/certification-db.js';
+import { isUuid } from '../../utils/uuid.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
@@ -1926,9 +1927,8 @@ export function createCertificationToolHandlers(
       if (!attemptId || !scores || typeof scores !== 'object') return 'attempt_id and scores are required.';
 
       // Look up the active attempt: accept the UUID directly, or resolve from module ID
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
       let attempt: certDb.CertificationAttempt | null;
-      if (isUuid) {
+      if (isUuid(attemptId)) {
         attempt = await certDb.getAttempt(attemptId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
@@ -2170,7 +2170,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/client test-mcp get_products '{"brief":"<your campaign brief>"}'
+npx @adcp/client@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
@@ -2226,11 +2226,11 @@ DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill
     if (phase === 'validate') {
       const storyboardNote = moduleId === 'B4'
         ? 'The storyboard for B4 is `media_buy_seller`.'
-        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client storyboard list\` to see all options.`;
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client@latest storyboard list\` to see all options.`;
 
       const storyboardCmd = moduleId === 'B4'
-        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
 
       const placeholderNote = moduleId !== 'B4'
         ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
@@ -2244,7 +2244,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Save your agent and run the storyboard:
 \`\`\`
-npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
 ${storyboardCmd}
 \`\`\`
 
@@ -2260,8 +2260,8 @@ DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JS
 
     if (phase === 'extend') {
       const extendCmd = moduleId === 'B4'
-        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
       const extendNote = moduleId !== 'B4'
         ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
         : '';
