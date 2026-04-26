@@ -1530,6 +1530,16 @@
   function checkMarketingOptIn() {
     if (sessionStorage.getItem('mkt_optin_dismissed_v1')) return;
     if (currentPath.startsWith('/onboarding')) return;
+    // Dev-mode users always have null preferences and aren't the audience for
+    // marketing nudges. Skipping on localhost also keeps the overlay from
+    // intercepting clicks during automated UI tests.
+    if (typeof window !== 'undefined' && window.location && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '::1'
+    )) {
+      return;
+    }
 
     fetch(apiBaseUrl + '/api/email-preferences', { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
