@@ -1466,7 +1466,7 @@ async function handleUserMessage({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: slackThreadContext,
   });
 
@@ -2092,7 +2092,7 @@ async function handleAppMention({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(mentionMemberContext),
     context: {
       mention_channel_id: channelId,
       channel_name: mentionChannelContext.viewing_channel_name,
@@ -3081,7 +3081,7 @@ async function handleDirectMessage(
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_type: 'im',
     },
@@ -3432,7 +3432,7 @@ async function handleActiveThreadReply({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_id: channelId,
       channel_name: channelContext?.viewing_channel_name,
@@ -3956,7 +3956,7 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
-      user_display_name: memberContext?.slack_user?.display_name || undefined,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
       context: {
         channel_id: channelId,
         channel_name: channelContext?.viewing_channel_name,
