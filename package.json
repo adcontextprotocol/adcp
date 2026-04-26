@@ -86,7 +86,7 @@
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.15.1",
     "@types/jsonwebtoken": "^9.0.10",
-    "@workos-inc/node": "^8.12.1",
+    "@workos-inc/node": "^9.1.1",
     "@workos-inc/widgets": "^1.10.1",
     "axios": "^1.13.6",
     "canonicalize": "3.0.0",
