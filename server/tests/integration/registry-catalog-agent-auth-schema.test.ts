@@ -1,5 +1,5 @@
 /**
- * Smoke tests for migration 438_catalog_agent_authorizations.
+ * Smoke tests for migration 440_catalog_agent_authorizations.
  *
  * Asserts the schema invariants the spec
  * (specs/registry-authorization-model.md) commits to are actually
@@ -22,7 +22,7 @@ const TEST_PUB = 'caa-schema.example';
 const TEST_AGENT = 'https://agent.caa-schema.example';
 const TEST_AGENT_OTHER = 'https://other-agent.caa-schema.example';
 
-describe('438_catalog_agent_authorizations schema', () => {
+describe('440_catalog_agent_authorizations schema', () => {
   let pool: Pool;
 
   beforeAll(async () => {

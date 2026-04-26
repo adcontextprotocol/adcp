@@ -1,5 +1,5 @@
 /**
- * Backfill correctness tests for migration 439.
+ * Backfill correctness tests for migration 441.
  *
  * The schema-invariant tests in registry-catalog-agent-auth-schema.test.ts
  * cover the table itself; this file specifically exercises the backfill
@@ -26,7 +26,7 @@ const TEST_AGENT_LOWER = 'https://agent.caa-backfill.example';
 const TEST_AGENT_MIXED = 'HTTPS://Agent.caa-backfill.example/';
 const TEST_AGENT_CLAIM = 'https://claim-asserter.caa-backfill.example';
 
-describe('catalog_agent_authorizations backfill (migration 439)', () => {
+describe('catalog_agent_authorizations backfill (migration 441)', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -403,7 +403,7 @@ describe('catalog_agent_authorizations backfill (migration 439)', () => {
   // Pre-flight assertion — fail loudly on unknown legacy source
   // ──────────────────────────────────────────────────────────────────
 
-  describe('source-value pre-flight (assertion in migration 439)', () => {
+  describe('source-value pre-flight (assertion in migration 441)', () => {
     it('rejects an unknown source value via the schema CHECK on evidence', async () => {
       // The migration's pre-flight assertion would have aborted at
       // backfill time. After the migration, the schema's evidence
