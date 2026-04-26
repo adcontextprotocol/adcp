@@ -17,12 +17,20 @@ describe('Registry Feed Integration Tests', () => {
   });
 
   afterAll(async () => {
-    await pool.query('DELETE FROM catalog_events');
+    // Scope cleanup to this file's fixtures so parallel runs of
+    // sibling integration tests (e.g. registry-feed-authorization.test.ts,
+    // which writes events via DB triggers with actor like 'trigger:%')
+    // don't trample our seed and vice versa.
+    await pool.query(`DELETE FROM catalog_events WHERE actor LIKE 'test%'`);
     await closeDatabase();
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM catalog_events');
+    // Scope cleanup to this file's fixtures so parallel runs of
+    // sibling integration tests (e.g. registry-feed-authorization.test.ts,
+    // which writes events via DB triggers with actor like 'trigger:%')
+    // don't trample our seed and vice versa.
+    await pool.query(`DELETE FROM catalog_events WHERE actor LIKE 'test%'`);
   });
 
   // ── Write & Read Round-trip ──────────────────────────────────────
@@ -43,12 +51,16 @@ describe('Registry Feed Integration Tests', () => {
       const feed = await eventsDb.queryFeed(null, null);
       if ('error' in feed) throw new Error(feed.message);
 
-      expect(feed.events).toHaveLength(1);
-      expect(feed.events[0].event_id).toBe(eventId);
-      expect(feed.events[0].event_type).toBe('property.created');
-      expect(feed.events[0].entity_id).toBe('rid-001');
-      expect(feed.events[0].payload).toEqual({ source: 'test' });
-      expect(feed.events[0].actor).toBe('test:integration');
+      // Filter to this file's events; concurrent test files writing
+      // events via DB triggers (actor='trigger:*') could otherwise
+      // interleave.
+      const ours = feed.events.filter(e => e.actor.startsWith('test'));
+      expect(ours).toHaveLength(1);
+      expect(ours[0].event_id).toBe(eventId);
+      expect(ours[0].event_type).toBe('property.created');
+      expect(ours[0].entity_id).toBe('rid-001');
+      expect(ours[0].payload).toEqual({ source: 'test' });
+      expect(ours[0].actor).toBe('test:integration');
     });
 
     it('writes multiple events in a transaction', async () => {
@@ -63,7 +75,8 @@ describe('Registry Feed Integration Tests', () => {
 
       const feed = await eventsDb.queryFeed(null, null);
       if ('error' in feed) throw new Error(feed.message);
-      expect(feed.events).toHaveLength(3);
+      const ours = feed.events.filter(e => e.actor === 'test');
+      expect(ours).toHaveLength(3);
     });
   });
 
@@ -81,21 +94,26 @@ describe('Registry Feed Integration Tests', () => {
         });
       }
 
+      // Filter to property.created so concurrent test files (e.g. the
+      // CAA trigger tests writing authorization.* events) can't change
+      // our pagination counts.
+      const pcOnly = ['property.created'];
+
       // Page 1: first 2
-      const page1 = await eventsDb.queryFeed(null, null, 2);
+      const page1 = await eventsDb.queryFeed(null, pcOnly, 2);
       if ('error' in page1) throw new Error(page1.message);
       expect(page1.events).toHaveLength(2);
       expect(page1.has_more).toBe(true);
       expect(page1.cursor).toBeTruthy();
 
       // Page 2: next 2
-      const page2 = await eventsDb.queryFeed(page1.cursor, null, 2);
+      const page2 = await eventsDb.queryFeed(page1.cursor, pcOnly, 2);
       if ('error' in page2) throw new Error(page2.message);
       expect(page2.events).toHaveLength(2);
       expect(page2.has_more).toBe(true);
 
       // Page 3: last 1
-      const page3 = await eventsDb.queryFeed(page2.cursor, null, 2);
+      const page3 = await eventsDb.queryFeed(page2.cursor, pcOnly, 2);
       if ('error' in page3) throw new Error(page3.message);
       expect(page3.events).toHaveLength(1);
       expect(page3.has_more).toBe(false);
@@ -122,7 +140,9 @@ describe('Registry Feed Integration Tests', () => {
         await new Promise(r => setTimeout(r, 5));
       }
 
-      const feed = await eventsDb.queryFeed(null, null);
+      // Filter to property.created so concurrent CAA trigger writes
+      // don't drift the assertion indices.
+      const feed = await eventsDb.queryFeed(null, ['property.created']);
       if ('error' in feed) throw new Error(feed.message);
 
       expect(feed.events[0].entity_id).toBe('ordered-0');
@@ -176,7 +196,9 @@ describe('Registry Feed Integration Tests', () => {
 
   describe('empty feed', () => {
     it('returns empty events with null cursor when no events exist', async () => {
-      const feed = await eventsDb.queryFeed(null, null);
+      // Filter to a never-emitted event_type so concurrent test files
+      // writing to catalog_events can't make this assertion racy.
+      const feed = await eventsDb.queryFeed(null, ['nonexistent.never_emitted']);
       if ('error' in feed) throw new Error(feed.message);
       expect(feed.events).toHaveLength(0);
       expect(feed.cursor).toBeNull();
@@ -204,10 +226,12 @@ describe('Registry Feed Integration Tests', () => {
       });
 
       const deleted = await eventsDb.cleanup(90);
-      expect(deleted).toBe(1);
+      // Concurrent test files may also have stale events; assert at
+      // least 1 (our seeded one) was deleted, not exactly 1.
+      expect(deleted).toBeGreaterThanOrEqual(1);
 
-      // Recent event should still exist
-      const feed = await eventsDb.queryFeed(null, null);
+      // Recent event should still exist among any concurrent writes.
+      const feed = await eventsDb.queryFeed(null, ['recent.event']);
       if ('error' in feed) throw new Error(feed.message);
       expect(feed.events).toHaveLength(1);
       expect(feed.events[0].event_type).toBe('recent.event');
