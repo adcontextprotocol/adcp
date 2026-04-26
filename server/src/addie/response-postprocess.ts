@@ -260,3 +260,46 @@ export const __test_lengthThresholds = {
   TRUNCATION_TARGET_WORDS,
   TRUNCATION_SUFFIX,
 };
+
+// ---------------------------------------------------------------------------
+// Combined response pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Fallback shown when the model returns an empty assistant message. Two
+ * redteam-flagged turns produced rating=1 "Response is empty" responses on
+ * short follow-up prompts ("?", "what happened?"). Substituting a clarifying
+ * line is better than shipping the void.
+ */
+const EMPTY_RESPONSE_FALLBACK =
+  "Sorry, I lost the thread there. Could you rephrase or give me a bit more context?";
+
+/**
+ * Apply the full assistant-text post-processing chain in order:
+ *
+ * 1. `stripBannedRituals` — remove ritual phrases the model leaks despite
+ *    response-style.md banning them.
+ * 2. Empty-response guard — substitute a clarifying fallback if the model
+ *    returned no content (or only ritual phrases that all got stripped).
+ * 3. `truncateLongResponseToShortQuestion` — for short user questions,
+ *    cap response length at the sentence boundary near 130 words and append
+ *    a "go deeper?" suffix.
+ *
+ * Used at every assistant-text return site in `claude-client.ts` so the
+ * pipeline is consistent across non-streaming, multi-textblock, and
+ * streaming `done` paths.
+ *
+ * @param question The user's most recent message.
+ * @param rawText The raw assistant text from the model (post-tool-use).
+ * @returns The post-processed text safe to return to the caller.
+ */
+export function applyResponsePipeline(question: string, rawText: string): string {
+  const stripped = stripBannedRituals(rawText);
+  if (stripped.trim().length === 0) {
+    return EMPTY_RESPONSE_FALLBACK;
+  }
+  return truncateLongResponseToShortQuestion(question, stripped);
+}
+
+/** Test-only export of the empty-response fallback. */
+export const __test_EMPTY_RESPONSE_FALLBACK = EMPTY_RESPONSE_FALLBACK;

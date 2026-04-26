@@ -6,8 +6,10 @@ import { describe, it, expect } from 'vitest';
 import {
   stripBannedRituals,
   truncateLongResponseToShortQuestion,
+  applyResponsePipeline,
   __test_BANNED_RITUAL_LITERALS,
   __test_lengthThresholds,
+  __test_EMPTY_RESPONSE_FALLBACK,
 } from '../../../src/addie/response-postprocess.js';
 
 describe('stripBannedRituals', () => {
@@ -182,5 +184,40 @@ describe('truncateLongResponseToShortQuestion', () => {
   it('handles empty inputs gracefully', () => {
     expect(truncateLongResponseToShortQuestion('', 'something')).toBe('something');
     expect(truncateLongResponseToShortQuestion('what?', '')).toBe('');
+  });
+});
+
+describe('applyResponsePipeline', () => {
+  it('substitutes the empty-response fallback when the model returns empty text', () => {
+    expect(applyResponsePipeline('?', '')).toBe(__test_EMPTY_RESPONSE_FALLBACK);
+    expect(applyResponsePipeline('what happened?', '   ')).toBe(__test_EMPTY_RESPONSE_FALLBACK);
+  });
+
+  it('substitutes the fallback when stripBannedRituals leaves an empty result', () => {
+    // A response that's nothing but ritual phrases.
+    const ritualOnly = "Great question. The honest answer is, sharp question.";
+    expect(applyResponsePipeline('?', ritualOnly)).toBe(__test_EMPTY_RESPONSE_FALLBACK);
+  });
+
+  it('passes substantive responses through both strip and truncate', () => {
+    const q = "What is X?";
+    // 50 short sentences of 6 words each = 300 words total, with real
+    // sentence boundaries so the truncator can find a stop point.
+    const sentences: string[] = [];
+    for (let i = 0; i < 50; i++) {
+      sentences.push(`This is sentence ${i} content.`);
+    }
+    const longRitual = "Great question. " + sentences.join(' ');
+    const out = applyResponsePipeline(q, longRitual);
+    expect(out).not.toMatch(/great question/i);
+    expect(out).toContain(__test_lengthThresholds.TRUNCATION_SUFFIX.trim());
+    // Should not contain all 50 sentences.
+    expect(out.split(/\bsentence \d+\b/).length - 1).toBeLessThan(50);
+  });
+
+  it('passes short clean responses through unchanged', () => {
+    const q = "What is X?";
+    const short = "X is the protocol.";
+    expect(applyResponsePipeline(q, short)).toBe(short);
   });
 });
