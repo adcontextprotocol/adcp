@@ -424,6 +424,29 @@ describe('buildSuggestedPrompts', () => {
       expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Complete my profile');
     });
 
+    it('does not suppress persona prompts even with high shown_count', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        prompt_telemetry: new Map([
+          ['persona.data_decoder', {
+            shown_count: 100,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 365 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      // Persona rules have decay: false, so suppressed_until is ignored.
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Prove the outcomes');
+    });
+
+    it('persona ruleIds are excluded from telemetry recording', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+      });
+      const { ruleIds } = pickPrompts(ctx, false);
+      expect(ruleIds.every((id) => !id.startsWith('persona.'))).toBe(true);
+    });
+
     it('suppression of a high-priority rule lets the next-priority rule fire', () => {
       const ctx = makeMember({
         community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },

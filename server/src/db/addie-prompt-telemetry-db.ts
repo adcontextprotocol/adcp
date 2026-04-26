@@ -46,8 +46,15 @@ export async function getTelemetryForUser(
 
 /**
  * Increment shown_count for a batch of rules just shown to the user.
- * Sets last_shown_at to NOW(). When shown_count crosses the suppression
- * threshold, sets suppressed_until.
+ *
+ * Counting is bucketed by UTC day: the same rule shown to the same user
+ * multiple times in one day counts once. Without this, a Slack user who
+ * opens App Home and starts a few Assistant threads in a workday would
+ * burn through the suppression threshold without ever consciously
+ * reading the prompt.
+ *
+ * When shown_count crosses the suppression threshold (counted in days,
+ * not impressions), sets suppressed_until to NOW() + suppressForDays.
  *
  * Fire-and-forget: callers don't await the result.
  */
@@ -55,7 +62,7 @@ export async function recordPromptsShown(
   workosUserId: string,
   ruleIds: string[],
   options: {
-    /** Suppress the rule once it's been shown this many times. */
+    /** Suppress the rule once it's been shown on this many distinct days. */
     suppressAfterShows?: number;
     /** How long to suppress for once the threshold is hit. */
     suppressForDays?: number;
@@ -66,26 +73,32 @@ export async function recordPromptsShown(
   const suppressForDays = options.suppressForDays ?? 30;
 
   try {
-    // Upsert each rule's row. We don't bulk-insert because the suppression
-    // calc needs the prior shown_count to decide whether to set
-    // suppressed_until on this write.
-    await Promise.all(
-      ruleIds.map((ruleId) =>
-        query(
-          `INSERT INTO addie_prompt_telemetry
-             (workos_user_id, rule_id, shown_count, last_shown_at)
-           VALUES ($1, $2, 1, NOW())
-           ON CONFLICT (workos_user_id, rule_id) DO UPDATE SET
-             shown_count = addie_prompt_telemetry.shown_count + 1,
-             last_shown_at = NOW(),
-             suppressed_until = CASE
-               WHEN addie_prompt_telemetry.shown_count + 1 >= $3
-                 THEN NOW() + ($4 || ' days')::interval
-               ELSE addie_prompt_telemetry.suppressed_until
-             END`,
-          [workosUserId, ruleId, suppressAfterShows, String(suppressForDays)],
-        ),
-      ),
+    // One bulk upsert via unnest — turns N rule writes into a single
+    // round trip. The CASE expressions implement per-day bucketing:
+    // shown_count only increments if last_shown_at is NULL or before
+    // today (UTC). last_shown_at always advances so callers can tell
+    // when the prompt was last surfaced.
+    await query(
+      `INSERT INTO addie_prompt_telemetry
+         (workos_user_id, rule_id, shown_count, last_shown_at)
+       SELECT $1, rule_id, 1, NOW()
+       FROM unnest($2::text[]) AS rule_id
+       ON CONFLICT (workos_user_id, rule_id) DO UPDATE SET
+         shown_count = CASE
+           WHEN addie_prompt_telemetry.last_shown_at IS NULL
+             OR addie_prompt_telemetry.last_shown_at < CURRENT_DATE
+           THEN addie_prompt_telemetry.shown_count + 1
+           ELSE addie_prompt_telemetry.shown_count
+         END,
+         last_shown_at = NOW(),
+         suppressed_until = CASE
+           WHEN (addie_prompt_telemetry.last_shown_at IS NULL
+             OR addie_prompt_telemetry.last_shown_at < CURRENT_DATE)
+             AND addie_prompt_telemetry.shown_count + 1 >= $3
+           THEN NOW() + make_interval(days => $4)
+           ELSE addie_prompt_telemetry.suppressed_until
+         END`,
+      [workosUserId, ruleIds, suppressAfterShows, suppressForDays],
     );
   } catch (error) {
     logger.warn({ error, workosUserId, ruleIds }, 'Failed to record prompt telemetry');

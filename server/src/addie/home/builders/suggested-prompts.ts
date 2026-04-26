@@ -38,10 +38,13 @@ function evaluate(
   const matched = rules
     .filter((r) => {
       // Skip suppressed rules first — cheap check, avoids running the
-      // rule's predicate when we know we won't pick it anyway.
-      const t = telemetry?.get(r.id);
-      if (t?.suppressed_until && t.suppressed_until.getTime() > now) {
-        return false;
+      // rule's predicate when we know we won't pick it anyway. Rules
+      // with decay: false are exempt and never get suppressed.
+      if (r.decay !== false) {
+        const t = telemetry?.get(r.id);
+        if (t?.suppressed_until && t.suppressed_until.getTime() > now) {
+          return false;
+        }
       }
       try {
         return r.when(ctx);
@@ -52,19 +55,19 @@ function evaluate(
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
 
   const seenLabels = new Set<string>();
-  const prompts: SuggestedPrompt[] = [];
-  const ruleIds: string[] = [];
+  const picked: PromptRule[] = [];
   for (const rule of matched) {
     if (seenLabels.has(rule.label)) continue;
     seenLabels.add(rule.label);
-    prompts.push({ label: rule.label, prompt: rule.prompt });
-    ruleIds.push(rule.id);
-    if (prompts.length >= MAX_PROMPTS) break;
+    picked.push(rule);
+    if (picked.length >= MAX_PROMPTS) break;
   }
   // Web home renders these in a 2-column grid; an odd count leaves a stray cell.
-  if (prompts.length % 2 !== 0) {
-    prompts.pop();
-    ruleIds.pop();
-  }
+  if (picked.length % 2 !== 0) picked.pop();
+
+  // ruleIds returned to callers excludes decay: false rules — those should
+  // not be recorded in telemetry, since they're exempt from suppression.
+  const prompts = picked.map((r) => ({ label: r.label, prompt: r.prompt }));
+  const ruleIds = picked.filter((r) => r.decay !== false).map((r) => r.id);
   return { prompts, ruleIds };
 }
