@@ -194,6 +194,30 @@ export const MEMBER_RULES: PromptRule[] = [
     prompt: 'Help me invite my team to the organization.',
   },
   {
+    id: 'org.owner_set_company_listing',
+    priority: 76,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      memberContext?.org_membership?.role === 'owner' &&
+      memberContext?.organization?.is_personal === false &&
+      memberContext?.adoption?.has_company_listing === false,
+    label: 'Set up your company listing',
+    prompt: "Help me set up my organization's public listing in the directory.",
+  },
+  {
+    id: 'org.owner_team_wg_coverage_low',
+    priority: 73,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      if (memberContext?.org_membership?.role !== 'owner') return false;
+      if ((memberContext?.org_membership?.member_count ?? 0) <= 5) return false;
+      const coverage = memberContext?.adoption?.team_wg_coverage;
+      return coverage !== undefined && coverage < 0.3;
+    },
+    label: 'Get your team into working groups',
+    prompt: 'Help me get my team active in working groups.',
+  },
+  {
     id: 'wg.find_groups',
     priority: 75,
     when: ({ memberContext }) =>

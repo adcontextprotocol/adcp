@@ -103,6 +103,23 @@ async function getPendingContentForUser(
 }
 
 /**
+ * Compute the fraction of org members who belong to ≥1 working group.
+ * Returns 0 when there are no org members in the input list.
+ */
+async function computeTeamWgCoverage(orgMemberUserIds: string[]): Promise<number> {
+  if (orgMemberUserIds.length === 0) return 0;
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(DISTINCT workos_user_id)::text as count
+       FROM working_group_memberships
+       WHERE workos_user_id = ANY($1::text[])
+         AND status = 'active'`,
+    [orgMemberUserIds]
+  );
+  const inWgs = parseInt(result.rows[0]?.count || '0', 10);
+  return inWgs / orgMemberUserIds.length;
+}
+
+/**
  * Fetch community profile data for a user.
  * Shared between getMemberContext (Slack) and getWebMemberContext (web chat).
  */
@@ -317,6 +334,14 @@ export interface MemberContext {
 
   /** Pending join requests for the organization (admins only) */
   pending_join_requests_count?: number;
+
+  /** Adoption signals for the organization (used by suggested-prompts rules) */
+  adoption?: {
+    /** True when the org has a public company listing in the directory. */
+    has_company_listing: boolean;
+    /** Fraction (0–1) of org members who belong to at least one working group. */
+    team_wg_coverage: number;
+  };
 }
 
 /**
@@ -413,11 +438,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 
     // Step 4b: Get org member count from WorkOS
     let memberCount = 0;
+    let orgMemberUserIds: string[] = [];
     try {
       const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;
+      orgMemberUserIds = (orgMemberships.data ?? []).map(m => m.userId).filter(Boolean);
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie: Failed to get org member count');
     }
@@ -517,6 +544,17 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         headquarters: profile.headquarters,
         listing_type: org?.is_personal ? 'personal' : 'company',
       };
+    }
+
+    // Adoption signals for the suggested-prompts rules.
+    try {
+      const teamWgCoverage = await computeTeamWgCoverage(orgMemberUserIds);
+      context.adoption = {
+        has_company_listing: !!(org && !org.is_personal && profile?.is_public),
+        team_wg_coverage: teamWgCoverage,
+      };
+    } catch (error) {
+      logger.warn({ error, organizationId }, 'Addie: Failed to compute adoption signals');
     }
 
     // Process subscription info
@@ -671,6 +709,7 @@ async function resolveContextFromLocalDb(
   context: MemberContext,
   organizationId: string,
   workosUserId: string,
+  orgMemberUserIds: string[] = [],
 ): Promise<MemberContext> {
   const org = await orgDb.getOrganization(organizationId);
   if (org) {
@@ -703,6 +742,16 @@ async function resolveContextFromLocalDb(
       headquarters: profile.headquarters,
       listing_type: org?.is_personal ? 'personal' : 'company',
     };
+  }
+
+  try {
+    const teamWgCoverage = await computeTeamWgCoverage(orgMemberUserIds);
+    context.adoption = {
+      has_company_listing: !!(org && !org.is_personal && profile?.is_public),
+      team_wg_coverage: teamWgCoverage,
+    };
+  } catch (error) {
+    logger.warn({ error, organizationId }, 'Addie Web: Failed to compute adoption signals');
   }
 
   try {
@@ -975,11 +1024,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
 
     // Step 4: Get org member count from WorkOS
     let memberCount = 0;
+    let webOrgMemberUserIds: string[] = [];
     try {
       const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;
+      webOrgMemberUserIds = (orgMemberships.data ?? []).map(m => m.userId).filter(Boolean);
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie Web: Failed to get org member count');
     }
@@ -990,7 +1041,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       joined_at: userJoinedAt,
     };
 
-    return await resolveContextFromLocalDb(context, organizationId, workosUserId);
+    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webOrgMemberUserIds);
   } catch (error) {
     logger.error({ error, workosUserId }, 'Addie Web: Error getting member context');
     return context;

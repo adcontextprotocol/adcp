@@ -249,6 +249,61 @@ describe('buildSuggestedPrompts', () => {
       });
       expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Invite your team');
     });
+
+    it('shows Set up your company listing for non-personal owners without a public listing', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 3, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: false, team_wg_coverage: 0.5 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Set up your company listing');
+    });
+
+    it('does not show Set up your company listing when listing already public', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 3, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.5 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Set up your company listing');
+    });
+
+    it('does not show Set up your company listing for personal orgs', () => {
+      const ctx = makeMember({
+        organization: {
+          workos_organization_id: 'org_123',
+          name: 'Acme',
+          subscription_status: 'active',
+          is_personal: true,
+          membership_tier: 'individual_professional',
+        },
+        org_membership: { role: 'owner', member_count: 1, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: false, team_wg_coverage: 0 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Set up your company listing');
+    });
+
+    it('shows Get your team into working groups when coverage is low and team > 5', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 8, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.1 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Get your team into working groups');
+    });
+
+    it('does not show team WG prompt when coverage is healthy', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 8, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.5 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Get your team into working groups');
+    });
+
+    it('does not show team WG prompt for small teams (≤5)', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 4, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Get your team into working groups');
+    });
   });
 
   describe('profile and working groups', () => {
