@@ -217,6 +217,7 @@ export interface MemberContext {
     name: string;
     subscription_status: string | null;
     is_personal: boolean;
+    membership_tier: string | null;
   };
 
   /** Persona classification for the organization */
@@ -491,6 +492,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         name: org.name,
         subscription_status: org.subscription_status,
         is_personal: org.is_personal,
+        membership_tier: org.membership_tier,
       };
 
       // Check membership including inheritance through brand hierarchy
@@ -677,6 +679,7 @@ async function resolveContextFromLocalDb(
       name: org.name,
       subscription_status: org.subscription_status,
       is_personal: org.is_personal,
+      membership_tier: org.membership_tier,
     };
 
     const membership = await resolveEffectiveMembership(organizationId);

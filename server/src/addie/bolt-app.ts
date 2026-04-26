@@ -76,7 +76,8 @@ import {
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { buildSuggestedPrompts } from './home/builders/suggested-prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -742,14 +743,14 @@ export function invalidateAddieRulesCache(): void {
   }
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    return buildSuggestedPrompts(memberContext, userIsAdmin).map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
