@@ -151,7 +151,7 @@ export async function issueDomainChallenge(input: {
   }
 
   try {
-    const created = await workos.organizationDomains.create({ organizationId: orgId, domain });
+    const created = await workos.organizationDomains.createOrganizationDomain({ organizationId: orgId, domain });
     return {
       ok: true,
       domain,
@@ -190,7 +190,7 @@ export async function issueDomainChallenge(input: {
         message: 'WorkOS rejected the domain as malformed.',
       };
     }
-    logger.error({ err, orgId, domain }, 'workos.organizationDomains.create failed');
+    logger.error({ err, orgId, domain }, 'workos.organizationDomains.createOrganizationDomain failed');
     return { ok: false, code: 'workos_error', message: 'Failed to issue domain verification challenge.' };
   }
 }
@@ -250,7 +250,7 @@ export async function verifyDomainChallenge(input: {
     alreadyVerified = true;
   } else {
     try {
-      verified = await workos.organizationDomains.verify(existingDomain.id);
+      verified = await workos.organizationDomains.verifyOrganizationDomain(existingDomain.id);
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
       if (status === 422 || status === 400) {
@@ -261,7 +261,7 @@ export async function verifyDomainChallenge(input: {
           state: String(existingDomain.state),
         };
       }
-      logger.error({ err, orgId, domain }, 'workos.organizationDomains.verify failed');
+      logger.error({ err, orgId, domain }, 'workos.organizationDomains.verifyOrganizationDomain failed');
       return { ok: false, code: 'workos_error', message: 'Failed to verify domain.' };
     }
   }

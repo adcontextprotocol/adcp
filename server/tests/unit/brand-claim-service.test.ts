@@ -16,23 +16,23 @@ import type { HostedBrand } from '../../src/types.js';
 type WorkOSStub = {
   organizations: { getOrganization: ReturnType<typeof vi.fn> };
   organizationDomains: {
-    create: ReturnType<typeof vi.fn>;
-    verify: ReturnType<typeof vi.fn>;
+    createOrganizationDomain: ReturnType<typeof vi.fn>;
+    verifyOrganizationDomain: ReturnType<typeof vi.fn>;
   };
 };
 
 function makeWorkos(overrides: Partial<{
   getOrganization: any;
-  create: any;
-  verify: any;
+  createOrganizationDomain: any;
+  verifyOrganizationDomain: any;
 }> = {}): WorkOSStub {
   return {
     organizations: {
       getOrganization: overrides.getOrganization ?? vi.fn().mockResolvedValue({ domains: [] }),
     },
     organizationDomains: {
-      create: overrides.create ?? vi.fn(),
-      verify: overrides.verify ?? vi.fn(),
+      createOrganizationDomain: overrides.createOrganizationDomain ?? vi.fn(),
+      verifyOrganizationDomain: overrides.verifyOrganizationDomain ?? vi.fn(),
     },
   };
 }
@@ -111,7 +111,7 @@ describe('issueDomainChallenge', () => {
       expect(result.verification_token).toBe('tok_abc');
       expect(result.already_verified).toBe(false);
     }
-    expect(workos.organizationDomains.create).not.toHaveBeenCalled();
+    expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
   });
 
   it('flags already_verified when existing domain state is verified', async () => {
@@ -139,7 +139,7 @@ describe('issueDomainChallenge', () => {
 
   it('disambiguates 422 collision via organization_domain_already_used code', async () => {
     const workos = makeWorkos({
-      create: vi.fn().mockRejectedValue({
+      createOrganizationDomain: vi.fn().mockRejectedValue({
         status: 422,
         rawResponse: { code: 'organization_domain_already_used', message: 'already used' },
       }),
@@ -156,7 +156,7 @@ describe('issueDomainChallenge', () => {
 
   it('disambiguates 422 collision via message regex when no code field', async () => {
     const workos = makeWorkos({
-      create: vi.fn().mockRejectedValue({
+      createOrganizationDomain: vi.fn().mockRejectedValue({
         status: 422,
         rawResponse: { message: 'Domain already exists in another organization' },
       }),
@@ -173,7 +173,7 @@ describe('issueDomainChallenge', () => {
 
   it('treats generic 422 (no collision signal) as invalid_domain', async () => {
     const workos = makeWorkos({
-      create: vi.fn().mockRejectedValue({
+      createOrganizationDomain: vi.fn().mockRejectedValue({
         status: 422,
         rawResponse: { message: 'Invalid format' },
       }),
@@ -200,7 +200,7 @@ describe('issueDomainChallenge', () => {
       updated_at: new Date(),
     } as HostedBrand;
     const workos = makeWorkos({
-      create: vi.fn().mockResolvedValue({
+      createOrganizationDomain: vi.fn().mockResolvedValue({
         id: 'dom_new',
         state: 'pending',
         verificationStrategy: 'dns',
@@ -232,7 +232,7 @@ describe('issueDomainChallenge', () => {
       updated_at: new Date(),
     } as HostedBrand;
     const workos = makeWorkos({
-      create: vi.fn().mockResolvedValue({
+      createOrganizationDomain: vi.fn().mockResolvedValue({
         id: 'dom_new',
         state: 'pending',
         verificationStrategy: 'dns',
@@ -295,7 +295,7 @@ describe('verifyDomainChallenge', () => {
       expect(result.brand?.brand_domain).toBe(DOMAIN);
       expect(result.brand?.domain_verified).toBe(true);
     }
-    expect(workos.organizationDomains.verify).not.toHaveBeenCalled();
+    expect(workos.organizationDomains.verifyOrganizationDomain).not.toHaveBeenCalled();
   });
 
   it('returns still_pending on 422 from workos.verify', async () => {
@@ -303,7 +303,7 @@ describe('verifyDomainChallenge', () => {
       getOrganization: vi.fn().mockResolvedValue({
         domains: [{ id: 'd1', domain: DOMAIN, state: 'pending' }],
       }),
-      verify: vi.fn().mockRejectedValue({ status: 422 }),
+      verifyOrganizationDomain: vi.fn().mockRejectedValue({ status: 422 }),
     });
     const result = await verifyDomainChallenge({
       workos: workos as any,
@@ -324,7 +324,7 @@ describe('verifyDomainChallenge', () => {
       getOrganization: vi.fn().mockResolvedValue({
         domains: [{ id: 'd1', domain: DOMAIN, state: 'pending' }],
       }),
-      verify: vi.fn().mockResolvedValue({ state: 'verified' }),
+      verifyOrganizationDomain: vi.fn().mockResolvedValue({ state: 'verified' }),
     });
     const brandDb = makeBrandDb({
       applyVerifiedBrandClaim: vi.fn().mockResolvedValue(updatedBrand),
@@ -347,7 +347,7 @@ describe('verifyDomainChallenge', () => {
       getOrganization: vi.fn().mockResolvedValue({
         domains: [{ id: 'd1', domain: DOMAIN, state: 'pending' }],
       }),
-      verify: vi.fn().mockRejectedValue({ status: 422 }),
+      verifyOrganizationDomain: vi.fn().mockRejectedValue({ status: 422 }),
     });
     // First call → still_pending
     const first = await verifyDomainChallenge({
@@ -368,7 +368,7 @@ describe('verifyDomainChallenge', () => {
     if (!second.ok && second.code === 'still_pending') {
       expect(second.retry_after_seconds).toBeGreaterThan(0);
     }
-    expect(workos.organizationDomains.verify).toHaveBeenCalledTimes(1);
+    expect(workos.organizationDomains.verifyOrganizationDomain).toHaveBeenCalledTimes(1);
   });
 
   it('clears the cooldown after a successful verify so a follow-up returns the already-verified path', async () => {

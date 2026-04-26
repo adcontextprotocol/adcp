@@ -33,7 +33,7 @@ vi.mock('../../src/auth/workos-client.js', () => ({
     organizations: {
       getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
     },
-    portal: {
+    adminPortal: {
       generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
     },
   },

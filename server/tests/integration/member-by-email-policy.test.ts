@@ -53,7 +53,8 @@ vi.mock('@workos-inc/node', () => {
   class MockWorkOS {
     userManagement: any;
     organizations: any;
-    portal: any;
+    authorization: any;
+    adminPortal: any;
     webhooks: any;
     constructor() {
       this.userManagement = {
@@ -127,11 +128,13 @@ vi.mock('@workos-inc/node', () => {
       };
       this.organizations = {
         getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
+      };
+      this.authorization = {
         listOrganizationRoles: vi.fn().mockResolvedValue({
           data: [{ slug: 'owner' }, { slug: 'admin' }, { slug: 'member' }],
         }),
       };
-      this.portal = { generateLink: vi.fn().mockResolvedValue({ link: 'https://portal.test/' }) };
+      this.adminPortal = { generateLink: vi.fn().mockResolvedValue({ link: 'https://portal.test/' }) };
       this.webhooks = { constructEvent: vi.fn() };
     }
   }
