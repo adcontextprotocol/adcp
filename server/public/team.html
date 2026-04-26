@@ -270,16 +270,16 @@
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
 
-  <!-- Invite Modal -->
+  <!-- Add Member Modal -->
   <div id="inviteModal" class="modal-overlay">
     <div class="modal">
-      <h2>Invite Team Member</h2>
+      <h2>Add team member</h2>
       <div id="inviteError" class="error-message" style="display: none;"></div>
       <form id="inviteForm">
         <div class="form-group">
-          <label for="inviteEmail">Email Address</label>
+          <label for="inviteEmail">Email address</label>
           <input type="email" id="inviteEmail" placeholder="colleague@company.com" required>
-          <p class="form-help">An invitation email will be sent to this address</p>
+          <p class="form-help">If they already have an account, they're added directly. If not, an invitation is sent. If they're already a member, their role is updated.</p>
         </div>
         <div class="form-group">
           <label for="inviteRole">Role</label>
@@ -298,7 +298,7 @@
         </div>
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeInviteModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Send Invitation</button>
+          <button type="submit" class="btn btn-primary">Add member</button>
         </div>
       </form>
     </div>
@@ -386,7 +386,7 @@
       <div class="card">
         <h2>
           <span>Team Members</span>
-          <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Invite Member</button>
+          <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Add member</button>
         </h2>
 
         <div id="seatUsageSummary" style="display: none; margin-bottom: var(--space-4);"></div>
@@ -475,6 +475,18 @@
         <h2>Verified Domains</h2>
         <div id="domainsContent">
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">Loading domains...</div>
+        </div>
+        <div id="autoProvisionRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <label style="display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;">
+            <input type="checkbox" id="autoProvisionToggle" style="margin-top: 4px;">
+            <span>
+              <strong style="display: block; color: var(--color-text-heading); margin-bottom: var(--space-1);">Auto-add verified-domain employees</strong>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">
+                When on (default), anyone who signs in with an email at one of your verified domains is automatically added as a member. Turn off to require explicit invites only.
+              </span>
+            </span>
+          </label>
+          <div id="autoProvisionStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
         </div>
         <div style="margin-top: 16px;">
           <button class="btn btn-secondary" onclick="openDomainVerification()">Manage Domains</button>
@@ -985,7 +997,10 @@
       const seat_type = document.getElementById('inviteSeatType').value;
 
       try {
-        const response = await fetch(`/api/organizations/${currentOrg}/invitations`, {
+        // Unified state-machine endpoint: invites if the user has no account,
+        // creates a membership if they have an account but aren't in the org,
+        // updates their role if they're already a member.
+        const response = await fetch(`/api/organizations/${currentOrg}/members/by-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, role, seat_type }),
@@ -994,7 +1009,7 @@
         const data = await response.json();
 
         if (!response.ok) {
-          document.getElementById('inviteError').textContent = data.message || 'Failed to send invitation';
+          document.getElementById('inviteError').textContent = data.message || 'Failed to add member';
           document.getElementById('inviteError').style.display = 'block';
           return;
         }
@@ -1002,8 +1017,8 @@
         closeInviteModal();
         loadTeamMembers();
       } catch (error) {
-        console.error('Error sending invitation:', error);
-        document.getElementById('inviteError').textContent = 'Failed to send invitation. Please try again.';
+        console.error('Error adding member:', error);
+        document.getElementById('inviteError').textContent = 'Failed to add member. Please try again.';
         document.getElementById('inviteError').style.display = 'block';
       }
     });
@@ -1224,6 +1239,11 @@
             </p>
           `;
         }
+
+        // Render the auto-provision toggle whenever there is at least one
+        // verified domain. With no verified domain the toggle is a no-op
+        // (autoLinkByVerifiedDomain has nothing to match), so we hide it.
+        renderAutoProvisionToggle(orgId, data);
       } catch (error) {
         console.error('Error loading domains:', error);
         domainsContent.innerHTML = `
@@ -1232,6 +1252,61 @@
           </p>
         `;
       }
+    }
+
+    function renderAutoProvisionToggle(orgId, data) {
+      const row = document.getElementById('autoProvisionRow');
+      const toggle = document.getElementById('autoProvisionToggle');
+      const status = document.getElementById('autoProvisionStatus');
+      const hasVerified = (data.domains || []).some(d => d.verified);
+      // Owner-only: turning auto-provision on widens org membership in a way
+      // an admin shouldn't be able to do unilaterally (admins can promote
+      // auto-joined members to admin under the new role-cap policy). The
+      // backend enforces the same restriction; the UI mirrors it.
+      const isOwner = currentUserRole === 'owner';
+
+      if (!hasVerified || !isOwner) {
+        row.style.display = 'none';
+        return;
+      }
+
+      row.style.display = 'block';
+      toggle.checked = data.auto_provision_verified_domain !== false;
+      status.style.display = 'none';
+      status.textContent = '';
+
+      // Replace any prior listener by cloning the node
+      const fresh = toggle.cloneNode(true);
+      toggle.parentNode.replaceChild(fresh, toggle);
+      fresh.addEventListener('change', async (e) => {
+        const desired = e.target.checked;
+        e.target.disabled = true;
+        try {
+          const response = await fetch(`/api/organizations/${orgId}/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ auto_provision_verified_domain: desired }),
+          });
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.message || 'Failed to update setting');
+          }
+          status.style.display = 'block';
+          status.style.color = 'var(--color-success-700)';
+          status.textContent = desired
+            ? 'Auto-add is on. Verified-domain sign-ins will join automatically.'
+            : 'Auto-add is off. Members must be invited explicitly.';
+        } catch (err) {
+          console.error('Error updating auto_provision_verified_domain:', err);
+          e.target.checked = !desired;
+          status.style.display = 'block';
+          status.style.color = 'var(--color-danger-700)';
+          status.textContent = 'Could not update — please try again.';
+        } finally {
+          e.target.disabled = false;
+        }
+      });
     }
 
     // Store domain users for batch add
