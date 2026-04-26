@@ -849,6 +849,7 @@
                 Sync from Stripe
               </button>
               <button class="btn btn-sm btn-secondary" onclick="openPaymentHistory()">Payment History</button>
+              <button class="btn btn-sm btn-secondary" onclick="openDedupHistory()">Dedup Events</button>
               <button class="btn btn-sm btn-danger" onclick="openDeleteWorkspaceModal()" style="margin-left: auto;">
                 Delete Workspace
               </button>
@@ -1398,6 +1399,19 @@
       </div>
       <div id="paymentHistoryBody" style="padding: var(--space-4);">
         <div class="empty-state">Loading payment history...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedup Events Modal — webhook-side duplicate-subscription guard history -->
+  <div id="dedupHistoryModal" class="modal">
+    <div class="modal-content" style="max-width: 760px;">
+      <div class="modal-header">
+        <h2 id="dedupHistoryTitle">Subscription Dedup Events</h2>
+        <button class="modal-close" onclick="closeModal('dedupHistoryModal')">&times;</button>
+      </div>
+      <div id="dedupHistoryBody" style="padding: var(--space-4);">
+        <div class="empty-state">Loading dedup events...</div>
       </div>
     </div>
   </div>
@@ -2874,6 +2888,101 @@
               </div>
               ${p.product_name ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(p.product_name)}</div>` : ''}
               ${p.stripe_invoice_id ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Invoice: ${escapeHtml(p.stripe_invoice_id)}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state" style="color: var(--color-error-600);">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function openDedupHistory() {
+      const modal = document.getElementById('dedupHistoryModal');
+      const body = document.getElementById('dedupHistoryBody');
+      const title = document.getElementById('dedupHistoryTitle');
+      title.textContent = `Subscription Dedup Events - ${accountData?.name || 'Account'}`;
+      body.innerHTML = '<div class="empty-state">Loading dedup events...</div>';
+      modal.classList.add('show');
+
+      try {
+        const params = new URLSearchParams({
+          organization_id: accountId,
+          action: 'subscription_dedup',
+          limit: '50',
+        });
+        const response = await fetch(`/api/admin/audit-logs?${params}`);
+        if (!response.ok) throw new Error('Failed to load dedup events');
+        const result = await response.json();
+        const entries = result.entries || [];
+
+        if (entries.length === 0) {
+          body.innerHTML = `
+            <div class="empty-state">
+              <p>No subscription dedup events recorded for this org.</p>
+              <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
+                Events are written when the webhook helper auto-cancels a duplicate or escalates a duplicate to manual review.
+              </p>
+            </div>`;
+          return;
+        }
+
+        const kindLabels = {
+          canceled_new: 'Canceled new (duplicate intake)',
+          canceled_existing: 'Canceled existing (swap to new)',
+          manual_review: 'Manual review (could not auto-decide)',
+        };
+        const kindColors = {
+          canceled_new: 'var(--color-warning-300)',
+          canceled_existing: 'var(--color-success-500)',
+          manual_review: 'var(--color-error-300)',
+        };
+
+        body.innerHTML = entries.map((e) => {
+          const d = e.details || {};
+          const kind = d.kind || 'unknown';
+          const label = kindLabels[kind] || kind;
+          const color = kindColors[kind] || 'var(--color-gray-300)';
+          const date = new Date(e.created_at).toLocaleString();
+          const facts = d.canceled_facts || {};
+          const amountStr = typeof facts.amountCents === 'number'
+            ? `$${(facts.amountCents / 100).toFixed(2)}`
+            : '—';
+          const cancelOk = facts.cancelSucceeded === false
+            ? '<span style="color: var(--color-error-600); font-weight: 600;">⚠ Stripe cancel FAILED — manual cleanup needed</span>'
+            : '';
+
+          let detailRows = '';
+          if (kind === 'canceled_new') {
+            detailRows = `
+              <div>Canceled new sub: <code>${escapeHtml(d.new_sub_id || '')}</code> (${amountStr}, ${escapeHtml(facts.lookupKey || 'no lookup_key')})</div>
+              <div>Surviving existing sub${(d.existing_live_sub_ids || []).length > 1 ? 's' : ''}: ${(d.existing_live_sub_ids || []).map((id) => `<code>${escapeHtml(id)}</code>`).join(', ') || '—'}</div>
+              ${d.surviving_tier_label ? `<div>Surviving tier: <strong>${escapeHtml(d.surviving_tier_label)}</strong></div>` : ''}
+            `;
+          } else if (kind === 'canceled_existing') {
+            detailRows = `
+              <div>Canceled existing sub: <code>${escapeHtml(d.canceled_sub_id || '')}</code> (${amountStr}, ${escapeHtml(facts.lookupKey || 'no lookup_key')})</div>
+              <div>Surviving new sub: <code>${escapeHtml(d.surviving_new_sub_id || '')}</code></div>
+              ${d.surviving_tier_label ? `<div>Surviving tier: <strong>${escapeHtml(d.surviving_tier_label)}</strong></div>` : ''}
+            `;
+          } else if (kind === 'manual_review') {
+            detailRows = `
+              <div>New sub: <code>${escapeHtml(d.new_sub_id || '')}</code></div>
+              <div>All live sub IDs: ${(d.all_live_sub_ids || []).map((id) => `<code>${escapeHtml(id)}</code>`).join(', ') || '—'}</div>
+              <div style="color: var(--color-text-secondary); font-style: italic;">Reason: ${escapeHtml(d.reason || '')}</div>
+            `;
+          }
+
+          return `
+            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${color}; background: var(--color-gray-50); border-radius: var(--radius-sm);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
+                <div style="font-weight: 600;">${escapeHtml(label)}</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">${escapeHtml(date)}</div>
+              </div>
+              <div style="font-size: var(--text-sm);">${detailRows}</div>
+              ${cancelOk ? `<div style="margin-top: var(--space-2); font-size: var(--text-sm);">${cancelOk}</div>` : ''}
+              <div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">
+                Customer: <code>${escapeHtml(d.customer_id || '')}</code>
+              </div>
             </div>
           `;
         }).join('');
