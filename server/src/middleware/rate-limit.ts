@@ -2,7 +2,6 @@ import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { CachedPostgresStore } from './pg-rate-limit-store.js';
-import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 
 const logger = createLogger('rate-limit');
 
@@ -69,6 +68,7 @@ async function skipForAdmins(req: Request): Promise<boolean> {
   if (!user.id) return false;
 
   try {
+    const { isWebUserAAOAdmin } = await import('../addie/mcp/admin-tools.js');
     return await isWebUserAAOAdmin(user.id);
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'admin check failed in rate limiter; applying limit');
