@@ -1,7 +1,8 @@
 import type { SuggestedPrompt } from '../types.js';
 import type { MemberContext } from '../../member-context.js';
 import { ADMIN_RULES, MEMBER_RULES } from './rules/prompt-rules.js';
-import type { PromptRule } from './rules/types.js';
+import { resolvePromptString } from './rules/types.js';
+import type { PromptRule, PromptRuleContext } from './rules/types.js';
 
 const MAX_PROMPTS = 4;
 
@@ -54,12 +55,17 @@ function evaluate(
     })
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
 
+  // Resolve dynamic labels/prompts once per rule so dedup-by-label
+  // operates on the rendered text, not the function reference.
+  const ruleCtx: PromptRuleContext = ctx;
   const seenLabels = new Set<string>();
-  const picked: PromptRule[] = [];
+  const picked: { rule: PromptRule; label: string; prompt: string }[] = [];
   for (const rule of matched) {
-    if (seenLabels.has(rule.label)) continue;
-    seenLabels.add(rule.label);
-    picked.push(rule);
+    const label = resolvePromptString(rule.label, ruleCtx);
+    const prompt = resolvePromptString(rule.prompt, ruleCtx);
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    picked.push({ rule, label, prompt });
     if (picked.length >= MAX_PROMPTS) break;
   }
   // Web home renders these in a 2-column grid; an odd count leaves a stray cell.
@@ -67,7 +73,7 @@ function evaluate(
 
   // ruleIds returned to callers excludes decay: false rules — those should
   // not be recorded in telemetry, since they're exempt from suppression.
-  const prompts = picked.map((r) => ({ label: r.label, prompt: r.prompt }));
-  const ruleIds = picked.filter((r) => r.decay !== false).map((r) => r.id);
+  const prompts = picked.map(({ label, prompt }) => ({ label, prompt }));
+  const ruleIds = picked.filter(({ rule }) => rule.decay !== false).map(({ rule }) => rule.id);
   return { prompts, ruleIds };
 }

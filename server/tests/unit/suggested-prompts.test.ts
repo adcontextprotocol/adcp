@@ -334,7 +334,7 @@ describe('buildSuggestedPrompts', () => {
           last_activity_at: DAYS_AGO(2),
         },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Continue certification');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Continue A1');
     });
 
     it('does not show the cert prompt when the latest attempt is passed', () => {
@@ -347,7 +347,7 @@ describe('buildSuggestedPrompts', () => {
           last_activity_at: DAYS_AGO(20),
         },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
     });
 
     it('does not show the cert prompt when the latest attempt is failed', () => {
@@ -360,12 +360,12 @@ describe('buildSuggestedPrompts', () => {
           last_activity_at: DAYS_AGO(20),
         },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
     });
 
     it('does not show the cert prompt when there is no attempt', () => {
       const ctx = makeMember({ certification: undefined });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
     });
 
     it('does not show the cert prompt when the attempt is older than 45 days (stale)', () => {
@@ -378,7 +378,7 @@ describe('buildSuggestedPrompts', () => {
           last_activity_at: DAYS_AGO(60),
         },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
     });
 
     it('cert continuation outranks profile completeness', () => {
@@ -390,7 +390,7 @@ describe('buildSuggestedPrompts', () => {
         community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
       });
       const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
-      const certIdx = labels.indexOf('Continue certification');
+      const certIdx = labels.indexOf('Continue A1');
       const profileIdx = labels.indexOf('Complete my profile');
       expect(certIdx).toBeGreaterThanOrEqual(0);
       expect(profileIdx).toBeGreaterThanOrEqual(0);
@@ -406,7 +406,7 @@ describe('buildSuggestedPrompts', () => {
         engagement: { login_count_30d: 0, last_login: DAYS_AGO(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
       });
       const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
-      const certIdx = labels.indexOf('Continue certification');
+      const certIdx = labels.indexOf('Continue A1');
       const lapsedIdx = labels.indexOf("What's new since you were last here?");
       expect(certIdx).toBeGreaterThanOrEqual(0);
       expect(lapsedIdx).toBeGreaterThanOrEqual(0);
@@ -422,7 +422,7 @@ describe('buildSuggestedPrompts', () => {
         },
       });
       const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
-      expect(labels).toContain('Continue certification');
+      expect(labels).toContain('Continue A1');
       expect(labels).not.toContain('Start with the Academy');
     });
 
@@ -593,10 +593,10 @@ describe('buildSuggestedPrompts', () => {
   });
 
   describe('matchRuleIdFromMessage (heuristic click detection)', () => {
-    it('matches a known prompt verbatim', () => {
-      const certRule = ALL_RULES.find((r) => r.id === 'cert.continue_in_progress');
-      expect(certRule).toBeDefined();
-      expect(matchRuleIdFromMessage(certRule!.prompt)).toBe('cert.continue_in_progress');
+    it('matches a known static prompt verbatim', () => {
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      expect(typeof fallback.prompt).toBe('string');
+      expect(matchRuleIdFromMessage(fallback.prompt as string)).toBe('fallback.whats_new');
     });
 
     it('matches with surrounding whitespace trimmed', () => {
@@ -615,14 +615,63 @@ describe('buildSuggestedPrompts', () => {
     });
 
     it('does not match a paraphrase (intentional false-negative)', () => {
-      const rule = ALL_RULES.find((r) => r.id === 'cert.continue_in_progress')!;
-      const paraphrased = rule.prompt.replace(/\.$/, '!');
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      const paraphrased = (fallback.prompt as string).replace(/\?$/, '!');
       expect(matchRuleIdFromMessage(paraphrased)).toBeNull();
     });
 
-    it('every rule has a unique prompt string (so the reverse index is unambiguous)', () => {
-      const prompts = ALL_RULES.map((r) => r.prompt);
-      expect(new Set(prompts).size).toBe(prompts.length);
+    it('matches the cert continuation rule via its module-specific phrasing', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with A1. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+      expect(matchRuleIdFromMessage("Let's keep going with B2. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('matches the cert continuation rule via the generic fallback phrasing', () => {
+      expect(matchRuleIdFromMessage('Pick up where I left off in certification.'))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('every rule with a static prompt has a unique prompt string', () => {
+      const staticPrompts = ALL_RULES
+        .filter((r) => typeof r.prompt === 'string')
+        .map((r) => r.prompt as string);
+      expect(new Set(staticPrompts).size).toBe(staticPrompts.length);
+    });
+  });
+
+  describe('dynamic prompt rendering', () => {
+    it('renders module-specific label when module_id is present', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue A1');
+    });
+
+    it('falls back to track_id when module_id is null', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'C', module_id: null, status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue C');
+    });
+
+    it('renders the module-specific prompt body alongside the label', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const cert = buildSuggestedPrompts(ctx, false).find((p) => p.label === 'Continue A1');
+      expect(cert?.prompt).toBe("Let's keep going with A1. Where did we leave off?");
     });
   });
 });

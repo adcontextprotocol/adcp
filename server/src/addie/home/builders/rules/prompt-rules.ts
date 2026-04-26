@@ -56,6 +56,18 @@ function hasFreshInProgressCertification(ctx: MemberContext | null): boolean {
   return age < 45 * 24 * 60 * 60 * 1000;
 }
 
+/**
+ * Most-specific identifier we have for the user's current certification
+ * attempt — module_id when we know it (e.g. 'A1'), else track_id (e.g.
+ * 'A'), else null. Used by the cert continuation rule to personalize
+ * its label and prompt without baking in track-specific copy.
+ */
+function certModuleLabel(ctx: MemberContext | null): string | null {
+  const cert = ctx?.certification;
+  if (!cert) return null;
+  return cert.module_id ?? cert.track_id ?? null;
+}
+
 function isLowLoginActive(ctx: MemberContext | null): boolean {
   const last = lastLoginMs(ctx);
   if (last === null) return false;
@@ -220,8 +232,21 @@ export const MEMBER_RULES: PromptRule[] = [
     decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && hasFreshInProgressCertification(memberContext),
-    label: 'Continue certification',
-    prompt: 'Pick up where I left off in certification.',
+    label: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id ? `Continue ${id}` : 'Continue certification';
+    },
+    prompt: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id
+        ? `Let's keep going with ${id}. Where did we leave off?`
+        : 'Pick up where I left off in certification.';
+    },
+    // Dynamic prompt → can't live in the static reverse-index. Match
+    // against either the module-specific or the generic phrasing.
+    matchClick: (msg) =>
+      /^Let's keep going with [A-Za-z0-9-]+\. Where did we leave off\?$/.test(msg) ||
+      msg === 'Pick up where I left off in certification.',
   },
   {
     id: 'profile.incomplete',
@@ -348,16 +373,30 @@ export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];
  * positives (a user paraphrases the same idea) would inflate the CTR
  * for popular rules. We accept a few false negatives (a user manually
  * retypes the prompt with a different period) for cleaner data.
+ *
+ * Rules with dynamic (function) `prompt` are not in the static index —
+ * they must provide a `matchClick` callback instead.
  */
 const PROMPT_TO_RULE_ID = new Map<string, string>(
-  ALL_RULES.map((r) => [r.prompt.trim(), r.id]),
+  ALL_RULES
+    .filter((r): r is PromptRule & { prompt: string } => typeof r.prompt === 'string')
+    .map((r) => [r.prompt.trim(), r.id]),
 );
+
+const RULES_WITH_MATCH_CLICK = ALL_RULES.filter((r) => typeof r.matchClick === 'function');
 
 /**
  * Look up the rule_id whose prompt text matches the given user message
- * verbatim. Returns null when there is no match.
+ * verbatim. Falls back to per-rule `matchClick` callbacks for rules
+ * with dynamic prompts. Returns null when there is no match.
  */
 export function matchRuleIdFromMessage(message: string | null | undefined): string | null {
   if (!message) return null;
-  return PROMPT_TO_RULE_ID.get(message.trim()) ?? null;
+  const trimmed = message.trim();
+  const staticHit = PROMPT_TO_RULE_ID.get(trimmed);
+  if (staticHit) return staticHit;
+  for (const rule of RULES_WITH_MATCH_CLICK) {
+    if (rule.matchClick!(trimmed)) return rule.id;
+  }
+  return null;
 }
