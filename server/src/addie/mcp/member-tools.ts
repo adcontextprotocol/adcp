@@ -18,7 +18,6 @@ import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-cli
 import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
-import { invalidateMemberContextCache } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
@@ -3604,9 +3603,12 @@ export function createMemberToolHandlers(
           test_kind: 'quality_evaluation',
           outcome: evalOutcome,
           duration_ms: result.total_duration_ms,
-        }).then(() => {
+        }).then(async () => {
           const slackId = memberContext?.slack_user?.slack_user_id;
-          if (slackId) invalidateMemberContextCache(slackId);
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
         }).catch(err => logger.warn({ err }, 'Could not record agent test run'));
       }
 
@@ -4005,9 +4007,12 @@ export function createMemberToolHandlers(
           outcome: result.overall_passed ? 'pass' : 'fail',
           duration_ms: result.total_duration_ms,
           storyboard_id: storyboardId,
-        }).then(() => {
+        }).then(async () => {
           const slackId = memberContext?.slack_user?.slack_user_id;
-          if (slackId) invalidateMemberContextCache(slackId);
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
         }).catch(err => logger.warn({ err }, 'Could not record storyboard run'));
       }
 
