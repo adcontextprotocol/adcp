@@ -17,4 +17,4 @@ Sets up the new-member digest in the auto-provision notification feature so org 
 
 ## Migration
 
-`436_organization_membership_provisioning_source.sql` adds the columns and an index keyed on `(workos_organization_id, provisioning_source, created_at DESC)` for the digest query.
+`438_organization_membership_provisioning_source.sql` adds the columns and an index keyed on `(workos_organization_id, provisioning_source, created_at DESC)` for the digest query.
