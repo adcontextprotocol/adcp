@@ -42,7 +42,7 @@ See the [Compliance Catalog](/docs/building/compliance-catalog) for the full tax
 - Negotiate `measurement_terms` and `performance_standards` on guaranteed buys: propose overrides on `create_media_buy`, interpret seller acceptance (echoed back), adjustments, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors or accepting product defaults.
 - Know that `update_media_buy` requires `account` (not just `media_buy_id`) so billing routes to the right relationship; omitting it is a protocol error
 - Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
-- Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window won't close until seven days post-air, so expect incomplete data during that period; this is by design, not underdelivery
+- Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window's DVR accumulation doesn't close until seven days post-air, and vendor processing adds further delay before final data is available; incomplete data during this period is by design, not underdelivery
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
