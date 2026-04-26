@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
-import { HTTPServer } from '../../src/http.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// Disable MCP bearer auth before any module that reads it imports. Without
+// this, /mcp.* requireBearerAuth runs against an OAuth provider expecting
+// real tokens and every test request 401s.
+vi.hoisted(() => { process.env.MCP_AUTH_DISABLED = 'true'; });
+
+import { HTTPServer } from '../../src/http.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,7 +80,13 @@ vi.mock('../../src/middleware/rate-limit.js', async (importOriginal) => {
   };
 });
 
-// Skipped: see #3289 — every request comes back 401 invalid_token; bearer/auth setup or registry endpoint signature has shifted.
+// Skipped: see #3289 — bearer-auth gate cleared via MCP_AUTH_DISABLED, but
+// the MCP StreamableHTTP transport now responds with `Content-Type:
+// text/event-stream` on the negotiated Accept header. Tests parse the body
+// as JSON directly. Either widen the test helpers to handle SSE-framed
+// responses (see training-agent-strict.test.ts:parseEnvelope), or send
+// `Accept: application/json` only and assert the SDK returns a single
+// JSON envelope.
 describe.skip('MCP Protocol Compliance', () => {
   let server: HTTPServer;
   let app: any;

@@ -45,7 +45,8 @@ import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
-vi.mock('../../src/middleware/auth.js', () => ({
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_ADMIN_USER_ID,
@@ -61,6 +62,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
   },
 }));
 
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
+}));
+
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: null,
   getSubscriptionInfo: vi.fn().mockResolvedValue(null),
@@ -74,8 +79,7 @@ vi.mock('../../src/slack/org-group-dm.js', () => ({
   notifyMemberAdded: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
-describe.skip('Join Request Approval', () => {
+describe('Join Request Approval', () => {
   let server: HTTPServer;
   let app: any;
   let pool: Pool;
@@ -122,7 +126,12 @@ describe.skip('Join Request Approval', () => {
     await pool.query('DELETE FROM organization_join_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
   });
 
-  it('approves a join request by creating direct org membership, not sending an invitation', async () => {
+  // Skipped: see #3289 — handler calls WorkOS userManagement.listOrganizationMemberships
+  // directly (organizations.ts:301) and the test isn't mocking @workos-inc/node, so the
+  // request hits WorkOS API with the test key and 401s → 500. Either add a per-file
+  // @workos-inc/node mock (member-by-email-policy.test.ts has the pattern) or refactor
+  // the route to push the membership check into a mockable helper.
+  it.skip('approves a join request by creating direct org membership, not sending an invitation', async () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
       .send({ role: 'member' })
@@ -139,7 +148,7 @@ describe.skip('Join Request Approval', () => {
     expect(mockSendInvitation).not.toHaveBeenCalled();
   });
 
-  it('marks the join request as approved after membership is created', async () => {
+  it.skip('marks the join request as approved after membership is created', async () => {
     await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
       .send({ role: 'member' })
@@ -152,7 +161,7 @@ describe.skip('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it('returns 400 and clears stale pending row when user is already a member', async () => {
+  it.skip('returns 400 and clears stale pending row when user is already a member', async () => {
     const alreadyMemberError: any = new Error('Already a member');
     alreadyMemberError.code = 'organization_membership_already_exists';
     mockCreateOrganizationMembership.mockRejectedValueOnce(alreadyMemberError);
@@ -172,7 +181,7 @@ describe.skip('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
+  it.skip('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
     // cannot_reactivate means a pending WorkOS invitation exists — the user is NOT yet
     // a member. The join request must stay pending for admin resolution.
     const reactivateError: any = new Error('Cannot reactivate');
@@ -194,7 +203,7 @@ describe.skip('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('pending');
   });
 
-  it('returns 404 for a non-existent join request', async () => {
+  it.skip('returns 404 for a non-existent join request', async () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/00000000-0000-0000-0000-000000000000/approve`)
       .send({ role: 'member' })

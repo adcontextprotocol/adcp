@@ -13,8 +13,9 @@ import type { Pool } from 'pg';
  */
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin',
       email: 'admin@test.com',
@@ -22,8 +23,12 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
-  optionalAuth: (req: any, res: any, next: any) => next(),
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock WorkOS client to avoid external API calls
@@ -92,7 +97,10 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   }),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
+// Skipped: see #3289 — Slack-path tests pass, but the WorkOS-path tests fail
+// because the route's user-lookup chain (auth/workos-client.js → various
+// db helpers) returns different shape than what the mock supplies. Needs
+// a closer look at the lookup chain or a richer WorkOS-side mock.
 describe.skip('User Context API Tests', () => {
   let server: HTTPServer;
   let app: any;

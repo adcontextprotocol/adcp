@@ -16,21 +16,21 @@ import type { Pool } from 'pg';
 let impersonatorData: { email: string; reason: string | null } | null = null;
 
 // Mock auth middleware to simulate impersonation
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_impersonated',
       email: 'impersonated@example.com',
       firstName: 'Impersonated',
       lastName: 'User',
       is_admin: false,
-      // Include impersonator when set
       impersonator: impersonatorData,
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
-  optionalAuth: (req: any, res: any, next: any) => {
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_impersonated',
       email: 'impersonated@example.com',
@@ -40,6 +40,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock the Claude client to avoid actual API calls
@@ -84,7 +88,11 @@ vi.mock('../../src/addie/member-context.js', () => ({
   }),
 }));
 
-// Skipped: see #3289 — stale auth.js mock; HTTPServer setup throws on missing exports.
+// Skipped: see #3289 — POST /api/addie/chat path requires a fully-initialized
+// chat client (AddieClaudeClient + tool handlers + knowledge search). Mocking
+// every collaborator is too brittle; the audit-logging behavior under test
+// would be better unit-tested directly against the conversation/message DB
+// helpers. Schema-shape tests below still run.
 describe.skip('Impersonation Audit Logging Tests', () => {
   let server: HTTPServer;
   let app: any;
@@ -321,8 +329,7 @@ describe.skip('Impersonation Audit Logging Tests', () => {
   });
 });
 
-// Skipped: see #3289 — same auth-mock cluster; bundling with the suite above.
-describe.skip('Impersonation Database Schema', () => {
+describe('Impersonation Database Schema', () => {
   let pool: Pool;
 
   beforeAll(async () => {
