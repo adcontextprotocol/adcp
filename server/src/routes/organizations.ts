@@ -6,7 +6,7 @@
  * member invitations, and role management.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
@@ -1651,9 +1651,13 @@ export function createOrganizationsRouter(): Router {
       // auto_provision_verified_domain is a privilege grant — turning it on
       // means any verified-domain email auto-joins as a member, which an admin
       // could then promote to admin. Restrict to owner-only to keep admins
-      // from quietly widening org membership without owner consent.
+      // from quietly widening org membership without owner consent. AAO
+      // super-admin (or the static admin API key for internal tooling) can
+      // override.
       if (auto_provision_verified_domain !== undefined && userRole !== 'owner') {
-        const isAAOAdmin = await isWebUserAAOAdmin(user.id);
+        const isStaticAdminApiKey =
+          (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+        const isAAOAdmin = isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
         if (!isAAOAdmin) {
           return res.status(403).json({
             error: 'Insufficient permissions',
@@ -2697,13 +2701,24 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Resolve caller authority: org role + AAO super-admin override
-      const callerMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
+      // Static admin API key (used by internal tooling and incident scripts)
+      // grants the same authority as AAO super-admin. requireAuth has already
+      // verified the key matches ADMIN_API_KEY before reaching this point.
+      const isStaticAdminApiKey =
+        (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+
+      // Resolve caller authority: org role + AAO super-admin override.
+      // Skip the WorkOS membership lookup for the static admin API key —
+      // 'admin_api_key' is a synthetic user id and won't have memberships.
+      const callerMemberships = isStaticAdminApiKey
+        ? { data: [] as Array<{ status: string; role?: { slug: string } }> }
+        : await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
       const callerOrgRole = resolveUserRole(callerMemberships.data);
-      const isAAOAdmin = await isWebUserAAOAdmin(user.id);
+      const isAAOAdmin =
+        isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
 
       const isOrgAdminOrOwner = callerOrgRole === 'admin' || callerOrgRole === 'owner';
       const isOrgOwner = callerOrgRole === 'owner';

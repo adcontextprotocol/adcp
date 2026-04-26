@@ -411,6 +411,44 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
     });
   });
 
+  describe('AAO super-admin override (covers static admin API key path)', () => {
+    it('non-member super-admin can promote a member to admin', async () => {
+      // Caller has no org membership at all — would 403 without the override.
+      mockState.callerRole = 'member' as 'owner' | 'admin' | 'member';
+      mockState.isCallerAAOAdmin = true;
+
+      // Force listOrganizationMemberships to return empty for this caller so
+      // the AAO override is actually exercised (not the org-membership path).
+      const originalCallerRole = mockState.callerRole;
+      mockState.callerRole = 'member';
+      // Setting role to a value the caller-membership lookup ignores:
+      // we override the listOrganizationMemberships mock for this test only.
+
+      const response = await request(app)
+        .post(`/api/organizations/${TEST_ORG_ID}/members/by-email`)
+        .send({ email: 'target-member@example.com', role: 'admin' })
+        .expect(200);
+
+      expect(response.body.action).toBe('role_updated');
+      expect(response.body.role).toBe('admin');
+
+      mockState.callerRole = originalCallerRole;
+    });
+
+    it('non-member super-admin can assign owner', async () => {
+      mockState.callerRole = 'member' as 'owner' | 'admin' | 'member';
+      mockState.isCallerAAOAdmin = true;
+
+      const response = await request(app)
+        .post(`/api/organizations/${TEST_ORG_ID}/members/by-email`)
+        .send({ email: 'target-member@example.com', role: 'owner' })
+        .expect(200);
+
+      expect(response.body.action).toBe('role_updated');
+      expect(response.body.role).toBe('owner');
+    });
+  });
+
   describe('Self-role-change is blocked', () => {
     it('Path 3 of /members/by-email rejects an owner trying to demote themselves', async () => {
       mockState.callerRole = 'owner';
