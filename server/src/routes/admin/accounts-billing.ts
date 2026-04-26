@@ -806,7 +806,10 @@ export function setupAccountsBillingRoutes(
         // Exactly one of lookup_key / price_id must be provided. Custom
         // ad-hoc prices are out of scope for v1 — operators create those in
         // the Stripe Dashboard first, then pass the resulting price_id.
-        const priceSourceCount = [lookup_key, price_id].filter(Boolean).length;
+        // Trim before counting so whitespace-only strings count as empty.
+        const trimmedLookupKey = lookup_key?.trim();
+        const trimmedPriceId = price_id?.trim();
+        const priceSourceCount = [trimmedLookupKey, trimmedPriceId].filter(Boolean).length;
         if (priceSourceCount !== 1) {
           return res.status(400).json({
             error: "Price source required",
@@ -835,11 +838,11 @@ export function setupAccountsBillingRoutes(
         // Resolve the target price.
         let targetPrice: Stripe.Price;
         try {
-          if (price_id) {
-            targetPrice = await stripe.prices.retrieve(price_id);
+          if (trimmedPriceId) {
+            targetPrice = await stripe.prices.retrieve(trimmedPriceId);
           } else {
             const list = await stripe.prices.list({
-              lookup_keys: [lookup_key!],
+              lookup_keys: [trimmedLookupKey!],
               active: true,
               limit: 2,
             });
@@ -909,6 +912,20 @@ export function setupAccountsBillingRoutes(
           });
         }
 
+        // Refuse to update a sub in a non-live state. Stripe's retrieve
+        // returns canceled subs for ~30 days, so the prior catch doesn't
+        // surface the case — we'd hit a confusing 400 from update instead.
+        if (
+          !(TIER_PRESERVING_STATUSES as readonly string[]).includes(existingSub.status)
+        ) {
+          return res.status(400).json({
+            error: "Subscription not live",
+            message:
+              `Subscription ${existingSub.id} is in status "${existingSub.status}". Replace requires a live subscription (active/trialing/past_due). Use the normal intake flow to create a new one.`,
+            current_status: existingSub.status,
+          });
+        }
+
         const existingItem = existingSub.items.data[0];
         if (!existingItem) {
           return res.status(400).json({
@@ -916,6 +933,17 @@ export function setupAccountsBillingRoutes(
             message: "The existing subscription has no price items. Manual cleanup needed.",
           });
         }
+
+        // Capture the existing discounts so the response/audit shows what
+        // was overwritten when the caller passes a new coupon. The update
+        // call below replaces all discounts when `discounts` is set, which
+        // is the documented Stripe behavior — we surface it explicitly.
+        const existingDiscounts = (
+          existingSub.discounts as Array<string | { id?: string; coupon?: { id?: string } }> | undefined
+        ) ?? [];
+        const existingDiscountIds = existingDiscounts.map((d) =>
+          typeof d === 'string' ? d : d?.coupon?.id ?? d?.id ?? null,
+        );
 
         const beforeState = {
           subscription_id: existingSub.id,
@@ -926,12 +954,19 @@ export function setupAccountsBillingRoutes(
           unit_amount: existingItem.price.unit_amount,
           interval: existingItem.price.recurring?.interval ?? null,
           collection_method: existingSub.collection_method,
+          cancel_at_period_end: existingSub.cancel_at_period_end ?? false,
+          discount_ids: existingDiscountIds,
         };
 
         // Default proration_behavior to 'none' for custom contracts — the
         // sales-side has already negotiated the dollars; auto-prorating
         // would create a confusing extra invoice.
         const effectiveProration = proration_behavior ?? 'none';
+
+        // Stripe metadata values are capped at 500 chars per value. Reason
+        // is user-controlled, so truncate before sending; the audit log
+        // captures the full untruncated text.
+        const reasonForStripe = reason.trim().slice(0, 500);
 
         let updatedSub: Stripe.Subscription;
         try {
@@ -947,7 +982,7 @@ export function setupAccountsBillingRoutes(
               replaced_by_admin: req.user!.id,
               replaced_by_email: req.user!.email,
               replaced_at: new Date().toISOString(),
-              replace_reason: reason.trim(),
+              replace_reason: reasonForStripe,
             },
           });
         } catch (err) {
@@ -1021,6 +1056,19 @@ export function setupAccountsBillingRoutes(
           "Subscription replaced via admin route",
         );
 
+        // Surface coupon-replacement explicitly. When the caller passes a
+        // new coupon, Stripe's `discounts: [{coupon}]` parameter clobbers
+        // any existing discounts on the sub — admins should see this.
+        const replacedDiscountIds = coupon_id
+          ? existingDiscountIds.filter((id) => id !== null)
+          : [];
+        const warnings: string[] = [];
+        if (replacedDiscountIds.length > 0) {
+          warnings.push(
+            `Replaced ${replacedDiscountIds.length} existing discount(s) on the subscription: ${replacedDiscountIds.join(', ')}.`,
+          );
+        }
+
         res.json({
           success: true,
           message: `Subscription updated for ${org.name}. Webhook will refresh the org row shortly.`,
@@ -1034,6 +1082,7 @@ export function setupAccountsBillingRoutes(
             coupon_id: coupon_id ?? null,
             proration_behavior: effectiveProration,
           },
+          ...(warnings.length > 0 ? { warnings } : {}),
         });
       } catch (error) {
         logger.error({ err: error, orgId }, "Error replacing subscription");

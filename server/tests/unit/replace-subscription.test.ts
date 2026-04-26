@@ -312,6 +312,121 @@ describe('POST /api/admin/accounts/:orgId/replace-subscription', () => {
     expect(res.body.error).toBe('Subscription not found in Stripe');
   });
 
+  it("returns 400 when the subscription is in a non-live status (canceled / incomplete_expired)", async () => {
+    // Stripe's retrieve returns canceled subs for ~30 days, so the prior
+    // catch doesn't surface the case. Without this gate, the update call
+    // would 400 with an opaque message that surfaces as 502.
+    mockGetOrg.mockResolvedValueOnce(makeOrg());
+    mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
+    mockStripeRetrieveSub.mockResolvedValueOnce(makeExistingSub({ status: 'canceled' }));
+    const app = await buildApp();
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${ORG_ID}/replace-subscription`)
+      .send({ price_id: NEW_PRICE_ID, reason: 'custom contract signed for member tier' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Subscription not live');
+    expect(res.body.current_status).toBe('canceled');
+    expect(mockStripeUpdateSub).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the existing subscription has no price items", async () => {
+    mockGetOrg.mockResolvedValueOnce(makeOrg());
+    mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
+    mockStripeRetrieveSub.mockResolvedValueOnce(
+      makeExistingSub({
+        items: { data: [] } as Stripe.ApiList<Stripe.SubscriptionItem>,
+      }),
+    );
+    const app = await buildApp();
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${ORG_ID}/replace-subscription`)
+      .send({ price_id: NEW_PRICE_ID, reason: 'custom contract signed for member tier' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Subscription has no items');
+    expect(mockStripeUpdateSub).not.toHaveBeenCalled();
+  });
+
+  it('truncates reason to 500 chars in Stripe metadata but stores full text in audit log', async () => {
+    const longReason = 'x'.repeat(800);
+    mockGetOrg.mockResolvedValueOnce(makeOrg());
+    mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
+    mockStripeRetrieveSub.mockResolvedValueOnce(makeExistingSub());
+    mockStripeUpdateSub.mockResolvedValueOnce(makeExistingSub());
+    const app = await buildApp();
+
+    await request(app)
+      .post(`/api/admin/accounts/${ORG_ID}/replace-subscription`)
+      .send({ price_id: NEW_PRICE_ID, reason: longReason });
+
+    const updateArgs = mockStripeUpdateSub.mock.calls[0][1] as {
+      metadata: Record<string, string>;
+    };
+    expect(updateArgs.metadata.replace_reason).toHaveLength(500);
+
+    const insertCall = mockPoolQuery.mock.calls.find((c) =>
+      String(c[0]).startsWith('INSERT INTO registry_audit_log'),
+    );
+    const details = JSON.parse(String((insertCall![1] as unknown[])[5]));
+    expect(details.reason).toBe(longReason);
+  });
+
+  it('surfaces a warning when an existing coupon is replaced', async () => {
+    mockGetOrg.mockResolvedValueOnce(makeOrg());
+    mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
+    mockStripeRetrieveCoupon.mockResolvedValueOnce({ id: COUPON_ID, valid: true });
+    mockStripeRetrieveSub.mockResolvedValueOnce(
+      makeExistingSub({
+        discounts: [
+          { coupon: { id: 'old-coupon-1' } },
+          { coupon: { id: 'old-coupon-2' } },
+        ],
+      } as unknown as Partial<Stripe.Subscription>),
+    );
+    mockStripeUpdateSub.mockResolvedValueOnce(makeExistingSub());
+    const app = await buildApp();
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${ORG_ID}/replace-subscription`)
+      .send({
+        price_id: NEW_PRICE_ID,
+        coupon_id: COUPON_ID,
+        reason: 'custom contract signed for member tier',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toBeDefined();
+    expect(res.body.warnings[0]).toContain('Replaced 2 existing discount(s)');
+    expect(res.body.warnings[0]).toContain('old-coupon-1');
+    expect(res.body.warnings[0]).toContain('old-coupon-2');
+    expect(res.body.before.discount_ids).toEqual(['old-coupon-1', 'old-coupon-2']);
+  });
+
+  it('does not warn when no coupon is provided (existing discounts preserved untouched)', async () => {
+    mockGetOrg.mockResolvedValueOnce(makeOrg());
+    mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
+    mockStripeRetrieveSub.mockResolvedValueOnce(
+      makeExistingSub({
+        discounts: [{ coupon: { id: 'old-coupon-1' } }],
+      } as unknown as Partial<Stripe.Subscription>),
+    );
+    mockStripeUpdateSub.mockResolvedValueOnce(makeExistingSub());
+    const app = await buildApp();
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${ORG_ID}/replace-subscription`)
+      .send({ price_id: NEW_PRICE_ID, reason: 'custom contract signed for member tier' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toBeUndefined();
+    // Update call must NOT include `discounts` so Stripe leaves them alone.
+    const updateArgs = mockStripeUpdateSub.mock.calls[0][1] as Record<string, unknown>;
+    expect(updateArgs).not.toHaveProperty('discounts');
+  });
+
   it('returns 502 when stripe.subscriptions.update rejects', async () => {
     mockGetOrg.mockResolvedValueOnce(makeOrg());
     mockStripeRetrievePrice.mockResolvedValueOnce(makePrice());
