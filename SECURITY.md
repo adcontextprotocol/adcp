@@ -2,7 +2,7 @@
 
 The Advertising Context Protocol (AdCP) handles financial commitments and potentially sensitive campaign data. Security is a critical concern for all implementations.
 
-For comprehensive security guidance, see our [Security Documentation](https://docs.adcontextprotocol.org/docs/reference/security).
+For comprehensive security guidance, see our [Security Documentation](https://docs.adcontextprotocol.org/docs/building/implementation/security).
 
 ## Supported Versions
 
@@ -60,13 +60,13 @@ For detailed guidance on implementing secure AdCP systems, including:
 - **Compliance**: GDPR, CCPA, SOC 2, and other regulatory requirements
 - **Implementation Checklists**: Role-specific security requirements
 
-See our comprehensive [Security Documentation](https://docs.adcontextprotocol.org/docs/reference/security).
+See our comprehensive [Security Documentation](https://docs.adcontextprotocol.org/docs/building/implementation/security). For the threat model and narrative, see the [Security Model](https://docs.adcontextprotocol.org/docs/building/understanding/security-model).
 
 ## Security Questions & Discussion
 
 For security questions that are not sensitive vulnerability reports:
 
-- **Documentation**: https://docs.adcontextprotocol.org/docs/reference/security
+- **Documentation**: https://docs.adcontextprotocol.org/docs/building/implementation/security
 - **GitHub Discussions**: Security category
 - **Email**: security@adcontextprotocol.org
 - **Slack**: https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg
