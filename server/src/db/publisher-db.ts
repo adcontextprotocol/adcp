@@ -96,6 +96,11 @@ function canonicalizeAgentUrl(raw: string): string | null {
   // accepts '*' as exact-match. Anything else (e.g. *foo*) would fail
   // the CHECK and abort the whole transaction.
   if (trimmed.includes('*')) return null;
+  // Reject internal whitespace and control chars. A URL with embedded
+  // newlines or tabs would land in the canonical form and become
+  // unmatchable by lookup callers. URL.parse() at the validator level
+  // doesn't enforce this hard.
+  if (/[\s\x00-\x1f]/.test(trimmed)) return null;
   let canonical = trimmed.toLowerCase();
   while (canonical.endsWith('/')) canonical = canonical.slice(0, -1);
   if (canonical.length === 0) return null;
@@ -483,21 +488,13 @@ export class PublisherDatabase {
       const inline = Array.isArray(entry.properties) ? entry.properties : [];
       // First, project each inline property — the entry's own properties[]
       // wasn't visited by the top-level loop because they live inside this
-      // auth entry, not the manifest's top-level properties[].
+      // auth entry, not the manifest's top-level properties[]. A failure
+      // in any inline projection aborts the postgres transaction; the
+      // outer per-entry SAVEPOINT (auth_${i} in upsertAdagentsCache) owns
+      // the rollback boundary, so a single bad inline property drops the
+      // whole entry — all-or-nothing per entry.
       for (const prop of inline) {
-        try {
-          await this.projectPropertyToCatalog(client, publisherDomain, prop);
-        } catch (err) {
-          log.warn(
-            {
-              publisherDomain,
-              agentUrl: agentCanonical,
-              propertyId: prop?.property_id,
-              err: err instanceof Error ? err.message : err,
-            },
-            'Inline property projection failed; auth row for this property skipped'
-          );
-        }
+        await this.projectPropertyToCatalog(client, publisherDomain, prop);
       }
       const slugs = inline
         .map((p) => p?.property_id)

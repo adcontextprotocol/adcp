@@ -153,6 +153,48 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].agent_url_canonical).toBe('*');
     });
+
+    it('* sentinel and a normal URL coexist for the same publisher', async () => {
+      // The partial unique index keys on (agent_url_canonical, ...). The
+      // sentinel '*' must occupy a separate slot from a normal URL row at
+      // the same publisher; otherwise wildcard auth would collide with
+      // explicit auth.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: '*', authorized_for: 'display' },
+          { url: TEST_AGENT_RAW, authorized_for: 'video' },
+        ]),
+      });
+      const { rows } = await pool.query<{ agent_url_canonical: string; authorized_for: string }>(
+        `SELECT agent_url_canonical, authorized_for FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1
+          ORDER BY agent_url_canonical`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(2);
+      expect(rows[0].agent_url_canonical).toBe('*');
+      expect(rows[0].authorized_for).toBe('display');
+      expect(rows[1].agent_url_canonical).toBe(TEST_AGENT_CANON);
+      expect(rows[1].authorized_for).toBe('video');
+    });
+
+    it('rejects URLs containing internal whitespace or control chars', async () => {
+      // Embedded \t, \n, etc. land as canonical and become unmatchable by
+      // exact-match readers. canonicalizeAgentUrl must reject them.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: 'https://agent.caa-writer.example/\tinjected' },
+          { url: 'https://agent.caa-writer.example/\nfoo' },
+        ]),
+      });
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(0);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────
@@ -236,6 +278,43 @@ describe('catalog_agent_authorizations writer projection', () => {
         [TEST_AGENT_CANON]
       );
       expect(rows.map((r) => r.property_id_slug)).toEqual(['known']);
+    });
+
+    it('does not resolve slugs owned by another publisher', async () => {
+      // Pre-seed VICTIM_PUB's `home` slug. The attacker's manifest
+      // references the same string but the slug-resolution query is
+      // scoped to created_by = adagents_json:TEST_PUB, so the row
+      // belongs to a different created_by and must not match.
+      await publisherDb.upsertAdagentsCache({
+        domain: VICTIM_PUB,
+        manifest: manifest(
+          [],
+          [
+            {
+              property_id: 'home',
+              property_type: 'website',
+              name: 'Victim home',
+              identifiers: [{ type: 'domain', value: VICTIM_PUB }],
+            },
+          ]
+        ),
+      });
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          {
+            url: TEST_AGENT_RAW,
+            authorization_type: 'property_ids',
+            property_ids: ['home'],
+          },
+        ]),
+      });
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows).toHaveLength(0);
     });
   });
 
@@ -399,6 +478,41 @@ describe('catalog_agent_authorizations writer projection', () => {
         [TEST_AGENT_CANON]
       );
       expect(rows).toHaveLength(0);
+    });
+
+    it('matches own publisher when selector publisher_domain has mixed case', async () => {
+      // Legacy or hand-edited manifests may use mixed-case publisher_domain.
+      // The selector is lowercased before comparison; own-publisher claims
+      // must still resolve.
+      const mixedCaseSelector = 'CAA-Writer.example';
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: mixedCaseSelector, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
     });
 
     it('skips selection_type=by_tag (deferred per spec)', async () => {
