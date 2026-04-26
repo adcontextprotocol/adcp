@@ -3474,8 +3474,14 @@ export class HTTPServer {
             // until the organizations row reflects the activated membership.
             let activationAdminContext: ActivationAdminContext | undefined;
 
-            // When the just-created sub is a duplicate that we cancel,
-            // skip the org-row UPDATE so the surviving sub's state stays.
+            // Dedup outcome controls two things:
+            //   - suppressOrgUpdate: skip the row UPDATE when we want a
+            //     different sub (the existing one, or none) to remain
+            //     tracked instead of this newly-created one.
+            //   - whether to fire fresh-activation hooks (welcome email,
+            //     listing autopublish): only on `no_duplicate`. The
+            //     `canceled_existing` case is a swap, not an activation —
+            //     the customer was already a member.
             let suppressOrgUpdate = false;
 
             if (event.type === 'customer.subscription.created') {
@@ -3488,21 +3494,46 @@ export class HTTPServer {
                 notifySystemError,
               });
 
-              if (dedup.duplicate) {
-                suppressOrgUpdate = true;
-              } else if (org) {
-                activationAdminContext = await handleSubscriptionCreated({
-                  subscription,
-                  customerId,
-                  org,
-                  stripe,
-                  workos: workos!,
-                  orgDb,
-                  pool,
-                  logger,
-                  notifySystemError,
-                  notifyNewSubscription,
-                });
+              switch (dedup.kind) {
+                case 'canceled_new':
+                  // We canceled the just-created sub (it was the unpaid
+                  // duplicate). Keep the org row pointing at the surviving
+                  // existing sub.
+                  suppressOrgUpdate = true;
+                  break;
+                case 'retry_skip':
+                  // Stripe retried `customer.subscription.created` after a
+                  // prior invocation already canceled this sub. The event's
+                  // status is non-live now; running UPDATE would overwrite
+                  // the surviving sub's row state with `status: 'canceled'`.
+                  suppressOrgUpdate = true;
+                  break;
+                case 'manual_review':
+                  // Don't change tracking — ops will resolve in Stripe and
+                  // run /sync to reconcile.
+                  suppressOrgUpdate = true;
+                  break;
+                case 'canceled_existing':
+                  // The new sub becomes the org's tracked sub. Let the
+                  // UPDATE block below run, but skip handleSubscriptionCreated
+                  // — this is a tier swap, not a fresh activation.
+                  break;
+                case 'no_duplicate':
+                  if (org) {
+                    activationAdminContext = await handleSubscriptionCreated({
+                      subscription,
+                      customerId,
+                      org,
+                      stripe,
+                      workos: workos!,
+                      orgDb,
+                      pool,
+                      logger,
+                      notifySystemError,
+                      notifyNewSubscription,
+                    });
+                  }
+                  break;
               }
             }
 
