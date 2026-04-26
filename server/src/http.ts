@@ -214,12 +214,6 @@ const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Fire-and-forget customer notification when the webhook dedup helper
- * canceled a duplicate subscription on this org. We always send to the
- * full set of org admins (typically a single founder/owner). All failures
- * are logged but never thrown — the dedup itself is the primary action.
- */
-/**
  * Shape the dedup helper outcome into a serializable JSON object for the
  * registry_audit_log details field. The admin UI reads this back to render
  * the dedup history panel.
@@ -263,6 +257,12 @@ function dedupAuditDetails(
   }
 }
 
+/**
+ * Fire-and-forget customer notification when the webhook dedup helper
+ * canceled a duplicate subscription on this org. We always send to the
+ * full set of org admins (typically a single founder/owner). All failures
+ * are logged but never thrown — the dedup itself is the primary action.
+ */
 function fireDedupNotice(args: {
   org: { workos_organization_id: string; name: string | null };
   workos: WorkOS;
