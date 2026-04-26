@@ -11,7 +11,7 @@
  */
 
 import { chromium } from 'playwright';
-import { TARGET_URL, assert, resetFailures, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
+import { TARGET_URL, assert, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
 
 async function testMembershipHub(page, consoleErrors, userType) {
   console.log(`\n=== Membership hub: ${userType} ===`);
@@ -48,7 +48,6 @@ async function testMembershipHub(page, consoleErrors, userType) {
     await checkDevServer(page);
 
     for (const userType of ['member', 'personal', 'admin']) {
-      resetFailures();
       consoleErrors.length = 0;
       await testMembershipHub(page, consoleErrors, userType);
     }

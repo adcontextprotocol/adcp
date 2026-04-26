@@ -11,7 +11,7 @@
  */
 
 import { chromium } from 'playwright';
-import { TARGET_URL, assert, resetFailures, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
+import { TARGET_URL, assert, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
 
 async function testCertification(page, consoleErrors, userType) {
   console.log(`\n=== Certification dashboard: ${userType} ===`);
@@ -48,7 +48,6 @@ async function testCertification(page, consoleErrors, userType) {
     await checkDevServer(page);
 
     for (const userType of ['personal', 'admin']) {
-      resetFailures();
       consoleErrors.length = 0;
       await testCertification(page, consoleErrors, userType);
     }

@@ -31,7 +31,7 @@ async function testAdminNewsletter(page, consoleErrors) {
 
   console.log('Redirect:');
   // Verify the old /admin/digest URL redirects correctly.
-  const resp = await page.goto(`${TARGET_URL}/admin/digest`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${TARGET_URL}/admin/digest`, { waitUntil: 'domcontentloaded' });
   const finalUrl = page.url();
   assert(finalUrl.includes('/admin/newsletters/the_prompt'), `Redirect from /admin/digest lands on canonical URL (got: ${finalUrl})`);
 

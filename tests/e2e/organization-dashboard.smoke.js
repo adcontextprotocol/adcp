@@ -11,7 +11,7 @@
  */
 
 import { chromium } from 'playwright';
-import { TARGET_URL, assert, resetFailures, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
+import { TARGET_URL, assert, failureCount, login, filterConsoleErrors, checkDevServer } from './helpers.js';
 
 async function testOrgDashboard(page, consoleErrors, userType) {
   console.log(`\n=== Organization dashboard: ${userType} ===`);
@@ -49,7 +49,6 @@ async function testOrgDashboard(page, consoleErrors, userType) {
     await checkDevServer(page);
 
     for (const userType of ['admin', 'member']) {
-      resetFailures();
       consoleErrors.length = 0;
       await testOrgDashboard(page, consoleErrors, userType);
     }
