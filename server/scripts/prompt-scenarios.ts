@@ -65,6 +65,14 @@ show('Owner of 5-person team, Builder tier, profile incomplete', base({
   org_membership: { role: 'owner', member_count: 5, joined_at: ago(120) },
   community_profile: { is_public: false, slug: null, completeness: 50, github_username: null },
 }));
+show('Owner of company without a public listing', base({
+  org_membership: { role: 'owner', member_count: 3, joined_at: ago(60) },
+  adoption: { has_company_listing: false, team_wg_coverage: 0.5 },
+}));
+show('Owner of 8-person team with low WG coverage', base({
+  org_membership: { role: 'owner', member_count: 8, joined_at: ago(180) },
+  adoption: { has_company_listing: true, team_wg_coverage: 0.1 },
+}));
 show('WG leader (Creative)', base({
   working_groups: [{ name: 'Creative', is_leader: true }],
 }));
