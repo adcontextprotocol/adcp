@@ -7,6 +7,7 @@
   <title>Content — AgenticAdvertising.org</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body { background: var(--color-bg-page); min-height: 100vh; }
@@ -419,7 +420,7 @@
         </div>
         <div class="form-group">
           <label>Title</label>
-          <input type="text" id="title" required placeholder="Enter title">
+          <input type="text" id="title" required maxlength="500" placeholder="Enter title">
         </div>
         <div class="form-group">
           <label>Excerpt / Summary</label>
@@ -521,7 +522,7 @@
           <div id="shareLinkFields" class="hidden">
             <div class="form-group">
               <label>Title</label>
-              <input type="text" id="shareLinkTitle" required placeholder="Article title">
+              <input type="text" id="shareLinkTitle" required maxlength="500" placeholder="Article title">
             </div>
             <div class="form-group">
               <label>Why this matters <span style="font-weight: normal; color: var(--color-text-muted);">(one line)</span></label>
@@ -1453,6 +1454,35 @@
       preview.classList.remove('empty');
       preview.innerHTML = DOMPurify.sanitize(marked.parse(text));
     }
+
+    // Rich-text paste: convert pasted HTML (Google Docs / Notion / Word)
+    // to markdown so formatting survives. Plain-text paste falls through
+    // unchanged. See my-content.html for the same helper.
+    function wireRichTextPaste(textareaId) {
+      const el = document.getElementById(textareaId);
+      if (!el || typeof TurndownService === 'undefined') return;
+      const td = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+        bulletListMarker: '-',
+      });
+      el.addEventListener('paste', (event) => {
+        const html = event.clipboardData?.getData('text/html');
+        if (!html || !html.trim()) return;
+        event.preventDefault();
+        const cleanHtml = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+        const markdown = td.turndown(cleanHtml);
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const before = el.value.slice(0, start);
+        const after = el.value.slice(end);
+        el.value = `${before}${markdown}${after}`;
+        const caret = start + markdown.length;
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    window.addEventListener('DOMContentLoaded', () => wireRichTextPaste('articleContent'));
 
     function updateStatusHint() {
       const slug = document.getElementById('collection').value;
