@@ -167,10 +167,6 @@ function extractAlwaysAvailable(filePath: string, exportName: string): string[] 
   return result;
 }
 
-function escapeMdxCell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
-}
-
 function indentDescription(description: string): string {
   const trimmed = description.trim();
   if (!trimmed) return '';
@@ -247,6 +243,7 @@ function render(
   const frontmatter = `---
 title: Addie Tool Reference
 description: Every tool Addie has access to, grouped by capability set.
+"og:title": "AdCP — Addie Tool Reference"
 ---
 
 ${generatedAt}
