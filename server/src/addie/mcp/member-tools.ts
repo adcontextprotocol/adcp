@@ -3893,6 +3893,9 @@ export function createMemberToolHandlers(
       // Record the run in agent_test_history when we have a saved
       // agent_context for this org+url. Mirrors evaluate_agent_quality's
       // pattern; powers the "agent not tested in 14d" prompt rule.
+      // Storyboard runs don't carry a structured agent_profile (only
+      // evaluate_agent_quality probes get_adcp_capabilities), so we
+      // omit agent_profile_json — readers tolerate null.
       if (organizationId) {
         try {
           const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);

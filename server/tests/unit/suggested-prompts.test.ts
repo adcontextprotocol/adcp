@@ -350,6 +350,15 @@ describe('buildSuggestedPrompts', () => {
       expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
     });
 
+    it('does not fire for unlinked / non-member users with builder persona on context', () => {
+      const ctx = makeMember({
+        is_member: false,
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
     it('does not fire for non-builder personas even when stale', () => {
       const ctx = makeMember({
         persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
