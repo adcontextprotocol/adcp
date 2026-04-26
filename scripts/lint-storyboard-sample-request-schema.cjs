@@ -330,7 +330,7 @@ async function validateStep({ schemaRef, payload }) {
  *      `negative_path`:
  *        - `negative_path: schema_invalid` (default when absent) — payload is
  *          intentionally malformed; skip schema validation.
- *        - `negative_path: business_rule` — payload is schema-valid but violates
+ *        - `negative_path: payload_well_formed` — payload is schema-valid but violates
  *          a semantic rule; VALIDATE the sample_request even though expect_error
  *          is set.
  *   3. Validations that assert error codes or 4xx/5xx HTTP statuses
@@ -338,8 +338,8 @@ async function validateStep({ schemaRef, payload }) {
 function isNegativeStep(step) {
   if (step?.sample_request_skip_schema === true) return true;
   if (step?.expect_error === true) {
-    // business_rule steps send schema-valid payloads — validate them
-    if (step.negative_path === 'business_rule') return false;
+    // payload_well_formed steps send schema-valid payloads — validate them
+    if (step.negative_path === 'payload_well_formed') return false;
     // schema_invalid (default) — payload is intentionally malformed, skip
     return true;
   }

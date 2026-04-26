@@ -58,7 +58,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: media_buy_lifecycle
         expect_error: true
-        negative_path: business_rule
+        negative_path: payload_well_formed
         stateful: false
         expected: |
           Reject with:
@@ -177,7 +177,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: media_buy_lifecycle
         expect_error: true
-        negative_path: business_rule
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Reject with:
@@ -252,7 +252,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: media_buy_lifecycle
         expect_error: true
-        negative_path: business_rule
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Reject with:

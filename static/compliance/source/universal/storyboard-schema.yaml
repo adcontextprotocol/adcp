@@ -342,15 +342,16 @@
 #   the agent to return an error response for this step. Paired with `negative_path`
 #   to control whether the step's `sample_request` is schema-validated.)
 #
-# negative_path: "schema_invalid" | "business_rule" (optional, default "schema_invalid")
+# negative_path: "schema_invalid" | "payload_well_formed" (optional, default "schema_invalid")
 #   Disambiguates two categories of negative-path steps when `expect_error: true`:
 #   - schema_invalid (default): the `sample_request` payload is intentionally malformed
 #     (missing required field, wrong type, bad enum value, etc.) to verify the agent's
 #     validation response. Schema validation is SKIPPED on this step.
-#   - business_rule: the `sample_request` payload is schema-valid but violates a
-#     semantic invariant (wrong state-machine transition, resource not found, governance
-#     denial, temporal constraint, etc.). Schema validation RUNS even though the agent
-#     is expected to return an error. Shape drift on these steps is caught statically.
+#   - payload_well_formed: the `sample_request` payload is schema-valid but the agent
+#     rejects it at runtime — wrong state-machine transition, resource not found,
+#     governance denial, auth failure, temporal constraint, etc. Schema validation
+#     RUNS even though the agent is expected to return an error. Shape drift on these
+#     steps is caught statically.
 #   Omitting `negative_path` when `expect_error: true` behaves as `schema_invalid`
 #   (backwards-compatible default).
 #

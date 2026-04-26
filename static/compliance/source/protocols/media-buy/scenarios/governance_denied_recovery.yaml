@@ -168,7 +168,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true
-        negative_path: business_rule
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           The buy is rejected with GOVERNANCE_DENIED. The response includes findings

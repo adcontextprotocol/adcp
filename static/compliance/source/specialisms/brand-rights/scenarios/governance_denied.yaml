@@ -162,7 +162,7 @@ phases:
         response_schema_ref: "brand/acquire-rights-response.json"
         doc_ref: "/brand-protocol/tasks/acquire_rights"
         expect_error: true
-        negative_path: business_rule
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Brand agent rejects with:
