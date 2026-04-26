@@ -13,6 +13,7 @@ import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
+import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -342,6 +343,17 @@ export interface MemberContext {
     /** Fraction (0–1) of org members who belong to at least one working group. */
     team_wg_coverage: number;
   };
+
+  /**
+   * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
+   * suppress themselves after being shown without action. Map is keyed
+   * by rule_id; absent keys mean the rule has never been shown.
+   */
+  prompt_telemetry?: Map<string, {
+    shown_count: number;
+    last_shown_at: Date | null;
+    suppressed_until: Date | null;
+  }>;
 }
 
 /**
@@ -557,6 +569,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, organizationId }, 'Addie: Failed to compute adoption signals');
     }
 
+    // Per-rule telemetry for the prompt evaluator's suppression layer.
+    try {
+      context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load prompt telemetry');
+    }
+
     // Process subscription info
     if (subscriptionInfo && subscriptionInfo.status !== 'none') {
       context.subscription = {
@@ -753,6 +772,12 @@ async function resolveContextFromLocalDb(
     };
   } catch (error) {
     logger.warn({ error, organizationId }, 'Addie Web: Failed to compute adoption signals');
+  }
+
+  try {
+    context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load prompt telemetry');
   }
 
   try {

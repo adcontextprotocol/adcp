@@ -79,7 +79,8 @@ import {
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
 import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
-import { buildSuggestedPrompts } from './home/builders/suggested-prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { recordPromptsShown } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -777,7 +778,12 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildSuggestedPrompts(memberContext, userIsAdmin).map((p) => ({
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
       title: p.label,
       message: p.prompt,
     }));
