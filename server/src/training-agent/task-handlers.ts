@@ -488,7 +488,13 @@ export function deriveStatus(mb: MediaBuyState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
   const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') return 'pending_creatives';
+  if (!hasCreatives && mb.status !== 'completed') {
+    if (mb.complyControllerForced) {
+      mb.complyControllerForced = false;
+    } else {
+      return 'pending_creatives';
+    }
+  }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
@@ -2496,7 +2502,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
-    specialisms: ['signed-requests'],
+    specialisms: [],
     request_signing: {
       supported: signingCap.supported,
       covers_content_digest: signingCap.covers_content_digest,
@@ -3745,6 +3751,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         args: handlerArgs,
         response: cachableResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+        principal: idempotencyPrincipal,
       });
     }
 

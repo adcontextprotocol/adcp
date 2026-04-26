@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   initializeKnowledgeSearch,
@@ -479,12 +480,15 @@ export function createTavusRouter() {
     }
 
     // Log the user message (before voice prefix is applied)
+    const voiceSpeakerName = sanitizeSpeakerName(userDisplayName);
     if (threadId) {
       const threadService = getThreadService();
       threadService.addMessage({
         thread_id: threadId,
         role: "user",
         content: currentMessage,
+        user_id: voiceUserId ?? undefined,
+        user_display_name: voiceSpeakerName,
       }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
     }
 
@@ -582,6 +586,7 @@ export function createTavusRouter() {
         voiceRequestTools,
         {
           requestContext,
+          currentSpeakerName: voiceSpeakerName,
           costScope: voiceScope ?? { userId: `tavus:ip:${req.ip ?? 'unknown'}`, tier: 'anonymous' as const },
         }
       )) {

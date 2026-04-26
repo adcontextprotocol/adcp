@@ -1,4 +1,5 @@
 import { query, getClient } from './client.js';
+import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
 import type {
   HostedBrand,
   DiscoveredBrand,
@@ -163,7 +164,9 @@ export interface ListBrandsOptions {
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
   domain AS brand_domain, brand_manifest AS brand_json,
-  domain_verified, verification_token, is_public, created_at, updated_at`;
+  domain_verified, verification_token, is_public,
+  manifest_orphaned, prior_owner_org_id,
+  created_at, updated_at`;
 
 /**
  * Database operations for brands
@@ -293,15 +296,134 @@ export class BrandDatabase {
   }
 
   /**
-   * Delete a hosted brand
+   * Relinquish a hosted brand back to the discovered/community pool.
+   *
+   * Marks the manifest orphaned and stashes the prior owner's org id so a
+   * legitimate handoff (acquisition, org rename) can adopt the prior visual
+   * identity at claim time. The manifest itself is preserved but hidden from
+   * public surfaces via is_public=false until the next claimant decides
+   * whether to adopt or start fresh — see updateBrandIdentity's
+   * `adoptPriorManifest` flag. Without this, a hard reset would close the
+   * spoofing hole at the cost of legitimate-handoff UX; orphan-flag closes
+   * the hole AND preserves provenance.
    */
   async deleteHostedBrand(id: string): Promise<boolean> {
-    // Clear ownership fields rather than deleting the brand entirely
     const result = await query(
-      'UPDATE brands SET workos_organization_id = NULL, created_by_user_id = NULL, created_by_email = NULL, domain_verified = FALSE, verification_token = NULL, updated_at = NOW() WHERE id = $1',
+      `UPDATE brands SET
+         prior_owner_org_id = workos_organization_id,
+         workos_organization_id = NULL,
+         created_by_user_id = NULL,
+         created_by_email = NULL,
+         domain_verified = FALSE,
+         verification_token = NULL,
+         manifest_orphaned = TRUE,
+         is_public = FALSE,
+         updated_at = NOW()
+       WHERE id = $1`,
       [id]
     );
     return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  /**
+   * Claim an orphaned hosted brand at verification time.
+   *
+   * Atomically asserts ownership, marks verified, and resets the orphan
+   * state. Default = clear the prior manifest so the new owner doesn't
+   * silently inherit the prior org's visual identity. Pass
+   * `adoptPriorManifest: true` only when the caller has confirmed the
+   * legitimate-handoff case.
+   *
+   * Used by the verify-by-pointer route — without this, claiming an
+   * orphaned brand would leave the prior manifest attributed to the new
+   * owner, reopening the spoofing hole.
+   */
+  async claimOrphanedHostedBrand(
+    id: string,
+    workosOrganizationId: string,
+    options: { adoptPriorManifest?: boolean } = {},
+  ): Promise<HostedBrand | null> {
+    const adopt = options.adoptPriorManifest === true;
+    const manifestSet = adopt ? 'brand_manifest' : `'{}'::jsonb`;
+    const hasManifestSet = adopt ? 'has_brand_manifest' : 'FALSE';
+    const result = await query<HostedBrand>(
+      `UPDATE brands SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         brand_manifest = ${manifestSet},
+         has_brand_manifest = ${hasManifestSet},
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [id, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * List brand rows currently in the orphaned state — prior owner relinquished,
+   * manifest preserved for adoption. Joins the prior org name for admin display
+   * so the queue is readable without a separate lookup. Newest-first because
+   * recently relinquished brands are the most likely to need attention.
+   *
+   * The returned `last_updated_at` is the row's `updated_at` column. While a
+   * brand is orphaned, only `deleteHostedBrand` writes to it (the read paths
+   * filter orphans out, and the write paths — claimOrphanedHostedBrand,
+   * updateBrandIdentity, transferBrandOwnership — all clear the orphan flag
+   * as part of the same UPDATE), so in practice this equals "relinquished
+   * at." If a future code path mutates an orphan without clearing the flag,
+   * this field starts to drift; rename to a dedicated `manifest_orphaned_at`
+   * column at that point.
+   */
+  async listOrphanedBrands(
+    limit = 50,
+    offset = 0,
+  ): Promise<Array<{
+    domain: string;
+    brand_name: string | null;
+    prior_owner_org_id: string | null;
+    prior_owner_org_name: string | null;
+    last_updated_at: Date;
+    manifest_preview: { logo_url?: string; brand_color?: string };
+  }>> {
+    const result = await query<{
+      domain: string;
+      brand_name: string | null;
+      prior_owner_org_id: string | null;
+      prior_owner_org_name: string | null;
+      last_updated_at: Date;
+      brand_manifest: Record<string, unknown> | null;
+    }>(
+      `SELECT b.domain, b.brand_name, b.prior_owner_org_id,
+              o.name AS prior_owner_org_name,
+              b.updated_at AS last_updated_at,
+              b.brand_manifest
+       FROM brands b
+       LEFT JOIN organizations o ON o.workos_organization_id = b.prior_owner_org_id
+       WHERE b.manifest_orphaned = TRUE
+       ORDER BY b.updated_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows.map(row => {
+      const resolved = row.brand_manifest
+        ? resolveBrandFromJson(row.domain, row.brand_manifest, false)
+        : null;
+      return {
+        domain: row.domain,
+        brand_name: row.brand_name,
+        prior_owner_org_id: row.prior_owner_org_id,
+        prior_owner_org_name: row.prior_owner_org_name,
+        last_updated_at: row.last_updated_at,
+        manifest_preview: {
+          logo_url: resolved?.logo_url,
+          brand_color: resolved?.brand_color,
+        },
+      };
+    });
   }
 
   /**
@@ -314,6 +436,86 @@ export class BrandDatabase {
       [token, id]
     );
     return (result.rowCount ?? 0) > 0 ? token : null;
+  }
+
+  /**
+   * Apply a verified brand claim from the inline /verify route.
+   * Sets ownership + verified + clears orphan, AND applies the manifest
+   * decision (`adoptPriorManifest`). Used by /api/me/member-profile/brand-claim/verify
+   * where the caller has explicitly chosen adopt-vs-fresh.
+   *
+   * Webhook handlers must use markBrandDomainVerified instead — that path
+   * doesn't know the user's adopt choice and would otherwise clobber a
+   * manifest the caller intentionally adopted seconds earlier.
+   */
+  async applyVerifiedBrandClaim(
+    domain: string,
+    workosOrganizationId: string,
+    options: { adoptPriorManifest?: boolean } = {},
+  ): Promise<HostedBrand | null> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const adopt = options.adoptPriorManifest === true;
+    // Qualify with `brands.` so the ON CONFLICT branch isn't ambiguous —
+    // unqualified `brand_manifest` could refer to EXCLUDED or the existing
+    // row, and Postgres rejects the query.
+    const manifestSet = adopt ? 'brands.brand_manifest' : `'{}'::jsonb`;
+    const hasManifestSet = adopt ? 'brands.has_brand_manifest' : 'FALSE';
+    const result = await query<HostedBrand>(
+      `INSERT INTO brands (
+         domain, workos_organization_id, brand_manifest, has_brand_manifest,
+         source_type, review_status, is_public, domain_verified, manifest_orphaned
+       )
+       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         brand_manifest = ${manifestSet},
+         has_brand_manifest = ${hasManifestSet},
+         updated_at = NOW()
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [canonicalDomain, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * Mark a domain verified from a WorkOS webhook event.
+   * Sync-only: sets ownership, domain_verified, clears orphan state, but
+   * NEVER touches brand_manifest / has_brand_manifest. The verify route
+   * (applyVerifiedBrandClaim) is what the user-facing "adopt vs fresh"
+   * decision flows through; the webhook is a backstop in case the inline
+   * write was missed (or for state changes flipped via the WorkOS dashboard).
+   * Without this separation, a webhook arriving after `adoptPriorManifest:true`
+   * would reset the just-adopted manifest to {}.
+   *
+   * Idempotent — repeated calls produce the same end state. Always returns
+   * the current row.
+   */
+  async markBrandDomainVerified(
+    domain: string,
+    workosOrganizationId: string,
+  ): Promise<HostedBrand | null> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const result = await query<HostedBrand>(
+      `INSERT INTO brands (
+         domain, workos_organization_id, brand_manifest, has_brand_manifest,
+         source_type, review_status, is_public, domain_verified, manifest_orphaned
+       )
+       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = $2,
+         domain_verified = TRUE,
+         is_public = TRUE,
+         manifest_orphaned = FALSE,
+         prior_owner_org_id = NULL,
+         updated_at = NOW()
+       RETURNING ${HOSTED_BRAND_COLUMNS}`,
+      [canonicalDomain, workosOrganizationId]
+    );
+    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
   }
 
   /**
@@ -1037,6 +1239,87 @@ export class BrandDatabase {
       [domain.toLowerCase()]
     );
     return parseInt(result.rows[0].count, 10);
+  }
+
+  // ========== Ownership Transfer ==========
+
+  /**
+   * Transfer brand domain ownership to a new org, writing a revision for audit.
+   * Out-of-band verification (legal docs, support ticket) must happen before calling.
+   * Rejects unowned brands — there's nothing to transfer; use the normal
+   * registration path to claim them.
+   */
+  async transferBrandOwnership(
+    domain: string,
+    newOrgId: string,
+    reason: string,
+    editor: { userId: string; email?: string; name?: string },
+  ): Promise<{ oldOrgId: string; revisionNumber: number }> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      const lockResult = await client.query(
+        'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
+        [canonicalDomain]
+      );
+      if (lockResult.rows.length === 0) {
+        throw new Error(`Brand not found: ${canonicalDomain}`);
+      }
+
+      const current = lockResult.rows[0];
+      const oldOrgId = current.workos_organization_id ?? null;
+      if (!oldOrgId) {
+        throw new Error(`Brand ${canonicalDomain} has no current owner — there is nothing to transfer. Have the new org claim it through the normal registration path instead.`);
+      }
+      if (oldOrgId === newOrgId) {
+        throw new Error(`Brand ${canonicalDomain} is already owned by ${newOrgId}.`);
+      }
+
+      const orgCheck = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM organizations WHERE workos_organization_id = $1) AS exists`,
+        [newOrgId]
+      );
+      if (!orgCheck.rows[0]?.exists) {
+        throw new Error(`new_org_id ${newOrgId} does not exist in the organizations table.`);
+      }
+
+      const revResult = await client.query<{ next_rev: number }>(
+        'SELECT COALESCE(MAX(revision_number), 0) + 1 AS next_rev FROM brand_revisions WHERE brand_domain = $1',
+        [canonicalDomain]
+      );
+      const revisionNumber = revResult.rows[0].next_rev;
+
+      await client.query(
+        `INSERT INTO brand_revisions (
+          brand_domain, revision_number, snapshot,
+          editor_user_id, editor_email, editor_name, edit_summary
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          canonicalDomain,
+          revisionNumber,
+          JSON.stringify(current),
+          editor.userId,
+          editor.email ?? null,
+          editor.name ?? null,
+          `Ownership transferred to ${newOrgId}: ${reason}`,
+        ]
+      );
+
+      await client.query(
+        'UPDATE brands SET workos_organization_id = $1, updated_at = NOW() WHERE domain = $2',
+        [newOrgId, canonicalDomain]
+      );
+
+      await client.query('COMMIT');
+      return { oldOrgId, revisionNumber };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // ========== Helpers ==========

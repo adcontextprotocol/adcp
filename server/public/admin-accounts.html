@@ -1014,39 +1014,6 @@
     </div>
   </div>
 
-  <!-- Payment Link Modal -->
-  <div id="paymentLinkModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="paymentLinkModalTitle">
-    <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-header">
-        <h2 id="paymentLinkModalTitle">Generate payment link</h2>
-        <button class="modal-close" onclick="closePaymentLinkModal()" aria-label="Close">&times;</button>
-      </div>
-
-      <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
-
-      <div id="paymentLinkProducts" style="margin-bottom: var(--space-4);">
-        Loading products...
-      </div>
-
-      <div id="paymentLinkResult" style="display: none;">
-        <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
-          <strong style="color: var(--color-success-700);">Payment link generated!</strong>
-          <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
-            Copy this link and send it to the contact:
-          </p>
-        </div>
-        <div style="display: flex; gap: var(--space-2);">
-          <input type="text" id="paymentLinkUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
-          <button class="btn btn-primary btn-sm" onclick="copyPaymentLink()">Copy</button>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closePaymentLinkModal()">Close</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Generate Invoice Modal -->
   <div id="invoiceModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoiceModalTitle">
     <div class="modal-content" style="max-width: 600px;">
@@ -1943,115 +1910,6 @@
       }
     }
 
-    // Payment Link
-    let paymentLinkOrgId = null;
-
-    function openPaymentLinkForAccount(orgId, orgName) {
-      paymentLinkOrgId = orgId;
-      document.getElementById('paymentLinkOrgName').textContent = `For: ${orgName}`;
-      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
-      document.getElementById('paymentLinkResult').style.display = 'none';
-      document.getElementById('paymentLinkModal').style.display = 'block';
-      loadPaymentLinkProducts(orgId);
-    }
-
-    async function loadPaymentLinkProducts(orgId) {
-      try {
-        const response = await manageFetch(`/api/admin/accounts/${orgId}/payment-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
-
-        if (!response.ok) throw new Error('Failed to load products');
-
-        const data = await response.json();
-        if (data.needs_selection && data.products) {
-          renderPaymentLinkProducts(data.products);
-        }
-      } catch (error) {
-        console.error('Error loading products:', error);
-        document.getElementById('paymentLinkProducts').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
-      }
-    }
-
-    function renderPaymentLinkProducts(products) {
-      const container = document.getElementById('paymentLinkProducts');
-
-      if (products.length === 0) {
-        container.innerHTML = '<p style="color: var(--color-text-secondary);">No products available for this account type.</p>';
-        return;
-      }
-
-      container.innerHTML = products.map(product => {
-        const price = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(product.amount_cents / 100);
-
-        const tiers = product.revenue_tiers?.length > 0
-          ? `<span class="product-tiers">(${product.revenue_tiers.map(t => escapeHtml(t)).join(', ')})</span>`
-          : '';
-
-        return `
-          <button class="product-select-btn" onclick="generatePaymentLink('${escapeHtml(product.lookup_key)}')">
-            <strong>${escapeHtml(product.display_name)}</strong> ${tiers}
-            <br>
-            <span class="product-price">${price}/year</span>
-          </button>
-        `;
-      }).join('');
-    }
-
-    async function generatePaymentLink(lookupKey) {
-      if (!paymentLinkOrgId) return;
-
-      const container = document.getElementById('paymentLinkProducts');
-      container.innerHTML = '<p>Generating payment link...</p>';
-
-      try {
-        const response = await manageFetch(`/api/admin/accounts/${paymentLinkOrgId}/payment-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lookup_key: lookupKey })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || data.error || 'Failed to generate payment link');
-        }
-
-        if (data.success && data.payment_url) {
-          container.style.display = 'none';
-          document.getElementById('paymentLinkUrl').value = data.payment_url;
-          document.getElementById('paymentLinkResult').style.display = 'block';
-        } else {
-          throw new Error(data.message || 'Unknown error');
-        }
-      } catch (error) {
-        console.error('Error generating payment link:', error);
-        container.innerHTML = `<p style="color: var(--color-error-600);">Error: ${escapeHtml(error.message)}</p>`;
-      }
-    }
-
-    function copyPaymentLink() {
-      const input = document.getElementById('paymentLinkUrl');
-      input.select();
-      navigator.clipboard.writeText(input.value).then(() => {
-        alert('Payment link copied to clipboard!');
-      }).catch(() => {
-        document.execCommand('copy');
-        alert('Payment link copied to clipboard!');
-      });
-    }
-
-    function closePaymentLinkModal() {
-      document.getElementById('paymentLinkModal').style.display = 'none';
-      paymentLinkOrgId = null;
-    }
-
     // Invoice
     let invoiceOrgId = null;
     let selectedInvoiceProduct = null;
@@ -2309,7 +2167,6 @@
     window.addEventListener('click', function(event) {
       if (!event.target.classList.contains('modal')) return;
       if (event.target.id === 'prospectModal') closeProspectModal();
-      else if (event.target.id === 'paymentLinkModal') closePaymentLinkModal();
       else if (event.target.id === 'invoiceModal') closeInvoiceModal();
     });
 

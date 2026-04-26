@@ -21,6 +21,7 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
@@ -35,6 +36,7 @@ import {
   consumeInvitationSeatType,
   findSuccessorForPromotion,
   setMembershipRole,
+  autoLinkByVerifiedDomain,
 } from '../db/membership-db.js';
 
 const logger = createLogger('workos-webhooks');
@@ -120,10 +122,14 @@ async function upsertMembership(
 
   const role = membership.role?.slug || 'member';
 
-  // Consume any pending seat_type assignment from the invitation
-  const consumedSeatType = await consumeInvitationSeatType(membership.organization_id, userData.email);
-  const hasExplicitSeatType = consumedSeatType !== null;
-  const seatType = consumedSeatType || 'community_only';
+  // Consume any pending seat_type + provisioning_source staged by the
+  // endpoint that triggered this membership creation. Falls back to defaults
+  // when no row was staged (e.g. someone added the membership directly in
+  // WorkOS rather than through one of our endpoints).
+  const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
+  const hasExplicitSeatType = consumed !== null;
+  const seatType = consumed?.seat_type || 'community_only';
+  const provisioningSource = consumed?.source || 'webhook';
 
   const { assigned_role } = await upsertOrganizationMembership({
     user_id: membership.user_id,
@@ -135,6 +141,7 @@ async function upsertMembership(
     role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
+    provisioning_source: provisioningSource,
   });
 
   // If the DB promoted this member to owner, sync the change to WorkOS
@@ -560,6 +567,32 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
     }, 'Upserted organization domain');
+
+    // Sync the brand registry: if WorkOS just confirmed the domain is owned
+    // by this org, mirror ownership + verified flags into the brands row
+    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
+    // because the webhook doesn't know the user's adopt-vs-fresh decision
+    // and would otherwise clobber a manifest the inline /verify route
+    // intentionally adopted seconds earlier.
+    //
+    // For dashboard-flipped domains (admin marked verified directly in the
+    // WorkOS console, no inline /verify call), this path is the ONLY writer.
+    // A failure here means the brand row will lag the WorkOS state until the
+    // next event for this domain — investigate logs if it surfaces.
+    if (domainData.state === 'verified') {
+      try {
+        const brandDb = new BrandDatabase();
+        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+        logger.info({
+          orgId: domainData.organization_id,
+          domain: normalizedDomain,
+        }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        // Don't block the webhook on brand-registry sync errors — webhook
+        // idempotency is the whole point. Subsequent events will retry.
+        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -773,6 +806,23 @@ export function createWorkOSWebhooksRouter(): Router {
                 { userId: user.id, email: user.email, slackUserId: linkResult.slack_user_id },
                 'Auto-linked new website user to Slack account'
               );
+            }
+            // Auto-provision into a verified-domain org if one matches.
+            // Verified email is the trust gate: skip when WorkOS hasn't confirmed it yet
+            // (the /api/me/* paths will retry after the user signs in and the email verifies).
+            if (user.email_verified) {
+              try {
+                const linked = await autoLinkByVerifiedDomain(getWorkos(), user.id, user.email);
+                if (linked) {
+                  logger.info(
+                    { userId: user.id, email: user.email, orgId: linked.organizationId, role: linked.role },
+                    'Auto-provisioned new user into verified-domain organization'
+                  );
+                }
+              } catch (linkErr) {
+                logger.warn({ err: linkErr, userId: user.id, email: user.email },
+                  'Failed to auto-provision new user into verified-domain organization');
+              }
             }
             // Fire-and-forget prospect triage + brand research for business emails.
             if (user.email) {

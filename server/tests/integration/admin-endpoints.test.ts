@@ -552,6 +552,59 @@ describe('Admin Endpoints Integration Tests', () => {
     });
   });
 
+  describe('GET /api/admin/accounts/:orgId (subscription fields)', () => {
+    const SUB_TEST_ORG_ID = 'org_sub_field_test';
+
+    beforeEach(async () => {
+      await pool.query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, stripe_customer_id,
+           subscription_status, stripe_subscription_id, subscription_price_lookup_key,
+           subscription_product_name, subscription_amount, subscription_interval,
+           subscription_currency, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           subscription_status = $4, stripe_subscription_id = $5,
+           subscription_price_lookup_key = $6`,
+        [
+          SUB_TEST_ORG_ID, 'Sub Field Test Org', 'cus_sub_field_test',
+          'active', 'sub_test123', 'member_annual',
+          'AgenticAdvertising.org Membership', 29900, 'year', 'usd',
+        ]
+      );
+    });
+
+    afterEach(async () => {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_TEST_ORG_ID]);
+    });
+
+    it('should include stripe_subscription_id and price_lookup_key in subscription object', async () => {
+      const response = await request(app)
+        .get(`/api/admin/accounts/${SUB_TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(response.body.subscription).not.toBeNull();
+      expect(response.body.subscription.stripe_subscription_id).toBe('sub_test123');
+      expect(response.body.subscription.price_lookup_key).toBe('member_annual');
+    });
+
+    it('should return null (not undefined) for stripe fields when absent in DB', async () => {
+      await pool.query(
+        `UPDATE organizations SET stripe_subscription_id = NULL, subscription_price_lookup_key = NULL
+         WHERE workos_organization_id = $1`,
+        [SUB_TEST_ORG_ID]
+      );
+      const response = await request(app)
+        .get(`/api/admin/accounts/${SUB_TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(Object.prototype.hasOwnProperty.call(response.body.subscription, 'stripe_subscription_id')).toBe(true);
+      expect(response.body.subscription.stripe_subscription_id).toBeNull();
+      expect(Object.prototype.hasOwnProperty.call(response.body.subscription, 'price_lookup_key')).toBe(true);
+      expect(response.body.subscription.price_lookup_key).toBeNull();
+    });
+  });
+
   describe('Admin page routes (redirect regression)', () => {
     it('GET /admin/accounts should serve HTML, not redirect', async () => {
       const response = await request(app)

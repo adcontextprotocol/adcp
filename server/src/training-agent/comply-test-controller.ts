@@ -172,6 +172,7 @@ function createStore(session: SessionState): TestControllerStore {
 
       const now = new Date().toISOString();
       mb.status = status;
+      mb.complyControllerForced = true;
       mb.updatedAt = now;
 
       if (status === 'canceled') {
@@ -465,7 +466,7 @@ function createStore(session: SessionState): TestControllerStore {
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'seed_creative_format'] as const;
+const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'seed_creative_format'] as const;
 
 // ── Tool definition ───────────────────────────────────────────────
 
@@ -540,7 +541,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
 
-  const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
 
   // Pre-dispatch local scenarios the SDK doesn't know about yet. The SDK's
   // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before
@@ -548,6 +550,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const scenario = rawArgs.scenario;
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+  if (scenario === 'force_task_completion') {
+    return handleForceTaskCompletion(sessionKey, rawArgs);
   }
   // seed_creative_format is a training-agent extension not in the SDK's
   // CONTROLLER_SCENARIOS. Handle it before the SDK dispatcher so the SDK
@@ -694,6 +699,137 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
     success: true,
     forced: { arm, task_id: taskId },
     message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+/**
+ * Resolve a previously-registered task to `completed` with a buyer-supplied
+ * result payload. Spec: `force_task_completion` in
+ * `comply-test-controller-request.json` and the matching mdx section.
+ *
+ * The training-agent records completions in a process-global Map keyed by
+ * (caller-supplied task_id) → ({ result, ownerKey }). Cross-account calls return
+ * NOT_FOUND (per the spec MUST). Tasks already at `completed` with the same
+ * result are idempotent no-ops; tasks at any other terminal state return
+ * INVALID_TRANSITION.
+ *
+ * Buyer-side observability via tasks/get is intentionally **deferred** to a
+ * follow-up. The MCP SDK's TaskStore generates task_ids server-side and exposes
+ * no API for caller-supplied IDs, and the SDK's auto-registered tasks/get
+ * returns the MCP Task shape rather than the AdCP `tasks-get-response.json`
+ * shape — both gaps need fixing before a storyboard polling phase against the
+ * training-agent can pass. This commit ships the controller-side primitive
+ * (the directive write) so other reference sellers and the upstream SDK have a
+ * concrete behavior to mirror; the storyboard extension lands once the
+ * polling integration exists. See PR description for the deferred tracking.
+ */
+const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
+const MAX_FORCED_TASK_COMPLETIONS = 1000;
+
+/** Test-only: clear the forced-completion pool. */
+export function clearForcedTaskCompletions(): void {
+  FORCED_TASK_COMPLETIONS.clear();
+}
+
+/** Test-only: read the forced-completion pool. */
+export function getForcedTaskCompletions(): ReadonlyMap<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }> {
+  return FORCED_TASK_COMPLETIONS;
+}
+
+function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'force_task_completion requires params',
+    };
+  }
+
+  const taskId = params.task_id;
+  if (typeof taskId !== 'string' || taskId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id is required',
+    };
+  }
+  if (taskId.length > 128) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id exceeds maxLength 128',
+    };
+  }
+
+  const result = params.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'result is required and must be an object (validates against async-response-data.json)',
+    };
+  }
+
+  // Soft 256 KB cap on result payloads, per the spec's recommendation. Bounds
+  // sandbox-amplified storage/echo DoS against the seller's task store.
+  const resultBytes = JSON.stringify(result).length;
+  if (resultBytes > 256 * 1024) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `result payload exceeds 256 KB (${resultBytes} bytes)`,
+    };
+  }
+
+  const existing = FORCED_TASK_COMPLETIONS.get(taskId);
+  if (existing) {
+    // Cross-account check (spec MUST): NOT_FOUND for task_ids belonging to other
+    // accounts, conventional "not yours" → "doesn't exist" treatment.
+    if (existing.ownerKey !== sessionKey) {
+      return {
+        success: false,
+        error: 'NOT_FOUND',
+        error_detail: `Task "${taskId}" was not registered for this sandbox account`,
+      };
+    }
+    // Idempotent replay: same params → no-op success.
+    if (JSON.stringify(existing.result) === JSON.stringify(result)) {
+      return {
+        success: true,
+        previous_state: 'completed',
+        current_state: 'completed',
+        message: `Task ${taskId} already completed with the same result`,
+      };
+    }
+    // Diverging replay against a terminal task: INVALID_TRANSITION.
+    return {
+      success: false,
+      error: 'INVALID_TRANSITION',
+      error_detail: `Task "${taskId}" is already terminal (completed); cannot re-complete with diverging result`,
+      current_state: 'completed',
+    };
+  }
+
+  if (FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
+    return {
+      success: false,
+      error: 'INVALID_STATE',
+      error_detail: `Forced-completion cap reached (${MAX_FORCED_TASK_COMPLETIONS})`,
+    };
+  }
+
+  FORCED_TASK_COMPLETIONS.set(taskId, {
+    result: result as Record<string, unknown>,
+    ownerKey: sessionKey,
+    completedAt: new Date().toISOString(),
+  });
+
+  return {
+    success: true,
+    previous_state: 'submitted',
+    current_state: 'completed',
+    message: `Task ${taskId} transitioned from submitted to completed`,
   };
 }
 

@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, ContentStandardsState } from './types.js';
 import { getSession, sessionKeyFromArgs, MAX_CONTENT_STANDARDS_PER_SESSION } from './state.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -50,6 +51,13 @@ export const CONTENT_STANDARDS_TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Filter by channel' },
         languages: { type: 'array', items: { type: 'string' }, description: 'Filter by language' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Filter by country (ISO 3166-1 alpha-2)' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100, description: 'Max standards per page (default 50, cap 100).' },
+            cursor: { type: 'string', description: 'Continuation token from a previous list_content_standards response.' },
+          },
+        },
       },
     },
   },
@@ -221,7 +229,12 @@ export async function handleListContentStandards(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { channels?: string[]; languages?: string[]; countries?: string[] };
+  const req = args as {
+    channels?: string[];
+    languages?: string[];
+    countries?: string[];
+    pagination?: { max_results?: number; cursor?: string };
+  };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let standards = [...session.contentStandards.values()];
@@ -244,8 +257,24 @@ export async function handleListContentStandards(
     );
   }
 
+  const totalMatching = standards.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeOffsetCursor('content_standards', req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageStandards = standards.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
   return {
-    standards: standards.map(toStandardsResponse),
+    standards: pageStandards.map(toStandardsResponse),
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeOffsetCursor('content_standards', pageEnd) }),
+    },
   };
 }
 

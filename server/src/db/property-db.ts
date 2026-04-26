@@ -211,7 +211,13 @@ export class PropertyDatabase {
   // ========== Discovered Properties ==========
 
   /**
-   * Get discovered properties by publisher domain
+   * Get discovered properties by publisher domain.
+   *
+   * UNION over the legacy `discovered_properties` table and properties
+   * extracted from `publishers.adagents_json` JSONB. Legacy wins on
+   * collisions during the #3177 dual-write window so consumers that hold a
+   * `discovered_properties.id` keep working; catalog-only rows surface for
+   * post-seed properties that never landed in the legacy table.
    */
   async getDiscoveredPropertiesByDomain(domain: string): Promise<Array<{
     id: string;
@@ -233,7 +239,50 @@ export class PropertyDatabase {
       tags: string[];
       source_type: string;
     }>(
-      'SELECT * FROM discovered_properties WHERE publisher_domain = $1',
+      `WITH unioned AS (
+         SELECT id, property_id, publisher_domain, property_type, name,
+                identifiers, tags, source_type, 0 AS src_priority
+           FROM discovered_properties
+          WHERE publisher_domain = $1
+         UNION ALL
+         SELECT
+           cp.property_rid AS id,
+           prop->>'property_id' AS property_id,
+           p.domain AS publisher_domain,
+           prop->>'property_type' AS property_type,
+           prop->>'name' AS name,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
+           COALESCE(
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
+             ARRAY[]::text[]
+           ) AS tags,
+           'adagents_json'::text AS source_type,
+           1 AS src_priority
+           FROM publishers p
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                 THEN p.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+           LEFT JOIN catalog_properties cp
+                  ON cp.property_id = prop->>'property_id'
+                 AND cp.created_by = 'adagents_json:' || p.domain
+          WHERE p.domain = $1
+            AND p.source_type = 'adagents_json'
+            AND prop->>'name' IS NOT NULL
+            AND prop->>'property_type' IS NOT NULL
+       )
+       SELECT DISTINCT ON (publisher_domain, name, property_type)
+              id, property_id, publisher_domain, property_type, name,
+              identifiers, tags, source_type
+         FROM unioned
+        ORDER BY publisher_domain, name, property_type, src_priority`,
       [domain.toLowerCase()]
     );
     return result.rows.map((row) => ({
@@ -271,7 +320,16 @@ export class PropertyDatabase {
   // ========== Property Registry (Combined View) ==========
 
   /**
-   * Get all properties (hosted + discovered) for registry view
+   * Get all properties (hosted + discovered) for registry view.
+   *
+   * Three-way UNION over hosted_properties (community/enriched), the legacy
+   * discovered_properties table, and the catalog-side publishers cache
+   * (PR 1 of #3177). A domain only surfaces once per query — hosted wins
+   * over crawl, and within the crawl side legacy wins over catalog so
+   * `agent_count` keeps being computed from the existing
+   * agent_property_authorizations join during the dual-write window. After
+   * PR 5 the legacy crawl half is removed and the catalog branch alone
+   * answers crawl-sourced rows.
    */
   async getAllPropertiesForRegistry(options: ListPropertiesOptions = {}): Promise<Array<{
     domain: string;
@@ -293,34 +351,64 @@ export class PropertyDatabase {
       verified: boolean;
     }>(
       `
-      -- Hosted properties
-      SELECT
-        publisher_domain as domain,
-        COALESCE(source_type, 'hosted') as source,
-        COALESCE(jsonb_array_length(adagents_json->'properties'), 0)::int as property_count,
-        COALESCE(jsonb_array_length(adagents_json->'authorized_agents'), 0)::int as agent_count,
-        domain_verified as verified
-      FROM hosted_properties
-      WHERE is_public = true
-        AND (review_status IS NULL OR review_status = 'approved')
-        AND ($1::text IS NULL OR publisher_domain ILIKE $1)
-
-      UNION ALL
-
-      -- Discovered properties (from crawled adagents.json)
-      SELECT
-        publisher_domain as domain,
-        CASE WHEN source_type = 'adagents_json' OR source_type IS NULL THEN 'adagents_json' ELSE 'discovered' END as source,
-        COUNT(*)::int as property_count,
-        (SELECT COUNT(DISTINCT apa.agent_url) FROM agent_property_authorizations apa
-         JOIN discovered_properties dp2 ON apa.property_id = dp2.id
-         WHERE dp2.publisher_domain = discovered_properties.publisher_domain)::int as agent_count,
-        true as verified
-      FROM discovered_properties
-      WHERE ($1::text IS NULL OR publisher_domain ILIKE $1)
-        AND publisher_domain NOT IN (SELECT publisher_domain FROM hosted_properties WHERE is_public = true)
-      GROUP BY publisher_domain, source_type
-
+      WITH hosted AS (
+        SELECT
+          publisher_domain as domain,
+          COALESCE(source_type, 'hosted') as source,
+          (CASE WHEN jsonb_typeof(adagents_json->'properties') = 'array'
+                THEN jsonb_array_length(adagents_json->'properties')
+                ELSE 0 END)::int as property_count,
+          (CASE WHEN jsonb_typeof(adagents_json->'authorized_agents') = 'array'
+                THEN jsonb_array_length(adagents_json->'authorized_agents')
+                ELSE 0 END)::int as agent_count,
+          domain_verified as verified,
+          0 as src_priority
+        FROM hosted_properties
+        WHERE is_public = true
+          AND (review_status IS NULL OR review_status = 'approved')
+          AND ($1::text IS NULL OR publisher_domain ILIKE $1)
+      ),
+      legacy AS (
+        SELECT
+          publisher_domain as domain,
+          CASE WHEN source_type = 'adagents_json' OR source_type IS NULL THEN 'adagents_json' ELSE 'discovered' END as source,
+          COUNT(*)::int as property_count,
+          (SELECT COUNT(DISTINCT apa.agent_url) FROM agent_property_authorizations apa
+           JOIN discovered_properties dp2 ON apa.property_id = dp2.id
+           WHERE dp2.publisher_domain = discovered_properties.publisher_domain)::int as agent_count,
+          true as verified,
+          1 as src_priority
+        FROM discovered_properties
+        WHERE ($1::text IS NULL OR publisher_domain ILIKE $1)
+          AND publisher_domain NOT IN (SELECT domain FROM hosted)
+        GROUP BY publisher_domain, source_type
+      ),
+      catalog_only AS (
+        SELECT
+          p.domain as domain,
+          'adagents_json'::text as source,
+          (CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                THEN jsonb_array_length(p.adagents_json->'properties')
+                ELSE 0 END)::int as property_count,
+          (CASE WHEN jsonb_typeof(p.adagents_json->'authorized_agents') = 'array'
+                THEN jsonb_array_length(p.adagents_json->'authorized_agents')
+                ELSE 0 END)::int as agent_count,
+          true as verified,
+          2 as src_priority
+        FROM publishers p
+        WHERE p.source_type = 'adagents_json'
+          AND ($1::text IS NULL OR p.domain ILIKE $1)
+          AND p.domain NOT IN (SELECT domain FROM hosted)
+          AND p.domain NOT IN (SELECT domain FROM legacy)
+      )
+      SELECT domain, source, property_count, agent_count, verified
+      FROM (
+        SELECT * FROM hosted
+        UNION ALL
+        SELECT * FROM legacy
+        UNION ALL
+        SELECT * FROM catalog_only
+      ) all_sources
       ORDER BY domain
       LIMIT $2 OFFSET $3
       `,
@@ -331,7 +419,12 @@ export class PropertyDatabase {
   }
 
   /**
-   * Get aggregated stats for the property registry (counts by source type)
+   * Get aggregated stats for the property registry (counts by source type).
+   *
+   * Mirrors getAllPropertiesForRegistry's three-way UNION (hosted + legacy
+   * discovered + catalog-only publishers) so a domain that has both a
+   * legacy crawl row and a catalog row is counted exactly once. Hosted
+   * wins over crawl; legacy wins over catalog within the crawl side.
    */
   async getPropertyRegistryStats(search?: string): Promise<Record<string, number>> {
     const escapedSearch = search ? search.replace(/[%_\\]/g, '\\$&') : null;
@@ -339,22 +432,35 @@ export class PropertyDatabase {
 
     const result = await query<{ source: string; count: number }>(
       `
-      SELECT source, COUNT(*)::int as count FROM (
-        -- Hosted properties
-        SELECT COALESCE(source_type, 'hosted') as source
+      WITH hosted AS (
+        SELECT publisher_domain AS domain, COALESCE(source_type, 'hosted') as source
         FROM hosted_properties
         WHERE is_public = true
           AND (review_status IS NULL OR review_status = 'approved')
           AND ($1::text IS NULL OR publisher_domain ILIKE $1)
-
+      ),
+      legacy AS (
+        SELECT publisher_domain AS domain,
+               CASE WHEN source_type = 'adagents_json' OR source_type IS NULL THEN 'adagents_json' ELSE 'discovered' END as source
+          FROM discovered_properties
+         WHERE ($1::text IS NULL OR publisher_domain ILIKE $1)
+           AND publisher_domain NOT IN (SELECT domain FROM hosted)
+         GROUP BY publisher_domain, source_type
+      ),
+      catalog_only AS (
+        SELECT p.domain AS domain, 'adagents_json'::text AS source
+          FROM publishers p
+         WHERE p.source_type = 'adagents_json'
+           AND ($1::text IS NULL OR p.domain ILIKE $1)
+           AND p.domain NOT IN (SELECT domain FROM hosted)
+           AND p.domain NOT IN (SELECT domain FROM legacy)
+      )
+      SELECT source, COUNT(*)::int AS count FROM (
+        SELECT source FROM hosted
         UNION ALL
-
-        -- Discovered properties
-        SELECT CASE WHEN source_type = 'adagents_json' OR source_type IS NULL THEN 'adagents_json' ELSE 'discovered' END as source
-        FROM discovered_properties
-        WHERE ($1::text IS NULL OR publisher_domain ILIKE $1)
-          AND publisher_domain NOT IN (SELECT publisher_domain FROM hosted_properties WHERE is_public = true)
-        GROUP BY publisher_domain, source_type
+        SELECT source FROM legacy
+        UNION ALL
+        SELECT source FROM catalog_only
       ) sub
       GROUP BY source
       `,

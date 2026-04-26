@@ -42,18 +42,27 @@ jobs:
             exit 0
           fi
 
-          cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          echo "Looking for untriaged issues created since $cutoff..."
+          # Two-bound filter: only sweep issues created between 30 min and
+          # 24 hours ago. The 30-min grace period prevents double-firing on
+          # issues where the original `issues.opened` webhook fired but the
+          # routine just hasn't applied the `claude-triaging` label yet (max
+          # observed ~4 min in practice; 30 min is safety margin). Without
+          # this grace period, the sweep races with normal triage and burns
+          # tokens on duplicate routine fires.
+          floor=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          ceiling=$(date -u -d '30 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Looking for untriaged issues created between $floor and $ceiling..."
 
-          # Open issues created in last 24h, not PRs, not bot-authored,
+          # Open issues, not PRs, not bot-authored, created in the window,
           # not already labeled claude-triaged or claude-triaging.
           mapfile -t numbers < <(
-            gh api "repos/$REPO/issues?state=open&since=$cutoff&per_page=100" --paginate \
+            gh api "repos/$REPO/issues?state=open&since=$floor&per_page=100" --paginate \
               --jq '.[] | select(
                 .pull_request == null
                 and (.user.type != "Bot")
                 and ((.user.login | endswith("[bot]")) | not)
-                and (.created_at >= "'"$cutoff"'")
+                and (.created_at >= "'"$floor"'")
+                and (.created_at <= "'"$ceiling"'")
                 and ([.labels[].name] | (contains(["claude-triaged"]) or contains(["claude-triaging"])) | not)
               ) | .number'
           )

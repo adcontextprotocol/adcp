@@ -545,6 +545,8 @@ phases:
           Return a successful state transition to active.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
           params:
             media_buy_id: '$context.media_buy_id'
@@ -623,6 +625,8 @@ phases:
           Return a successful transition to completed.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
           params:
             media_buy_id: '$context.media_buy_id'
@@ -665,6 +669,8 @@ phases:
           - error: INVALID_TRANSITION
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
           params:
             media_buy_id: '$context.media_buy_id'
@@ -762,6 +768,8 @@ phases:
           Successful transition to approved.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
           params:
             creative_id: '$context.creative_id'
@@ -800,6 +808,8 @@ phases:
           Successful transition to archived.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
           params:
             creative_id: '$context.creative_id'
@@ -835,6 +845,8 @@ phases:
           Return error with INVALID_TRANSITION.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
           params:
             creative_id: '$context.creative_id'
@@ -869,8 +881,8 @@ phases:
           that cannot transition to rejected. Sync a second, fresh creative so
           the rejection path starts from processing rather than archived.
         task: sync_creatives
-        schema_ref: "media-buy/sync-creatives-request.json"
-        response_schema_ref: "media-buy/sync-creatives-response.json"
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/media-buy/task-reference/sync_creatives"
         comply_scenario: deterministic_creative
         stateful: true
@@ -900,7 +912,7 @@ phases:
             correlation_id: "deterministic_testing--sync_fresh_creative_for_rejection"
         context_outputs:
           - path: "creatives[0].creative_id"
-            key: "fresh_creative_id"
+            name: "fresh_creative_id"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -924,6 +936,8 @@ phases:
           Successful transition to rejected with reason preserved.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
           params:
             creative_id: '$context.fresh_creative_id'
@@ -1130,6 +1144,8 @@ phases:
           Return success with simulated delivery metrics acknowledged.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'simulate_delivery'
           params:
             media_buy_id: '$context.delivery_media_buy_id'
@@ -1261,6 +1277,8 @@ phases:
           Return success with budget spend simulated to 95%.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'simulate_budget_spend'
           params:
             media_buy_id: '$context.budget_media_buy_id'
@@ -1295,6 +1313,8 @@ phases:
           Return success with budget fully depleted.
 
         sample_request:
+          brand:
+            domain: 'acmeoutdoor.example'
           scenario: 'simulate_budget_spend'
           params:
             media_buy_id: '$context.budget_media_buy_id'

@@ -35,6 +35,44 @@ export function assertValidBrandDomain(canonical: string): void {
   }
 }
 
+/**
+ * Shared-platform and public-suffix domains where any one tenant claiming
+ * the apex would steal the brand identity for thousands of others. WorkOS
+ * may or may not reject these at create — defense in depth so the
+ * brand-claim flow can't accidentally hand `vercel.app` to one member.
+ *
+ * Not exhaustive — for full coverage we'd need the public-suffix list
+ * from publicsuffix.org. This blocks the highest-volume offenders.
+ */
+const SHARED_PLATFORM_DOMAINS = new Set<string>([
+  // Hosting / serverless
+  'vercel.app', 'vercel.com', 'netlify.app', 'netlify.com', 'fly.dev',
+  'fly.io', 'render.com', 'pages.dev', 'workers.dev', 'web.app',
+  'firebaseapp.com', 'cloudfront.net', 'amplifyapp.com', 'replit.app',
+  'replit.dev', 'repl.co', 'glitch.me', 'azurewebsites.net', 'herokuapp.com',
+  // Content platforms
+  'github.io', 'gitlab.io', 'bitbucket.io', 'readthedocs.io',
+  'medium.com', 'substack.com', 'wordpress.com', 'blogspot.com',
+  'tumblr.com', 'wixsite.com', 'squarespace.com',
+  // Common eTLDs that pass the apex regex
+  'co.uk', 'co.jp', 'com.au', 'com.br', 'co.in', 'co.nz', 'co.za',
+  'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ne.jp', 'or.jp',
+]);
+
+/**
+ * Throw if a caller is trying to claim a domain that's a shared platform
+ * (vercel.app, github.io) or a country-code public suffix (co.uk). Used
+ * by the brand-claim flow before issuing a verification challenge —
+ * letting one member claim `vercel.app` would steal the brand identity
+ * for every Vercel-hosted site.
+ */
+export function assertClaimableBrandDomain(canonical: string): void {
+  assertValidBrandDomain(canonical);
+  if (SHARED_PLATFORM_DOMAINS.has(canonical)) {
+    throw new Error(`"${canonical}" is a shared platform or public-suffix domain and can't be claimed as a single brand.`);
+  }
+}
+
 function normalizeDomain(raw: string): { value: string; reason: string | null } {
   let canonical = raw.trim();
   // Strip protocol

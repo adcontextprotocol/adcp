@@ -23,6 +23,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 |-----------|---------|
 | `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
 | `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/integration/authentication). |
@@ -32,6 +33,9 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `pagination-integrity-creative-formats` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creative_formats` response — storyboard seeds two creative formats via `seed_creative_format`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `get-media-buys-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_media_buys` response — storyboard seeds three media buys via `seed_media_buy`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
+| `content-standards-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_content_standards` response — storyboard bootstraps three content standards configurations via `create_content_standards`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
+| `collection-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_collection_lists` response — storyboard bootstraps three collection lists via `create_collection_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
+| `property-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_property_lists` response — storyboard bootstraps three property lists via `create_property_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
@@ -151,6 +155,10 @@ The storyboard runner:
 2. For each protocol in `supported_protocols`, runs the baseline at `/compliance/{version}/protocols/{protocol}/` (snake_case → kebab-case)
 3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
 4. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
+
+<Warning>
+**Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
+</Warning>
 
 If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/validate-your-agent) for how to run the suite locally.
 

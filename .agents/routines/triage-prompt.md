@@ -679,28 +679,38 @@ will resurface them. Always default to `Refs` when partial; promote to
 ## Pre-PR build + test gate — mandatory before expert review
 
 The expert review is expensive; don't run it on broken code. Before
-spawning experts, make sure the diff actually compiles and the
-unit tests pass.
+spawning experts, make sure the diff actually compiles and the full
+build's transitive lints are clean.
 
-1. Run the repo's build + fast test tier:
-   - `npm run precommit` — prefer this (bundled build + typecheck +
-     unit tests); falls back to `npm run build && npm test` if not
-     defined
-   - If the diff touches only `docs/**` or `static/**`, skip build
-     and run the relevant doc check instead (e.g., `npm run
-     docs:check` or `mintlify broken-links`)
+1. Run the repo's full build + typecheck:
+   - **Default for any non-docs-only diff:** `npm run build && npm run typecheck`.
+     `build` chains every lint CI runs — `build:schemas`,
+     `build:compliance` (storyboard `idempotency_key` lint,
+     contradictions, pagination-invariant, doc-parity rows in
+     `docs/building/conformance.mdx` and
+     `docs/building/compliance-catalog.mdx`), and
+     `build:protocol-tarball`. **`npm run precommit` is NOT a
+     substitute** — it runs typecheck + unit tests but skips the
+     full compliance build, which has historically caught issues
+     the expert review missed: missing `idempotency_key`, doc-parity
+     gaps, cursor-codec duplication, lint contradictions. Run the
+     full `build` always unless the diff is docs-only.
+   - **Docs-only diffs (no MDX referenced by `build-compliance`):**
+     `mintlify broken-links` or `npm run docs:check`.
 2. **If build or tests fail:** read the errors, fix the code,
    re-run. Cap at **2 build→fix iterations.** If still failing,
    abandon the PR and Flag for human review with the build log
-   in the comment.
+   in the comment. **Do not declare "approved" in the pre-PR
+   review block while build is red** — that's a trust-eroding
+   signal.
 3. Do **not** skip tests locally because "CI will run them." The
    point of this gate is to not ship known-broken code even as a
    draft, because (a) review noise, (b) a human reviewer may
    admin-merge a draft that looks fine, (c) a green CI on push
    is the baseline for the auto-fix loop — a red PR at push time
    is indistinguishable from drift after the fact.
-4. Only once build + tests pass on the final diff: proceed to
-   pre-PR expert review.
+4. Only once `npm run build && npm run typecheck` pass on the
+   final diff: proceed to pre-PR expert review.
 
 ## Pre-PR expert review — mandatory before `gh pr create`
 
@@ -745,7 +755,7 @@ have read the diff before a human reviewer does.
 - Status: **draft** — never ready-for-review
 - Title: conventional-commits (`fix(docs): …`, `feat(schema): …`,
   `docs: …`)
-- Body:
+- Body, in order:
   - `Closes #N`
   - One-paragraph summary
   - **Non-breaking justification:** one line naming why the change
@@ -753,7 +763,34 @@ have read the diff before a human reviewer does.
     field X; existing clients unaffected")
   - **Pre-PR review** block (from the step above) with both
     experts' one-line sign-off
+  - **Triage-managed PR block** — **append this verbatim** before
+    the Session link so reviewers know the iteration policy:
+
+    ```
+    > **Triage-managed PR.** This bot does not currently iterate on
+    > review comments or PR conversation threads (only on the source
+    > issue). To unblock:
+    >
+    > - **Push fixup commits directly:** `gh pr checkout <num>` →
+    >   fix → push.
+    > - **Or re-trigger:** comment `/triage execute` on the source
+    >   issue.
+    >
+    > See [#3121](https://github.com/adcontextprotocol/adcp/issues/3121)
+    > for context.
+    ```
+
   - `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`
+- **After `gh pr create` succeeds**, label the PR `claude-triaged`
+  so it's searchable from PR list views (mirrors the issue label):
+
+  ```
+  gh pr edit <PR#> --repo <owner>/<repo> --add-label claude-triaged
+  ```
+
+  (Don't apply `claude-triaging` to the PR — that label is the
+  routine's "I'm working on this **issue**" signal, not a PR
+  ownership marker.)
 - Include a changeset file
 - Run any relevant repo checks (tests for MDX if MDX touched, schema
   validation if JSON schemas touched)

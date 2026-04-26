@@ -176,11 +176,12 @@ describe('comply_test_controller', () => {
         // Local scenarios — see LOCAL_SCENARIOS in
         // server/src/training-agent/comply-test-controller.ts.
         'force_create_media_buy_arm',
+        'force_task_completion',
         'seed_creative_format',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(8);
+      expect(scenarios.length).toBe(9);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

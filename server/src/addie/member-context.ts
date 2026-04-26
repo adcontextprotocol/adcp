@@ -13,6 +13,7 @@ import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
+import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -100,6 +101,23 @@ async function getPendingContentForUser(
   }
 
   return { total, by_committee: byCommittee };
+}
+
+/**
+ * Compute the fraction of org members who belong to ≥1 working group.
+ * Returns 0 when there are no org members in the input list.
+ */
+async function computeTeamWgCoverage(orgMemberUserIds: string[]): Promise<number> {
+  if (orgMemberUserIds.length === 0) return 0;
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(DISTINCT workos_user_id)::text as count
+       FROM working_group_memberships
+       WHERE workos_user_id = ANY($1::text[])
+         AND status = 'active'`,
+    [orgMemberUserIds]
+  );
+  const inWgs = parseInt(result.rows[0]?.count || '0', 10);
+  return inWgs / orgMemberUserIds.length;
 }
 
 /**
@@ -217,6 +235,7 @@ export interface MemberContext {
     name: string;
     subscription_status: string | null;
     is_personal: boolean;
+    membership_tier: string | null;
   };
 
   /** Persona classification for the organization */
@@ -316,6 +335,25 @@ export interface MemberContext {
 
   /** Pending join requests for the organization (admins only) */
   pending_join_requests_count?: number;
+
+  /** Adoption signals for the organization (used by suggested-prompts rules) */
+  adoption?: {
+    /** True when the org has a public company listing in the directory. */
+    has_company_listing: boolean;
+    /** Fraction (0–1) of org members who belong to at least one working group. */
+    team_wg_coverage: number;
+  };
+
+  /**
+   * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
+   * suppress themselves after being shown without action. Map is keyed
+   * by rule_id; absent keys mean the rule has never been shown.
+   */
+  prompt_telemetry?: Map<string, {
+    shown_count: number;
+    last_shown_at: Date | null;
+    suppressed_until: Date | null;
+  }>;
 }
 
 /**
@@ -412,11 +450,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 
     // Step 4b: Get org member count from WorkOS
     let memberCount = 0;
+    let orgMemberUserIds: string[] = [];
     try {
       const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;
+      orgMemberUserIds = (orgMemberships.data ?? []).map(m => m.userId).filter(Boolean);
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie: Failed to get org member count');
     }
@@ -491,6 +531,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         name: org.name,
         subscription_status: org.subscription_status,
         is_personal: org.is_personal,
+        membership_tier: org.membership_tier,
       };
 
       // Check membership including inheritance through brand hierarchy
@@ -515,6 +556,24 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         headquarters: profile.headquarters,
         listing_type: org?.is_personal ? 'personal' : 'company',
       };
+    }
+
+    // Adoption signals for the suggested-prompts rules.
+    try {
+      const teamWgCoverage = await computeTeamWgCoverage(orgMemberUserIds);
+      context.adoption = {
+        has_company_listing: !!(org && !org.is_personal && profile?.is_public),
+        team_wg_coverage: teamWgCoverage,
+      };
+    } catch (error) {
+      logger.warn({ error, organizationId }, 'Addie: Failed to compute adoption signals');
+    }
+
+    // Per-rule telemetry for the prompt evaluator's suppression layer.
+    try {
+      context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load prompt telemetry');
     }
 
     // Process subscription info
@@ -659,16 +718,18 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 }
 
 /**
- * Look up member context from a WorkOS user ID (for web chat)
- *
-/**
  * Resolve organization, profile, subscription, engagement, and other context
  * from the local database. Used by both dev-mode and production paths.
+ *
+ * `orgMemberUserIds` is used to compute team_wg_coverage. The dev-mode caller
+ * passes [] (no WorkOS lookup), so coverage is 0 in dev — fine for testing
+ * since the team-WG rule also requires member_count >= 3.
  */
 async function resolveContextFromLocalDb(
   context: MemberContext,
   organizationId: string,
   workosUserId: string,
+  orgMemberUserIds: string[] = [],
 ): Promise<MemberContext> {
   const org = await orgDb.getOrganization(organizationId);
   if (org) {
@@ -677,6 +738,7 @@ async function resolveContextFromLocalDb(
       name: org.name,
       subscription_status: org.subscription_status,
       is_personal: org.is_personal,
+      membership_tier: org.membership_tier,
     };
 
     const membership = await resolveEffectiveMembership(organizationId);
@@ -700,6 +762,22 @@ async function resolveContextFromLocalDb(
       headquarters: profile.headquarters,
       listing_type: org?.is_personal ? 'personal' : 'company',
     };
+  }
+
+  try {
+    const teamWgCoverage = await computeTeamWgCoverage(orgMemberUserIds);
+    context.adoption = {
+      has_company_listing: !!(org && !org.is_personal && profile?.is_public),
+      team_wg_coverage: teamWgCoverage,
+    };
+  } catch (error) {
+    logger.warn({ error, organizationId }, 'Addie Web: Failed to compute adoption signals');
+  }
+
+  try {
+    context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load prompt telemetry');
   }
 
   try {
@@ -972,11 +1050,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
 
     // Step 4: Get org member count from WorkOS
     let memberCount = 0;
+    let webOrgMemberUserIds: string[] = [];
     try {
       const orgMemberships = await getWorkos().userManagement.listOrganizationMemberships({
         organizationId: organizationId,
       });
       memberCount = orgMemberships.data?.length || 0;
+      webOrgMemberUserIds = (orgMemberships.data ?? []).map(m => m.userId).filter(Boolean);
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie Web: Failed to get org member count');
     }
@@ -987,7 +1067,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       joined_at: userJoinedAt,
     };
 
-    return await resolveContextFromLocalDb(context, organizationId, workosUserId);
+    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webOrgMemberUserIds);
   } catch (error) {
     logger.error({ error, workosUserId }, 'Addie Web: Error getting member context');
     return context;
@@ -1006,9 +1086,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (channel === 'web') {
       lines.push('**Status**: Anonymous user (not signed in)');
       lines.push('');
-      lines.push('This user is browsing the web chat without signing in.');
-      lines.push('You have access to directory tools (list_members, get_member, list_agents, get_agent, validate_agent, lookup_domain, list_publishers) to answer questions about members, agents, and publishers.');
-      lines.push('You do NOT have documentation search or protocol research tools. For questions about AdCP protocol details, schemas, or technical documentation, suggest the user sign in for free at https://agenticadvertising.org for a better experience.');
+      lines.push('This user is browsing the web chat without signing in. You still have a real toolkit — use it before deflecting to sign-in.');
+      lines.push('Anonymous-safe tools you DO have: `search_docs`, `get_doc`, `search_repos`, `search_resources`, `get_recent_news` (documentation and research over public content); `list_members`, `get_member`, `list_agents`, `get_agent`, `validate_agent`, `lookup_domain`, `list_publishers` (public directory); plus everything in ALWAYS_AVAILABLE (escalation, account-linking, content submission).');
+      lines.push('Tools that genuinely require sign-in: anything that touches a member profile, billing, working-group membership, certification progression, or admin actions. Those are reasonable sign-in nudges.');
+      lines.push('Do NOT tell the user you lack documentation search — you have it. Run the tool before claiming it is unavailable.');
       lines.push('');
       return lines.join('\n');
     }

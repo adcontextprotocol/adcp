@@ -13,7 +13,8 @@ import { buildQuickActions } from './builders/quick-actions.js';
 import { buildActivityFeed } from './builders/activity.js';
 import { buildStats } from './builders/stats.js';
 import { buildAdminPanel } from './builders/admin.js';
-import { buildSuggestedPrompts } from './builders/suggested-prompts.js';
+import { pickPrompts } from './builders/suggested-prompts.js';
+import { recordPromptsShown } from '../../db/addie-prompt-telemetry-db.js';
 import { logger } from '../../logger.js';
 
 /**
@@ -41,8 +42,13 @@ export async function getWebHomeContent(workosUserId: string): Promise<HomeConte
   // Build synchronous sections
   const greeting = buildGreeting(memberContext);
   const quickActions = buildQuickActions(memberContext, userIsAdmin);
-  const suggestedPrompts = buildSuggestedPrompts(memberContext, userIsAdmin);
+  const { prompts: suggestedPrompts, ruleIds: shownRuleIds } = pickPrompts(memberContext, userIsAdmin);
   const stats = buildStats(memberContext);
+
+  // Fire-and-forget telemetry for the suppression layer.
+  if (shownRuleIds.length > 0) {
+    void recordPromptsShown(workosUserId, shownRuleIds);
+  }
 
   const content: HomeContent = {
     greeting,

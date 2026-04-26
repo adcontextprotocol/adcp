@@ -28,6 +28,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { logger } from '../logger.js';
+import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { buildSlackCostScope } from './claude-cost-tracker.js';
@@ -77,7 +78,9 @@ import {
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { recordPromptsShown } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -240,6 +243,22 @@ const NEGATIVE_REACTIONS = new Set([
   'thumbsdown', '-1', 'x', 'negative_squared_cross_mark', 'no_entry',
   'no_entry_sign', 'octagonal_sign', 'stop_sign', 'hand', 'raised_hand',
 ]);
+
+/**
+ * Resolve a display name for a Slack speaker from member context.
+ *
+ * Stamped on every user-role thread message so conversation history sent to
+ * the LLM can name the speaker — necessary to disambiguate participants in
+ * multi-human channel threads. Prefers full WorkOS name, falls back to
+ * Slack display name.
+ */
+function resolveSpeakerDisplayName(mc: MemberContext | null | undefined): string | undefined {
+  if (!mc) return undefined;
+  const first = mc.workos_user?.first_name;
+  const last = mc.workos_user?.last_name;
+  const candidate = first && last ? `${first} ${last}` : (first || mc.slack_user?.display_name || undefined);
+  return sanitizeSpeakerName(candidate);
+}
 
 /**
  * Record a person's inbound message in the relationship system.
@@ -755,14 +774,19 @@ export function invalidateAddieRulesCache(): void {
   }
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
@@ -1449,7 +1473,7 @@ async function handleUserMessage({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: slackThreadContext,
   });
 
@@ -1468,7 +1492,7 @@ async function handleUserMessage({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -1511,6 +1535,8 @@ async function handleUserMessage({
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -1549,6 +1575,7 @@ async function handleUserMessage({
     slackUserId: userId,
     threadId: thread.thread_id,
     costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude using streaming
@@ -2056,13 +2083,23 @@ async function handleAppMention({
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for mention');
   }
 
+  // Stamp the current speaker on the thread context block when the thread
+  // already contains messages from other humans. Without this, Addie can
+  // mistake the thread starter (or the most prominent prior speaker) for
+  // the person who just @-mentioned her — e.g. an admin replying mid-thread
+  // to a non-member's question.
+  const mentionSpeakerName = resolveSpeakerDisplayName(mentionMemberContext);
+  if (threadContext && mentionSpeakerName) {
+    threadContext += `\nThe message you are responding to is from **${mentionSpeakerName}**, who may or may not be the original thread starter — address them, not earlier speakers.\n`;
+  }
+
   // Get or create unified thread for this mention
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(mentionMemberContext),
     context: {
       mention_channel_id: channelId,
       channel_name: mentionChannelContext.viewing_channel_name,
@@ -2082,7 +2119,7 @@ async function handleAppMention({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -2125,6 +2162,8 @@ async function handleAppMention({
       content_sanitized: isEmptyMention ? '' : inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -2168,6 +2207,7 @@ async function handleAppMention({
     slackUserId: userId,
     threadId: thread.thread_id,
     costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
   // Process with Claude
@@ -3048,7 +3088,7 @@ async function handleDirectMessage(
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_type: 'im',
     },
@@ -3065,7 +3105,7 @@ async function handleDirectMessage(
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -3101,6 +3141,8 @@ async function handleDirectMessage(
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3132,6 +3174,7 @@ async function handleDirectMessage(
     slackUserId: userId,
     threadId: thread.thread_id,
     costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
@@ -3396,7 +3439,7 @@ async function handleActiveThreadReply({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_id: channelId,
       channel_name: channelContext?.viewing_channel_name,
@@ -3416,7 +3459,7 @@ async function handleActiveThreadReply({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_DB_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -3461,6 +3504,8 @@ async function handleActiveThreadReply({
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3517,6 +3562,7 @@ async function handleActiveThreadReply({
     slackUserId: userId,
     threadId: thread.thread_id,
     costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
@@ -3538,11 +3584,17 @@ async function handleActiveThreadReply({
   const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
   const outputValidation = validateOutput(activeThreadGuarded.text);
 
-  // Send response in the thread
+  // Send response in the thread. Slack rejects postMessage with an empty
+  // `text` (no_text). If the model returned nothing or everything was
+  // sanitized away, fall back to a plain apology so the user isn't ignored.
+  const activeThreadSlackText = wrapUrlsForSlack(outputValidation.sanitized);
+  const activeThreadOutgoing = activeThreadSlackText.trim().length > 0
+    ? activeThreadSlackText
+    : "I'm sorry, I encountered an error. Please try again.";
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
+      text: activeThreadOutgoing,
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -3917,7 +3969,7 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
-      user_display_name: memberContext?.slack_user?.display_name || undefined,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
       context: {
         channel_id: channelId,
         channel_name: channelContext?.viewing_channel_name,
@@ -3938,6 +3990,8 @@ async function handleChannelMessage({
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
         router_decision: buildRouterDecision(plan),
+        user_id: userId,
+        user_display_name: resolveSpeakerDisplayName(memberContext),
       });
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -4104,6 +4158,7 @@ async function handleChannelMessage({
       slackUserId: userId,
       threadId: thread.thread_id,
       costScope: await buildSlackCostScope(memberContext, userId),
+      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4828,11 +4883,14 @@ async function handleReactionAdded({
 
   // Log the reaction as a user message
   try {
+    const reactingMemberContext = await getMemberContext(reactingUserId).catch(() => null);
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'user',
       content: userInput,
       content_sanitized: userInput,
+      user_id: reactingUserId,
+      user_display_name: resolveSpeakerDisplayName(reactingMemberContext),
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save reaction message');
@@ -4849,7 +4907,7 @@ async function handleReactionAdded({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -4891,6 +4949,7 @@ async function handleReactionAdded({
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
     costScope: await buildSlackCostScope(memberContext, reactingUserId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
