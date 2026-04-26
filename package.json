@@ -71,10 +71,11 @@
     "check:images": "bash scripts/check-image-quality.sh"
   },
   "dependencies": {
-    "@adcp/client": "5.19.0",
+    "@adcp/client": "5.20.0",
     "@anthropic-ai/sdk": "^0.91.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
+    "@google-cloud/kms": "^5.4.0",
     "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@mozilla/readability": "^0.6.0",

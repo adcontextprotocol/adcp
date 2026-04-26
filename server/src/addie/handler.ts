@@ -99,7 +99,8 @@ import {
 } from './mcp/image-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
-import { buildSuggestedPrompts } from './home/builders/suggested-prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { recordPromptsShown } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -475,7 +476,12 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildSuggestedPrompts(memberContext, userIsAdmin).map((p) => ({
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
       title: p.label,
       message: p.prompt,
     }));

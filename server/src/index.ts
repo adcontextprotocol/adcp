@@ -25,6 +25,12 @@ async function main() {
     }
   }
 
+  // GCP KMS signing provider initializes lazily on first signed AdCP call
+  // (see security/gcp-kms-signer.ts). Eager-init at boot was tried and
+  // pulled — when KMS auth is misconfigured, the gRPC client retries
+  // forever and the app never binds port 8080, taking down the whole
+  // deploy instead of just the signing path. Lazy is the safer default.
+
   // Start HTTP server first, then initialize Addie in the background.
   // initializeAddieBolt uses execSync (git clone) which blocks the event loop,
   // so it must not run before the server starts listening.
