@@ -252,11 +252,13 @@ export function setupAccountsBillingRoutes(
                   let revenueEventsSynced = 0;
                   const productCache = new Map<string, string>();
 
+                  // Drop the expand options — the code below normalizes both
+                  // string-id and expanded-object forms uniformly, so paying
+                  // for the 2N expansions is wasted budget on large customers.
                   for await (const invoice of stripe.invoices.list({
                     customer: org.stripe_customer_id,
                     status: 'paid',
                     limit: 100,
-                    expand: ['data.subscription', 'data.charge'],
                   })) {
                     if (invoice.amount_paid <= 0) continue;
 
@@ -300,31 +302,52 @@ export function setupAccountsBillingRoutes(
                       revenueType = 'one_time';
                     }
 
-                    const charge = typeof invoice.charge === 'object' ? invoice.charge : null;
+                    // Normalize string-id and expanded-object forms uniformly.
+                    const subscriptionId =
+                      typeof invoice.subscription === 'string'
+                        ? invoice.subscription
+                        : (invoice.subscription && 'id' in invoice.subscription
+                          ? invoice.subscription.id : null);
+                    const paymentIntentId =
+                      typeof invoice.payment_intent === 'string'
+                        ? invoice.payment_intent
+                        : (invoice.payment_intent && 'id' in invoice.payment_intent
+                          ? invoice.payment_intent.id : null);
+                    const chargeId =
+                      typeof invoice.charge === 'string'
+                        ? invoice.charge
+                        : (invoice.charge && 'id' in invoice.charge
+                          ? invoice.charge.id : null);
+
                     const paidAt = new Date(
                       ((invoice.status_transitions?.paid_at || invoice.created) * 1000),
                     );
+
+                    // Mirror the webhook's metadata shape at server/src/http.ts:3935-3940
+                    // so backfilled rows match webhook-written rows exactly.
+                    // Future reporting that joins on hosted_invoice_url etc. won't
+                    // see holes for backfilled rows.
+                    const metadataPayload = JSON.stringify({
+                      invoice_number: invoice.number,
+                      hosted_invoice_url: invoice.hosted_invoice_url,
+                      invoice_pdf: invoice.invoice_pdf,
+                      metadata: invoice.metadata,
+                    });
 
                     const upsertResult = await pool.query(
                       `INSERT INTO revenue_events (
                         workos_organization_id, stripe_invoice_id, stripe_subscription_id,
                         stripe_payment_intent_id, stripe_charge_id, amount_paid, currency,
                         revenue_type, billing_reason, product_id, product_name, price_id,
-                        billing_interval, paid_at, period_start, period_end
-                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                        billing_interval, paid_at, period_start, period_end, metadata
+                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
                       ON CONFLICT (stripe_invoice_id) DO NOTHING`,
                       [
                         orgId,
                         invoice.id,
-                        typeof invoice.subscription === 'string'
-                          ? invoice.subscription
-                          : (invoice.subscription && 'id' in invoice.subscription
-                            ? invoice.subscription.id : null),
-                        typeof invoice.payment_intent === 'string'
-                          ? invoice.payment_intent
-                          : (invoice.payment_intent && 'id' in invoice.payment_intent
-                            ? invoice.payment_intent.id : null),
-                        charge?.id || null,
+                        subscriptionId,
+                        paymentIntentId,
+                        chargeId,
                         invoice.amount_paid,
                         invoice.currency,
                         revenueType,
@@ -336,6 +359,7 @@ export function setupAccountsBillingRoutes(
                         paidAt,
                         invoice.period_start ? new Date(invoice.period_start * 1000) : null,
                         invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+                        metadataPayload,
                       ],
                     );
 
