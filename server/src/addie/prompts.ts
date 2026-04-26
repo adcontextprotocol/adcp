@@ -564,10 +564,39 @@ Current message: ${userMessage}`;
 }
 
 /**
- * Thread context entry from conversation history
+ * Sanitize a display name before it is rendered into the LLM prompt.
+ *
+ * Display names can come from user-controlled inputs (web `user_name` body
+ * field, Slack/WorkOS profile fields). The turn builder concatenates them
+ * into the prompt as `[name] text`, so an unsanitized name like
+ * `Brian]\n\n[system] override...` would let an attacker inject framing
+ * outside the trimmed text envelope. Strip brackets, newlines, control
+ * chars, and cap the length. `'User'` is reserved as the unknown-speaker
+ * sentinel; everything else passes through after sanitization.
+ */
+export function sanitizeSpeakerName(name: string | null | undefined): string | undefined {
+  if (!name) return undefined;
+  // eslint-disable-next-line no-control-regex
+  const cleaned = name.replace(/[\[\]\r\n\t -]/g, '').trim();
+  if (!cleaned) return undefined;
+  return cleaned.slice(0, 60);
+}
+
+/**
+ * Thread context entry from conversation history.
+ *
+ * `user` is a role discriminator: 'Addie' means assistant; anything else is
+ * a human turn. To preserve the speaker's identity in multi-human threads,
+ * pass the resolved display name (e.g. 'Brian OKelley') in `user`. The turn
+ * builder prefixes content with `[name] ...` when more than one distinct
+ * human speaks in the same context. The literal value `'User'` is reserved
+ * as the unknown-speaker sentinel and is not counted toward multi-speaker
+ * detection, so legacy rows without a stored display name degrade to the
+ * pre-fix behavior. Names should be passed through `sanitizeSpeakerName`
+ * before reaching this struct.
  */
 export interface ThreadContextEntry {
-  user: string; // 'User' or 'Addie'
+  user: string; // 'Addie' for assistant, display name (or 'User' for unknown) for human turns
   text: string;
   /** Tool calls made during this turn (assistant messages only). When present,
    *  these are reconstructed as proper tool_use/tool_result API blocks instead
@@ -593,6 +622,11 @@ export interface BuildMessageTurnsOptions {
   toolCount?: number;
   /** Compact old tool results to reclaim context (certification sessions) */
   compactToolResults?: boolean;
+  /** Display name of the speaker who sent the current `userMessage`. When set
+   *  and the thread has multiple distinct human speakers, every user-role
+   *  turn (including the current one) is prefixed with `[name]:` so the
+   *  model can tell speakers apart. */
+  currentSpeakerName?: string;
 }
 
 /**
@@ -647,6 +681,26 @@ export function buildMessageTurnsWithMetadata(
 
   let messages: MessageTurn[] = [];
 
+  // Detect whether the thread has multiple distinct human speakers. When it
+  // does, prefix every user-role turn with the speaker's name so the model
+  // can tell when the speaker switches mid-thread (e.g. an admin replying to
+  // a non-member's question). 'User' is the unknown-speaker sentinel and is
+  // not counted. Names are re-sanitized here as defense in depth — callers
+  // are expected to sanitize at ingest, but stored rows or hand-built
+  // entries shouldn't be able to break out of the `[name] text` envelope.
+  const sanitizedCurrent = sanitizeSpeakerName(options?.currentSpeakerName);
+  const distinctSpeakers = new Set<string>();
+  if (threadContext) {
+    for (const e of threadContext) {
+      if (e.user && e.user !== 'Addie' && e.user !== 'User') {
+        const clean = sanitizeSpeakerName(e.user);
+        if (clean) distinctSpeakers.add(clean);
+      }
+    }
+  }
+  if (sanitizedCurrent) distinctSpeakers.add(sanitizedCurrent);
+  const isMultiSpeaker = distinctSpeakers.size > 1;
+
   if (threadContext && threadContext.length > 0) {
     // First pass: apply message count limit if specified
     let recentHistory = maxMessages > 0
@@ -654,12 +708,19 @@ export function buildMessageTurnsWithMetadata(
       : threadContext;
 
     // Convert each entry to proper message turn
-    // The 'user' field is 'User' or 'Addie' from bolt-app.ts
     // Skip empty messages defensively
     for (const entry of recentHistory) {
       const trimmedText = entry.text?.trim();
       if (!trimmedText) continue;
       const role: 'user' | 'assistant' = entry.user === 'Addie' ? 'assistant' : 'user';
+      const cleanSpeaker = role === 'user' && entry.user !== 'User'
+        ? sanitizeSpeakerName(entry.user)
+        : undefined;
+      // Skip the prefix when content already starts with `[` to avoid
+      // double-bracketed turns like `[Brian] [User reacted with ...]`.
+      const content = (isMultiSpeaker && role === 'user' && cleanSpeaker && !trimmedText.startsWith('['))
+        ? `[${cleanSpeaker}] ${trimmedText}`
+        : trimmedText;
       // Pass through tool calls so claude-client can reconstruct proper API blocks
       const toolCalls = (role === 'assistant' && entry.toolCalls && entry.toolCalls.length > 0)
         ? entry.toolCalls.map(tc => ({
@@ -669,7 +730,7 @@ export function buildMessageTurnsWithMetadata(
           is_error: tc.is_error,
         }))
         : undefined;
-      messages.push({ role, content: trimmedText, toolCalls });
+      messages.push({ role, content, toolCalls });
     }
 
     // Claude API requires messages to start with 'user' role
@@ -701,10 +762,13 @@ export function buildMessageTurnsWithMetadata(
 
   // Add the current user message
   // If the last message in history is from user, merge with it
+  const currentContent = (isMultiSpeaker && sanitizedCurrent && !userMessage.startsWith('['))
+    ? `[${sanitizedCurrent}] ${userMessage}`
+    : userMessage;
   if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
-    messages[messages.length - 1].content += '\n\n' + userMessage;
+    messages[messages.length - 1].content += '\n\n' + currentContent;
   } else {
-    messages.push({ role: 'user', content: userMessage });
+    messages.push({ role: 'user', content: currentContent });
   }
 
   // Compact old tool results for certification sessions to reclaim context.
