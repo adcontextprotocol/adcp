@@ -162,6 +162,25 @@ describe('436_catalog_agent_authorizations schema', () => {
       ).rejects.toThrow(/chk_caa_agent_url_canonical/);
     });
 
+    it('rejects embedded wildcards (e.g. *foo*) — only exact * is the sentinel', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO catalog_agent_authorizations
+             (agent_url, agent_url_canonical, publisher_domain, evidence)
+           VALUES ($1, '*foo*', $2, 'adagents_json')`,
+          [TEST_AGENT, TEST_PUB]
+        )
+      ).rejects.toThrow(/chk_caa_agent_url_canonical/);
+      await expect(
+        pool.query(
+          `INSERT INTO catalog_agent_authorizations
+             (agent_url, agent_url_canonical, publisher_domain, evidence)
+           VALUES ($1, '*.example.com', $2, 'adagents_json')`,
+          [TEST_AGENT, TEST_PUB]
+        )
+      ).rejects.toThrow(/chk_caa_agent_url_canonical/);
+    });
+
     it('accepts the wildcard sentinel (*)', async () => {
       await pool.query(
         `INSERT INTO catalog_agent_authorizations
@@ -244,6 +263,17 @@ describe('436_catalog_agent_authorizations schema', () => {
           [TEST_AGENT, TEST_PUB]
         )
       ).rejects.toThrow(/evidence/);
+    });
+
+    it('rejects agent_claim row with NULL created_by (revocation invariant)', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO catalog_agent_authorizations
+             (agent_url, agent_url_canonical, publisher_domain, evidence, created_by)
+           VALUES ($1, $1, $2, 'agent_claim', NULL)`,
+          [TEST_AGENT, TEST_PUB]
+        )
+      ).rejects.toThrow(/chk_caa_claim_has_created_by/);
     });
   });
 
@@ -361,6 +391,78 @@ describe('436_catalog_agent_authorizations schema', () => {
         [inserted.rows[0].id]
       );
       expect(after.rows[0].seq_no).toBe(initialSeqNo);
+    });
+
+    it('rotates seq_no when un-tombstoning (deleted_at NOT NULL → NULL)', async () => {
+      // Resurrection has the same delta-sync hazard as tombstoning: a row
+      // that re-enters the active set with a stale seq_no is invisible to
+      // every consumer whose cursor is past it. Trigger rotates on both
+      // transitions.
+      const inserted = await pool.query<{ id: string; seq_no: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, deleted_at)
+         VALUES ($1, $1, $2, 'adagents_json', NOW())
+         RETURNING id, seq_no`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      const tombstoneSeqNo = inserted.rows[0].seq_no;
+      const after = await pool.query<{ seq_no: string }>(
+        `UPDATE catalog_agent_authorizations SET deleted_at = NULL WHERE id = $1
+         RETURNING seq_no`,
+        [inserted.rows[0].id]
+      );
+      expect(after.rows[0].seq_no).not.toBe(tombstoneSeqNo);
+      expect(BigInt(after.rows[0].seq_no)).toBeGreaterThan(BigInt(tombstoneSeqNo));
+    });
+
+    it('does NOT rotate seq_no on idempotent re-tombstone (NOT NULL → NOT NULL)', async () => {
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, deleted_at)
+         VALUES ($1, $1, $2, 'adagents_json', NOW())
+         RETURNING id`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      const beforeSeq = await pool.query<{ seq_no: string }>(
+        `SELECT seq_no FROM catalog_agent_authorizations WHERE id = $1`,
+        [inserted.rows[0].id]
+      );
+      const after = await pool.query<{ seq_no: string }>(
+        `UPDATE catalog_agent_authorizations SET deleted_at = NOW() + interval '1 hour' WHERE id = $1
+         RETURNING seq_no`,
+        [inserted.rows[0].id]
+      );
+      expect(after.rows[0].seq_no).toBe(beforeSeq.rows[0].seq_no);
+    });
+
+    it('rotates seq_no on ON CONFLICT DO UPDATE that flips deleted_at', async () => {
+      // Upsert paths fire BEFORE UPDATE triggers — the trigger must see
+      // the deleted_at flip there too, not just on plain UPDATE.
+      const first = await pool.query<{ id: string; seq_no: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence)
+         VALUES ($1, $1, $2, 'adagents_json')
+         RETURNING id, seq_no`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      const initialSeqNo = first.rows[0].seq_no;
+
+      const second = await pool.query<{ id: string; seq_no: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence)
+         VALUES ($1, $1, $2, 'adagents_json')
+         ON CONFLICT (agent_url_canonical,
+                      (COALESCE(property_rid::text, '')),
+                      (COALESCE(publisher_domain, '')),
+                      evidence)
+                WHERE deleted_at IS NULL
+         DO UPDATE SET deleted_at = NOW()
+         RETURNING id, seq_no`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      expect(second.rows[0].id).toBe(first.rows[0].id);
+      expect(second.rows[0].seq_no).not.toBe(initialSeqNo);
+      expect(BigInt(second.rows[0].seq_no)).toBeGreaterThan(BigInt(initialSeqNo));
     });
   });
 
@@ -488,6 +590,109 @@ describe('436_catalog_agent_authorizations schema', () => {
       expect(rows[0].property_id_slug).toBeNull();
       expect(rows[0].publisher_domain).toBe(TEST_PUB);
       expect(rows[0].override_applied).toBe(true);
+    });
+
+    it('host-wide suppress (property_id IS NULL) hides every per-property base row under that publisher', async () => {
+      // The dominant bad_actor use case: moderator suppresses an
+      // attacker host-wide; every (host, agent) row across all
+      // properties under that publisher must vanish from the
+      // effective set.
+      const propResult = await pool.query<{ property_rid: string }>(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, created_by)
+         VALUES (gen_random_uuid(), 'home', 'property', 'authoritative', 'active', $1)
+         RETURNING property_rid`,
+        [`adagents_json:${TEST_PUB}`]
+      );
+      const rid = propResult.rows[0].property_rid;
+      // Per-property base row.
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug, evidence)
+         VALUES ($1, $1, $2, 'home', 'adagents_json')`,
+        [TEST_AGENT, rid]
+      );
+      // Host-wide suppress override (property_id IS NULL).
+      await seedSuppressOverride(null);
+
+      const { rows } = await pool.query(
+        `SELECT * FROM v_effective_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      expect(rows).toHaveLength(0);
+
+      // Cleanup the catalog_properties row we created here.
+      await pool.query(`DELETE FROM catalog_agent_authorizations WHERE property_rid = $1`, [rid]);
+      await pool.query(`DELETE FROM catalog_properties WHERE property_rid = $1`, [rid]);
+    });
+
+    it('host-wide suppress hides a publisher-wide base row', async () => {
+      await seedBaseRow('adagents_json');
+      // The seedBaseRow helper sets property_id_slug='site_main' but on
+      // a publisher-wide row. Re-seed without slug for this test.
+      await pool.query(
+        `DELETE FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, created_by)
+         VALUES ($1, $1, $2, 'adagents_json', 'system')`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      await seedSuppressOverride(null);
+      const { rows } = await pool.query(
+        `SELECT * FROM v_effective_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2
+            AND evidence = 'adagents_json'`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('per-property suppress (property_id=slug) does NOT hide a base row with a different slug', async () => {
+      // Seed two per-property base rows under different catalog properties.
+      const propA = await pool.query<{ property_rid: string }>(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, created_by)
+         VALUES (gen_random_uuid(), 'home', 'property', 'authoritative', 'active', $1)
+         RETURNING property_rid`,
+        [`adagents_json:${TEST_PUB}`]
+      );
+      const propB = await pool.query<{ property_rid: string }>(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, created_by)
+         VALUES (gen_random_uuid(), 'news', 'property', 'authoritative', 'active', $1)
+         RETURNING property_rid`,
+        [`adagents_json:${TEST_PUB}`]
+      );
+      const ridA = propA.rows[0].property_rid;
+      const ridB = propB.rows[0].property_rid;
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug, evidence)
+         VALUES ($1, $1, $2, 'home', 'adagents_json'),
+                ($1, $1, $3, 'news', 'adagents_json')`,
+        [TEST_AGENT, ridA, ridB]
+      );
+      // Suppress only the 'home' slug.
+      await seedSuppressOverride('home');
+
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM v_effective_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2
+            AND evidence = 'adagents_json'`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['news']);
+
+      await pool.query(
+        `DELETE FROM catalog_agent_authorizations WHERE property_rid IN ($1, $2)`,
+        [ridA, ridB]
+      );
+      await pool.query(`DELETE FROM catalog_properties WHERE property_rid IN ($1, $2)`, [ridA, ridB]);
     });
 
     it('does NOT surface superseded overrides', async () => {

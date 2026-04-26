@@ -99,12 +99,16 @@ CREATE TABLE catalog_agent_authorizations (
   -- writer cannot silently produce inconsistent rows.
 
   -- URL canonicalization. Full canonicalization is the writer's job;
-  -- schema enforces lowercase + no trailing slash so two writers cannot
-  -- diverge on the simplest cases. '*' is the wildcard sentinel.
+  -- schema enforces lowercase + no trailing slash + no embedded '*' so
+  -- two writers cannot diverge on the simplest cases. '*' is the
+  -- wildcard sentinel and is exact-match only — embedded wildcards
+  -- (e.g. '*foo*' or '*.example.com') are rejected so the column can
+  -- never carry a value that any reader would interpret as a glob.
   CONSTRAINT chk_caa_agent_url_canonical
     CHECK (agent_url_canonical = '*'
         OR (agent_url_canonical = lower(agent_url_canonical)
-        AND agent_url_canonical NOT LIKE '%/')),
+        AND agent_url_canonical NOT LIKE '%/'
+        AND agent_url_canonical NOT LIKE '%*%')),
 
   -- Mutually exclusive scope: per-property rows don't carry
   -- publisher_domain (derived via JOIN); publisher-wide rows have
@@ -116,7 +120,16 @@ CREATE TABLE catalog_agent_authorizations (
   -- expires_at is only meaningful for agent_claim. adagents_json /
   -- community rows refresh / are managed by other means.
   CONSTRAINT chk_caa_expires_only_for_claims
-    CHECK (expires_at IS NULL OR evidence = 'agent_claim')
+    CHECK (expires_at IS NULL OR evidence = 'agent_claim'),
+
+  -- agent_claim rows MUST identify the asserting agent in created_by.
+  -- The documented revocation path ("DELETE WHERE evidence='agent_claim'
+  -- AND created_by=<agent_url>") is unenforceable on rows where
+  -- created_by IS NULL — the row would live forever even after the
+  -- claiming agent loses trust. Treat created_by as a load-bearing
+  -- column for the agent_claim case.
+  CONSTRAINT chk_caa_claim_has_created_by
+    CHECK (evidence <> 'agent_claim' OR created_by IS NOT NULL)
 );
 
 -- Active-set partial unique: one row per (agent, scope, evidence) when
@@ -136,9 +149,12 @@ CREATE UNIQUE INDEX idx_caa_unique_active
   WHERE deleted_at IS NULL;
 
 -- Reader indexes — partial WHERE deleted_at IS NULL, mirroring the
--- override layer's WHERE superseded_at IS NULL pattern.
+-- override layer's WHERE superseded_at IS NULL pattern. Composite
+-- columns serve the legacy bulkGetFirstAuthForAgents secondary sort
+-- (ORDER BY agent_url, source, publisher_domain) without an in-memory
+-- re-sort.
 CREATE INDEX idx_caa_by_agent
-  ON catalog_agent_authorizations (agent_url_canonical)
+  ON catalog_agent_authorizations (agent_url_canonical, evidence, publisher_domain)
   WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_caa_by_publisher
@@ -149,11 +165,14 @@ CREATE INDEX idx_caa_by_property
   ON catalog_agent_authorizations (property_rid)
   WHERE property_rid IS NOT NULL AND deleted_at IS NULL;
 
--- Override JOIN index — matches override layer's
--- (agent_url_canonical, property_id) keying.
+-- Override JOIN index — matches the v_effective_agent_authorizations
+-- view's anti-join keys exactly: (agent_url_canonical, publisher_domain,
+-- property_id_slug). The `evidence='adagents_json'` partial filter
+-- skips rows the override layer doesn't apply to (claims and community
+-- pass through untouched).
 CREATE INDEX idx_caa_override_join
-  ON catalog_agent_authorizations (agent_url_canonical, property_id_slug)
-  WHERE deleted_at IS NULL;
+  ON catalog_agent_authorizations (agent_url_canonical, publisher_domain, property_id_slug)
+  WHERE deleted_at IS NULL AND evidence = 'adagents_json';
 
 -- Sync index — NOT partial. Tombstones must be visible to delta
 -- consumers so they can apply deletions locally. Without seeing the
@@ -182,7 +201,13 @@ CREATE INDEX idx_caa_tombstone_ttl
 
 CREATE FUNCTION caa_rotate_seq_no_on_tombstone() RETURNS trigger AS $$
 BEGIN
-  IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+  -- Rotate on every transition that crosses the live/tombstoned boundary —
+  -- both directions. Tombstone (NULL → NOT NULL) is the obvious case;
+  -- un-tombstone (NOT NULL → NULL) is just as load-bearing because a
+  -- resurrected row otherwise re-enters the active set with its old
+  -- seq_no, which is older than every active consumer's cursor — the
+  -- resurrection silently never propagates.
+  IF (OLD.deleted_at IS NULL) IS DISTINCT FROM (NEW.deleted_at IS NULL) THEN
     NEW.seq_no := nextval('catalog_agent_authorizations_seq_no_seq');
   END IF;
   RETURN NEW;
@@ -249,7 +274,10 @@ WHERE b.evidence <> 'adagents_json'
        AND ov.override_type = 'suppress'
        AND ov.host_domain = b.publisher_domain
        AND ov.agent_url_canonical = b.agent_url_canonical
-       AND COALESCE(ov.property_id, '') = COALESCE(b.property_id_slug, '')
+       -- A host-wide suppress (override.property_id IS NULL) hides every
+       -- base row under that publisher, both per-property and publisher-wide.
+       -- A per-property suppress only hides matching slug.
+       AND (ov.property_id IS NULL OR ov.property_id = b.property_id_slug)
    )
 UNION ALL
 -- Arm 2: active 'add' overrides surface as effective rows regardless

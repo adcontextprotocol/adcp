@@ -8,18 +8,50 @@
 --                                              property_ids → publisher-wide
 --   source='adagents_json' → evidence='adagents_json'
 --   source='agent_claim'   → evidence='agent_claim', created_by=<agent_url>
+--   source='community'     → evidence='community'
+--   any other source value → migration aborts (see assertion below)
 --
 -- Property-rid resolution: legacy agent_property_authorizations.property_id
 -- references discovered_properties.id, which migration 336 seeded as
 -- catalog_properties.property_rid. Post-seed properties have diverging
 -- UUIDs — those rows skip the backfill and continue to be served from
 -- legacy until PR 5 drops the legacy tables. The PR 4a-style UNION
--- reader covers them in the meantime.
+-- reader covers them in the meantime. We RAISE NOTICE the orphan count
+-- so the migration log shows whether the legacy table had any
+-- post-seed authorization rows that didn't carry over.
 --
 -- Canonicalization: legacy URLs were stored with mixed case and
 -- inconsistent trailing slashes. Backfill lowercases + strips trailing
 -- slash. Wildcard '*' passes through (the schema CHECK explicitly
 -- accepts it).
+
+-- =============================================================================
+-- 0. Pre-flight: assert legacy source values are known
+-- =============================================================================
+-- The legacy agent_publisher_authorizations.source column is
+-- unconstrained TEXT (migration 025). Production should only contain
+-- 'adagents_json' and 'agent_claim' (those are the only values
+-- federated-index.ts ever writes), but a defensive assertion fails
+-- loudly rather than silently re-classifying unknowns. Without this,
+-- a row with source='community' or anything else would be dropped on
+-- the floor or silently widened to the highest-trust evidence value.
+
+DO $$
+DECLARE
+  unknown_count INTEGER;
+  unknown_sample TEXT;
+BEGIN
+  SELECT COUNT(*),
+         string_agg(DISTINCT source, ', ' ORDER BY source)
+    INTO unknown_count, unknown_sample
+    FROM agent_publisher_authorizations
+   WHERE source NOT IN ('adagents_json', 'agent_claim', 'community');
+  IF unknown_count > 0 THEN
+    RAISE EXCEPTION
+      'Backfill blocked: % rows in agent_publisher_authorizations carry unrecognized source values (%). Investigate, then either add the values to the recognized set or repair the legacy data before re-running this migration.',
+      unknown_count, unknown_sample;
+  END IF;
+END $$;
 
 -- =============================================================================
 -- 1. Per-property rows from agent_property_authorizations
@@ -79,10 +111,7 @@ SELECT
   NULL                                                AS property_id_slug,
   apa.publisher_domain                                AS publisher_domain,
   apa.authorized_for                                  AS authorized_for,
-  CASE WHEN apa.source IN ('adagents_json', 'agent_claim')
-       THEN apa.source
-       ELSE 'adagents_json'  -- legacy rows with unexpected source values default to adagents_json
-  END                                                 AS evidence,
+  apa.source                                          AS evidence,  -- pre-flight assertion above guarantees this is in the enum
   CASE WHEN apa.source = 'agent_claim'
        THEN apa.agent_url      -- claim assertor identifies as the claiming agent
        ELSE 'system'
@@ -148,3 +177,36 @@ ON CONFLICT (agent_url_canonical,
              evidence)
 WHERE deleted_at IS NULL
 DO NOTHING;
+
+-- =============================================================================
+-- 4. Observability: report orphan counts
+-- =============================================================================
+-- Surface in the migration log how many legacy rows didn't carry over so an
+-- operator can verify the count is plausible. Orphans are expected — they're
+-- post-seed agent_property_authorizations rows whose property_rid doesn't
+-- match a catalog_properties row (because the writer-side IDs diverged after
+-- migration 336's one-time seed). The PR 4a-style UNION reader covers them
+-- until PR 5 drops the legacy tables.
+
+DO $$
+DECLARE
+  orphan_per_prop INTEGER;
+  orphan_publisher INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO orphan_per_prop
+  FROM agent_property_authorizations apa
+  LEFT JOIN catalog_properties cp ON cp.property_rid = apa.property_id
+  WHERE cp.property_rid IS NULL;
+  RAISE NOTICE 'Backfill: % per-property auth rows skipped (no matching catalog_properties row; legacy table still serves them)', orphan_per_prop;
+
+  SELECT COUNT(*) INTO orphan_publisher
+  FROM agent_publisher_authorizations apa
+  CROSS JOIN LATERAL unnest(COALESCE(apa.property_ids, ARRAY[]::text[])) AS slug
+  LEFT JOIN catalog_properties cp
+    ON cp.property_id = slug
+   AND cp.created_by   = 'adagents_json:' || apa.publisher_domain
+  WHERE apa.property_ids IS NOT NULL
+    AND array_length(apa.property_ids, 1) IS NOT NULL
+    AND cp.property_rid IS NULL;
+  RAISE NOTICE 'Backfill: % publisher-scoped auth slugs skipped (slug did not resolve to a catalog_properties row)', orphan_publisher;
+END $$;
