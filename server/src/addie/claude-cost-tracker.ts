@@ -58,9 +58,13 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * Explorer users get a smaller ceiling than paying members.
  *
  * Rationales:
- * - `anonymous`: $1/day. Covers a few exploratory chats (Haiku at
- *   ~$0.01/turn, Sonnet at ~$0.05/turn) without enabling a scripted
- *   chat spam that burns real money on our free surface.
+ * - `anonymous`: $3/day. Sized to slightly exceed the per-IP message
+ *   rate limit (50/day) at the current Sonnet ~$0.05/turn rate, so the
+ *   message-count cap binds first for a legitimate user and the dollar
+ *   cap only fires on scripted abuse. Was $1 when anonymous chat was
+ *   on Haiku (~$0.01/turn → ~100 turns/day, well above rate limit);
+ *   bumped on the Haiku→Sonnet move so legit users don't hit the
+ *   dollar ceiling at ~20 turns.
  * - `member_free`: $5/day. Free tier with an account — slightly more
  *   trust than anonymous, same floor a real user couldn't reach in
  *   a day of genuine conversational use.
@@ -69,7 +73,7 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  *   trips it within an hour of sustained abuse.
  */
 export const DAILY_BUDGET_USD: Record<'anonymous' | 'member_free' | 'member_paid', number> = {
-  anonymous: 1,
+  anonymous: 3,
   member_free: 5,
   member_paid: 25,
 };

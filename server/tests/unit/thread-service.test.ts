@@ -385,6 +385,121 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Unit Tests', () => {
     });
   });
 
+  describe('listThreads cross-identifier user_search', () => {
+    // Admin thread search needs to find a person by any natural identifier:
+    // full name, Slack handle, real name, WorkOS first/last, or email.
+    // Without the OR-join, harmonizing thread.user_display_name to a full
+    // WorkOS name orphans admins who type a Slack handle into the box.
+    const SLACK_USER_ID = 'U_SEARCH_TEST_SLACK';
+    const WORKOS_USER_ID = 'user_search_test_workos';
+    const EMAIL_SENDER = 'searchtarget@example.test';
+
+    beforeEach(async () => {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (workos_user_id) DO UPDATE SET
+           email = EXCLUDED.email,
+           first_name = EXCLUDED.first_name,
+           last_name = EXCLUDED.last_name`,
+        [WORKOS_USER_ID, 'someone.workos@example.test', 'Someone', 'Workostest'],
+      );
+      await pool.query(
+        `INSERT INTO slack_user_mappings (slack_user_id, slack_email, slack_display_name, slack_real_name, workos_user_id, mapping_status)
+         VALUES ($1, $2, $3, $4, $5, 'mapped')
+         ON CONFLICT (slack_user_id) DO UPDATE SET
+           slack_email = EXCLUDED.slack_email,
+           slack_display_name = EXCLUDED.slack_display_name,
+           slack_real_name = EXCLUDED.slack_real_name,
+           workos_user_id = EXCLUDED.workos_user_id`,
+        [SLACK_USER_ID, 'someone.slack@example.test', 'someslackhandle', 'Someone Slacktest', WORKOS_USER_ID],
+      );
+
+      // Slack thread — display name is the harmonized WorkOS name; Slack
+      // handle/real name only reachable via the slack_user_mappings join.
+      await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: 'test-search-slack',
+        user_type: 'slack',
+        user_id: SLACK_USER_ID,
+        user_display_name: 'Someone Workostest',
+      });
+      // Web (WorkOS) thread — same person, different surface.
+      await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-search-web',
+        user_type: 'workos',
+        user_id: WORKOS_USER_ID,
+        user_display_name: 'Someone Workostest',
+      });
+      // Email thread — user_id IS the sender email; display_name is the From-name.
+      await threadService.getOrCreateThread({
+        channel: 'email',
+        external_id: 'test-search-email',
+        user_type: 'anonymous',
+        user_id: EMAIL_SENDER,
+        user_display_name: 'Email Sender',
+      });
+    });
+
+    afterEach(async () => {
+      await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-search-%'`);
+      await pool.query(`DELETE FROM slack_user_mappings WHERE slack_user_id = $1`, [SLACK_USER_ID]);
+      await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [WORKOS_USER_ID]);
+    });
+
+    it('matches by Slack handle through slack_user_mappings join', async () => {
+      const threads = await threadService.listThreads({ user_search: 'someslackhandle' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-slack');
+    });
+
+    it('matches by Slack real_name through slack_user_mappings join', async () => {
+      const threads = await threadService.listThreads({ user_search: 'Slacktest' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-slack');
+    });
+
+    it('matches by Slack-side email through slack_user_mappings join', async () => {
+      const threads = await threadService.listThreads({ user_search: 'someone.slack@' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-slack');
+    });
+
+    it('matches by WorkOS first_name on a workos-typed thread', async () => {
+      const threads = await threadService.listThreads({ user_search: 'Someone' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-web');
+    });
+
+    it('matches by WorkOS email on a workos-typed thread', async () => {
+      const threads = await threadService.listThreads({ user_search: 'someone.workos@' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-web');
+    });
+
+    it('matches an email thread by the sender email stored in user_id', async () => {
+      const threads = await threadService.listThreads({ user_search: 'searchtarget@' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).toContain('test-search-email');
+    });
+
+    it('matches by display_name on every surface', async () => {
+      const threads = await threadService.listThreads({ user_search: 'Workostest' });
+      const ids = threads.map(t => t.external_id);
+      // Both slack and web threads share the harmonized display name.
+      expect(ids).toEqual(expect.arrayContaining(['test-search-slack', 'test-search-web']));
+    });
+
+    it('does not match unrelated threads', async () => {
+      const threads = await threadService.listThreads({ user_search: 'completely-unrelated-token' });
+      const ids = threads.map(t => t.external_id);
+      expect(ids).not.toContain('test-search-slack');
+      expect(ids).not.toContain('test-search-web');
+      expect(ids).not.toContain('test-search-email');
+    });
+  });
+
   describe('getStats', () => {
     it('should return overall statistics', async () => {
       // Create some test data

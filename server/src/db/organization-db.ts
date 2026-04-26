@@ -142,6 +142,7 @@ export interface Organization {
   stripe_coupon_id: string | null;
   stripe_promotion_code: string | null;
   billing_address: BillingAddress | null;
+  auto_provision_verified_domain: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -859,6 +860,7 @@ export class OrganizationDatabase {
       stripe_coupon_id: 'stripe_coupon_id',
       stripe_promotion_code: 'stripe_promotion_code',
       billing_address: 'billing_address',
+      auto_provision_verified_domain: 'auto_provision_verified_domain',
     };
 
     const setClauses: string[] = [];

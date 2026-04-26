@@ -51,6 +51,32 @@ function generateKey(req: Request): string {
 }
 
 /**
+ * Skip rate limiting for AAO platform admins. Falls back to the ADMIN_EMAILS
+ * env var for emergency access, matching requireAdmin semantics.
+ */
+async function skipForAdmins(req: Request): Promise<boolean> {
+  const user = (req as any).user as { id?: string; email?: string; isAdmin?: boolean } | undefined;
+  if (!user) return false;
+
+  if (user.isAdmin === true) return true;
+
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) ?? [];
+  if (user.email && adminEmails.includes(user.email.toLowerCase())) {
+    return true;
+  }
+
+  if (!user.id) return false;
+
+  try {
+    const { isWebUserAAOAdmin } = await import('../addie/mcp/admin-tools.js');
+    return await isWebUserAAOAdmin(user.id);
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'admin check failed in rate limiter; applying limit');
+    return false;
+  }
+}
+
+/**
  * Rate limiter for invitation endpoints
  * Limits: 10 invitations per 15 minutes per user
  */
@@ -169,11 +195,13 @@ export const notificationRateLimiter = rateLimit({
 /**
  * Rate limiter for storyboard evaluation endpoints.
  * Limits: 5 evaluations per hour per user (each eval makes real HTTP calls to external agents).
+ * AAO platform admins bypass this limit so they can debug and curate without hitting it.
  */
 export const storyboardEvalRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5,
   skipFailedRequests: true,
+  skip: skipForAdmins,
   standardHeaders: true,
   legacyHeaders: false,
   store: new CachedPostgresStore('storyboard:'),
@@ -202,6 +230,7 @@ export const storyboardStepRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 30,
   skipFailedRequests: true,
+  skip: skipForAdmins,
   standardHeaders: true,
   legacyHeaders: false,
   store: new CachedPostgresStore('storyboard-step:'),
