@@ -132,6 +132,11 @@ export interface CreateMessageInput {
   config_version_id?: number;
   // Email threading — RFC 822 Message-ID or Resend ID for threading replies
   email_message_id?: string;
+  // Per-message speaker identity. Required to disambiguate speakers in
+  // multi-human Slack channel threads where addie_threads.user_id is only
+  // the thread starter. Optional for assistant/system rows and legacy paths.
+  user_id?: string;
+  user_display_name?: string;
 }
 
 export interface ThreadMessage {
@@ -186,6 +191,9 @@ export interface ThreadMessage {
   config_version_id: number | null;
   // Email threading
   email_message_id: string | null;
+  // Per-message speaker identity (see CreateMessageInput).
+  user_id: string | null;
+  user_display_name: string | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -430,8 +438,9 @@ export class ThreadService {
           flagged, flag_reason, sequence_number,
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
-          router_decision, config_version_id, email_message_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          router_decision, config_version_id, email_message_id,
+          user_id, user_display_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
         RETURNING *`,
         [
           input.thread_id,
@@ -458,6 +467,8 @@ export class ThreadService {
           input.router_decision ? JSON.stringify(input.router_decision) : null,
           input.config_version_id ?? null,
           input.email_message_id ?? null,
+          input.user_id ?? null,
+          input.user_display_name ?? null,
         ]
       );
 

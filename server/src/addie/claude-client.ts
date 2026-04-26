@@ -251,6 +251,14 @@ export interface ProcessMessageOptions {
    * count against a per-user budget.
    */
   uncapped?: true;
+  /**
+   * Display name of the speaker who sent `userMessage`. When set and the
+   * thread has multiple distinct human speakers, every user-role turn —
+   * including the current one — is prefixed with `[name]:` so the model
+   * can tell speakers apart. Used for Slack channel threads where an
+   * admin may reply mid-thread to a non-member's question.
+   */
+  currentSpeakerName?: string;
 }
 
 /**
@@ -603,6 +611,7 @@ export class AddieClaudeClient {
       toolCount,
       maxMessages: options?.maxMessages,
       compactToolResults: true,
+      currentSpeakerName: options?.currentSpeakerName,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -1188,6 +1197,7 @@ export class AddieClaudeClient {
       toolCount,
       maxMessages: options?.maxMessages,
       compactToolResults: true,
+      currentSpeakerName: options?.currentSpeakerName,
     });
 
     if (messageTurnsResult.wasTrimmed) {

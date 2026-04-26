@@ -17,6 +17,7 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   sanitizeInput,
@@ -716,7 +717,15 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       // If no conversation_id provided, we'll generate a new one via the thread
       const impersonator = req.user?.impersonator;
       const userId = req.user?.id || null;
-      const displayName = user_name || req.user?.firstName || null;
+      // `user_name` from req.body is attacker-controlled on the anonymous web
+      // path. Only honor it for authenticated requests; for everyone else
+      // fall back to the WorkOS first name (auth) or undefined (anon).
+      // sanitizeSpeakerName then strips brackets/control chars and caps
+      // length so no name we accept can break out of the `[name] text`
+      // prompt envelope downstream.
+      const displayName = sanitizeSpeakerName(
+        req.user ? (user_name || req.user.firstName) : null
+      ) ?? null;
 
       // Build web-specific context
       const webContext: ThreadContext = {
@@ -772,6 +781,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
+        user_id: userId || undefined,
+        user_display_name: displayName || undefined,
       });
 
       // Record inbound message in the relationship system
@@ -795,7 +806,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
-          user: m.role === "user" ? "User" : "Addie",
+          user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
           toolCalls: m.tool_calls ?? undefined,
         }));
@@ -834,6 +845,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           requestContext,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
+          currentSpeakerName: displayName || undefined,
           costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
@@ -985,7 +997,15 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       // Get or create thread
       const impersonator = req.user?.impersonator;
       const userId = req.user?.id || null;
-      const displayName = user_name || req.user?.firstName || null;
+      // `user_name` from req.body is attacker-controlled on the anonymous web
+      // path. Only honor it for authenticated requests; for everyone else
+      // fall back to the WorkOS first name (auth) or undefined (anon).
+      // sanitizeSpeakerName then strips brackets/control chars and caps
+      // length so no name we accept can break out of the `[name] text`
+      // prompt envelope downstream.
+      const displayName = sanitizeSpeakerName(
+        req.user ? (user_name || req.user.firstName) : null
+      ) ?? null;
 
       const webContext: ThreadContext = {
         user_agent: req.get("user-agent"),
@@ -1036,6 +1056,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
+        user_id: userId || undefined,
+        user_display_name: displayName || undefined,
       });
 
       // Record inbound message in the relationship system
@@ -1058,7 +1080,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
-          user: m.role === "user" ? "User" : "Addie",
+          user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
           toolCalls: m.tool_calls ?? undefined,
         }));
@@ -1092,6 +1114,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         requestContext,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
+        currentSpeakerName: displayName || undefined,
         ...(streamAuthedScope
           ? { costScope: streamAuthedScope }
           : externalId
