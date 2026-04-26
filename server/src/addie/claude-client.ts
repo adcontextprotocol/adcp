@@ -763,10 +763,11 @@ export class AddieClaudeClient {
       if (response.stop_reason === 'end_turn') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
         const textBlocks = response.content.filter((c) => c.type === 'text');
-        const text = textBlocks
+        const rawText = textBlocks
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
+        const text = stripBannedRituals(rawText);
 
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
