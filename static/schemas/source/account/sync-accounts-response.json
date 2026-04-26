@@ -106,15 +106,7 @@
                 "description": "Rate card applied to this account"
               },
               "payment_terms": {
-                "type": "string",
-                "enum": [
-                  "net_15",
-                  "net_30",
-                  "net_45",
-                  "net_60",
-                  "net_90",
-                  "prepay"
-                ],
+                "$ref": "/schemas/enums/payment-terms.json",
                 "description": "Payment terms agreed for this account. When the account is active, these are the binding terms for all invoices on this account."
               },
               "credit_limit": {

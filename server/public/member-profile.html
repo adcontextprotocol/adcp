@@ -921,6 +921,20 @@
               </div>
             </div>
 
+            <!-- Orphan-adoption decision prompt: shown when the server returns
+                 409 orphan_manifest_decision_required because the brand domain
+                 was previously registered by another org and the manifest is
+                 awaiting an adopt-or-clear choice. -->
+            <div id="orphan-decision-prompt" style="display: none; background: var(--color-warning-50, #fffbeb); border: 1px solid var(--color-warning-300, #fcd34d); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-warning-800, #92400e); margin-bottom: var(--space-2);">This domain was previously registered</div>
+              <p id="orphan-decision-body" style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-4);"></p>
+              <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+                <button type="button" onclick="resolveOrphanDecision(true)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Adopt prior identity</button>
+                <button type="button" onclick="resolveOrphanDecision(false)" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Start fresh</button>
+                <button type="button" onclick="hideOrphanDecisionPrompt()" style="padding: var(--space-2) var(--space-5); background: transparent; color: var(--color-text-muted); border: none; font-size: var(--text-sm); cursor: pointer;">Cancel</button>
+              </div>
+            </div>
+
             <!-- Inline brand edit form -->
             <div id="brand-edit-form" style="display: none; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4);">
               <div class="form-group" style="margin-bottom: var(--space-4);">
@@ -954,6 +968,59 @@
                 <button onclick="copyBrandPointer()" style="position: absolute; top: var(--space-2); right: var(--space-2); padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
               </div>
             </div>
+
+            <!-- Domain ownership verification (DNS TXT challenge via WorkOS, #3176/#3189) -->
+            <div id="domain-claim-section" style="display: none; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Verify domain ownership</div>
+                  <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 4px 0 0 0;">Prove your organization controls this domain via a DNS TXT record. Required to claim a brand currently registered to another organization.</p>
+                </div>
+                <button type="button" id="domain-claim-toggle" onclick="toggleDomainClaim()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Start</button>
+              </div>
+
+              <div id="domain-claim-panel" style="display: none; margin-top: var(--space-4);">
+                <div id="domain-claim-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm); margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); border-radius: var(--radius-md);"></div>
+
+                <!-- Step 1: Issue challenge -->
+                <div id="domain-claim-issue-step">
+                  <button type="button" id="domain-claim-issue-btn" onclick="requestDomainChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Request DNS challenge</button>
+                </div>
+
+                <!-- Step 2: DNS instructions (shown after issue succeeds) -->
+                <div id="domain-claim-instructions" style="display: none;">
+                  <p style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-3);">Publish this DNS TXT record at your domain's registrar, then click <strong>Verify</strong> below. DNS propagation usually takes a few minutes.</p>
+                  <div style="display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); font-family: monospace; font-size: var(--text-sm);">
+                    <div style="color: var(--color-text-muted);">Name:</div>
+                    <code id="domain-claim-record-name" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                    <button type="button" onclick="copyDomainClaimField('name', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+
+                    <div style="color: var(--color-text-muted);">Type:</div>
+                    <code style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);">TXT</code>
+                    <span></span>
+
+                    <div style="color: var(--color-text-muted);">Value:</div>
+                    <code id="domain-claim-record-value" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                    <button type="button" onclick="copyDomainClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+                  </div>
+
+                  <div style="margin-bottom: var(--space-3); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+                    <button type="button" onclick="copyDomainClaimAll(this)" style="padding: var(--space-2) var(--space-3); background: var(--color-bg-card); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm); cursor: pointer;">Copy all (for IT)</button>
+                    <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Self-contained text block to paste into a ticket.</span>
+                  </div>
+
+                  <label id="domain-claim-adopt-prior-label" style="display: none; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                    <input type="checkbox" id="domain-claim-adopt-prior" style="margin: 0;">
+                    Start from the existing brand record (only check if you want to keep the prior org's logos and colors — most reclaims should leave this unchecked).
+                  </label>
+
+                  <div style="display: flex; gap: var(--space-3); align-items: center;">
+                    <button type="button" id="domain-claim-verify-btn" onclick="verifyDomainChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Verify</button>
+                    <span id="domain-claim-status" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Brand not linked state -->
@@ -982,6 +1049,53 @@
               <div style="text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-3);">or use the full brand builder for more options</div>
               <div style="text-align: center;">
                 <a href="/brand/builder" style="display: inline-block; padding: var(--space-2_5) var(--space-5); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Brand builder</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cross-org claim callout: shown when the user tries to save a domain
+               that's already owned by another org (409 cross_org_ownership). Lets
+               an admin/owner self-service via the WorkOS DNS challenge instead of
+               waiting on the escalation queue. Visibility gated to admin/owner. -->
+          <div id="cross-org-claim-callout" style="display: none; margin-top: var(--space-4); background: var(--color-warning-50, #fef3c7); border: 1px solid var(--color-warning-200, #fde68a); border-radius: var(--radius-md); padding: var(--space-4);">
+            <div style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">
+              <span id="cross-org-claim-domain"></span> is registered to another organization
+            </div>
+            <p style="font-size: var(--text-sm); color: var(--color-text); margin: 0 0 var(--space-3) 0;">
+              We filed a brand-ownership escalation. <strong>If you actually control DNS for this domain</strong>, you can prove it now via a DNS TXT challenge and claim it yourself — no need to wait.
+            </p>
+            <div id="cross-org-claim-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm); margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); border-radius: var(--radius-md);"></div>
+
+            <!-- Step 1: issue button -->
+            <div id="cross-org-claim-issue-step">
+              <button type="button" id="cross-org-claim-issue-btn" onclick="requestCrossOrgChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Request DNS challenge</button>
+            </div>
+
+            <!-- Step 2: DNS instructions -->
+            <div id="cross-org-claim-instructions" style="display: none; margin-top: var(--space-3);">
+              <p style="font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-3);">Publish this DNS TXT record at your domain's registrar, then click <strong>Verify</strong> below.</p>
+              <div style="display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); font-family: monospace; font-size: var(--text-sm);">
+                <div style="color: var(--color-text-muted);">Name:</div>
+                <code id="cross-org-claim-record-name" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                <button type="button" onclick="copyCrossOrgClaimField('name', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+
+                <div style="color: var(--color-text-muted);">Type:</div>
+                <code style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);">TXT</code>
+                <span></span>
+
+                <div style="color: var(--color-text-muted);">Value:</div>
+                <code id="cross-org-claim-record-value" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); overflow-x: auto;"></code>
+                <button type="button" onclick="copyCrossOrgClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+              </div>
+
+              <label id="cross-org-claim-adopt-label" style="display: none; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                <input type="checkbox" id="cross-org-claim-adopt-prior" style="margin: 0;">
+                Start from the existing brand record (only check if you want to keep the prior org's logos and colors — most reclaims should leave this unchecked).
+              </label>
+
+              <div style="display: flex; gap: var(--space-3); align-items: center;">
+                <button type="button" id="cross-org-claim-verify-btn" onclick="verifyCrossOrgChallenge()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Verify</button>
+                <span id="cross-org-claim-status" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></span>
               </div>
             </div>
           </div>
@@ -1140,7 +1254,8 @@
     let isNewProfile = true;
     let currentProfile = null;
     let tags = [];
-    let agents = []; // Array of {url: string, is_public: boolean}
+    let agents = []; // Array of {url: string, visibility: 'private'|'members_only'|'public'}
+    let hasApiAccess = false; // Whether the caller's tier allows public listing
     let brandHostingType = null; // 'community' | 'self-hosted' | null
     let currentResolvedBrand = null; // Resolved brand from registry for member card preview
     let agentInfo = {}; // Cache of discovered agent info by URL
@@ -1149,6 +1264,7 @@
     let slugCheckTimeout = null;
     let currentOrgId = null;
     let currentOrgName = null;
+    let currentOrgRole = null; // 'admin' | 'owner' | 'member' — gates domain-claim UI
 
     // Fetch with a timeout to prevent hanging on slow API responses
     function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
@@ -1267,10 +1383,12 @@
         currentOrgId = data.organization_id;
         currentOrgName = data.organization_name;
         hasActiveSubscription = data.has_active_subscription || false;
+        hasApiAccess = Boolean(data.has_api_access);
 
         // Determine is_personal from /api/me org data (already fetched, no extra call)
         const currentOrgInfo = meData?.organizations?.find(o => o.id === currentOrgId);
         const isPersonal = currentOrgInfo?.is_personal || false;
+        currentOrgRole = currentOrgInfo?.role || null;
 
         // Individual accounts use the community profile as their single profile
         if (isPersonal) {
@@ -1512,13 +1630,19 @@
         const manageLink = document.getElementById('brand-manage-link');
         manageLink.href = '/brands?domain=' + encodeURIComponent(profile.primary_brand_domain);
 
-        // Show logo if available
+        // Show logo if available. If the URL fails to load (broken host,
+        // viewer page that returns HTML, expired link), restore the
+        // "No logo" placeholder so the section never renders empty.
         const logoPreview = document.getElementById('brand-logo-preview');
         if (profile.resolved_brand?.logo_url) {
+          const placeholderHtml = logoPreview.innerHTML;
           var img = document.createElement('img');
           img.src = profile.resolved_brand.logo_url;
           img.style.cssText = 'max-width: 76px; max-height: 56px; object-fit: contain;';
           img.alt = '';
+          img.onerror = function() {
+            logoPreview.innerHTML = placeholderHtml;
+          };
           logoPreview.textContent = '';
           logoPreview.appendChild(img);
         }
@@ -1539,6 +1663,14 @@
           snippet.textContent = JSON.stringify({
             authoritative_location: 'https://agenticadvertising.org/brands/' + profile.primary_brand_domain + '/brand.json'
           }, null, 2);
+        }
+
+        // Domain ownership challenge: only org admins/owners can issue/verify.
+        // Backend enforces the same role gate; UI hides the panel for non-admins
+        // so members don't see a button that 401s.
+        const domainClaimEl = document.getElementById('domain-claim-section');
+        if (domainClaimEl) {
+          domainClaimEl.style.display = (currentOrgRole === 'admin' || currentOrgRole === 'owner') ? 'block' : 'none';
         }
 
       } else {
@@ -1622,9 +1754,14 @@
     }
 
     var _brandSaving = false;
-    async function saveBrandIdentity(isNew) {
+    // Pending save context — captured when the server returns 409 orphan_decision_required
+    // so the adopt/fresh buttons can re-fire the save with the user's choice.
+    var _pendingOrphanSave = null;
+
+    async function saveBrandIdentity(isNew, opts) {
       if (_brandSaving) return;
       _brandSaving = true;
+      opts = opts || {};
 
       var suffix = isNew ? '_new' : '';
       var logoUrl = (document.getElementById('brand_logo_url' + suffix) || {}).value;
@@ -1653,6 +1790,7 @@
         var body = {};
         if (logoUrl) body.logo_url = logoUrl;
         if (brandColor) body.brand_color = brandColor;
+        if (typeof opts.adoptPriorManifest === 'boolean') body.adopt_prior_manifest = opts.adoptPriorManifest;
 
         var response = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
           method: 'PUT',
@@ -1660,6 +1798,28 @@
           body: JSON.stringify(body),
           credentials: 'include',
         });
+
+        // Server returns 409 when the brand was previously registered by another
+        // org and the orphan manifest needs an explicit adopt-or-clear choice.
+        // Surface the decision inline; the adopt/fresh buttons re-call this
+        // function with the answer in opts.
+        if (response.status === 409) {
+          var conflictData = {};
+          try { conflictData = await response.json(); } catch {}
+          if (conflictData.code === 'orphan_manifest_decision_required') {
+            _pendingOrphanSave = { isNew: isNew };
+            showOrphanDecisionPrompt(conflictData);
+            return; // caller will re-fire via the prompt buttons
+          }
+          if (conflictData.code === 'cross_org_ownership') {
+            // The domain is owned by another org. If the caller actually
+            // controls DNS, surface the self-service DNS challenge inline
+            // so they don't have to dig through Addie or wait on the
+            // escalation queue. Admin-only — backend enforces the same gate.
+            showCrossOrgClaimCallout(conflictData, isNew);
+            return;
+          }
+        }
 
         if (!response.ok) {
           var errData = {};
@@ -1676,9 +1836,16 @@
         }
         populateBrandSection(currentProfile || { primary_brand_domain: data.brand_domain, resolved_brand: data.brand });
         updateMemberCardPreview();
+        hideOrphanDecisionPrompt();
 
         if (successEl) {
-          successEl.textContent = 'Brand identity saved.';
+          if (data.claimed_orphaned_brand) {
+            successEl.textContent = data.kept_prior_manifest
+              ? 'Brand identity saved — adopted prior identity.'
+              : 'Brand identity saved — started fresh.';
+          } else {
+            successEl.textContent = 'Brand identity saved.';
+          }
           successEl.style.display = 'inline';
         }
       } catch (error) {
@@ -1689,6 +1856,345 @@
         btn.disabled = false;
         btn.textContent = isNew ? 'Save brand' : 'Save';
       }
+    }
+
+    function showOrphanDecisionPrompt(conflictData) {
+      var prompt = document.getElementById('orphan-decision-prompt');
+      var body = document.getElementById('orphan-decision-body');
+      var domain = conflictData.brand_domain || 'this domain';
+      // Don't surface prior_owner_org_id in user-facing text — the response
+      // includes it for support-ticket diagnostics and tooling, but a member
+      // who has never seen that org id has no way to act on it. Generic copy
+      // also avoids accidentally signaling acquisitions to a screenshotted
+      // prompt.
+      body.innerHTML =
+        '<strong>' + escapeHtml(domain) + '</strong> was previously registered by another organization. Do you want to adopt the prior brand identity (logos, colors, agents) as your starting point — for example after an acquisition or rename — or start with a clean slate?';
+      prompt.style.display = 'block';
+    }
+
+    function hideOrphanDecisionPrompt() {
+      var prompt = document.getElementById('orphan-decision-prompt');
+      if (prompt) prompt.style.display = 'none';
+      _pendingOrphanSave = null;
+    }
+
+    function resolveOrphanDecision(adopt) {
+      if (!_pendingOrphanSave) {
+        hideOrphanDecisionPrompt();
+        return;
+      }
+      var ctx = _pendingOrphanSave;
+      hideOrphanDecisionPrompt();
+      saveBrandIdentity(ctx.isNew, { adoptPriorManifest: adopt });
+    }
+
+    // Domain ownership challenge (#3176/#3189) — DNS TXT challenge via WorkOS.
+    // Used to claim a brand currently registered to another org.
+    let _domainClaimOpen = false;
+    function toggleDomainClaim() {
+      _domainClaimOpen = !_domainClaimOpen;
+      var panel = document.getElementById('domain-claim-panel');
+      var toggle = document.getElementById('domain-claim-toggle');
+      panel.style.display = _domainClaimOpen ? 'block' : 'none';
+      toggle.textContent = _domainClaimOpen ? 'Cancel' : 'Start';
+      // Reset adopt-prior state on every open. Without this, a stale tick
+      // from a prior session (when prior_manifest_exists was true) could
+      // persist across panel close/reopen even though the next issue may
+      // not return prior_manifest_exists. requestDomainChallenge will
+      // re-show the label if the next issue actually has a prior manifest.
+      if (_domainClaimOpen) {
+        var adoptLabel = document.getElementById('domain-claim-adopt-prior-label');
+        var adoptCheckbox = document.getElementById('domain-claim-adopt-prior');
+        if (adoptLabel) adoptLabel.style.display = 'none';
+        if (adoptCheckbox) adoptCheckbox.checked = false;
+      }
+    }
+
+    function setDomainClaimError(msg) {
+      var el = document.getElementById('domain-claim-error');
+      if (!msg) {
+        el.style.display = 'none';
+        el.textContent = '';
+      } else {
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+    }
+
+    async function requestDomainChallenge() {
+      var domain = currentProfile?.primary_brand_domain;
+      if (!domain) {
+        setDomainClaimError('Link a brand first.');
+        return;
+      }
+      setDomainClaimError('');
+      var btn = document.getElementById('domain-claim-issue-btn');
+      btn.disabled = true;
+      btn.textContent = 'Requesting...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: domain }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to issue challenge.');
+        }
+        // WorkOS returns the host part as verification_prefix and the TXT
+        // value as verification_token. Show the fully-qualified record name
+        // so DNS hosts that don't auto-append the apex are unambiguous.
+        var prefix = data.verification_prefix || '';
+        var token = data.verification_token || '';
+        var fqdn = prefix ? prefix + '.' + data.domain : data.domain;
+        document.getElementById('domain-claim-record-name').textContent = fqdn;
+        document.getElementById('domain-claim-record-value').textContent = token;
+        document.getElementById('domain-claim-instructions').style.display = 'block';
+        document.getElementById('domain-claim-status').textContent = '';
+        // Only surface the adopt-prior checkbox when a relinquished prior
+        // manifest actually exists. Showing it for every claim primes
+        // hostile-takeover users (e.g. brand reclaiming from a squatter)
+        // toward inheriting assets they don't want.
+        var adoptLabel = document.getElementById('domain-claim-adopt-prior-label');
+        var adoptCheckbox = document.getElementById('domain-claim-adopt-prior');
+        if (data.prior_manifest_exists) {
+          if (adoptLabel) adoptLabel.style.display = 'flex';
+        } else {
+          if (adoptLabel) adoptLabel.style.display = 'none';
+          if (adoptCheckbox) adoptCheckbox.checked = false;
+        }
+      } catch (err) {
+        setDomainClaimError(err.message || 'Failed to issue challenge.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Request DNS challenge';
+      }
+    }
+
+    async function verifyDomainChallenge() {
+      var domain = currentProfile?.primary_brand_domain;
+      if (!domain) {
+        setDomainClaimError('Link a brand first.');
+        return;
+      }
+      setDomainClaimError('');
+      var statusEl = document.getElementById('domain-claim-status');
+      var btn = document.getElementById('domain-claim-verify-btn');
+      var adopt = document.getElementById('domain-claim-adopt-prior').checked;
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      statusEl.textContent = 'Checking DNS...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: domain, adopt_prior_manifest: adopt }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          // 'still_pending' is the common case — DNS hasn't propagated yet.
+          // Surface as inline status, not an error banner, so the user can
+          // just retry without losing the issued challenge.
+          if (data.code === 'still_pending') {
+            var hint = data.retry_after_seconds
+              ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
+              : '';
+            statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            return;
+          }
+          throw new Error(data.message || data.error || 'Failed to verify domain.');
+        }
+        statusEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; Domain verified' +
+          (data.adopted_prior_manifest ? ' &mdash; inherited prior brand identity.' : '.') + '</span>';
+        // Refresh the profile so brand-verified status / pointer callout update.
+        loadProfile();
+      } catch (err) {
+        setDomainClaimError(err.message || 'Failed to verify domain.');
+        statusEl.textContent = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify';
+      }
+    }
+
+    function copyDomainClaimField(field, btn) {
+      var id = field === 'name' ? 'domain-claim-record-name' : 'domain-claim-record-value';
+      var text = document.getElementById(id).textContent;
+      if (!text || !btn) return;
+      var original = btn.textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
+    }
+
+    // Self-contained DNS instructions an admin can paste into an IT ticket.
+    // CMOs / CTOs typically don't publish DNS themselves; this gives them a
+    // hand-off block their IT team can act on without bouncing back for
+    // clarification.
+    function copyDomainClaimAll(btn) {
+      var domain = (currentProfile && currentProfile.primary_brand_domain) || '';
+      var fqdn = document.getElementById('domain-claim-record-name').textContent || '';
+      var token = document.getElementById('domain-claim-record-value').textContent || '';
+      if (!fqdn || !token || !btn) return;
+      var block =
+        'Domain: ' + domain + '\n' +
+        'Add a DNS TXT record:\n' +
+        '  Name:  ' + fqdn + '\n' +
+        '  Type:  TXT\n' +
+        '  Value: ' + token + '\n' +
+        '  TTL:   300 (or your registrar\'s minimum)\n' +
+        '\n' +
+        'Once published, propagation is usually 5-15 minutes (sometimes longer with slow registrars). The brand admin will run verification at:\n' +
+        '  https://agenticadvertising.org/member-profile\n';
+      var original = btn.textContent;
+      navigator.clipboard.writeText(block).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
+    }
+
+    // Cross-org claim flow (#3228) — surfaces the DNS challenge from the
+    // not-linked save error path so an admin reclaiming a domain owned by
+    // another org doesn't have to leave the page or wait on the escalation.
+    // Uses the typed/returned brand_domain rather than currentProfile because
+    // the user isn't linked yet.
+    let _crossOrgClaimDomain = null;
+
+    function showCrossOrgClaimCallout(conflictData, isNew) {
+      // Admin-only: backend gates /brand-claim/issue and /verify on
+      // admin/owner role; hide the affordance for members so they don't
+      // see a button that 401s.
+      if (currentOrgRole !== 'admin' && currentOrgRole !== 'owner') return;
+      var domain = conflictData.brand_domain || '';
+      _crossOrgClaimDomain = domain;
+      document.getElementById('cross-org-claim-domain').textContent = domain;
+      document.getElementById('cross-org-claim-callout').style.display = 'block';
+      // Reset to step 1 in case the user previously interacted with this.
+      document.getElementById('cross-org-claim-instructions').style.display = 'none';
+      document.getElementById('cross-org-claim-error').style.display = 'none';
+      document.getElementById('cross-org-claim-status').textContent = '';
+      var adoptLabel = document.getElementById('cross-org-claim-adopt-label');
+      if (adoptLabel) adoptLabel.style.display = 'none';
+      var adoptCheckbox = document.getElementById('cross-org-claim-adopt-prior');
+      if (adoptCheckbox) adoptCheckbox.checked = false;
+    }
+
+    function hideCrossOrgClaimCallout() {
+      var callout = document.getElementById('cross-org-claim-callout');
+      if (callout) callout.style.display = 'none';
+      _crossOrgClaimDomain = null;
+    }
+
+    function setCrossOrgClaimError(msg) {
+      var el = document.getElementById('cross-org-claim-error');
+      if (!msg) { el.style.display = 'none'; el.textContent = ''; }
+      else { el.textContent = msg; el.style.display = 'block'; }
+    }
+
+    async function requestCrossOrgChallenge() {
+      if (!_crossOrgClaimDomain) {
+        setCrossOrgClaimError('Internal error: domain context lost. Refresh and try again.');
+        return;
+      }
+      setCrossOrgClaimError('');
+      var btn = document.getElementById('cross-org-claim-issue-btn');
+      btn.disabled = true;
+      btn.textContent = 'Requesting...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: _crossOrgClaimDomain }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          throw new Error(data.message || data.error || 'Failed to issue challenge.');
+        }
+        var prefix = data.verification_prefix || '';
+        var token = data.verification_token || '';
+        var fqdn = prefix ? prefix + '.' + data.domain : data.domain;
+        document.getElementById('cross-org-claim-record-name').textContent = fqdn;
+        document.getElementById('cross-org-claim-record-value').textContent = token;
+        document.getElementById('cross-org-claim-instructions').style.display = 'block';
+        // Only show the adopt-prior checkbox when an orphaned manifest
+        // actually exists (matches the linked-state panel behavior).
+        var adoptLabel = document.getElementById('cross-org-claim-adopt-label');
+        var adoptCheckbox = document.getElementById('cross-org-claim-adopt-prior');
+        if (data.prior_manifest_exists) {
+          if (adoptLabel) adoptLabel.style.display = 'flex';
+        } else {
+          if (adoptLabel) adoptLabel.style.display = 'none';
+          if (adoptCheckbox) adoptCheckbox.checked = false;
+        }
+      } catch (err) {
+        setCrossOrgClaimError(err.message || 'Failed to issue challenge.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Request DNS challenge';
+      }
+    }
+
+    async function verifyCrossOrgChallenge() {
+      if (!_crossOrgClaimDomain) {
+        setCrossOrgClaimError('Internal error: domain context lost. Refresh and try again.');
+        return;
+      }
+      setCrossOrgClaimError('');
+      var statusEl = document.getElementById('cross-org-claim-status');
+      var btn = document.getElementById('cross-org-claim-verify-btn');
+      var adopt = document.getElementById('cross-org-claim-adopt-prior').checked;
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      statusEl.textContent = 'Checking DNS...';
+      try {
+        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ domain: _crossOrgClaimDomain, adopt_prior_manifest: adopt }),
+        });
+        var data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) {
+          if (data.code === 'still_pending') {
+            var hint = data.retry_after_seconds
+              ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
+              : '';
+            statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            return;
+          }
+          throw new Error(data.message || data.error || 'Failed to verify domain.');
+        }
+        // Success: hide the warning callout (it'd otherwise stack a green
+        // success line inside an orange "registered to another organization"
+        // panel) and refresh the profile so the brand renders as linked.
+        hideCrossOrgClaimCallout();
+        loadProfile();
+      } catch (err) {
+        setCrossOrgClaimError(err.message || 'Failed to verify domain.');
+        statusEl.textContent = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify';
+      }
+    }
+
+    function copyCrossOrgClaimField(field, btn) {
+      var id = field === 'name' ? 'cross-org-claim-record-name' : 'cross-org-claim-record-value';
+      var text = document.getElementById(id).textContent;
+      if (!text || !btn) return;
+      var original = btn.textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
     }
 
     async function loadCredentials() {
@@ -2240,15 +2746,37 @@
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
+        // Server may have coerced visibility settings the caller isn't
+        // eligible for (e.g. public → members_only on a non-API-access
+        // tier). Surface those warnings so the user knows we didn't
+        // silently persist what they asked for.
+        const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        const downgrades = warnings.filter(w => w && w.code === 'visibility_downgraded');
+
         // If this was a new profile creation, redirect to dashboard with success message
         if (wasNewProfile) {
           const orgParam = currentOrgId ? `&org=${currentOrgId}` : '';
-          window.location.href = `/dashboard?profile_created=true${orgParam}`;
+          const warnParam = downgrades.length ? `&visibility_downgraded=${downgrades.length}` : '';
+          window.location.href = `/dashboard?profile_created=true${orgParam}${warnParam}`;
           return;
         }
 
-        // For updates, show success message and stay on page
-        showSuccess('Profile saved successfully!');
+        // For updates, show success message and stay on page.
+        // If visibility entries got downgraded, pin the reason above the
+        // generic banner so the user sees the upgrade CTA.
+        if (downgrades.length > 0) {
+          const agents = downgrades.map(w => w.agent_url).filter(Boolean);
+          const detail = agents.length
+            ? ` Affected agents: ${agents.join(', ')}.`
+            : '';
+          showError(
+            `Saved, but ${downgrades.length} agent${downgrades.length > 1 ? 's' : ''} could not be listed publicly — ` +
+            `public listing requires Professional tier or higher, so they were stored as members_only instead.${detail} ` +
+            `Upgrade at /membership to publish publicly.`
+          );
+        } else {
+          showSuccess('Profile saved successfully!');
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Profile';
 
@@ -2350,8 +2878,11 @@
         return;
       }
 
-      // Add agent with default public visibility
-      agents.push({ url, is_public: true });
+      // Default every new agent to members_only: it's the safest opt-in to
+      // the paid-member discovery pool, works for any tier, and avoids a
+      // confusing disabled "public" state when brand domain is missing.
+      // Users with API access can promote to public from the card.
+      agents.push({ url, visibility: 'members_only' });
       input.value = '';
       renderAgents();
       discoverAgentInfo(url);
@@ -2382,7 +2913,8 @@
         const info = agentInfo[agent.url];
         return renderAgentCard(info, agent.url, {
           showVisibilityToggle: true,
-          isPublic: agent.is_public,
+          visibility: agent.visibility || 'private',
+          canSetPublic: hasApiAccess,
           index: index,
           showRemoveButton: true,
           showStatus: true,
@@ -2391,39 +2923,31 @@
       }).join('');
     }
 
-    async function publishAgent(index) {
+    async function setAgentVisibility(index, target) {
+      const previous = agents[index]?.visibility;
+      if (!agents[index] || previous === target) return;
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
-          method: 'POST', credentials: 'include'
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: target }),
         });
         const data = await resp.json();
-        if (!resp.ok) { alert(data.error || 'Failed to publish'); return; }
-
-        if (data.action === 'snippet') {
-          // Self-hosted — show the snippet to copy
+        if (!resp.ok) {
+          alert(data.message || data.error || 'Failed to update visibility');
+          renderAgents(); // revert radio selection to last good state
+          return;
+        }
+        agents[index].visibility = target;
+        if (data.action === 'snippet' && data.snippet) {
           const snippet = JSON.stringify(data.snippet, null, 2);
           prompt('Add this to the agents array in your brand.json:', snippet);
         }
-
-        agents[index].is_public = true;
         renderAgents();
       } catch (err) {
-        alert('Failed to publish agent: ' + err.message);
-      }
-    }
-
-    async function unpublishAgent(index) {
-      try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/publish`, {
-          method: 'DELETE', credentials: 'include'
-        });
-        const data = await resp.json();
-        if (!resp.ok) { alert(data.error || 'Failed to unpublish'); return; }
-
-        agents[index].is_public = false;
+        alert('Failed to update visibility: ' + err.message);
         renderAgents();
-      } catch (err) {
-        alert('Failed to unpublish agent: ' + err.message);
       }
     }
 
@@ -2435,7 +2959,11 @@
         const data = await resp.json();
         if (!resp.ok) { alert(data.error || 'Failed to check'); return; }
 
-        agents[index].is_public = data.found;
+        // The server only demotes visibility on a public→not-found mismatch;
+        // otherwise we keep the user's current visibility intent.
+        if (agents[index].visibility === 'public' && !data.found) {
+          agents[index].visibility = 'private';
+        }
         renderAgents();
 
         if (data.found) {
@@ -2569,7 +3097,7 @@
       if (!str) return '';
       const div = document.createElement('div');
       div.textContent = str;
-      return div.innerHTML;
+      return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
   </script>
 </body>

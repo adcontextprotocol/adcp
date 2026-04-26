@@ -7,10 +7,6 @@ sidebarTitle: Task Reference
 
 # Property Governance Tasks
 
-<Info>
-**AdCP 3.0 Proposal** - These tasks are under development for AdCP 3.0.
-</Info>
-
 Property governance uses a **stateful** model where all evaluation happens through property list management. Create lists with filters and brand references, then resolve them to get compliant properties.
 
 ## Discovery
@@ -141,14 +137,14 @@ consent_agent.update_property_list(
     webhook_url="https://buyer.example.com/webhooks/consent"
 )
 
-scope3_list = scope3_agent.create_property_list(
+suitability_list = suitability_agent.create_property_list(
     name="Q1 - Sustainability",
     base_properties=master_list,
     brand=brand
 )
-scope3_agent.update_property_list(
-    list_id=scope3_list.list_id,
-    webhook_url="https://buyer.example.com/webhooks/scope3"
+suitability_agent.update_property_list(
+    list_id=suitability_list.list_id,
+    webhook_url="https://buyer.example.com/webhooks/suitability"
 )
 
 # Buyer agent intersects results when webhooks fire

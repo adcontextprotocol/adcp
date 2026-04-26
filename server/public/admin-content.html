@@ -699,6 +699,38 @@
         if (isAdmin) {
           switchTab('all');
         }
+
+        // Deep link support: /dashboard/content?status=pending_review&id=<uuid>
+        // lands the reviewer on the pending-review tab and focuses the named
+        // item. The Slack notification "Review draft" button uses this URL;
+        // without the focus, the reviewer lands on the queue and has to
+        // re-find the item by title. The id= param is a best-effort hint —
+        // if the item isn't in the current queue (e.g. already reviewed),
+        // we fall through to the unfocused tab view.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const statusParam = params.get('status');
+          const idParam = params.get('id');
+          if (statusParam === 'pending_review' && canReview) {
+            switchTab('review');
+            if (idParam) {
+              // Retry a couple of times — renderPendingContent is async via
+              // loadPendingContent and the DOM may not be populated yet.
+              const tryFocus = (attempt = 0) => {
+                const card = document.querySelector(`[data-id="${CSS.escape(idParam)}"]`);
+                if (card) {
+                  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  card.style.transition = 'box-shadow 0.3s ease';
+                  card.style.boxShadow = '0 0 0 3px var(--color-warning-500, #fbbf24)';
+                  setTimeout(() => { card.style.boxShadow = ''; }, 2500);
+                } else if (attempt < 5) {
+                  setTimeout(() => tryFocus(attempt + 1), 300);
+                }
+              };
+              tryFocus();
+            }
+          }
+        } catch (e) { /* best-effort; never block the dashboard on a deep link */ }
       } catch (err) {
         console.error('Init error:', err);
         document.getElementById('loading').innerHTML =

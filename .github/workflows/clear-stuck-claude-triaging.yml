@@ -1,0 +1,78 @@
+name: Clear stuck claude-triaging labels
+
+# Removes the `claude-triaging` lifecycle label from issues where it's been
+# applied for >30 minutes. The label is the "I'm on this" signal for the
+# triage routine; under normal flow the routine swaps it for `claude-triaged`
+# at the end of the run (1-3 min). Anything older means the routine errored
+# mid-run and orphaned the label.
+#
+# Without this sweep, orphaned `claude-triaging` labels stay forever and
+# poison the "is anyone working on this?" signal for humans.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: clear-stuck-claude-triaging
+  cancel-in-progress: false
+
+jobs:
+  clear:
+    name: Clear stuck labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Find and clear stuck claude-triaging labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # List open issues currently labeled claude-triaging.
+          # Filter out PRs (the label is meant for issues only).
+          mapfile -t numbers < <(
+            gh api "repos/$REPO/issues?labels=claude-triaging&state=open&per_page=100" --paginate \
+              --jq '.[] | select(.pull_request == null) | .number'
+          )
+
+          if [ ${#numbers[@]} -eq 0 ]; then
+            echo "::notice::No issues currently labeled claude-triaging."
+            exit 0
+          fi
+
+          echo "Checking ${#numbers[@]} issues with claude-triaging label..."
+          cleared=0
+
+          for num in "${numbers[@]}"; do
+            # Find the most recent labeled-claude-triaging timeline event.
+            added_at=$(
+              gh api "repos/$REPO/issues/$num/timeline?per_page=100" --paginate \
+                --jq '[.[] | select(.event == "labeled" and .label.name == "claude-triaging")] | last | .created_at // empty'
+            )
+
+            if [ -z "$added_at" ]; then
+              echo "::warning::#$num has claude-triaging label but no labeled event found — skipping (rare race)."
+              continue
+            fi
+
+            now_seconds=$(date -u +%s)
+            added_seconds=$(date -u -d "$added_at" +%s)
+            age_minutes=$(( (now_seconds - added_seconds) / 60 ))
+
+            if [ $age_minutes -gt 30 ]; then
+              echo "Clearing stuck claude-triaging on #$num (applied $age_minutes min ago at $added_at)"
+              gh issue edit "$num" --repo "$REPO" --remove-label claude-triaging
+              cleared=$((cleared + 1))
+            else
+              echo "  #$num — claude-triaging applied $age_minutes min ago (within 30 min window, leaving)."
+            fi
+          done
+
+          echo "::notice::Cleared $cleared stuck claude-triaging label(s) of ${#numbers[@]} checked."

@@ -9,6 +9,7 @@ import { Router, Request, Response } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
+import { isUuid } from "../utils/uuid.js";
 import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader, createRequireWorkingGroupMember } from "../middleware/auth.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
@@ -47,9 +48,6 @@ const documentUpload = multer({
     }
   },
 });
-
-// UUID validation regex
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Rate limiting for reindex endpoint (prevent API cost abuse)
 const reindexRateLimit = new Map<string, number[]>();
@@ -585,7 +583,7 @@ export function createCommitteeRouters(): {
   adminApiRouter.post('/:id/deactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      if (!UUID_REGEX.test(id)) {
+      if (!isUuid(id)) {
         return res.status(400).json({ error: 'Invalid working group ID' });
       }
       const deactivated = await workingGroupDb.deactivateWorkingGroup(id);
@@ -611,7 +609,7 @@ export function createCommitteeRouters(): {
   adminApiRouter.post('/:id/reactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      if (!UUID_REGEX.test(id)) {
+      if (!isUuid(id)) {
         return res.status(400).json({ error: 'Invalid working group ID' });
       }
       const reactivated = await workingGroupDb.reactivateWorkingGroup(id);
@@ -1539,6 +1537,21 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/working-groups/:slug/posts - Create a post in a working group (members)
+  //
+  // This is NOT the editorial review path. Posts created here are scoped
+  // to the working group's internal feed (members-only by default) and
+  // skip the pending_review → approve pipeline that applies to
+  // Perspectives (via proposeContentForUser). The two surfaces are
+  // distinct: Perspectives are public editorial; WG posts are
+  // group-internal discussion.
+  //
+  // Invariants enforced below (see #2712):
+  //   - Caller must be a member of the WG (403 otherwise).
+  //   - Non-leaders cannot set is_members_only=false — if a non-lead
+  //     could post publicly here, this endpoint would become a
+  //     second-class editorial publish path. Leaders may opt to
+  //     publish publicly within their own WG since they already have
+  //     committee-lead authority over that WG's content.
   publicApiRouter.post('/:slug/posts', requireAuth, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
@@ -1564,7 +1577,22 @@ export function createCommitteeRouters(): {
       }
 
       const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
-      const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
+      // Non-leaders CANNOT opt out of members_only. Reject any explicit
+      // non-true value (`false`, `0`, `"false"`, `null`) with a 403 so the
+      // abuse signal surfaces in logs rather than being silently coerced.
+      // Omitting the field entirely is fine — we default to members-only.
+      if (!isLeader && is_members_only !== undefined && is_members_only !== true) {
+        return res.status(403).json({
+          error: 'Permission denied',
+          message: 'Only committee leaders can create public (non-members-only) posts in this working group. Submit via the Perspectives flow for editorial review instead.',
+        });
+      }
+      // For leaders, normalize the field to a strict boolean so a
+      // `0`/`"false"`/`null` value doesn't accidentally create a public
+      // post the leader didn't intend.
+      const finalMembersOnly = isLeader
+        ? (is_members_only === undefined ? true : Boolean(is_members_only))
+        : true;
 
       if (!title || !post_slug) {
         return res.status(400).json({
@@ -2173,7 +2201,7 @@ export function createCommitteeRouters(): {
     try {
       const { slug, documentId } = req.params;
 
-      if (!UUID_REGEX.test(documentId)) {
+      if (!isUuid(documentId)) {
         return res.status(400).json({ error: 'Invalid document ID' });
       }
 
@@ -2215,7 +2243,7 @@ export function createCommitteeRouters(): {
       const { slug, documentId } = req.params;
       const { title, description, document_url, document_type, display_order, is_featured } = req.body;
 
-      if (!UUID_REGEX.test(documentId)) {
+      if (!isUuid(documentId)) {
         return res.status(400).json({
           error: 'Invalid document ID',
           message: 'Document ID must be a valid UUID',
@@ -2286,7 +2314,7 @@ export function createCommitteeRouters(): {
         });
       }
 
-      if (!UUID_REGEX.test(documentId)) {
+      if (!isUuid(documentId)) {
         return res.status(400).json({
           error: 'Invalid document ID',
           message: 'Document ID must be a valid UUID',
@@ -2343,7 +2371,7 @@ export function createCommitteeRouters(): {
     try {
       const { slug, documentId } = req.params;
 
-      if (!UUID_REGEX.test(documentId)) {
+      if (!isUuid(documentId)) {
         return res.status(400).json({
           error: 'Invalid document ID',
           message: 'Document ID must be a valid UUID',
@@ -2388,7 +2416,7 @@ export function createCommitteeRouters(): {
     try {
       const { assetId } = req.params;
 
-      if (!UUID_REGEX.test(assetId)) {
+      if (!isUuid(assetId)) {
         return res.status(400).send('Invalid asset ID');
       }
 
@@ -2421,7 +2449,7 @@ export function createCommitteeRouters(): {
     try {
       const { documentId } = req.params;
 
-      if (!UUID_REGEX.test(documentId)) {
+      if (!isUuid(documentId)) {
         return res.status(400).json({ error: 'Invalid document ID' });
       }
 
@@ -2847,7 +2875,7 @@ export function createCommitteeRouters(): {
       const { slug, eventId } = req.params;
 
       // Validate UUID format
-      if (!UUID_REGEX.test(eventId)) {
+      if (!isUuid(eventId)) {
         return res.status(400).json({
           error: 'Invalid event ID',
           message: 'Event ID must be a valid UUID',
@@ -2994,7 +3022,7 @@ export function createCommitteeRouters(): {
       const { slug, eventId } = req.params;
 
       // Validate UUID format
-      if (!UUID_REGEX.test(eventId)) {
+      if (!isUuid(eventId)) {
         return res.status(400).json({
           error: 'Invalid event ID',
           message: 'Event ID must be a valid UUID',
@@ -3074,7 +3102,7 @@ export function createCommitteeRouters(): {
       const { slug, eventId } = req.params;
 
       // Validate UUID format
-      if (!UUID_REGEX.test(eventId)) {
+      if (!isUuid(eventId)) {
         return res.status(400).json({
           error: 'Invalid event ID',
           message: 'Event ID must be a valid UUID',

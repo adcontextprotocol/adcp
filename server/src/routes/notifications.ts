@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { NotificationDatabase } from '../db/notification-db.js';
 import { createLogger } from '../logger.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('notification-routes');
 
@@ -48,7 +49,7 @@ export function createNotificationRouter() {
   router.post('/:id/read', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      if (!isUuid(req.params.id)) {
         return res.status(400).json({ error: 'Invalid notification ID' });
       }
       const success = await notificationDb.markAsRead(req.params.id, user.id);

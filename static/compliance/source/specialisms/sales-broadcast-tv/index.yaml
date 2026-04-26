@@ -17,6 +17,12 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a broadcast television platform — a local TV station group, network affiliate,
   or television rep firm that sells linear advertising inventory. A buyer agent connects
@@ -58,6 +64,31 @@ prerequisites:
     kit provides the Nova Motors Volta EV launch campaign — an automotive brand with
     national broadcast reach goals and budget appropriate for primetime linear TV.
   test_kit: "test-kits/nova-motors.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "primetime_30s_mf"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "broadcast_spot_30s"
+    - product_id: "late_fringe_15s_mf"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "broadcast_spot_15s"
+  pricing_options:
+    - product_id: "primetime_30s_mf"
+      pricing_option_id: "unit_primetime_30"
+      pricing_model: "flat_rate"
+      currency: "USD"
+      fixed_price: 4500.0
+    - product_id: "late_fringe_15s_mf"
+      pricing_option_id: "unit_fringe_15"
+      pricing_model: "flat_rate"
+      currency: "USD"
+      fixed_price: 1200.0
 
 phases:
   - id: capability_discovery
@@ -426,6 +457,7 @@ phases:
                   value: "NOVA0042000H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
                   width: 1920
                   height: 1080
@@ -442,6 +474,7 @@ phases:
                   value: "NOVA0042001H"
               assets:
                 video_file:
+                  asset_type: "video"
                   url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
                   width: 1920
                   height: 1080

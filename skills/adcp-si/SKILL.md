@@ -7,6 +7,8 @@ description: Execute AdCP Sponsored Intelligence (SI) Protocol operations with b
 
 This skill enables you to execute the AdCP SI Protocol with brand agents. SI enables conversational commerce sessions where users engage directly with brand agents for shopping, inquiries, and transactions.
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The SI Protocol provides 4 standardized tasks for managing conversational sessions:
@@ -21,7 +23,7 @@ The SI Protocol provides 4 standardized tasks for managing conversational sessio
 ## Typical Workflow
 
 1. **Preview** (optional): `si_get_offering` to see what the brand offers before consent
-2. **Start session**: `si_initiate_session` with user context and consent
+2. **Start session**: `si_initiate_session` with the user's `intent` and consent
 3. **Converse**: `si_send_message` to relay user messages and action responses
 4. **End**: `si_terminate_session` when done
 
@@ -36,7 +38,7 @@ Start a conversational session with a brand agent.
 **Request:**
 ```json
 {
-  "context": "I'm interested in your winter jacket collection",
+  "intent": "I'm interested in your winter jacket collection",
   "identity": {
     "consent_granted": true,
     "consent_timestamp": "2025-01-15T10:30:00Z",
@@ -52,7 +54,7 @@ Start a conversational session with a brand agent.
 ```
 
 **Key fields:**
-- `context` (string, required): Natural language description of user intent
+- `intent` (string, required): Natural language description of user intent — the conversation handoff from host to brand agent
 - `identity` (object, required): User identity with consent status
   - `consent_granted` (boolean, required): Whether user consented to share identity
   - `consent_timestamp` (string, optional): ISO 8601 timestamp of consent
@@ -64,6 +66,7 @@ Start a conversational session with a brand agent.
 - `offering_id` (string, optional): Brand-specific offering reference
 - `offering_token` (string, optional): Token from `si_get_offering` for session continuity
 - `supported_capabilities` (object, optional): Host platform capabilities (modalities, components, commerce)
+- `context` (object, optional): Opaque correlation data (e.g., `{"trace_id": "abc-123"}`) echoed unchanged in the response — never parsed by the brand agent
 
 **Response contains:**
 - `session_id`: Use in subsequent `si_send_message` and `si_terminate_session` calls
@@ -119,7 +122,7 @@ Get offering details and availability before initiating a session. Allows showin
 ```json
 {
   "offering_id": "winter-collection-2025",
-  "context": "Looking for warm jackets under $200",
+  "intent": "Looking for warm jackets under $200",
   "include_products": true,
   "product_limit": 5
 }
@@ -127,9 +130,10 @@ Get offering details and availability before initiating a session. Allows showin
 
 **Key fields:**
 - `offering_id` (string, required): Offering identifier from the catalog
-- `context` (string, optional): Natural language context for personalized results (no PII)
+- `intent` (string, optional): Natural language description of user intent for personalized results (no PII)
 - `include_products` (boolean, optional): Include matching products
 - `product_limit` (number, optional): Max products to return (default 5, max 50)
+- `context` (object, optional): Opaque correlation data echoed unchanged in the response — never parsed by the brand agent
 
 **Response contains:**
 - `offering`: Offering details (name, description, availability)
@@ -153,7 +157,8 @@ End an SI session.
 **Key fields:**
 - `session_id` (string, required): Session ID to terminate
 - `reason` (string, required): Why the session is ending — `handoff_transaction`, `handoff_complete`, `user_exit`, `session_timeout`, `host_terminated`
-- `termination_context` (object, optional): Additional context
+- `termination_context` (object, optional): Conversation summary, transaction intent, and cause for the termination
+- `context` (object, optional): Opaque correlation data echoed unchanged in the response — never parsed by the brand agent
 
 **Reason values:**
 - `handoff_transaction`: User is being redirected to complete a transaction

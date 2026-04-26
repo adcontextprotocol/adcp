@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
 import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
+import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -101,6 +102,88 @@ export function clearAccountStore(): void {
   accountStore.clear();
 }
 
+interface AccountWireShape {
+  account_id: string;
+  name: string;
+  advertiser: string;
+  // brand-ref.json defines this object; it carries domain + optional brand_id
+  // only — `name` is not in the schema and additionalProperties is false.
+  brand: { domain: string; brand_id?: string };
+  operator: string;
+  billing: string;
+  account_scope: string;
+  status: string;
+  payment_terms?: string;
+  rate_card?: string;
+  credit_limit?: { amount: number; currency: string };
+  sandbox?: true;
+}
+
+function accountStateToWire(account: AccountState): AccountWireShape {
+  const advertiser = account.brand.name ?? account.brand.domain;
+  const displayName = account.brand.domain === account.operator
+    ? advertiser
+    : `${advertiser} c/o ${account.operator}`;
+  // brand-ref.json forbids `name` on the wire (additionalProperties: false),
+  // so emit only the schema-declared fields. AccountState.brand.name is an
+  // operational hint we use to derive `name`/`advertiser` above; it never
+  // reaches the buyer.
+  const wireBrand: { domain: string; brand_id?: string } = { domain: account.brand.domain };
+  if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
+  const wire: AccountWireShape = {
+    account_id: account.accountId,
+    name: displayName,
+    advertiser,
+    brand: wireBrand,
+    operator: account.operator,
+    billing: account.billing,
+    account_scope: account.accountScope,
+    status: account.status,
+    payment_terms: account.paymentTerms,
+  };
+  if (account.rateCard) wire.rate_card = account.rateCard;
+  if (account.creditLimit) wire.credit_limit = account.creditLimit;
+  if (account.sandbox) wire.sandbox = true;
+  return wire;
+}
+
+// Compliance fixture pool — used when the session has no synced accounts, so
+// storyboards that rely on stable account IDs work without prior sync_accounts.
+function getComplianceAccounts(): AccountWireShape[] {
+  return [
+    {
+      account_id: 'acc_pagination_integrity_1',
+      name: 'Acme c/o Pinnacle',
+      advertiser: 'Acme Corp',
+      brand: { domain: 'acme-corp.com' },
+      operator: 'pinnacle-media.com',
+      billing: 'operator',
+      account_scope: 'operator_brand',
+      status: 'active',
+    },
+    {
+      account_id: 'acc_pagination_integrity_2',
+      name: 'Nova c/o Pinnacle',
+      advertiser: 'Nova Brands',
+      brand: { domain: 'nova-brands.com' },
+      operator: 'pinnacle-media.com',
+      billing: 'operator',
+      account_scope: 'operator_brand',
+      status: 'active',
+    },
+    {
+      account_id: 'acc_pagination_integrity_3',
+      name: 'Pinnacle',
+      advertiser: 'Pinnacle Media',
+      brand: { domain: 'pinnacle-media.com' },
+      operator: 'pinnacle-media.com',
+      billing: 'operator',
+      account_scope: 'brand',
+      status: 'active',
+    },
+  ];
+}
+
 // ── Tool definitions ─────────────────────────────────────────────
 
 export const ACCOUNT_REF_SCHEMA = {
@@ -119,6 +202,34 @@ export const ACCOUNT_REF_SCHEMA = {
 };
 
 export const ACCOUNT_TOOLS = [
+  {
+    name: 'list_accounts',
+    description: 'List accounts accessible to the authenticated agent. Supports status and sandbox filtering with cursor-based pagination.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['active', 'pending_approval', 'rejected', 'payment_required', 'suspended', 'closed'],
+          description: 'Filter accounts by status. Omit to return accounts in all statuses.',
+        },
+        sandbox: {
+          type: 'boolean',
+          description: 'Filter by sandbox status. Omit to return all accounts.',
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100, description: 'Max accounts per page (default 50, cap 100).' },
+            cursor: { type: 'string', description: 'Continuation token from a previous list_accounts response.' },
+          },
+        },
+      },
+      required: [],
+    },
+  },
   {
     name: 'sync_accounts',
     description: 'Sync advertiser accounts with this seller. Declare which brands and operators you represent, and receive account IDs and status. Sandbox accounts are provisioned instantly; non-sandbox accounts may require human approval.',
@@ -337,6 +448,51 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
   return {
     ...(req.dry_run && { dry_run: true }),
     accounts: results,
+  };
+}
+
+interface ListAccountsRequest extends ToolArgs {
+  status?: string;
+  sandbox?: boolean;
+  pagination?: { max_results?: number; cursor?: string };
+}
+
+export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
+  const req = args as unknown as ListAccountsRequest;
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const accountMap = getAccountMap(sessionKey);
+
+  let accounts: AccountWireShape[] = accountMap.size > 0
+    ? Array.from(accountMap.values()).map(accountStateToWire)
+    : getComplianceAccounts();
+
+  if (req.status) {
+    accounts = accounts.filter(a => a.status === req.status);
+  }
+  if (typeof req.sandbox === 'boolean') {
+    accounts = req.sandbox
+      ? accounts.filter(a => a.sandbox === true)
+      : accounts.filter(a => !a.sandbox);
+  }
+
+  const totalMatching = accounts.length;
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeOffsetCursor('accounts', req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, totalMatching);
+  const pageAccounts = accounts.slice(offset, pageEnd);
+  const hasMore = pageEnd < totalMatching;
+
+  return {
+    accounts: pageAccounts,
+    pagination: {
+      has_more: hasMore,
+      total_count: totalMatching,
+      ...(hasMore && { cursor: encodeOffsetCursor('accounts', pageEnd) }),
+    },
   };
 }
 

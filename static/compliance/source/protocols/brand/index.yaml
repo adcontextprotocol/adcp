@@ -2,22 +2,161 @@ id: brand_baseline
 version: "1.0.0"
 title: "Brand baseline"
 protocol: brand
-summary: "Baseline domain storyboard — every brand agent must resolve brand identity, declare authorization via adagents.json, and expose rights-related metadata."
+category: brand_baseline
+summary: "Baseline protocol storyboard — every brand agent must declare the brand protocol in capabilities and return a schema-valid brand identity."
 track: brand
+required_tools:
+  - get_brand_identity
 
 narrative: |
-  Brand domain agents provide brand identity, rights discovery, and
-  rights acquisition. The baseline requires capability discovery and
-  brand identity resolution.
+  Brand protocol agents are the identity layer of AdCP. Their job is to hold
+  brand identity data (names, logos, colors, fonts, tone) and expose it to
+  other agents — buyer agents, creative agents, DSPs — that need to render
+  on-brand creative or verify who a campaign is for.
 
-  3.1 placeholder: full brand baseline phases will be populated once the
-  brand domain tasks stabilize. Until then, agents claiming this domain
-  must pass universal storyboards.
+  The baseline tests the minimum contract that every brand agent honors,
+  regardless of what additional capabilities (rights licensing, creative
+  approval) it layers on top:
+
+    1. Declare `brand` in `supported_protocols` on `get_adcp_capabilities`.
+    2. Respond to `get_brand_identity` with a schema-valid identity manifest.
+    3. Reject unknown `brand_id` values with a structured error.
+
+  Rights licensing (`get_rights`, `acquire_rights`, `update_rights`,
+  `creative_approval`) ships experimentally in 3.0 and is covered by the
+  `brand-rights` specialism storyboard, not this baseline.
 
 agent:
   interaction_model: brand_agent
+  capabilities: []
+  examples:
+    - "Any brand agent (simple identity host or full rights platform)"
+    - "Brand-owned agents (Acme Outdoor)"
+    - "Third-party brand identity platforms"
+    - "Agency-hosted brand agents"
 
 caller:
   role: buyer_agent
+  example: "Any buyer, creative agent, or DSP needing brand identity"
 
-phases: []
+prerequisites:
+  description: |
+    The test kit provides a sample brand (Nova Motors) that any brand agent
+    can serve identity for.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls `get_adcp_capabilities` to confirm the agent declares
+      the brand protocol before issuing any brand-identity call.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares `brand` in `supported_protocols`.
+          Without this claim the buyer MUST NOT send `get_brand_identity`.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring `brand` in `supported_protocols`.
+
+        sample_request:
+          context:
+            correlation_id: "brand_baseline--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Response declares supported_protocols"
+
+  - id: brand_identity_retrieval
+    title: "Brand identity retrieval"
+    narrative: |
+      The buyer calls `get_brand_identity` to retrieve the brand's identity
+      manifest. The minimum contract is a schema-valid response that echoes
+      the requested `brand_id` and carries at least one name.
+
+    steps:
+      - id: get_brand_identity
+        title: "Retrieve brand identity"
+        narrative: |
+          The buyer calls `get_brand_identity` with a known `brand_id`. The
+          response MUST match the brand-identity schema and echo the
+          requested `brand_id`. Rich fields (logos, colors, fonts, tone,
+          visual_guidelines) are optional at the baseline level — the
+          minimum bar is that identity resolution works and is schema-valid.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expected: |
+          Return a schema-valid brand identity that echoes the requested
+          brand_id and includes at least one name.
+
+        sample_request:
+          brand_id: "nova_motors"
+          context:
+            correlation_id: "brand_baseline--get_brand_identity"
+        context_outputs:
+          - path: "brand_id"
+            key: "brand_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-brand-identity-response.json schema"
+          - check: field_present
+            path: "brand_id"
+            description: "Response includes brand_id"
+          - check: field_value
+            path: "brand_id"
+            value: "nova_motors"
+            description: "Returned brand_id echoes the requested brand"
+          - check: field_present
+            path: "names"
+            description: "Response includes brand names"
+
+  - id: unknown_brand_rejection
+    title: "Unknown brand rejection"
+    narrative: |
+      Agents MUST reject unknown `brand_id` values with a structured
+      AdCP error rather than returning an empty or fabricated manifest.
+
+    steps:
+      - id: get_brand_identity_unknown
+        title: "Reject unknown brand ID"
+        narrative: |
+          The buyer calls `get_brand_identity` with a `brand_id` the agent
+          does not serve. The response MUST be a structured error with a
+          recovery classification — not a success response with empty
+          fields.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expected: |
+          Return an AdCP error response indicating the brand is not known
+          to this agent.
+
+        sample_request:
+          brand_id: "brand_that_does_not_exist_12345"
+          context:
+            correlation_id: "brand_baseline--get_brand_identity_unknown"
+
+        expect_error: true
+        validations:
+          - check: error_code
+            allowed_values:
+              - "brand_not_found"
+              - "BRAND_NOT_FOUND"
+              - "NOT_FOUND"
+            description: "Error code indicates brand-not-found"

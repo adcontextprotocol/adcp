@@ -12,8 +12,8 @@ Audiences are distinct from [signals](/docs/signals/): signals are third-party d
 
 **Response Time**: Upload accepted in ~1–2s. The task remains active until matching completes (1–48 hours depending on the seller). Configure `push_notification_config` to receive a webhook when the audience is ready.
 
-**Request Schema**: [`/schemas/latest/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-response.json)
 
 ## Quick Start
 
@@ -494,6 +494,8 @@ Platform matching is asynchronous. The `status` field reflects the current state
 | `too_small` | Matched audience is below the platform's minimum size. `minimum_size` in the response tells you the threshold. Add more members and re-sync. |
 
 `status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
+
+Sellers MUST emit `too_small` whenever `matched_count < minimum_size`. Returning `ready` with a `matched_count` below the platform minimum is non-compliant — buyers rely on the status value as a programmatic signal that targeting will fail, not on post-hoc interpretation of the count.
 
 **Webhook (recommended)**: Configure `push_notification_config` at the protocol level before uploading. The task stays active while the seller's platform matches members. When matching completes, the task completes and the webhook fires with the final result — `status: "ready"` or `status: "too_small"`. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to set realistic expectations (typically 1–48 hours).
 

@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/create_media_buy_async
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -53,6 +54,31 @@ prerequisites:
     The test kit provides a sample brand (Acme Outdoor) with campaign parameters
     suitable for testing the full media buy flow.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_preroll_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "lifestyle_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "sports_preroll_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 22.0
+    - product_id: "lifestyle_display_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
 
 phases:
   - id: capability_discovery
@@ -337,6 +363,21 @@ phases:
             - "$context.product_format_id"
           context:
             correlation_id: "media_buy_seller--list_formats_integrity"
+        # The @adcp/client `list_creative_formats` request builder up
+        # through 5.10.0 (the currently-published release) returns `{}`,
+        # and the runner's post-builder merge only forwards envelope
+        # fields (context / ext / idempotency_key /
+        # push_notification_config) from sample_request — so `format_ids`
+        # above never reaches the wire and the seller answers with its
+        # full format catalog. `context_inputs` is applied after the
+        # builder runs, so this injects the captured `product_format_id`
+        # (the `{agent_url, id}` object from `products[0].format_ids[0]`)
+        # at `format_ids[0]` and lets the round-trip invariant actually
+        # grade. Drop once we bump past the @adcp/client release that
+        # ships adcontextprotocol/adcp-client#789.
+        context_inputs:
+          - key: product_format_id
+            inject_at: "format_ids[0]"
         validations:
           - check: response_schema
             description: "Response matches list-creative-formats-response.json schema"
@@ -427,6 +468,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -441,7 +483,9 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"

@@ -24,14 +24,26 @@ export function setupProspectRoutes(apiRouter: Router, _config: { workos: any })
     res.redirect(308, `/api/admin/accounts/${req.params.orgId}`);
   });
 
-  // POST /api/admin/prospects/:orgId/payment-link → POST /api/admin/accounts/:orgId/payment-link
-  apiRouter.post("/prospects/:orgId/payment-link", requireAuth, requireAdmin, (req, res) => {
-    res.redirect(308, `/api/admin/accounts/${req.params.orgId}/payment-link`);
+  // POST /api/admin/prospects/:orgId/payment-link - removed (direct admin
+  // payment-link killed; admins now send membership invitations and the
+  // recipient mints the checkout session as themselves).
+  apiRouter.post("/prospects/:orgId/payment-link", requireAuth, requireAdmin, (_req, res) => {
+    res.status(410).json({
+      error: "Gone",
+      message:
+        "The direct admin payment-link endpoint has been removed. Use POST /api/admin/accounts/:orgId/invite-membership to send a membership invitation instead. The recipient signs in and completes checkout in their own session.",
+    });
   });
 
-  // POST /api/admin/prospects/:orgId/invoice → POST /api/admin/accounts/:orgId/invoice
-  apiRouter.post("/prospects/:orgId/invoice", requireAuth, requireAdmin, (req, res) => {
-    res.redirect(308, `/api/admin/accounts/${req.params.orgId}/invoice`);
+  // POST /api/admin/prospects/:orgId/invoice - removed (direct admin invoice killed;
+  // admins now send membership invitations via invite-membership). Return a 410
+  // rather than a redirect so stale callers surface the migration clearly.
+  apiRouter.post("/prospects/:orgId/invoice", requireAuth, requireAdmin, (_req, res) => {
+    res.status(410).json({
+      error: "Gone",
+      message:
+        "The direct admin-invoice endpoint has been removed. Use POST /api/admin/accounts/:orgId/invite-membership to send a membership invitation instead.",
+    });
   });
 
   // GET /api/admin/prospects/typeahead?q=... → GET /api/admin/accounts?view=all&search=...&limit=10

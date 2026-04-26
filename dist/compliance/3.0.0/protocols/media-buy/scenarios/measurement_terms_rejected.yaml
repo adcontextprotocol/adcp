@@ -1,0 +1,194 @@
+id: media_buy_seller/measurement_terms_rejected
+version: "1.0.0"
+title: "Seller rejects unworkable measurement_terms"
+category: media_buy_seller
+summary: "Buyer proposes measurement_terms the seller will not accept; seller returns TERMS_REJECTED; buyer retries with seller-compatible terms."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  measurement_terms negotiation is a round-trip. The buyer proposes a measurement vendor,
+  window, and variance tolerance on each package; the seller either accepts (returning
+  measurement_terms echoed in the response) or rejects with TERMS_REJECTED and a message
+  explaining what is unacceptable. The buyer corrects the terms and retries the same
+  create_media_buy idempotency_key with an adjusted payload.
+
+  This scenario sends an intentionally aggressive first proposal (max_variance_percent: 0
+  with a window the seller does not guarantee), verifies the seller rejects with
+  TERMS_REJECTED, then retries with a relaxed proposal that falls inside the seller's
+  stated tolerance and expects a successful create_media_buy.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - measurement_terms
+  examples:
+    - "Broadcast sellers"
+    - "CTV sellers with C3/C7 guarantees"
+    - "Any seller that negotiates measurement terms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller supports measurement_terms on create_media_buy packages. Buyer knows the
+    seller's declared measurement capabilities from get_adcp_capabilities.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_products
+    title: "Discover products"
+    steps:
+      - id: get_products_brief
+        title: "Find a product that supports measurement_terms"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products with pricing_options. At least one product should advertise
+          measurement support in the response.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video inventory with measurement guarantees. Q2 flight, $50K."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product returned"
+
+  - id: reject_terms
+    title: "Seller rejects unworkable terms"
+    narrative: |
+      The buyer proposes max_variance_percent: 0 — a tolerance almost no seller can
+      honor against third-party measurement. The seller must reject with TERMS_REJECTED
+      and indicate what would be acceptable.
+
+    steps:
+      - id: create_media_buy_aggressive_terms
+        title: "Propose aggressive measurement_terms"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        stateful: false
+        expected: |
+          Reject with:
+          - code: TERMS_REJECTED
+          - recovery: correctable
+          - message indicating which terms are unworkable (vendor, window, or variance)
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "measurement-terms-probe-aggressive-v1"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 25000
+              pricing_option_id: "$context.pricing_option_id"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "videoamp.example"
+                  measurement_window: "c30"
+                  max_variance_percent: 0
+                makegood_policy:
+                  available_remedies: ["credit"]
+
+          context:
+            correlation_id: "measurement_terms_rejected--aggressive"
+        validations:
+          - check: error_code
+            value: "TERMS_REJECTED"
+            description: "Error code is TERMS_REJECTED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "measurement_terms_rejected--aggressive"
+            description: "Context correlation_id returned unchanged"
+
+  - id: accept_terms
+    title: "Buyer retries with acceptable terms"
+    narrative: |
+      The buyer relaxes measurement_terms to match the seller's stated capability
+      (c7 window, 10% variance, makegood remedies) and retries. The seller accepts and
+      returns the confirmed terms echoed in the response.
+
+    steps:
+      - id: create_media_buy_relaxed_terms
+        title: "Propose seller-compatible measurement_terms"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds. The response echoes the accepted measurement_terms (possibly
+          normalized by the seller).
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "measurement-terms-probe-relaxed-v1"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 25000
+              pricing_option_id: "$context.pricing_option_id"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "videoamp.example"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
+                makegood_policy:
+                  available_remedies: ["additional_delivery", "credit"]
+
+          context:
+            correlation_id: "measurement_terms_rejected--relaxed"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id after accepting terms"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "measurement_terms_rejected--relaxed"
+            description: "Context correlation_id returned unchanged"

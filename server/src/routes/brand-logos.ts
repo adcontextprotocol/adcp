@@ -9,7 +9,7 @@ import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
-import { canReviewBrandLogos } from '../services/brand-logo-auth.js';
+import { canReviewBrandLogos, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import {
   validateLogoTags,
@@ -20,11 +20,11 @@ import {
   rebuildManifestLogos,
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('brand-logo-routes');
 
 const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_LOGOS_PER_BRAND = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -119,6 +119,14 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
 
+        // Auto-approve when the uploader belongs to the verified-owner org for this
+        // domain (brand.json present + AAO pointer verified). The pending queue is
+        // for community uploads where ownership is unclear; an owner uploading their
+        // own logo shouldn't have to wait for human review.
+        const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
+        const source = isOwner ? 'brand_owner' : 'community';
+        const reviewStatus = isOwner ? 'approved' : 'pending';
+
         // Insert
         const logo = await brandLogoDb.insertBrandLogo({
           domain,
@@ -128,8 +136,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           tags,
           width,
           height,
-          source: 'community',
-          review_status: 'pending',
+          source,
+          review_status: reviewStatus,
           uploaded_by_user_id: user.id,
           uploaded_by_email: user.email,
           upload_note: note,
@@ -161,10 +169,20 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           }
         }
 
+        // Auto-approved owner uploads need the manifest rebuilt so the new logo
+        // shows immediately. Verified hosted brands manage their manifest via
+        // brand.json directly — skip the rebuild for those.
+        if (isOwner) {
+          const hosted = await brandDb.getHostedBrandByDomain(domain);
+          if (!hosted || !hosted.domain_verified) {
+            await rebuildManifestLogos(domain, brandLogoDb, brandDb);
+          }
+        }
+
         // Create a brand revision noting the upload
         try {
           await brandDb.editDiscoveredBrand(domain, {
-            edit_summary: `Logo uploaded by ${user.email}`,
+            edit_summary: `Logo uploaded by ${user.email}${isOwner ? ' (verified owner — auto-approved)' : ''}`,
             editor_user_id: user.id,
             editor_email: user.email,
           });
@@ -176,7 +194,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           success: true,
           domain,
           logo_id: logo.id,
-          review_status: 'pending',
+          review_status: reviewStatus,
           url: `/logos/brands/${domain}/${logo.id}`,
         });
       } catch (error) {
@@ -257,7 +275,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         if (!logoDomainPattern.test(domain)) {
           return res.status(400).json({ error: 'Invalid domain' });
         }
-        if (!uuidPattern.test(logoId)) {
+        if (!isUuid(logoId)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
 

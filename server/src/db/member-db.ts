@@ -19,6 +19,28 @@ function escapeLikePattern(str: string): string {
 }
 
 /**
+ * Normalize a raw agent object from JSONB to the current schema.
+ * Before migration 419, agents used a boolean `is_public`; map that to
+ * the visibility enum so callers see a consistent shape.
+ */
+function normalizeAgentConfig(raw: unknown): AgentConfig {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const candidate = obj.visibility;
+  let visibility: AgentConfig['visibility'];
+  if (candidate === 'private' || candidate === 'members_only' || candidate === 'public') {
+    visibility = candidate;
+  } else {
+    visibility = obj.is_public === true ? 'public' : 'private';
+  }
+  return {
+    url: String(obj.url ?? ''),
+    visibility,
+    ...(typeof obj.name === 'string' ? { name: obj.name } : {}),
+    ...(typeof obj.type === 'string' ? { type: obj.type as AgentConfig['type'] } : {}),
+  };
+}
+
+/**
  * Database operations for member profiles
  */
 export class MemberDatabase {
@@ -362,9 +384,10 @@ export class MemberDatabase {
     // Parse agents JSONB
     let agents: AgentConfig[] = [];
     if (row.agents) {
-      agents = typeof row.agents === 'string'
+      const raw = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : row.agents;
+      agents = Array.isArray(raw) ? raw.map(normalizeAgentConfig) : [];
     }
 
     // Parse publishers JSONB

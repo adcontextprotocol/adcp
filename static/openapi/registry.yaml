@@ -7,7 +7,8 @@ info:
     AdCP ecosystem.
 
     Most endpoints are public and require no authentication. Endpoints marked
-    with a lock icon require a Bearer token — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).
+    with a lock icon accept either an organization API key or a user JWT
+    obtained via the OAuth 2.1 flow — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).
 
     **Base URL:** `https://agenticadvertising.org`
   version: 1.0.0
@@ -19,6 +20,27 @@ servers:
     description: Production
 security: []
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |-
+        Bearer token in the `Authorization` header. Two token types are accepted:
+
+        - **Organization API key** (`sk_...`) issued via the dashboard. Org-scoped, long-lived, for server-to-server use.
+        - **User JWT** obtained via the OAuth 2.1 authorization code flow with PKCE. User-scoped, short-lived. Discover the authorization server at `/.well-known/oauth-authorization-server` and the protected-resource metadata at `/.well-known/oauth-protected-resource/api`.
+    oauth2:
+      type: oauth2
+      description: OAuth 2.1 authorization code flow with PKCE. Users authenticate via AuthKit and clients receive a Bearer JWT that authorizes both the MCP endpoint and this REST API. Dynamic client registration is supported at `/register`.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://agenticadvertising.org/authorize
+          tokenUrl: https://agenticadvertising.org/token
+          refreshUrl: https://agenticadvertising.org/token
+          scopes:
+            openid: User identifier
+            profile: User profile information
+            email: User email address
   schemas:
     ResolvedBrand:
       type: object
@@ -1135,6 +1157,8 @@ components:
             - testing
             - production
             - deprecated
+        compliance_opt_out:
+          type: boolean
         tracks:
           type: object
           additionalProperties:
@@ -1351,6 +1375,7 @@ components:
             - bearer
             - basic
             - oauth
+            - oauth_client_credentials
             - null
         has_oauth_token:
           type: boolean
@@ -1360,6 +1385,8 @@ components:
           type:
             - string
             - "null"
+        has_oauth_client_credentials:
+          type: boolean
       required:
         - has_auth
         - agent_context_id
@@ -1367,6 +1394,39 @@ components:
         - has_oauth_token
         - has_valid_oauth
         - oauth_token_expires_at
+        - has_oauth_client_credentials
+    CredentialSaveValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - invalid_blob_shape
+            - missing_field
+            - invalid_field_type
+            - field_too_long
+            - invalid_url
+            - invalid_env_reference
+            - invalid_auth_method_value
+          description: Stable rejection tag. UI maps this to operator-friendly prose.
+        field:
+          type: string
+          enum:
+            - oauth_client_credentials
+            - token_endpoint
+            - client_id
+            - client_secret
+            - scope
+            - resource
+            - audience
+            - auth_method
+          description: Field the UI should scroll to + highlight.
+      required:
+        - error
+        - code
+        - field
     StoryboardSummary:
       type: object
       properties:
@@ -1693,6 +1753,7 @@ paths:
         - Brand Resolution
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -2106,6 +2167,7 @@ paths:
         - Property Resolution
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -3474,6 +3536,7 @@ paths:
         - Policy Registry
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -3645,6 +3708,7 @@ paths:
         - Change Feed
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -3760,6 +3824,7 @@ paths:
         - Agent Discovery
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -3958,6 +4023,7 @@ paths:
         - Agent Discovery
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -4026,6 +4092,7 @@ paths:
         - Brand Discovery
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -4132,6 +4199,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4208,6 +4276,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -4348,6 +4417,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4411,6 +4481,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4469,6 +4540,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4517,6 +4589,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4575,6 +4648,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4635,6 +4709,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4713,6 +4788,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4755,6 +4831,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -4823,6 +4900,217 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/oauth-client-credentials:
+    put:
+      operationId: saveAgentOAuthClientCredentials
+      summary: Save OAuth 2.0 client-credentials for an agent
+      description: Store a machine-to-machine OAuth 2.0 client-credentials configuration (RFC 6749 §4.4) for this agent. The SDK exchanges at the token endpoint before every call and refreshes on 401. `client_secret` may be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time, the server stores it as written (encrypted uniformly). Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token_endpoint:
+                  type: string
+                  maxLength: 2048
+                  description: Token endpoint URL (HTTPS required; localhost allowed in dev).
+                client_id:
+                  type: string
+                  maxLength: 2048
+                  description: OAuth client ID. May be a `$ENV:VAR_NAME` reference.
+                client_secret:
+                  type: string
+                  maxLength: 8192
+                  description: OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest.
+                scope:
+                  type: string
+                  maxLength: 1024
+                  description: Space-separated OAuth scope values.
+                resource:
+                  type: string
+                  maxLength: 2048
+                  description: RFC 8707 resource indicator.
+                audience:
+                  type: string
+                  maxLength: 2048
+                  description: Audience parameter for audience-validating authorization servers.
+                auth_method:
+                  type: string
+                  enum:
+                    - basic
+                    - body
+                  description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic."
+              required:
+                - token_endpoint
+                - client_id
+                - client_secret
+      responses:
+        "200":
+          description: Credentials saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                    enum:
+                      - true
+                  has_auth:
+                    type: boolean
+                    enum:
+                      - true
+                  agent_context_id:
+                    type: string
+                  auth_type:
+                    type: string
+                    enum:
+                      - oauth_client_credentials
+                required:
+                  - connected
+                  - has_auth
+                  - agent_context_id
+                  - auth_type
+        "400":
+          description: Invalid parameters — response carries `code` and `field` pointing to the rejection cause.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialSaveValidationError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/oauth-client-credentials/test:
+    post:
+      operationId: testAgentOAuthClientCredentials
+      summary: Dry-run the saved OAuth 2.0 client-credentials config
+      description: Exchange the saved client_credentials at the token endpoint and discard the resulting access token. Returns success + latency on a 2xx exchange, or the SDK's `ClientCredentialsExchangeError` kind (`oauth`, `malformed`, `network`) on failure so operators get same-second feedback instead of waiting for the next compliance heartbeat. Requires authentication and ownership. Requires credentials to already be saved via `PUT /oauth-client-credentials`.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it)."
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      ok:
+                        type: boolean
+                        enum:
+                          - true
+                      latency_ms:
+                        type: integer
+                    required:
+                      - ok
+                      - latency_ms
+                  - type: object
+                    properties:
+                      ok:
+                        type: boolean
+                        enum:
+                          - false
+                      latency_ms:
+                        type: integer
+                      error:
+                        type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - oauth
+                              - malformed
+                              - network
+                            description: "Category of failure: `oauth` = AS returned a typed error (e.g. invalid_client), `malformed` = AS returned an unexpected 2xx payload, `network` = couldn't reach the AS."
+                          message:
+                            type: string
+                          oauth_error:
+                            type: string
+                            description: RFC 6749 `error` field when kind=oauth.
+                          oauth_error_description:
+                            type: string
+                            description: RFC 6749 `error_description` field when kind=oauth.
+                          http_status:
+                            type: integer
+                            description: Status code when the AS returned a non-2xx.
+                        required:
+                          - kind
+                          - message
+                    required:
+                      - ok
+                      - latency_ms
+                      - error
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No saved client-credentials config for this agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/applicable-storyboards:
     get:
       operationId: getApplicableStoryboards
@@ -4832,6 +5120,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -5112,6 +5401,7 @@ paths:
         - Brand Resolution
       security:
         - bearerAuth: []
+        - oauth2: []
       requestBody:
         content:
           application/json:
@@ -5390,6 +5680,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -5512,6 +5803,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -5605,6 +5897,7 @@ paths:
         - Agent Compliance
       security:
         - bearerAuth: []
+        - oauth2: []
       parameters:
         - schema:
             type: string

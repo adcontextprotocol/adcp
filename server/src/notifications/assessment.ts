@@ -52,7 +52,7 @@ export async function notifyAssessmentCompleted(data: {
   ];
 
   try {
-    const result = await sendChannelMessage(adminChannel.channel_id, { text, blocks });
+    const result = await sendChannelMessage(adminChannel.channel_id, { text, blocks }, { requirePrivate: true });
     if (result.ok) {
       logger.info({ channel: adminChannel.channel_name, org: data.organizationName }, 'Assessment notification sent');
       return true;

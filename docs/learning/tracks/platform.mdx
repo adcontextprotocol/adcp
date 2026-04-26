@@ -182,10 +182,20 @@ Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cu
 Run the matching storyboard against your running agent:
 
 ```bash
-npx @adcp/client storyboard run my-agent media_buy_seller
+npx @adcp/client@latest storyboard run my-agent media_buy_seller
 ```
 
 The storyboard validates protocol compliance across the complete workflow. See [Validate Your Agent](/docs/building/validate-your-agent) for setup, debugging, and the full CLI reference.
+
+### Specialisms you can claim
+
+Platform agents often span multiple domains. Declare each protocol you implement in `supported_protocols` and each specialism you claim in `specialisms`. Some common combinations:
+
+- Full-stack sales platform: `supported_protocols: ["media_buy", "creative", "signals"]`, `specialisms: ["sales-guaranteed", "sales-non-guaranteed", "creative-ad-server"]`
+- Signal platform: `supported_protocols: ["signals"]`, `specialisms: ["signal-marketplace"]` or `["signal-owned"]`
+- Governance platform: `supported_protocols: ["governance"]`, `specialisms: ["content-standards", "property-lists", "collection-lists"]`
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the storyboards that verify each claim.
 
 ### Assessment rubric
 

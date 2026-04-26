@@ -70,7 +70,7 @@ Governance agents are LLMs that interpret natural language policy text -- the sa
 
 ## Policy structure
 
-Each policy in the registry follows the [policy-entry schema](https://adcontextprotocol.org/schemas/latest/governance/policy-entry.json):
+Each policy in the registry follows the [policy-entry schema](https://adcontextprotocol.org/schemas/v3/governance/policy-entry.json):
 
 ```json
 {
@@ -118,6 +118,8 @@ Policies have optional `effective_date` and `sunset_date` fields. Governance age
 This means brands can reference upcoming regulations before they take effect. The governance agent evaluates them and reports what *would* have been flagged, without blocking campaigns. Once the effective date passes, enforcement activates automatically -- no configuration change needed.
 
 For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
+
+For the operational pattern — how to pin a policy version, what happens when a registry policy version-bumps mid-campaign, how to use `effective_date` for staged adoption, the additive-only rule for inline `custom_policies`, and a working-group FAQ — see [Sync and versioning](/docs/governance/policy-registry-sync).
 
 ## Three tiers of policy application
 
@@ -279,7 +281,7 @@ The registry ships with 14 seeded policies covering common advertising regulatio
 | `childrens_advertising` | `children_directed` | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
 
 <Note>
-Common Sense Brand Standards (CSBS) is a content adjacency standard governed by AgenticAdvertising.org. It defines content categories where advertising placement poses brand-reputation risk, applicable across industries and channels. CSBS was originally contributed to AAO by Scope3.
+Common Sense Brand Standards (CSBS) is a content adjacency standard governed by AgenticAdvertising.org. It defines content categories where advertising placement poses brand-reputation risk, applicable across industries and channels. CSBS originated at Scope3 and was contributed to AAO in 2026; formalization of the IP donation instrument is tracked in [#2314](https://github.com/adcontextprotocol/adcp/issues/2314). Until the formal donation record is complete, CSBS ships as a seeded policy under AAO custodianship rather than under a signed assignment.
 </Note>
 
 ## Policy category definitions

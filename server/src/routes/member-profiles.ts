@@ -18,15 +18,21 @@ import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
-import { OrganizationDatabase } from "../db/organization-db.js";
+import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { AAO_HOST } from "../config/aao.js";
-import { VALID_MEMBER_OFFERINGS } from "../types.js";
-import type { MemberBrandInfo } from "../types.js";
+import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
+import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
+import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
+import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
+import { resolveUserRole } from "../utils/resolve-user-role.js";
+import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
+import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
+import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
@@ -54,10 +60,13 @@ export interface MemberProfileRoutesConfig {
 
 /**
  * Resolve brand identity from the brand registry for a given domain.
- * Resolves brand identity from the unified brands table.
+ * Skips orphaned manifests — when a prior owner relinquished, the manifest
+ * is preserved for adoption but should not surface on member-facing reads
+ * until a new claim adopts (or clears) it. See updateBrandIdentity.
  */
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
   const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (brand?.manifest_orphaned) return undefined;
   if (brand?.brand_manifest) {
     return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
   }
@@ -100,6 +109,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           profile: profile || null,
           organization_id: devOrgId,
           organization_name: localOrg.name,
+          has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
         });
       }
 
@@ -108,15 +118,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         userId: user.id,
       });
 
-      // Auto-link: if no memberships, check for verified domain match
-      if (memberships.data.length === 0) {
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          // Re-fetch memberships after auto-link
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
+      // Auto-link any verified-domain orgs the user isn't yet in.
+      // Helper short-circuits when the user is already a cached member.
+      const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+      if (linked) {
+        memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
       }
 
       if (memberships.data.length === 0) {
@@ -152,12 +160,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       // Get org name from WorkOS
       const org = await workos!.organizations.getOrganization(targetOrgId);
+      const localOrg = await orgDb.getOrganization(targetOrgId);
 
       logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
       res.json({
         profile: profile || null,
         organization_id: targetOrgId,
         organization_name: org.name,
+        has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
       });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
@@ -238,14 +248,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {
@@ -307,6 +316,36 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Gate agent visibility on create using the same helper the PUT
+      // path uses. Without this, an Explorer-tier user creating their
+      // first profile can land `visibility: 'public'` directly in the
+      // JSONB — subsequent readers filter strictly on `=== 'public'`
+      // with no tier re-check, so the entry stays public forever.
+      const createOrgForTier = await orgDb.getOrganization(targetOrgId);
+      const createCallerHasApi = hasApiAccess(resolveMembershipTier(createOrgForTier));
+      const { agents: gatedAgents, warnings: createWarnings } =
+        gateAgentVisibilityForCaller(agents, createCallerHasApi);
+
+      // Same tier gate for the profile-level `is_public` flag. The
+      // `/visibility` PUT route gates this through hasActiveSubscription
+      // (line 1343), but the POST create and PUT bulk-update paths
+      // previously accepted the raw body value — same smuggle class as
+      // the agent-visibility bug this PR fixes.
+      let effectiveIsPublic = is_public === true;
+      if (effectiveIsPublic && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          effectiveIsPublic = false;
+          createWarnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; stored as private instead.',
+          });
+        }
+      }
+
       const profile = await memberDb.createProfile({
         workos_organization_id: targetOrgId,
         display_name,
@@ -320,11 +359,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         linkedin_url,
         twitter_url,
         offerings: offerings || [],
-        agents: agents || [],
+        agents: gatedAgents,
         headquarters,
         markets: markets || [],
         tags: tags || [],
-        is_public: is_public ?? false,
+        is_public: effectiveIsPublic,
         show_in_carousel: show_in_carousel ?? false,
       });
 
@@ -382,7 +421,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
-      res.status(201).json({ profile });
+      res.status(201).json({
+        profile,
+        ...(createWarnings.length ? { warnings: createWarnings } : {}),
+      });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
       res.status(500).json({
@@ -420,14 +462,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {
@@ -489,6 +530,38 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       delete updates.updated_at;
       delete updates.featured; // Only admins can set featured
       delete updates.is_founding_member; // Only admins can set founding status
+
+      // Enforce the tier gate on agent visibility so bulk-profile updates
+      // cannot bypass the per-agent PATCH. Non-API-access callers may only
+      // set 'private' or 'members_only' on any agent in the array; when
+      // they send 'public' we downgrade and tell them we did. Shared with
+      // the POST create path via gateAgentVisibilityForCaller.
+      let warnings: VisibilityWarning[] = [];
+      if (Array.isArray(updates.agents)) {
+        const localOrgForTier = await orgDb.getOrganization(targetOrgId);
+        const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
+        const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
+        updates.agents = gated.agents;
+        warnings = gated.warnings;
+      }
+
+      // Same gate for the profile-level `is_public` flag. The dedicated
+      // `/visibility` PUT route already gates this; the bulk-profile
+      // update path previously forwarded the raw body value, reopening
+      // the same smuggle a non-paying caller could use on POST create.
+      if (updates.is_public === true && !isDevModeEnabled()) {
+        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+          updates.is_public = false;
+          warnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'tier_required',
+            message: 'Making the profile publicly visible requires an active paid membership; left as private.',
+          });
+        }
+      }
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
@@ -574,9 +647,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration, warnings: warnings.length }, 'Member profile updated');
 
-      res.json({ profile });
+      res.json({ profile, ...(warnings.length ? { warnings } : {}) });
     } catch (error) {
       const duration = Date.now() - startTime;
       logger.error({ err: error, durationMs: duration }, 'Update member profile error');
@@ -586,157 +659,384 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
-  // POST /api/me/agents/:index/publish - Add agent to brand.json
+  /**
+   * Apply a visibility change to the agent at `index` for the given org.
+   * Handles brand.json manifest writes for public → community brands and
+   * emits the snippet shape for self-hosted brands. Returns a result
+   * payload that the route wrapper shapes into the response body.
+   *
+   * Caller must have already gated on tier when target === 'public'.
+   *
+   * The member_profiles row is locked with `SELECT ... FOR UPDATE` and
+   * the visibility update is committed in the same transaction so we
+   * cannot lose a concurrent PATCH or a concurrent downgrade demote.
+   */
+  async function applyAgentVisibility(
+    orgId: string,
+    index: number,
+    target: AgentVisibility,
+    actor: { user_id: string; email: string; name?: string }
+  ): Promise<
+    | { status: 404; body: { error: string } }
+    | { status: 400; body: { error: string } }
+    | { status: 403; body: { error: string; message: string } }
+    | { status: 200; body: Record<string, unknown> }
+  > {
+    const pool = getPool();
+    const client = await pool.connect();
+
+    // Computed inside the tx, applied outside after the profile COMMIT.
+    // The brand.json manifest write (`brandDb.updateManifestAgents`) is
+    // against an external-ish surface (separate connection, different
+    // table, different consumers). Keeping it inside the tx means a
+    // manifest write that succeeds followed by a failed COMMIT orphans
+    // the manifest entry — the exact drift the `/check` endpoint
+    // exists to detect (#2825, mirror of the demote path's rewrite
+    // in #2822). So we stage the manifest work during the tx, commit
+    // the JSONB change, then execute manifest + log a structured
+    // drift event on post-commit failure.
+    type ManifestOp =
+      | { kind: 'add'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string; description?: string }>; summary: string }
+      | { kind: 'remove'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string }>; summary: string };
+    let manifestOp: ManifestOp | null = null;
+    let snippet: { type: string; url: string; id: string; description?: string } | undefined;
+    let finalTarget: AgentVisibility = target;
+
+    try {
+      await client.query('BEGIN');
+
+      const profileRow = await client.query(
+        `SELECT id, agents, primary_brand_domain
+         FROM member_profiles
+         WHERE workos_organization_id = $1
+         FOR UPDATE`,
+        [orgId]
+      );
+      if (profileRow.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return { status: 404, body: { error: 'Profile not found' } };
+      }
+
+      // Re-read tier INSIDE the transaction when the caller is trying
+      // to publish. The outer `requireApiAccessTier` check is a
+      // fast-fail for UX, but it reads the org row before this tx
+      // starts — a concurrent Stripe downgrade webhook can commit
+      // between the outer check and this UPDATE, letting a `public`
+      // write land on an org that's no longer API-access. Reading the
+      // tier-relevant columns here closes that window: if the org was
+      // downgraded after our outer check, we see the new state and
+      // ROLLBACK. The Stripe demote path locks member_profiles via
+      // FOR UPDATE, so it can't interleave past our own lock.
+      if (target === 'public') {
+        const currentTier = await readMembershipTierFromClient(client, orgId);
+        if (!hasApiAccess(currentTier)) {
+          await client.query('ROLLBACK');
+          return {
+            status: 403,
+            body: {
+              error: 'tier_required',
+              message: 'Publicly listing an agent requires Professional tier or higher.',
+            },
+          };
+        }
+      }
+      const row = profileRow.rows[0] as { id: string; agents: unknown; primary_brand_domain: string | null };
+      const parsedAgents = typeof row.agents === 'string'
+        ? JSON.parse(row.agents)
+        : Array.isArray(row.agents) ? row.agents : [];
+      const agents: AgentConfig[] = (parsedAgents as unknown[]).map((a) => {
+        const o = (a ?? {}) as Record<string, unknown>;
+        const v = o.visibility;
+        const visibility: AgentVisibility =
+          v === 'private' || v === 'members_only' || v === 'public'
+            ? v
+            : o.is_public === true ? 'public' : 'private';
+        return {
+          url: String(o.url ?? ''),
+          visibility,
+          ...(typeof o.name === 'string' ? { name: o.name } : {}),
+          ...(typeof o.type === 'string' ? { type: o.type as AgentConfig['type'] } : {}),
+        };
+      });
+
+      if (index >= agents.length) {
+        await client.query('ROLLBACK');
+        return { status: 404, body: { error: 'Agent not found at index' } };
+      }
+      const agent = agents[index];
+
+      // Only the public path needs to reach out to brand.json, so the
+      // brand-domain requirement is scoped to `target === 'public'`.
+      if (target === 'public') {
+        if (!row.primary_brand_domain) {
+          await client.query('ROLLBACK');
+          return { status: 400, body: { error: 'Set your primary brand domain first' } };
+        }
+        try {
+          const parsed = new URL(agent.url);
+          if (parsed.protocol !== 'https:') {
+            await client.query('ROLLBACK');
+            return { status: 400, body: { error: 'Agent URL must use HTTPS' } };
+          }
+        } catch {
+          await client.query('ROLLBACK');
+          return { status: 400, body: { error: 'Agent URL is not a valid URL' } };
+        }
+      }
+
+      const domain = row.primary_brand_domain;
+      const discovered = domain ? await brandDb.getDiscoveredBrandByDomain(domain) : null;
+      const isSelfHosted = discovered?.source_type === 'brand_json';
+
+      // Sanitize the brand.json `id`: always derive from the URL so
+      // user-controlled `name` can never poison consumers of brand.json.
+      const safeId = agent.url
+        .replace(/^https?:\/\//, '')
+        .replace(/[^a-z0-9]/gi, '_')
+        .toLowerCase()
+        .slice(0, 50);
+      const agentEntry = {
+        type: agent.type || 'brand',
+        url: agent.url,
+        id: safeId,
+        ...(agent.name ? { description: agent.name } : {}),
+      };
+
+      if (target === 'public' && domain) {
+        if (isSelfHosted) {
+          snippet = agentEntry;
+        } else {
+          const manifest = (discovered?.brand_manifest as Record<string, unknown>) || {};
+          const currentAgents = Array.isArray(manifest.agents)
+            ? manifest.agents as Array<{ type: string; url: string; id: string; description?: string }>
+            : [];
+          manifestOp = {
+            kind: 'add',
+            domain,
+            updatedAgents: [...currentAgents.filter(a => a.url !== agent.url), agentEntry],
+            summary: `Published ${agent.type || 'brand'} agent to brand.json`,
+          };
+        }
+      } else if (domain && discovered && !isSelfHosted) {
+        const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
+        const currentAgents = Array.isArray(manifest.agents)
+          ? manifest.agents as Array<{ type: string; url: string; id: string }>
+          : [];
+        if (currentAgents.some(a => a.url === agent.url)) {
+          manifestOp = {
+            kind: 'remove',
+            domain,
+            updatedAgents: currentAgents.filter(a => a.url !== agent.url),
+            summary: `Removed ${agent.type || 'brand'} agent from brand.json`,
+          };
+        }
+      }
+
+      agents[index] = { ...agent, visibility: target };
+      await client.query(
+        `UPDATE member_profiles
+         SET agents = $1::jsonb, updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(agents), row.id]
+      );
+      await client.query('COMMIT');
+      finalTarget = target;
+    } catch (err) {
+      // Safe to attempt rollback whether we got here before or after
+      // a successful COMMIT — pg no-ops a ROLLBACK on a finished tx
+      // and the .catch swallows any driver noise.
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      // Don't let a release() failure mask whatever the try block threw
+      // (e.g. a COMMIT error we actually want to surface to the caller).
+      try {
+        client.release();
+      } catch (releaseErr) {
+        logger.warn({ err: releaseErr, orgId }, 'pg client release failed');
+      }
+    }
+
+    // Profile JSONB is committed. Apply the manifest change outside
+    // the tx — if this throws, the JSONB is already authoritative and
+    // the `/check` endpoint's drift detection will surface the
+    // divergence. Logging as structured drift so reconciliation can
+    // pick it up automatically.
+    if (manifestOp) {
+      try {
+        await brandDb.updateManifestAgents(manifestOp.domain, manifestOp.updatedAgents, {
+          ...actor,
+          summary: manifestOp.summary,
+        });
+      } catch (manifestErr) {
+        // Narrow the error shape. pg driver errors and other library
+        // errors can carry `error.query` / `error.parameters` that
+        // pino's default err-serializer would emit — keep diagnostic
+        // logs free of raw SQL + parameter values.
+        const errPayload = manifestErr instanceof Error
+          ? { message: manifestErr.message, name: manifestErr.name }
+          : { message: String(manifestErr) };
+        logger.warn(
+          {
+            err: errPayload,
+            domain: manifestOp.domain,
+            orgId,
+            agentIndex: index,
+            target: finalTarget,
+            kind: manifestOp.kind,
+            event: 'brand_json_drift',
+          },
+          'Profile visibility committed but brand.json manifest write failed — /check will surface as drift',
+        );
+      }
+    }
+
+    if (finalTarget === 'public' && snippet) {
+      return {
+        status: 200,
+        body: {
+          action: 'snippet',
+          message: 'Add this to the agents array in your brand.json',
+          visibility: finalTarget,
+          snippet,
+        },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        action: finalTarget === 'public' ? 'published' : finalTarget === 'private' ? 'unpublished' : 'members_only',
+        message:
+          finalTarget === 'public'
+            ? 'Agent published to brand.json'
+            : finalTarget === 'members_only'
+              ? 'Agent is visible to members with API access'
+              : 'Agent removed from brand.json',
+        visibility: finalTarget,
+      },
+    };
+  }
+
+  /**
+   * Resolve the primary organization for the authenticated user, or send
+   * the appropriate error response. Returns null when the response has
+   * already been sent.
+   */
+  async function resolveUserOrgId(req: any, res: any): Promise<string | null> {
+    const userRow = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [req.user!.id]
+    );
+    const orgId = userRow.rows[0]?.primary_organization_id;
+    if (!orgId) {
+      res.status(400).json({ error: 'No organization associated' });
+      return null;
+    }
+    return orgId;
+  }
+
+  /**
+   * Require the caller's organization to hold an API-access membership
+   * tier (Professional and above). Returns true when the gate passes; in
+   * the failure case, the response has already been sent.
+   */
+  async function requireApiAccessTier(orgId: string, res: any): Promise<boolean> {
+    const org = await orgDb.getOrganization(orgId);
+    if (!org) {
+      res.status(404).json({ error: 'Organization not found' });
+      return false;
+    }
+    if (!hasApiAccess(resolveMembershipTier(org))) {
+      res.status(403).json({
+        error: 'tier_required',
+        message: 'Publicly listing an agent requires Professional tier or higher.',
+      });
+      return false;
+    }
+    return true;
+  }
+
+  // POST /api/me/agents/:index/publish - Set agent visibility to public
   router.post('/agents/:index/publish', requireAuth, async (req, res) => {
     try {
       const index = Number(req.params.index);
       if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
-      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+      const orgId = await resolveUserOrgId(req, res);
+      if (!orgId) return;
+      if (!(await requireApiAccessTier(orgId, res))) return;
 
-      const profile = await memberDb.getProfileByOrgId(orgId);
-      if (!profile) return res.status(404).json({ error: 'Profile not found' });
-      if (!profile.primary_brand_domain) {
-        return res.status(400).json({ error: 'Set your primary brand domain first' });
-      }
-
-      const agents = profile.agents || [];
-      if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
-      const agent = agents[index];
-
-      // Validate agent URL is HTTPS
-      try {
-        const parsed = new URL(agent.url);
-        if (parsed.protocol !== 'https:') {
-          return res.status(400).json({ error: 'Agent URL must use HTTPS' });
-        }
-      } catch {
-        return res.status(400).json({ error: 'Agent URL is not a valid URL' });
-      }
-
-      const domain = profile.primary_brand_domain;
-
-      // Check if brand is self-hosted (has authoritative brand.json)
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-      const isSelfHosted = discovered?.source_type === 'brand_json';
-
-      if (isSelfHosted) {
-        // Can't write to their file — return snippet to copy
-        const snippet = {
-          type: agent.type || 'brand',
-          url: agent.url,
-          id: agent.name || agent.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
-          ...(agent.name ? { description: agent.name } : {}),
-        };
-
-        // Mark as public (intent — will be verified via check endpoint)
-        agents[index] = { ...agent, is_public: true };
-        await memberDb.updateProfileByOrgId(orgId, { agents });
-
-        return res.json({
-          action: 'snippet',
-          message: 'Add this to the agents array in your brand.json',
-          snippet,
-        });
-      }
-
-      // Community/hosted brand — write agent into manifest
-      const agentEntry = {
-        type: agent.type || 'brand',
-        url: agent.url,
-        id: agent.name || agent.url.replace(/^https?:\/\//, '').replace(/[^a-z0-9]/g, '_').slice(0, 50),
-        ...(agent.name ? { description: agent.name } : {}),
-      };
-
-      // Get current agents from manifest, add/replace by URL
-      const manifest = (discovered?.brand_manifest as Record<string, unknown>) || {};
-      const currentAgents = Array.isArray(manifest.agents) ? manifest.agents as Array<{ type: string; url: string; id: string; description?: string }> : [];
-      const updatedAgents = [...currentAgents.filter(a => a.url !== agent.url), agentEntry];
-
-      await brandDb.updateManifestAgents(domain, updatedAgents, {
+      const result = await applyAgentVisibility(orgId, index, 'public', {
         user_id: req.user!.id,
         email: req.user!.email,
         name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
-        summary: `Published ${agent.type || 'brand'} agent to brand.json`,
       });
-
-      // Update is_public cache
-      agents[index] = { ...agent, is_public: true };
-      await memberDb.updateProfileByOrgId(orgId, { agents });
-
-      return res.json({ action: 'published', message: 'Agent published to brand.json' });
+      return res.status(result.status).json(result.body);
     } catch (error) {
       logger.error({ err: error }, 'Failed to publish agent');
       return res.status(500).json({ error: 'Failed to publish agent' });
     }
   });
 
-  // DELETE /api/me/agents/:index/publish - Remove agent from brand.json
+  // DELETE /api/me/agents/:index/publish - Set agent visibility to private
   router.delete('/agents/:index/publish', requireAuth, async (req, res) => {
     try {
       const index = Number(req.params.index);
       if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
-      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+      const orgId = await resolveUserOrgId(req, res);
+      if (!orgId) return;
 
-      const profile = await memberDb.getProfileByOrgId(orgId);
-      if (!profile) return res.status(404).json({ error: 'Profile not found' });
-      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
-
-      const agents = profile.agents || [];
-      if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
-      const agent = agents[index];
-
-      const domain = profile.primary_brand_domain;
-      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-
-      if (discovered && discovered.source_type !== 'brand_json') {
-        // Community brand — remove agent from manifest
-        const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
-        const currentAgents = Array.isArray(manifest.agents) ? manifest.agents as Array<{ type: string; url: string; id: string }> : [];
-        const updatedAgents = currentAgents.filter(a => a.url !== agent.url);
-
-        await brandDb.updateManifestAgents(domain, updatedAgents, {
-          user_id: req.user!.id,
-          email: req.user!.email,
-          name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
-          summary: `Removed ${agent.type || 'brand'} agent from brand.json`,
-        });
-      }
-
-      // Update is_public cache
-      agents[index] = { ...agent, is_public: false };
-      await memberDb.updateProfileByOrgId(orgId, { agents });
-
-      return res.json({ action: 'unpublished', message: 'Agent removed from brand.json' });
+      const result = await applyAgentVisibility(orgId, index, 'private', {
+        user_id: req.user!.id,
+        email: req.user!.email,
+        name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
+      });
+      return res.status(result.status).json(result.body);
     } catch (error) {
       logger.error({ err: error }, 'Failed to unpublish agent');
       return res.status(500).json({ error: 'Failed to unpublish agent' });
     }
   });
 
-  // POST /api/me/agents/:index/check - Check if agent appears in self-hosted brand.json
+  // PATCH /api/me/agents/:index/visibility - Set agent visibility to any tier
+  router.patch('/agents/:index/visibility', requireAuth, async (req, res) => {
+    try {
+      const index = Number(req.params.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
+
+      const target = (req.body ?? {}).visibility;
+      if (!isValidAgentVisibility(target)) {
+        return res.status(400).json({
+          error: 'Invalid visibility',
+          valid: ['private', 'members_only', 'public'],
+        });
+      }
+
+      const orgId = await resolveUserOrgId(req, res);
+      if (!orgId) return;
+      if (target === 'public' && !(await requireApiAccessTier(orgId, res))) return;
+
+      const result = await applyAgentVisibility(orgId, index, target, {
+        user_id: req.user!.id,
+        email: req.user!.email,
+        name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
+      });
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update agent visibility');
+      return res.status(500).json({ error: 'Failed to update agent visibility' });
+    }
+  });
+
+  // POST /api/me/agents/:index/check - Verify public agent is present in brand.json
   router.post('/agents/:index/check', requireAuth, async (req, res) => {
     try {
       const index = Number(req.params.index);
       if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid agent index' });
 
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
-      if (!orgId) return res.status(400).json({ error: 'No organization associated' });
+      const orgId = await resolveUserOrgId(req, res);
+      if (!orgId) return;
 
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
@@ -773,15 +1073,25 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         // Fetch failed — agent not verifiable
       }
 
-      // Update cache
-      agents[index] = { ...agent, is_public: found };
-      await memberDb.updateProfileByOrgId(orgId, { agents });
+      // /check is a report-only endpoint: it surfaces drift between the
+      // stored visibility intent and what the authoritative brand.json
+      // actually lists. It does NOT mutate visibility — callers should use
+      // PATCH /agents/:index/visibility to resolve drift.
+      const expectedPublic = agent.visibility === 'public';
+      const drift: 'synced' | 'missing_from_brand_json' | 'present_in_brand_json' =
+        expectedPublic && !found
+          ? 'missing_from_brand_json'
+          : !expectedPublic && found
+            ? 'present_in_brand_json'
+            : 'synced';
 
       return res.json({
         found,
         checked_at: new Date().toISOString(),
         domain,
         agent_url: agent.url,
+        visibility: agent.visibility,
+        drift,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to check agent in brand.json');
@@ -843,12 +1153,21 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
             return res.status(403).json({ error: 'This domain is verified by another organization' });
           }
-          // Proof of domain control: transfer ownership and mark verified
-          await brandDb.updateHostedBrand(hosted.id, {
-            domain_verified: true,
-            workos_organization_id: orgId,
-          });
-          return res.json({ domain, verified: true });
+          // Proof of domain control: claim ownership and mark verified.
+          // If the brand is orphaned (prior owner relinquished), atomically
+          // clear the orphan flag and reset the prior manifest — otherwise
+          // the new owner silently inherits the prior org's visual identity.
+          // The orphan-aware path is the only safe route for claim+verify;
+          // updateHostedBrand by itself doesn't touch the orphan columns.
+          if (hosted.manifest_orphaned) {
+            await brandDb.claimOrphanedHostedBrand(hosted.id, orgId);
+          } else {
+            await brandDb.updateHostedBrand(hosted.id, {
+              domain_verified: true,
+              workos_organization_id: orgId,
+            });
+          }
+          return res.json({ domain, verified: true, claimed_orphaned: !!hosted.manifest_orphaned });
         }
         return res.json({ domain, verified: false, variant: result.variant ?? null, reason: 'pointer_mismatch' });
       }
@@ -860,6 +1179,159 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
+  /**
+   * Resolve the caller's primary org and verify they have admin/owner role —
+   * brand-claim is org-scoped state-mutation and shouldn't be reachable by
+   * rank-and-file members. Returns the orgId, or sends an appropriate error
+   * response and returns null. Both /issue and /verify gate through this.
+   */
+  async function resolveBrandClaimOrgOr401(req: import('express').Request, res: import('express').Response): Promise<string | null> {
+    const userRow = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [req.user!.id]
+    );
+    const orgId = userRow.rows[0]?.primary_organization_id;
+    if (!orgId) {
+      res.status(400).json({ error: 'No organization associated with this account' });
+      return null;
+    }
+    if (!workos) {
+      res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      return null;
+    }
+    // Role check: only org admins/owners can issue or verify a brand claim.
+    // Use resolveUserRole so inactive/pending memberships can't pass — a
+    // removed admin must not be able to claim a brand on the org that
+    // removed them.
+    try {
+      const memberships = await workos.userManagement.listOrganizationMemberships({
+        userId: req.user!.id,
+        organizationId: orgId,
+      });
+      const role = resolveUserRole(memberships.data);
+      if (role !== 'admin' && role !== 'owner') {
+        res.status(403).json({
+          error: 'Not authorized',
+          message: 'Only organization admins or owners can issue or verify a brand-domain claim.',
+        });
+        return null;
+      }
+    } catch (err) {
+      logger.error({ err, orgId }, 'brand-claim role check failed');
+      res.status(500).json({ error: 'Failed to verify caller role' });
+      return null;
+    }
+    return orgId;
+  }
+
+  // POST /api/me/member-profile/brand-claim/issue — start a WorkOS-backed
+  // domain ownership challenge (#3176). Service does the WorkOS calls + error
+  // disambiguation; this handler just translates the result to HTTP.
+  router.post('/brand-claim/issue', requireAuth, async (req, res) => {
+    try {
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const result = await issueDomainChallenge({
+        workos,
+        brandDb,
+        orgId,
+        rawDomain,
+      });
+      if (!result.ok) {
+        if (result.code === 'collision') {
+          return res.status(409).json({
+            error: 'Domain already registered',
+            code: 'collision',
+            message: 'This domain is already registered to another organization. Open a brand-ownership escalation if the assignment is wrong.',
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        if (result.code === 'invalid_domain') {
+          return res.status(400).json({
+            error: 'Invalid brand domain',
+            code: 'invalid_domain',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
+      }
+      return res.json({
+        domain: result.domain,
+        workos_domain_id: result.workos_domain_id,
+        state: result.state,
+        verification_strategy: result.verification_strategy,
+        verification_token: result.verification_token,
+        verification_prefix: result.verification_prefix,
+        prior_manifest_exists: result.prior_manifest_exists,
+        instructions: result.already_verified
+          ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
+          : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to issue brand claim challenge');
+      return res.status(500).json({ error: 'Failed to issue brand claim challenge' });
+    }
+  });
+
+  // POST /api/me/member-profile/brand-claim/verify — ask WorkOS to run the
+  // DNS lookup against its issued challenge. On success WorkOS marks the
+  // domain Verified, emits an organization_domain.verified webhook, and the
+  // service mirrors state into the brand registry — webhook handler also
+  // writes through idempotently via markBrandDomainVerified.
+  router.post('/brand-claim/verify', requireAuth, async (req, res) => {
+    try {
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const result = await verifyDomainChallenge({
+        workos,
+        brandDb,
+        orgId,
+        rawDomain,
+        adoptPriorManifest: req.body?.adopt_prior_manifest === true,
+      });
+      if (!result.ok) {
+        const canonical = rawDomain ? canonicalizeBrandDomain(rawDomain) : '';
+        if (result.code === 'no_challenge') {
+          return res.status(404).json({
+            error: 'No outstanding domain challenge for this organization. Call /brand-claim/issue first.',
+            code: 'no_challenge',
+            domain: canonical,
+          });
+        }
+        if (result.code === 'still_pending') {
+          return res.status(400).json({
+            error: 'Domain still pending',
+            code: 'still_pending',
+            message: result.message,
+            domain: canonical,
+            state: result.state,
+            ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to verify brand claim challenge', code: 'workos_error' });
+      }
+      return res.json({
+        domain: result.domain,
+        verified: true,
+        newly_verified: result.newly_verified,
+        adopted_prior_manifest: result.adopted_prior_manifest,
+        brand: result.brand,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to verify brand claim challenge');
+      return res.status(500).json({ error: 'Failed to verify brand claim challenge' });
+    }
+  });
+
   // PUT /api/me/member-profile/brand-identity - Update logo URL and brand color inline
   router.put('/brand-identity', requireAuth, async (req, res) => {
     const startTime = Date.now();
@@ -867,33 +1339,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
-      const { logo_url, brand_color } = req.body;
-
-      // Validate inputs
-      if (!logo_url && !brand_color) {
-        return res.status(400).json({
-          error: 'Missing fields',
-          message: 'Provide at least one of logo_url or brand_color.',
-        });
-      }
-
-      if (logo_url) {
-        try {
-          const parsed = new URL(logo_url);
-          if (parsed.protocol !== 'https:') {
-            return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must use HTTPS.' });
-          }
-        } catch {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be a valid URL.' });
-        }
-        if (logo_url.length > 2000) {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be 2000 characters or less.' });
-        }
-      }
-
-      if (brand_color && !/^#[0-9a-fA-F]{6}$/.test(brand_color)) {
-        return res.status(400).json({ error: 'Invalid brand color', message: 'brand_color must be a hex color (e.g., #FF5733).' });
-      }
+      const { logo_url, brand_color, adopt_prior_manifest } = req.body;
 
       // Auth: resolve target org (same pattern as /visibility route)
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
@@ -923,7 +1369,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
 
-      // Resolve org name for brand_json (profile display_name if available, else org table)
+      // Resolve display name: profile if available, else org name
       let displayName: string;
       if (profile?.display_name) {
         displayName = profile.display_name;
@@ -935,119 +1381,103 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         displayName = org.name;
       }
 
-      // Derive brand domain: profile fields first, then logo URL hostname
-      let brandDomain = profile?.primary_brand_domain;
-      if (!brandDomain && profile?.contact_website) {
-        try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
-      }
-      if (!brandDomain && logo_url) {
+      // If no brand domain on file, fall back to the logo URL hostname (only if
+      // the candidate domain isn't already owned by another org)
+      let fallbackDomainHint: string | undefined;
+      if (!profile?.primary_brand_domain && !profile?.contact_website && logo_url) {
         try {
-          const candidate = new URL(logo_url).hostname;
+          const candidate = canonicalizeBrandDomain(new URL(logo_url).hostname);
           const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
           if (!existingBrand || !existingBrand.workos_organization_id || existingBrand.workos_organization_id === targetOrgId) {
-            brandDomain = candidate;
+            fallbackDomainHint = candidate;
           }
         } catch { /* ignore */ }
       }
-      if (!brandDomain) {
-        return res.status(400).json({
-          error: 'No brand domain',
-          message: 'Provide a logo URL hosted on your own domain so we can determine your brand domain.',
-        });
-      }
-      brandDomain = brandDomain.toLowerCase();
 
-      // Transaction: update/create hosted brand + link profile if it exists
-      const pool = getPool();
-      const client = await pool.connect();
+      let result;
       try {
-        await client.query('BEGIN');
-
-        // Read inside transaction with row lock to prevent concurrent insert race
-        const existingResult = await client.query(
-          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
-          [brandDomain]
-        );
-        const existing = existingResult.rows[0] || null;
-
-        // Ownership check: don't let one org overwrite another org's brand
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== targetOrgId) {
-          throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
-        }
-
-        if (existing) {
-          const bj = { ...(existing.brand_json as Record<string, unknown>) };
-          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
-          if (brands.length > 0) {
-            const primaryBrand = { ...brands[0] };
-            if (logo_url) {
-              const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
-              primaryBrand.logos = logos.length > 0
-                ? [{ ...logos[0], url: logo_url }, ...logos.slice(1)]
-                : [{ url: logo_url }];
-            }
-            if (brand_color) {
-              primaryBrand.colors = { ...(primaryBrand.colors as Record<string, unknown> || {}), primary: brand_color };
-            }
-            bj.brands = [primaryBrand, ...brands.slice(1)];
-          } else {
-            bj.brands = [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }];
+        result = await updateBrandIdentity({
+          workosOrganizationId: targetOrgId,
+          displayName,
+          profile: profile ?? null,
+          logoUrl: logo_url,
+          brandColor: brand_color,
+          fallbackDomainHint,
+          // Preserve undefined so the service can require an explicit decision
+          // when the brand is orphaned. Booleans only — anything else is a
+          // bad-request shape, but we let the service treat it as undefined.
+          adoptPriorManifest: typeof adopt_prior_manifest === 'boolean' ? adopt_prior_manifest : undefined,
+        });
+      } catch (err: any) {
+        if (err instanceof BrandIdentityError) {
+          if (err.code === 'orphan_manifest_decision_required') {
+            // Force the caller to pick adopt-or-clear before we apply the write.
+            // The response carries the prior owner's org id so a UI / agent can
+            // surface the choice ("this domain was previously registered by
+            // {prior_org} — adopt their identity, or start fresh?").
+            const meta = err.meta as { brandDomain: string; priorOwnerOrgId: string | null };
+            return res.status(409).json({
+              error: 'Orphan manifest decision required',
+              code: 'orphan_manifest_decision_required',
+              message: err.message,
+              brand_domain: meta.brandDomain,
+              prior_owner_org_id: meta.priorOwnerOrgId,
+            });
           }
-          await client.query(
-            'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id, targetOrgId]
-          );
-        } else {
-          const brandJson = {
-            house: { domain: brandDomain, name: displayName },
-            brands: [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }],
-          };
-          await client.query(
-            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
-             ON CONFLICT (domain) DO UPDATE SET
-               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
-               has_brand_manifest = true,
-               updated_at = NOW()`,
-            [targetOrgId, brandDomain, JSON.stringify(brandJson), true]
-          );
+          if (err.isCrossOrgOwnership()) {
+            // Convert the bare 403 into a routed escalation so an admin can
+            // resolve via transfer_brand_ownership instead of the user dead-ending.
+            // Categorized as sensitive_topic because the dispute may involve
+            // trademark or commercial claims; the framing stays neutral so an
+            // admin reading it doesn't anchor to either party.
+            const { brandDomain, currentOwnerOrgId } = err.meta;
+            const callerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+            // Resolve the incumbent org's display name so the queue summary
+            // names both parties — admins shouldn't have to open the ticket
+            // to find out who's being claimed against.
+            const incumbentOrg = await orgDb.getOrganization(currentOwnerOrgId).catch(() => null);
+            const incumbentName = incumbentOrg?.name ?? currentOwnerOrgId;
+            const escalation = await createEscalation({
+              workos_user_id: user.id,
+              user_email: user.email,
+              user_display_name: callerName,
+              category: 'sensitive_topic',
+              priority: 'normal',
+              summary: `Brand ownership review: ${brandDomain} — claim by ${displayName} vs current owner ${incumbentName}`,
+              original_request: `Update brand identity for ${brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
+              addie_context: `Caller: ${callerName} <${user.email}>, org ${targetOrgId} (${displayName}). Current owner org: ${currentOwnerOrgId} (${incumbentName}). Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
+            }).catch(escalErr => {
+              logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
+              return null;
+            });
+            return res.status(409).json({
+              error: 'Brand domain is managed by another organization',
+              code: 'cross_org_ownership',
+              message: escalation
+                ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST /api/me/member-profile/brand-claim/issue and follow the instructions.`
+                : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
+              escalation_id: escalation?.id ?? null,
+              brand_domain: brandDomain,
+              self_service_path: '/api/me/member-profile/brand-claim/issue',
+            });
+          }
+          return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
         }
-
-        // Link brand domain back to profile if profile exists and doesn't have one
-        if (profile && !profile.primary_brand_domain) {
-          await client.query(
-            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-            [brandDomain, profile.id]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
+        throw err;
       }
 
-      const resolvedBrand = await resolveBrand(brandDb, brandDomain);
+      const resolvedBrand = await resolveBrand(brandDb, result.brandDomain);
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain, durationMs: duration }, 'Brand identity updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain: result.brandDomain, claimedOrphanedBrand: result.claimedOrphanedBrand, keptPriorManifest: result.keptPriorManifest, durationMs: duration }, 'Brand identity updated');
 
-      res.json({ brand: resolvedBrand, brand_domain: brandDomain });
+      res.json({
+        brand: resolvedBrand,
+        brand_domain: result.brandDomain,
+        claimed_orphaned_brand: result.claimedOrphanedBrand ?? false,
+        kept_prior_manifest: result.keptPriorManifest ?? false,
+      });
     } catch (error: any) {
       const duration = Date.now() - startTime;
       const statusCode = error?.statusCode || 500;

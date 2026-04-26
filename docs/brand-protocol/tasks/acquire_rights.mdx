@@ -13,8 +13,8 @@ Binding contractual request to acquire rights from a brand agent. Parallels `cre
 
 ## Schema
 
-- **Request**: [`acquire-rights-request.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-request.json)
-- **Response**: [`acquire-rights-response.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-response.json)
+- **Request**: [`acquire-rights-request.json`](https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-request.json)
+- **Response**: [`acquire-rights-response.json`](https://adcontextprotocol.org/schemas/v3/brand/acquire-rights-response.json)
 
 {/* Using latest because these schemas are not yet released in any version.
      Update to correct version alias after the next release. */}
@@ -187,7 +187,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 | `campaign.estimated_impressions` | integer | No | Estimated total impressions |
 | `campaign.start_date` | date | No | Campaign start date |
 | `campaign.end_date` | date | No | Campaign end date |
-| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to this URL. |
+| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/v3/brand/revocation-notification.json) to this URL. |
 | `idempotency_key` | string | No | Client-generated key for safe retries. Resubmitting with the same key returns the original response. |
 | `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/docs/building/implementation/webhooks). |
 
@@ -202,6 +202,29 @@ The response uses a discriminated union on `status`:
 | `rejected` | Request denied | `reason`, `suggestions` (optional) |
 
 When `suggestions` is present on a rejected response, the rejection is actionable — the buyer can adjust their request and retry. When `suggestions` is absent, the rejection is final and the buyer should not retry for this rights/talent combination. This convention applies consistently across `acquire_rights` rejections, `get_rights` excluded results, and creative approval rejections.
+
+## Request validation
+
+Two campaign-field validations are normative for `acquire_rights`. Both produce `INVALID_REQUEST` with the offending `field` populated and `recovery: "correctable"` (the buyer can fix the request and retry).
+
+### Expired campaign window
+
+Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.end_date"` when `campaign.end_date` is in the past at the time of the request. Acquiring rights for a window that has already elapsed produces a zero-duration grant and is almost always a buyer-side bug — surfacing it deterministically is more useful than silently issuing credentials that immediately expire.
+
+Unlike [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), which supports an `any_of` past-start auto-adjust pattern (a flight can be time-shifted forward without re-licensing), rights grants are not time-shiftable: the contract attaches to the requested period, so reject-only is the correct contract for `acquire_rights`.
+
+Brand agents MAY also reject when `campaign.start_date` is more than the rights agent's configured grace window in the past (typically the rights agent rejects start dates earlier than `now - 24h` since rights cannot be retroactively granted); that decision is contract-specific and SHOULD use `field: "campaign.start_date"`. The `end_date < now` check is the normative floor.
+
+### CPM-priced rights under a governance plan
+
+When the buyer's request carries an intent-phase `governance_context` token on the [protocol envelope](/docs/building/implementation/security) (the buyer's plan is governed — see [Buyer-side governance invocation](/docs/governance/campaign/specification#buyer-side-governance-invocation)) and the selected pricing option has `model: "cpm"`, `campaign.estimated_impressions` is the input the brand agent uses to project commitment against remaining plan budget. To make that projection deterministic across implementations:
+
+- Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"` when a `governance_context` is present, the selected `pricing_option.model` is `"cpm"`, and `campaign.estimated_impressions` is either omitted or `0`. Implementer-chosen defaults (e.g., assuming 1M impressions) are non-conformant — they hide a policy decision inside each implementation and produce different governance outcomes for identical requests.
+- When `estimated_impressions` is provided and non-zero, the projected commitment is `(pricing_option.price / 1000) × campaign.estimated_impressions`, evaluated in `pricing_option.currency`. If `pricing_option.currency` differs from the governance plan's budget currency (as carried on the plan), the brand agent MUST reject with `INVALID_REQUEST` and `field: "pricing_option_id"` — currency conversion is not specified for governance projection, so currency-mismatched offers cannot be cleared against a governed plan.
+- If the projected commitment exceeds the buyer's remaining plan budget, the agent MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"`, populating `reason` with the projected commitment and remaining budget so the buyer can adjust.
+- Non-CPM pricing options (`model: "flat_rate"`, etc.) commit the flat amount regardless of impression volume; brand agents MUST NOT require `estimated_impressions` for governance projection on those options. Buyers MAY still provide `estimated_impressions` for cap-tracking purposes.
+
+Requests without a `governance_context` token are unaffected by this validation — `estimated_impressions` remains optional in that case (sellers MAY refuse to transact ungoverned plans as a matter of commercial policy, per [Buyer-side governance invocation](/docs/governance/campaign/specification#buyer-side-governance-invocation), but that refusal is independent of this projection rule).
 
 ## Generation credentials
 
@@ -235,7 +258,7 @@ After acquiring rights:
 
 1. **Generate**: Creative agent uses `generation_credentials` to produce content
 2. **Manifest**: Embed the `rights_constraint` from the `acquire_rights` response directly into the creative manifest's `rights` array. The rights agent pre-builds this constraint with the correct validity period, country restrictions, and impression cap from the agreed terms.
-3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
+3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/v3/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/v3/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
 4. **Serve**: Place approved creative via `create_media_buy`, respecting country and date restrictions
 5. **Report**: Use [`report_usage`](/docs/accounts/tasks/report_usage) with `rights_id` for cap tracking and billing
 
@@ -243,7 +266,7 @@ If `acquire_rights` returns `pending_approval` and you provided `push_notificati
 
 ## Revocation
 
-If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
+If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/v3/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
 
 The buyer is responsible for:
 - Deduplicating by `idempotency_key` — the same revocation may be delivered multiple times; see [Push Notifications — Reliability](/docs/building/implementation/webhooks#reliability) for the canonical dedup contract

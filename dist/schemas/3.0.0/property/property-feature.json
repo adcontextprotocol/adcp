@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/property/property-feature.json",
+  "title": "Property Feature",
+  "description": "A discrete feature assessment for a property (e.g., from app store privacy labels)",
+  "type": "object",
+  "properties": {
+    "feature_id": {
+      "type": "string",
+      "description": "Identifier for the feature being assessed"
+    },
+    "value": {
+      "type": "string",
+      "description": "The feature value"
+    },
+    "source": {
+      "type": "string",
+      "description": "Source of the feature data (e.g., app_store_privacy_label, tcf_string)"
+    }
+  },
+  "required": ["feature_id", "value"],
+  "additionalProperties": false
+}

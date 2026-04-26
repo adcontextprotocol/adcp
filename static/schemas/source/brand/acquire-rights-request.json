@@ -61,7 +61,7 @@
         "estimated_impressions": {
           "type": "integer",
           "minimum": 0,
-          "description": "Estimated total impressions for the campaign"
+          "description": "Estimated total impressions for the campaign. Required when the request carries an intent-phase governance_context token AND the selected pricing_option has model: 'cpm' — the brand agent projects commitment as (pricing_option.price / 1000) × estimated_impressions evaluated in pricing_option.currency. Brand agents MUST reject with INVALID_REQUEST (field: campaign.estimated_impressions) when CPM-priced rights are requested under a governance_context and this field is omitted or zero; implementer-chosen defaults are non-conformant. See the acquire_rights task reference for the full validation contract including currency-mismatch handling."
         },
         "start_date": {
           "type": "string",
@@ -71,7 +71,7 @@
         "end_date": {
           "type": "string",
           "format": "date",
-          "description": "Campaign end date (ISO 8601)"
+          "description": "Campaign end date (ISO 8601). Brand agents MUST reject with INVALID_REQUEST (field: campaign.end_date) when end_date is in the past at the time of the request — acquiring rights for an elapsed window produces a zero-duration grant and is almost always a buyer-side bug."
         }
       },
       "required": [

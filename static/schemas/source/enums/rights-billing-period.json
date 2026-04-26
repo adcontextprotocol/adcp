@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/rights-billing-period.json",
+  "title": "Rights Billing Period",
+  "description": "Billing period for brand rights pricing",
+  "type": "string",
+  "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"]
+}

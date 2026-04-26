@@ -10,6 +10,7 @@ import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
+import { isUuid } from '../../utils/uuid.js';
 import {
   createEscalation,
   markNotificationSent,
@@ -34,12 +35,16 @@ export const ESCALATION_TOOLS: AddieTool[] = [
 
 USE THIS WHEN:
 - User asks you to perform an action you have no tool for (posting to channels, creating issues, renaming things)
-- The request requires human judgment or approval
-- The topic is too complex or sensitive for you to handle
+- The request requires admin judgment, account access, or a human action you cannot perform
+- The topic is genuinely sensitive (legal, compliance, confrontational, controversial-political)
 - You've tried and failed to help with your available tools
 
 DO NOT USE FOR:
-- Questions you can answer with your tools
+- Questions you can answer with your tools or your rule files (knowledge.md, behaviors.md)
+- Community-fit questions ("would my background be a fit for the working groups?") — answer directly using the working-group mapping in knowledge.md and behaviors.md
+- Routine membership pricing, including upgrade proration for any tier on credit card or invoice — the FAQ in knowledge.md covers this; only escalate refunds, out-of-cycle credits, custom contracts, and currency changes
+- Multi-part questions where each part is independently answerable — decompose first, answer the parts, do NOT escalate the bundle (see "Decompose bundled questions" in constraints.md)
+- "Complex" and "sensitive" are NOT magic words. Bundled or multi-domain questions are not automatically Complex; check whether each part is genuinely outside your knowledge or capability before escalating
 - Things that don't require admin attention
 - General conversation
 
@@ -89,6 +94,14 @@ When you escalate, be honest with the user that you're passing this to a human w
         user_slack_handle: {
           type: 'string',
           description: 'Slack display name or handle of the user (e.g. "jean-sebastien")',
+        },
+        perspective_id: {
+          type: 'string',
+          description: 'Optional: UUID of a perspective this escalation is about. Set this when escalating something a reviewer needs to do on a specific draft (e.g. "approve Mary\'s post"). Approving the linked perspective later will auto-resolve this escalation.',
+        },
+        perspective_slug: {
+          type: 'string',
+          description: 'Optional: slug of the linked perspective (denormalized for admin display).',
         },
       },
       required: ['summary', 'category'],
@@ -229,7 +242,12 @@ async function sendEscalationNotification(
     lines.push('', `<https://agenticadvertising.org/admin/addie?thread=${context.threadId}|View Thread>`);
   }
 
-  return sendChannelMessage(channelId, { text: lines.join('\n') });
+  // channelId originates from system_settings.escalation_slack_channel
+  // (`getEscalationChannelId` above) — the admin settings route
+  // validates `is_private === true` at write time but not at send
+  // time. Gate here so a toggled-public channel stops receiving
+  // escalation content within one channel-info cache TTL (#2735).
+  return sendChannelMessage(channelId, { text: lines.join('\n') }, { requirePrivate: true });
 }
 
 /**
@@ -270,6 +288,13 @@ export function createEscalationToolHandlers(
     const addieContext = input.addie_context as string | undefined;
     const userEmail = input.user_email as string | undefined;
     const userSlackHandle = input.user_slack_handle as string | undefined;
+    const perspectiveId = input.perspective_id as string | undefined;
+    const perspectiveSlug = input.perspective_slug as string | undefined;
+
+    // Validate UUID format on perspective_id if provided.
+    if (perspectiveId && !isUuid(perspectiveId)) {
+      throw new ToolError('perspective_id must be a UUID string if provided');
+    }
 
     // Validate email format if provided
     if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
@@ -305,6 +330,8 @@ export function createEscalationToolHandlers(
         summary,
         original_request: originalRequest,
         addie_context: addieContext,
+        perspective_id: perspectiveId,
+        perspective_slug: perspectiveSlug,
       });
 
       logger.info(

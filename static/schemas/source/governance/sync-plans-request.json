@@ -185,7 +185,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "x-entity": "governance_policy"
+              "x-entity": "governance_registry_policy"
             },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
@@ -330,7 +330,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "x-entity": "governance_policy"
+                  "x-entity": "governance_registry_policy"
                 },
                 "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
               },

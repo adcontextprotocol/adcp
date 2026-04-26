@@ -3,6 +3,7 @@
  */
 
 import type { CatalogEvent, FeedResult, FeedError } from '../db/catalog-events-db.js';
+import { isUuid } from '../utils/uuid.js';
 
 export interface PollerConfig {
   apiKey: string;
@@ -181,7 +182,7 @@ export class FeedPoller {
 
   private async saveCursor(cursor: string): Promise<void> {
     // Validate cursor is a UUID before writing to disk (defense against untrusted API data)
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cursor)) {
+    if (!isUuid(cursor)) {
       return;
     }
     try {

@@ -5,6 +5,11 @@
   "description": "Audio asset with URL and technical specifications",
   "type": "object",
   "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "audio",
+      "description": "Discriminator identifying this as an audio asset. See /schemas/creative/asset-types for the registry."
+    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -33,8 +38,7 @@
       "description": "Sampling rate in Hz (e.g., 44100, 48000, 96000)"
     },
     "channels": {
-      "type": "string",
-      "enum": ["mono", "stereo", "5.1", "7.1"],
+      "$ref": "/schemas/enums/audio-channel-layout.json",
       "description": "Channel configuration"
     },
     "bit_depth": {
@@ -67,6 +71,7 @@
     }
   },
   "required": [
+    "asset_type",
     "url"
   ],
   "additionalProperties": true

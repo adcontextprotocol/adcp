@@ -309,13 +309,21 @@ function verifyEnumParity(specialisms, protocols) {
   const enumSpecialisms = new Set(specialismEnum.enum);
   const enumProtocols = new Set(protocolEnum.enum);
 
+  // Enum values listed in `x-deprecated-enum-values` are retained for backward
+  // compatibility but their storyboard has been relocated or removed. The
+  // filesystem-backing requirement does not apply to them.
+  const deprecatedSpecialisms = new Set(specialismEnum['x-deprecated-enum-values'] || []);
+
   const missingFromEnum = [...fsSpecialisms].filter(x => !enumSpecialisms.has(x));
-  const missingFromFs = [...enumSpecialisms].filter(x => !fsSpecialisms.has(x));
+  const missingFromFs = [...enumSpecialisms]
+    .filter(x => !fsSpecialisms.has(x))
+    .filter(x => !deprecatedSpecialisms.has(x));
   if (missingFromEnum.length || missingFromFs.length) {
     const msg = [
       `Specialism enum drift between filesystem and specialism.json:`,
       missingFromEnum.length ? `  In filesystem but missing from enum: ${missingFromEnum.join(', ')}` : '',
-      missingFromFs.length ? `  In enum but missing from filesystem: ${missingFromFs.join(', ')}` : ''
+      missingFromFs.length ? `  In enum but missing from filesystem: ${missingFromFs.join(', ')}` : '',
+      missingFromFs.length ? `  (Add to "x-deprecated-enum-values" in specialism.json if intentionally retained for back-compat after storyboard removal.)` : ''
     ].filter(Boolean).join('\n');
     throw new Error(msg);
   }
@@ -337,10 +345,16 @@ function verifyEnumParity(specialisms, protocols) {
   }
 }
 
+const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
   verifyEnumParity(specialisms, protocols);
+  const docParityErrors = lintUniversalDocParity({ sourceDir });
+  if (docParityErrors.length) {
+    throw new Error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+  }
   lintStoryboardIdempotency(sourceDir, SCHEMAS_DIR);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
@@ -452,6 +466,44 @@ function main() {
   // (issue #2660, rule 3; canonical case #2627).
   try {
     execSync('node scripts/lint-storyboard-context-entity.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Auth-shape lint: storyboard steps must use principal-handle shapes
+  // (from_test_kit, value_strategy, none) rather than literal credentials
+  // that bind the storyboard to a specific value and leak identity into
+  // source control. #2720.
+  try {
+    execSync('node scripts/lint-storyboard-auth-shape.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Test-kits lint: every file under test-kits/ must declare either
+  // auth.api_key (brand-kit flavor) or applies_to (runner-contract flavor).
+  // Enforces the bimodal partition documented in storyboard-schema.yaml
+  // under "Test kit flavors". #2721.
+  try {
+    execSync('node scripts/lint-storyboard-test-kits.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Pagination invariant: schema examples and storyboard fixtures MUST NOT
+  // teach the cursor↔has_more contradiction. has_more=true requires cursor;
+  // has_more=false MUST omit cursor. See pagination-response.json.
+  try {
+    execSync('node scripts/lint-pagination-invariant.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

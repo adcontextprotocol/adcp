@@ -13,8 +13,7 @@
       "pattern": "^[A-Z]{3}$"
     },
     "period": {
-      "type": "string",
-      "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"]
+      "$ref": "/schemas/enums/rights-billing-period.json"
     },
     "uses": {
       "type": "array",

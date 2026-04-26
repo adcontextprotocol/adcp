@@ -54,7 +54,7 @@ Malformed requests that fail schema validation:
 
 ## Error Response Format
 
-Failed operations return status `failed` with error details. The error object follows the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
+Failed operations return status `failed` with error details. The error object follows the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
 
 ```json
 {
@@ -82,8 +82,8 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 | Layer | Key | When to populate | Shape |
 |---|---|---|---|
-| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
-| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) |
+| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) |
 
 **A fatal task failure SHOULD populate both layers.** The payload carries the structured `errors[]` array that any protocol can read verbatim, and the transport envelope carries `adcp_error` so MCP/A2A clients can extract a typed error without re-parsing the payload. Populating only one of the two is the source-of-truth for most interop bugs — a runner that reads the transport envelope sees no error, and a runner that reads the payload sees no error signal on the transport:
 
@@ -123,7 +123,7 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 ### Error Object Fields
 
-These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
+These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -137,7 +137,7 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 
 ## Standard Error Codes
 
-Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
 
 **Not-found precedence.** When a referenced identifier does not resolve, sellers SHOULD return the resource-specific code when the resolved type is known from the request: `PRODUCT_NOT_FOUND` for `product_id`, `PACKAGE_NOT_FOUND` for `package_id`, `MEDIA_BUY_NOT_FOUND` for `media_buy_id`, `CREATIVE_NOT_FOUND` for `creative_id`, `SIGNAL_NOT_FOUND` for `signal_id`, `SESSION_NOT_FOUND` for SI `session_id`, `ACCOUNT_NOT_FOUND` for `account_id`, `PLAN_NOT_FOUND` for governance `plan_id`. Fall back to `REFERENCE_NOT_FOUND` for resource types without a dedicated code (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST use `REFERENCE_NOT_FOUND` rather than minting a custom `*_NOT_FOUND` code — the vocabulary grows by upstream spec change, not by per-seller inflation. Clients SHOULD switch on `error.code` first; the resource-specific codes let clients dispatch without parsing `error.field`.
 
@@ -160,6 +160,8 @@ To make latency parity a consequence rather than a separate requirement, sellers
 Non-normative implementation note: a single-query pattern like `SELECT ... WHERE id = ? AND tenant = ?` *looks* uniform but differs in execution plan, buffer-pool touches, and authorizer invocation depending on whether the row exists in another tenant. Prefer the two-step pattern — resolve by id, then authorize against the loaded row (or against an empty row on true-miss) — as the only pattern that naturally produces observational uniformity.
 
 **Cache warmth** is a distinct oracle: a warm cache on tenant B's id indicates someone accessed it recently. Sellers MUST NOT gate cache population on authorization — true-miss ids MUST be cached-as-miss with the same TTL as resolve-then-deny, or cache reads MUST be bypassed for not-found responses.
+
+**Verifying this yourself.** The paired-probe `adcp fuzz` invariant checks uniform-response compliance by comparing two responses per tool. See [Validate Your Agent — Preparing to test uniform error responses](/docs/building/validate-your-agent#preparing-to-test-uniform-error-responses) for tenant-setup requirements and CLI invocation. Full-strength testing requires two isolated tenants; single-tenant runs cover only the "does not exist" leg.
 
 ### Authentication and Access
 
@@ -244,14 +246,14 @@ function isRetryable(error) {
 
 ### Normative throttling behavior
 
-These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape):
+These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape):
 
 - Callers **MUST** honor `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated number of seconds.
 - Callers **SHOULD** use exponential backoff with jitter when `retry_after` is absent. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
 - Callers **MUST NOT** treat non-throttling errors (e.g., `INVALID_REQUEST`, `CREATIVE_REJECTED`) as if they were throttled. Retrying a rejected-for-other-reasons response at backoff cadence is a bug, not a defensive posture.
 - Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent `RATE_LIMITED` response is a capacity or policy signal, not a transient blip.
 - Sellers **SHOULD** return `RATE_LIMITED` with a populated `retry_after` rather than silently queuing or dropping requests, so well-behaved callers can back off intentionally.
-- Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
+- Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
 
 ### Exponential Backoff
 

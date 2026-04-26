@@ -391,12 +391,170 @@ export async function sendDirectMessage(
 }
 
 /**
- * Send a message to a channel
+ * Privacy state of a configured Slack channel at send time. Distinguishes
+ * "confirmed no longer private" (sensitive content MUST NOT ship) from
+ * "could not verify" (Slack API error, transient network failure — no
+ * evidence of drift). The two cases deserve different caller behavior:
+ * leak prevention vs. observability preservation.
+ */
+export type ChannelPrivacyState = 'private' | 'public' | 'unknown';
+
+/**
+ * Check the current privacy state of a channel before posting sensitive
+ * content.
+ *
+ * Admin settings routes validate `is_private === true` at write time, but
+ * Slack allows a channel owner to convert the channel public afterward —
+ * and the server wouldn't notice. Callers posting sensitive notifications
+ * (billing events, escalations, editorial reviewer names, admin alerts,
+ * prospect data, system errors) gate through this function so a toggled-
+ * public channel stops receiving new posts within one `getChannelInfo`
+ * cache TTL.
+ *
+ * Returns:
+ * - `'private'` — still safe to post
+ * - `'public'` — confirmed drift; a post would leak sensitive content
+ * - `'unknown'` — the `getChannelInfo` call failed; no evidence of
+ *   drift, caller decides based on severity (leak-prevention vs.
+ *   preserving observability)
+ *
+ * When drift is confirmed, we ALSO invalidate this channel's cache
+ * entry so a subsequent re-privatize is picked up immediately rather
+ * than waiting out the remaining 30-minute TTL.
+ *
+ * #2735
+ */
+export async function verifyChannelStillPrivate(
+  channelId: string,
+): Promise<ChannelPrivacyState> {
+  const info = await getChannelInfo(channelId);
+  if (!info) {
+    logger.warn(
+      { channelId, event: 'channel_privacy_verify_unavailable' },
+      'Could not verify Slack channel privacy state — caller must decide whether to proceed',
+    );
+    return 'unknown';
+  }
+  if (info.is_private !== true) {
+    // Drop the stale cache entry so a rapid re-privatize by an admin
+    // is picked up on the very next send rather than after the remaining
+    // TTL. `getChannelInfo`'s next call will re-fetch.
+    channelCache.delete(channelId);
+    logger.warn(
+      {
+        channelId,
+        channelName: info.name,
+        event: 'channel_privacy_drift',
+      },
+      'Configured Slack channel is no longer private — refusing to post sensitive content. Admin action required to re-privatize or unlink.',
+    );
+    return 'public';
+  }
+  return 'private';
+}
+
+/**
+ * Result of `verifyChannelPrivacyForWrite` — the write-time gate that
+ * admin settings endpoints use before persisting a channel id.
+ *
+ *  - `{ ok: true }` — channel exists, privacy matches expectation.
+ *  - `{ ok: false, reason: 'wrong_privacy', actual, expected }` —
+ *    channel confirmed to be the wrong kind (private when public was
+ *    required, or vice versa). Admin should pick a different channel.
+ *  - `{ ok: false, reason: 'cannot_verify' }` — Slack returned nothing
+ *    for this id (bot not a member, missing scope, transient 5xx,
+ *    archived, or genuinely not found). The write is refused rather
+ *    than accepting an unverifiable channel; admin should invite the
+ *    bot to the channel and retry.
+ */
+export type ChannelPrivacyCheckResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'wrong_privacy';
+      actual: 'private' | 'public';
+      expected: 'private' | 'public';
+    }
+  | { ok: false; reason: 'cannot_verify' };
+
+/**
+ * Verify a Slack channel's privacy matches `expected` *at write time*.
+ * Fail-closed on a null `getChannelInfo` so the write is refused with
+ * a "cannot verify" reason instead of silently accepting a channel id
+ * that Slack can't describe. Admin-settings PUT endpoints call this
+ * before persisting.
+ *
+ * Distinct from `verifyChannelStillPrivate`, which is the runtime
+ * pre-send check and logs a `channel_privacy_drift` event when a
+ * previously-private channel turns public (because drift is the
+ * interesting thing at send time; at write time it's not drift, it's
+ * an admin picking the wrong channel).
+ */
+export async function verifyChannelPrivacyForWrite(
+  channelId: string,
+  expected: 'private' | 'public',
+): Promise<ChannelPrivacyCheckResult> {
+  const info = await getChannelInfo(channelId);
+  if (!info) {
+    logger.warn(
+      { channelId, expected, event: 'channel_privacy_verify_write_null' },
+      'Could not verify Slack channel privacy at write time — refusing with cannot_verify',
+    );
+    return { ok: false, reason: 'cannot_verify' };
+  }
+  const actual: 'private' | 'public' = info.is_private === true ? 'private' : 'public';
+  if (actual !== expected) {
+    return { ok: false, reason: 'wrong_privacy', actual, expected };
+  }
+  return { ok: true };
+}
+
+/**
+ * Reasons a `sendChannelMessage` call may refuse to post. Left as a
+ * discriminated union so future skip reasons (archived, bot kicked,
+ * missing scope, etc.) don't widen the public return type in a
+ * breaking way.
+ */
+export type SendSkipReason = 'not_private' | 'privacy_unknown';
+
+/**
+ * Send a message to a channel.
+ *
+ * `requirePrivate` gates on `verifyChannelStillPrivate`:
+ *
+ *   - `true` (default when set): refuse the send on either `'public'`
+ *     (confirmed drift) OR `'unknown'` (couldn't verify). This is the
+ *     leak-prevention-first mode — use for billing, prospect,
+ *     escalation, editorial, admin assessments.
+ *
+ *   - `'strict-public-only'`: refuse only on confirmed `'public'`.
+ *     `'unknown'` is treated like `'private'` so the send goes
+ *     through, with a warn log. Use when dropping the message
+ *     creates a bigger problem than a small leak risk — the
+ *     system-error notifier is the canonical case (don't silence
+ *     production errors just because Slack API is flaky).
+ *
+ * Channels that are intended for broad workspace visibility leave
+ * `requirePrivate` unset — behavior is unchanged.
  */
 export async function sendChannelMessage(
   channelId: string,
-  message: SlackBlockMessage
-): Promise<{ ok: boolean; ts?: string; error?: string }> {
+  message: SlackBlockMessage,
+  options: { requirePrivate?: boolean | 'strict-public-only' } = {},
+): Promise<{ ok: boolean; ts?: string; error?: string; skipped?: SendSkipReason }> {
+  if (options.requirePrivate) {
+    const state = await verifyChannelStillPrivate(channelId);
+    if (state === 'public') {
+      return { ok: false, error: 'channel_no_longer_private', skipped: 'not_private' };
+    }
+    if (state === 'unknown' && options.requirePrivate !== 'strict-public-only') {
+      return { ok: false, error: 'channel_privacy_unknown', skipped: 'privacy_unknown' };
+    }
+    // state === 'private' → fall through; state === 'unknown' with
+    // 'strict-public-only' → fall through with the warn log already
+    // emitted by verifyChannelStillPrivate.
+  }
+
   try {
     const response = await slackPostRequest<{ ts: string }>('chat.postMessage', {
       channel: channelId,
@@ -413,6 +571,65 @@ export async function sendChannelMessage(
     logger.error({ error, channelId }, 'Failed to send Slack channel message');
     return { ok: false, error: errorMessage };
   }
+}
+
+/**
+ * Update (edit in place) a previously posted channel message.
+ * Wraps Slack's `chat.update`. Used when non-Bolt code paths need to
+ * refresh a message whose `ts` we already know — e.g. admin-UI actions
+ * that mirror a Bolt button and need to refresh the original review
+ * card so the in-Slack state doesn't drift from the web state.
+ */
+export async function updateChannelMessage(
+  channelId: string,
+  ts: string,
+  message: SlackBlockMessage,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<Record<string, unknown>>('chat.update', {
+      channel: channelId,
+      ts,
+      text: message.text,
+      blocks: message.blocks,
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error, channelId, ts }, 'Failed to update Slack channel message');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Delete a posted channel message. Used to unwind a post when a
+ * subsequent write (e.g. activity row) fails and would otherwise leave
+ * an orphan message in a review channel with no idempotency record.
+ */
+export async function deleteChannelMessage(
+  channelId: string,
+  ts: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<Record<string, unknown>>('chat.delete', {
+      channel: channelId,
+      ts,
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error, channelId, ts }, 'Failed to delete Slack channel message');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Test-only: clear the channel-info cache. Used by tests that reuse
+ * channel IDs across cases — the module-level cache otherwise carries
+ * a `is_private` value from case N into case N+1, which can silently
+ * mask a regression.
+ */
+export function __resetChannelCacheForTests(): void {
+  channelCache.clear();
 }
 
 /**

@@ -71,9 +71,9 @@ validation_result:
   required_fields:
     - check                   # Validation kind from storyboard-schema.yaml:
                               # response_schema | field_present | field_value |
-                              # status_code | http_status | http_status_in |
-                              # error_code | on_401_require_header |
-                              # resource_equals_agent_url | any_of
+                              # field_value_or_absent | status_code | http_status |
+                              # http_status_in | error_code | on_401_require_header |
+                              # resource_equals_agent_url | any_of | refs_resolve
     - passed                  # boolean
     - description             # human-readable description copied from the
                               # storyboard validation entry (so the implementor
@@ -86,21 +86,25 @@ validation_result:
                               # failures. Null only when the failure is
                               # transport-level and no payload was returned.
     - expected                # machine-readable expected value:
-                              #   response_schema → schema $id that was applied
-                              #   field_value     → expected value (any JSON type)
-                              #   field_present   → the path that should resolve
-                              #   status_code     → expected status
-                              #   error_code      → expected error code
-                              #   any_of          → array of acceptable forms
+                              #   response_schema      → schema $id that was applied
+                              #   field_value          → expected value (any JSON type)
+                              #   field_value_or_absent → value or allowed_values array
+                              #                          from the storyboard validation
+                              #   field_present        → the path that should resolve
+                              #   status_code          → expected status
+                              #   error_code           → expected error code
+                              #   any_of               → array of acceptable forms
     - actual                  # machine-readable actual value observed:
-                              #   response_schema → array of schema errors
-                              #                     (each { instance_path,
-                              #                     schema_path, keyword,
-                              #                     message })
-                              #   field_value     → actual value (any JSON type)
-                              #   field_present   → null (the field was missing)
-                              #                     or the observed non-object
-                              #                     value
+                              #   response_schema      → array of schema errors
+                              #                          (each { instance_path,
+                              #                          schema_path, keyword,
+                              #                          message })
+                              #   field_value          → actual value (any JSON type)
+                              #   field_value_or_absent → actual value (any JSON type);
+                              #                          null when the field was absent
+                              #   field_present        → null (the field was missing)
+                              #                          or the observed non-object
+                              #                          value
     - schema_id               # $id of the response schema applied. Required
                               # when check == response_schema, null otherwise.
     - schema_url              # Resolvable URL the implementor can fetch to
@@ -274,7 +278,7 @@ skip_result:
       A test-kit harness contract (e.g., signed-requests-runner) is not in
       scope for this grading run. detail MUST cite the contract key. Per
       the signed-requests-runner contract, unsatisfied contracts grade as
-      FAIL, not SKIP, for the specialisms that declare them — this reason
+      FAIL, not SKIP, for the storyboards that declare them — this reason
       applies only where the contract explicitly permits SKIP.
     peer_branch_taken: |
       The step is part of an `any_of` branch set (see storyboard-schema.yaml
@@ -299,7 +303,7 @@ skip_result:
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
 
-summary:
+run_summary:
   description: |
     Runners MUST expose a top-level summary for every run. UI surfaces
     (Addie, CLI, web) may present a condensed form, but the full summary

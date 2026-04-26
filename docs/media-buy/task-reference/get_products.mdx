@@ -11,8 +11,8 @@ Discover available advertising products based on campaign requirements using nat
 
 **Response Time**: ~60 seconds (AI inference with back-end systems)
 
-**Request Schema**: [`/schemas/latest/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Quick Start
 
@@ -200,8 +200,8 @@ Each entry is a discriminated union on `scope`:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"product"` |
-| `id` | string | Yes | Product ID from a previous `get_products` response |
-| `action` | string | Yes | `"include"`: return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). |
+| `product_id` | string | Yes | Product ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). When omitted, the seller treats the entry as `"include"`. |
 | `ask` | string | No | What the buyer is asking for. For `"include"`: specific changes (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
 
 #### scope: "proposal"
@@ -209,8 +209,8 @@ Each entry is a discriminated union on `scope`:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"proposal"` |
-| `id` | string | Yes | Proposal ID from a previous `get_products` response |
-| `action` | string | Yes | `"include"`: return with updated allocations and pricing. `"omit"`: exclude from the response. |
+| `proposal_id` | string | Yes | Proposal ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return with updated allocations and pricing. `"omit"`: exclude from the response. `"finalize"`: request firm pricing and inventory hold (transitions a draft proposal to committed). When omitted, the seller treats the entry as `"include"`. |
 | `ask` | string | No | What the buyer is asking for (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `action` is `"omit"`. |
 
 ### refinement_applied (response)
@@ -219,8 +219,9 @@ When the seller receives a `refine` array, the response includes `refinement_app
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scope` | string | No | Echoes the scope from the corresponding `refine` entry for cross-validation. |
-| `id` | string | No | Echoes the id from the corresponding `refine` entry (for product and proposal scopes). |
+| `scope` | string | Yes | Echoes the scope (`"request"` / `"product"` / `"proposal"`) from the corresponding `refine` entry. |
+| `product_id` | string | Yes when `scope` is `"product"` | Echoes `product_id` from the corresponding refine entry. |
+| `proposal_id` | string | Yes when `scope` is `"proposal"` | Echoes `proposal_id` from the corresponding refine entry. |
 | `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
 | `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
 
@@ -316,7 +317,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
-**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-response.json)
+**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Common Scenarios
 
@@ -899,20 +900,20 @@ See [Property Targeting](/docs/media-buy/product-discovery/media-products#proper
 
 ## Refinement
 
-After initial discovery, use `buying_mode: "refine"` to iterate on specific products and proposals. The `refine` array is a list of change requests — each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations, plus `refinement_applied` acknowledging each ask. See [Refinement](/docs/media-buy/product-discovery/refinement) for the full guide.
+After initial discovery, use `buying_mode: "refine"` to iterate on specific products and proposals. The `refine` array is a list of change requests — each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations, plus `refinement_applied` acknowledging each ask.
 
-### Refine products
+See the [Refinement guide](/docs/media-buy/product-discovery/refinement) for the full walkthrough: scope types, action semantics, seller responses, and common patterns. The parameter shape is defined in the [Refine array](#refine-array) section above.
 
-Each product entry declares an explicit action. Use `scope: "request"` for set-level direction. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
+Minimal example:
 
 ```json test=false
 {
   "buying_mode": "refine",
   "refine": [
-    { "scope": "request", "ask": "good selection but I want more video options and less display" },
-    { "scope": "product", "id": "prod_premium_video", "action": "include", "ask": "add 16:9 format option" },
-    { "scope": "product", "id": "prod_display_run_of_site", "action": "omit" },
-    { "scope": "product", "id": "prod_native_feed", "action": "more_like_this", "ask": "same audience but video format" }
+    { "scope": "request",                                             "ask": "more video, less display" },
+    { "scope": "product",  "product_id":  "prod_premium_video",       "ask": "add 16:9 format option" },
+    { "scope": "product",  "product_id":  "prod_display_run_of_site", "action": "omit" },
+    { "scope": "proposal", "proposal_id": "prop_awareness_q2",        "ask": "reallocate display budget to video" }
   ],
   "filters": {
     "start_date": "2026-04-01",
@@ -922,66 +923,12 @@ Each product entry declares an explicit action. Use `scope: "request"` for set-l
 }
 ```
 
-### Refine a proposal
-
-Reference proposals by ID to request adjustments:
-
-```json test=false
-{
-  "buying_mode": "refine",
-  "refine": [
-    { "scope": "product", "id": "prod_premium_video", "action": "include" },
-    { "scope": "product", "id": "prod_display_run_of_site", "action": "include" },
-    { "scope": "proposal", "id": "prop_awareness_q2", "action": "include", "ask": "shift more budget toward video, reduce display allocation" }
-  ],
-  "filters": {
-    "start_date": "2026-04-01",
-    "end_date": "2026-05-31",
-    "budget_range": { "min": 300000, "max": 300000, "currency": "USD" }
-  }
-}
-```
-
-### Find similar products
-
-Use `more_like_this` to discover products similar to ones you like. The seller returns the original product plus additional options:
-
-```json test=false
-{
-  "buying_mode": "refine",
-  "refine": [
-    { "scope": "product", "id": "prod_premium_video", "action": "more_like_this", "ask": "same premium audience but different formats" }
-  ]
-}
-```
-
-### Proposals in refine mode
-
-Sellers MAY return proposals alongside refined products, even when the buyer did not include proposal entries. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
-
-Key points:
-
-- **Proposals are not guaranteed.** Sellers are not required to generate proposals in refine mode. Allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
-- **Signal interest via a request-level ask.** Include `{ "scope": "request", "ask": "suggest how to combine these products" }` to indicate you'd welcome a proposal.
-- **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, or simply ignore it and build packages manually via `create_media_buy`.
-
-### Notes
+Key rules to know before sending:
 
 - **`refine` is only valid in `refine` mode.** Requests that include this field in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
-- **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal. Proposals without `expires_at` remain valid until the seller invalidates them.
-- **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context. Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
-
-The response uses the same format as discovery, plus `refinement_applied` acknowledging each ask. Each product reflects the updated parameters — revised pricing options and any configuration changes the seller recommends based on the `refine` entries and filters. Call refine as many times as needed before committing to a `create_media_buy`.
-
-### Client validation
-
-Orchestrators building refinement workflows should validate requests before sending:
-
-- **Non-empty refine**: The `refine` array requires at least one entry. An empty `[]` is rejected by schema validation.
-- **Valid entries**: Each product entry requires `scope`, `id`, and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `scope`, `id`, and `action` (`include` or `omit`). Request-level entries require `scope` and `ask`.
-- **Filters are absolute**: When refining, `filters` represent the complete target state, not a delta from the previous request. Always send the full filter set you want applied.
-
-Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
+- **Filters are absolute**, not deltas. Always send the full filter set you want applied.
+- **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`.
+- **Product IDs are stable catalog identifiers.** Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 
 ## Error Handling
 

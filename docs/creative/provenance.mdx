@@ -15,7 +15,7 @@ EU AI Act Article 50 enforcement begins August 2026. California SB 942 is alread
 
 Provenance is an optional object that can attach to creative assets, creative manifests, individual typed assets, and content artifacts. No fields are required at the provenance level -- each section is independently useful.
 
-**Schema**: [provenance.json](https://adcontextprotocol.org/schemas/latest/core/provenance.json)
+**Schema**: [provenance.json](https://adcontextprotocol.org/schemas/v3/core/provenance.json)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -116,7 +116,7 @@ For content with no AI involvement, provenance is even simpler:
 
 The `digital_source_type` enum classifies AI involvement in content production, aligned with the [IPTC digitalsourcetype vocabulary](https://cv.iptc.org/newscodes/digitalsourcetype/).
 
-**Schema**: [digital-source-type.json](https://adcontextprotocol.org/schemas/latest/enums/digital-source-type.json)
+**Schema**: [digital-source-type.json](https://adcontextprotocol.org/schemas/v3/enums/digital-source-type.json)
 
 | Value | Description | When to use |
 |-------|-------------|-------------|
@@ -188,6 +188,7 @@ A creative where the image is AI-generated but the copy is human-written. The ma
   },
   "assets": {
     "banner_image": {
+      "asset_type": "image",
       "url": "https://cdn.novabrands.example.com/hero_ai.jpg",
       "width": 300,
       "height": 250,
@@ -206,9 +207,11 @@ A creative where the image is AI-generated but the copy is human-written. The ma
       }
     },
     "headline": {
+      "asset_type": "text",
       "content": "Nutrition dogs love"
     },
     "clickthrough_url": {
+      "asset_type": "url",
       "url": "https://novabrands.example.com/products?campaign={MEDIA_BUY_ID}"
     }
   }
@@ -512,12 +515,12 @@ This field is surfaced in product discovery through `get_products`, so buyers kn
 
 | Schema | Location |
 |--------|----------|
-| Provenance object | [`/schemas/core/provenance.json`](https://adcontextprotocol.org/schemas/latest/core/provenance.json) |
-| Digital source type enum | [`/schemas/enums/digital-source-type.json`](https://adcontextprotocol.org/schemas/latest/enums/digital-source-type.json) |
-| Creative asset (with provenance) | [`/schemas/core/creative-asset.json`](https://adcontextprotocol.org/schemas/latest/core/creative-asset.json) |
-| Creative manifest (with provenance) | [`/schemas/core/creative-manifest.json`](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json) |
-| Creative policy (provenance_required) | [`/schemas/core/creative-policy.json`](https://adcontextprotocol.org/schemas/latest/core/creative-policy.json) |
-| Artifact (with provenance) | [`/schemas/content-standards/artifact.json`](https://adcontextprotocol.org/schemas/latest/content-standards/artifact.json) |
+| Provenance object | [`/schemas/core/provenance.json`](https://adcontextprotocol.org/schemas/v3/core/provenance.json) |
+| Digital source type enum | [`/schemas/enums/digital-source-type.json`](https://adcontextprotocol.org/schemas/v3/enums/digital-source-type.json) |
+| Creative asset (with provenance) | [`/schemas/core/creative-asset.json`](https://adcontextprotocol.org/schemas/v3/core/creative-asset.json) |
+| Creative manifest (with provenance) | [`/schemas/core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json) |
+| Creative policy (provenance_required) | [`/schemas/core/creative-policy.json`](https://adcontextprotocol.org/schemas/v3/core/creative-policy.json) |
+| Artifact (with provenance) | [`/schemas/content-standards/artifact.json`](https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json) |
 
 ## Related
 

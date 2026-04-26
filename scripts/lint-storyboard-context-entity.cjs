@@ -196,45 +196,42 @@ function resolveEntityAtPath(node, segments) {
     return node['x-entity'];
   }
 
-  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
-    // oneOf / anyOf: variants are alternatives — take any variant that resolves.
-    // allOf: variants are all required — any variant that carries the annotation
-    // wins (spec composition by merge). All three compose by "look in each
-    // branch, reconcile unique hits" for the lint's purpose.
-    const variants = node.oneOf || node.anyOf || node.allOf;
-    const hits = [];
-    for (const variant of variants) {
-      const r = resolveEntityAtPath(variant, segments);
-      if (r === undefined) continue;
-      if (typeof r === 'object' && r.ambiguous) {
-        hits.push(...r.ambiguous);
-      } else {
-        hits.push(r);
-      }
+  // Collect hits from every applicable resolution path: the node's own
+  // `properties` / `items`, plus any oneOf / anyOf / allOf variants. This
+  // handles the common case where a root has BOTH validation-only
+  // anyOf/oneOf constraints (e.g., `anyOf: [{required: ["a"]}, {required: ["b"]}]`)
+  // AND concrete `properties`. The old logic bailed into the composite
+  // first and silently dropped the property descent — a false negative.
+  const hits = [];
+  const pushHit = (r) => {
+    if (r === undefined) return;
+    if (typeof r === 'object' && r.ambiguous) hits.push(...r.ambiguous);
+    else hits.push(r);
+  };
+
+  // 1. Own properties / items descent.
+  if (segments.length > 0) {
+    const [seg, ...rest] = segments;
+    if (/^\d+$/.test(seg)) {
+      if (node.items) pushHit(resolveEntityAtPath(node.items, rest));
+    } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
+      pushHit(resolveEntityAtPath(node.properties[seg], rest));
     }
-    const unique = Array.from(new Set(hits));
-    if (unique.length === 0) return undefined;
-    if (unique.length === 1) return unique[0];
-    return { ambiguous: unique };
   }
 
-  if (segments.length === 0) {
-    return node['x-entity'];
+  // 2. Composite variants. allOf-merged, oneOf/anyOf alternatives — the
+  // lint cares whether ANY branch resolves; it reconciles hits below.
+  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) {
+    const variants = node.oneOf || node.anyOf || node.allOf;
+    for (const variant of variants) pushHit(resolveEntityAtPath(variant, segments));
   }
 
-  const [seg, ...rest] = segments;
-
-  if (/^\d+$/.test(seg)) {
-    if (node.items) return resolveEntityAtPath(node.items, rest);
-    return undefined;
-  }
-
-  if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-    return resolveEntityAtPath(node.properties[seg], rest);
-  }
-
-  return undefined;
+  const unique = Array.from(new Set(hits));
+  if (unique.length === 0) return undefined;
+  if (unique.length === 1) return unique[0];
+  return { ambiguous: unique };
 }
+
 
 /**
  * Walk a schema tree and collect every `x-entity` value it declares, paired
@@ -512,6 +509,17 @@ const TRANSIENT_ID_NAMES = new Set([
   'event_id',
 ]);
 
+/**
+ * A leaf may deliberately opt out of the entity-id registry — the two
+ * `findings[].policy_id` ambiguous sites do this today, because the namespace
+ * can't be resolved from the leaf alone. Authors declare the opt-out with a
+ * `$comment` starting `"x-entity deliberately omitted"`. The gap lister
+ * skips these leaves so they don't re-appear as noise on every run.
+ */
+function isDeliberatelyOmitted(node) {
+  return typeof node?.$comment === 'string' && node.$comment.startsWith('x-entity deliberately omitted');
+}
+
 function isIdShapedProperty(name) {
   if (TRANSIENT_ID_NAMES.has(name)) return false;
   return /_id$|_ids$/.test(name) || name === 'id';
@@ -549,7 +557,7 @@ function collectIdFields(node, trail, seen, file, annotatedByEntity, unannotated
           const list = annotatedByEntity.get(info.entity) || [];
           list.push({ file, path: [...trail, name].join('.') });
           annotatedByEntity.set(info.entity, list);
-        } else if (info.isStringLike) {
+        } else if (info.isStringLike && !isDeliberatelyOmitted(value)) {
           unannotated.push({ file, path: [...trail, name].join('.') });
         }
       }

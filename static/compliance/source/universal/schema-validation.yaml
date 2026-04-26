@@ -93,11 +93,20 @@ phases:
         comply_scenario: schema_compliance
         stateful: false
         expected: |
-          Return products matching the brief. Each product must have:
-          - product_id: unique identifier
-          - name: human-readable name
-          - delivery_type: guaranteed or non_guaranteed
-          - pricing_options: at least one pricing option
+          Return products matching the brief. Each product must have all eight required fields:
+          - product_id: unique identifier for the product
+          - name: human-readable product name
+          - description: detailed description of the product and its inventory
+          - publisher_properties: array (minItems: 1) of publisher property selectors
+          - format_ids: array of format_id objects — each with agent_url (URI) and id
+          - delivery_type: "guaranteed" or "non_guaranteed"
+          - pricing_options: array (minItems: 1) — each with pricing_option_id, pricing_model, and currency
+          - reporting_capabilities: fully-formed object with required sub-fields:
+              available_reporting_frequencies, expected_delay_minutes, timezone,
+              supports_webhooks, available_metrics, date_range_support
+
+          Responses missing any of these fields fail schema validation regardless of
+          what other fields are present.
 
         sample_request:
           buying_mode: "brief"

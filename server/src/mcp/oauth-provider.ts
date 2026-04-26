@@ -16,14 +16,14 @@ import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/serv
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { createRemoteJWKSet, jwtVerify, decodeJwt } from 'jose';
+import { decodeJwt } from 'jose';
 import { createLogger } from '../logger.js';
+import { verifyWorkOSJWT } from '../auth/workos-jwt.js';
+import { getAuthorizationUrl, refreshTokenRaw, authenticateWithCodeForTokens } from '../auth/workos-client.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
 import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
 
 const logger = createLogger('mcp-oauth');
-
-const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
 
 /**
  * Whether MCP auth is enabled.
@@ -40,61 +40,26 @@ cleanupTimer.unref();
 // JWT verification
 // ---------------------------------------------------------------------------
 
-let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-function getJWKS() {
-  if (!jwks) {
-    if (!WORKOS_CLIENT_ID) {
-      throw new Error('WORKOS_CLIENT_ID is required for MCP token verification');
-    }
-    // WorkOS serves JWKS at this endpoint for all user management tokens
-    const jwksUrl = new URL(`https://api.workos.com/sso/jwks/${WORKOS_CLIENT_ID}`);
-    jwks = createRemoteJWKSet(jwksUrl);
-    logger.info({ jwksUrl: jwksUrl.toString() }, 'MCP OAuth: JWKS configured');
-  }
-  return jwks;
-}
-
 async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
-  const jwksInstance = getJWKS();
-
-  // WorkOS user tokens don't include `aud` or a stable `iss`.
-  // Signature verification via JWKS plus expiration is sufficient.
-  let payload: Awaited<ReturnType<typeof jwtVerify>>['payload'];
+  let verified: Awaited<ReturnType<typeof verifyWorkOSJWT>>;
   try {
-    const result = await jwtVerify(token, jwksInstance);
-    payload = result.payload;
+    verified = await verifyWorkOSJWT(token);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Token verification failed';
     logger.warn({ err }, 'MCP OAuth: Token verification failed');
-    throw new InvalidTokenError(message);
+    throw new InvalidTokenError('Invalid or expired token');
   }
-
-  const isM2M =
-    payload.grant_type === 'client_credentials' ||
-    (typeof payload.sub === 'string' && payload.sub.startsWith('client_'));
-
-  const clientId =
-    (payload.azp as string) ||
-    (typeof payload.aud === 'string' ? payload.aud : payload.aud?.[0]) ||
-    'unknown';
-
-  const scopes =
-    typeof payload.scope === 'string'
-      ? payload.scope.split(' ').filter(Boolean)
-      : [];
 
   return {
     token,
-    clientId,
-    scopes,
-    expiresAt: payload.exp,
+    clientId: verified.clientId,
+    scopes: verified.scopes,
+    expiresAt: verified.expiresAt,
     extra: {
-      sub: payload.sub,
-      orgId: payload.org_id,
-      isM2M,
-      email: payload.email,
-      payload,
+      sub: verified.sub,
+      orgId: verified.orgId,
+      isM2M: verified.isM2M,
+      email: verified.email,
+      payload: verified.payload,
     },
   };
 }
@@ -165,7 +130,6 @@ class MCPOAuthProvider implements OAuthServerProvider {
     });
 
     // Redirect to AuthKit via WorkOS SDK (reuses existing WORKOS_REDIRECT_URI)
-    const { getAuthorizationUrl } = await import('../auth/workos-client.js');
     const workosState = JSON.stringify({ mcp_pending_id: pendingId });
     const authUrl = getAuthorizationUrl(workosState);
 
@@ -224,7 +188,6 @@ class MCPOAuthProvider implements OAuthServerProvider {
     _scopes?: string[],
     _resource?: URL,
   ): Promise<OAuthTokens> {
-    const { refreshTokenRaw } = await import('../auth/workos-client.js');
     const result = await refreshTokenRaw(refreshTokenValue);
     return {
       access_token: result.accessToken,
@@ -277,9 +240,8 @@ export async function handleMCPOAuthCallback(
   }
 
   // Exchange WorkOS code for tokens
-  let authResult: { accessToken: string; refreshToken: string };
+  let authResult: Awaited<ReturnType<typeof authenticateWithCodeForTokens>>;
   try {
-    const { authenticateWithCodeForTokens } = await import('../auth/workos-client.js');
     authResult = await authenticateWithCodeForTokens(workosCode);
   } catch (err) {
     logger.error({ err, mcpPendingId }, 'MCP OAuth: Failed to exchange WorkOS code');
@@ -289,6 +251,36 @@ export async function handleMCPOAuthCallback(
     if (pending.state) errorUrl.searchParams.set('state', pending.state);
     res.redirect(errorUrl.toString());
     return;
+  }
+
+  // Upsert the user into our local table so downstream code (REST requireAuth,
+  // /api/me/*, dashboard queries) can find them by workos_user_id. The
+  // cookie-based /auth/callback path does the same upsert; without it,
+  // users who first arrive via the MCP OAuth flow don't exist locally and
+  // REST auth rejects their JWT.
+  //
+  // On failure we log and continue — we still issue the OAuth code so /mcp
+  // works. The user will see a 401 the first time they call /api/*, with a
+  // corresponding warn log ("Bearer JWT verified but user not found in
+  // local DB"). A retry (re-SSO) recovers; a persistent failure indicates
+  // a DB problem that operators need to investigate, not a per-user issue.
+  try {
+    const { getPool } = await import('../db/client.js');
+    const { user } = authResult;
+    await getPool().query(
+      `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       ON CONFLICT (workos_user_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         first_name = COALESCE(NULLIF(TRIM(users.first_name), ''), EXCLUDED.first_name),
+         last_name = COALESCE(NULLIF(TRIM(users.last_name), ''), EXCLUDED.last_name),
+         email_verified = EXCLUDED.email_verified,
+         workos_updated_at = EXCLUDED.workos_updated_at,
+         updated_at = NOW()`,
+      [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt],
+    );
+  } catch (upsertErr) {
+    logger.error({ err: upsertErr }, 'MCP OAuth: Failed to upsert user on callback');
   }
 
   // Generate local authorization code

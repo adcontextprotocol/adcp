@@ -11,14 +11,15 @@ The deeper blocker: many new members never publish their `member_profile` or bra
 Two coupled workflows:
 
 1. **Profile completion nudge** — Addie nudges new paying members on a fixed cadence to publish their profile and brand.json. Stops as soon as both exist.
-2. **Auto-announce on publish** — when a member's profile flips to public AND they have a brand.json, Addie drafts a welcome announcement (Slack + LinkedIn copy) and routes it to the editorial working group for approval. On approve, the Slack post goes to `#all-agentic-ads`; LinkedIn copy is included for human paste.
+2. **Dual-channel announce on publish** — when a member's profile flips to public AND they have a brand.json, Addie drafts a welcome announcement (Slack + LinkedIn copy) and routes it to the editorial working group for approval. Slack posting is automated on approval; LinkedIn posting is a human step (LinkedIn's API doesn't grant us posting scopes on company or personal profiles). A member is "announced" only when both channels have landed — the admin page exposes a "Mark posted to LinkedIn" action so we can close the loop.
 
 ## Design Principles
 
 - **Consent by action.** Members opt in by publishing their public profile. No surprise announcements. No scraped logos.
 - **Visual is theirs.** Corp logo from their own brand.json. Individual portrait from `portrait-generator.ts`. AAO mark as fallback. Never Brandfetch.
-- **Human-in-the-loop for v1.** Drafts go to `#admin-editorial-review`. No silent auto-publish.
-- **LinkedIn is copy-paste.** Building OAuth + Marketing API isn't worth it for v1. Approval message includes the LinkedIn copy ready to paste.
+- **Human-in-the-loop on approval.** Drafts go to `#admin-editorial-review`. No silent auto-publish on any channel.
+- **LinkedIn is human-posted.** LinkedIn's API does not grant posting scopes for company pages or personal profiles without partner status we don't have. This is a permanent constraint, not a v1 shortcut. The flow is: approval message includes paste-ready LinkedIn copy + visual; an admin posts it manually and clicks a "Mark posted" action to record the channel.
+- **Per-channel state.** "Announced" = Slack posted AND LinkedIn posted. The admin backlog view and `announcement_published` activity must distinguish the two.
 - **Nudge then stop.** Day 3, 7, 14, 30. After day 30, silence. No re-engagement loop.
 
 ## Workflow A — Profile completion nudge
@@ -65,7 +66,7 @@ Pattern matches `server/src/addie/jobs/event-recap-nudge.ts`:
 
 Register in `server/src/addie/jobs/job-definitions.ts`.
 
-## Workflow B — Auto-announce on publish
+## Workflow B — Dual-channel announce on publish
 
 ### Trigger
 
@@ -73,9 +74,9 @@ Member transitions to **announce-ready**:
 - `member_profiles.is_public = true`
 - Brand.json manifest exists for `primary_brand_domain`
 - `member_profiles.metadata.no_announcement` is not set
-- No prior announcement for this org (idempotency via `org_activities`)
+- No prior `announcement_draft_posted` for this org (idempotency via `org_activities`)
 
-The PUT handler at `server/src/routes/member-profiles.ts:391` doesn't emit any event today. Add a check at the end of the handler: if the update transitions `is_public` from false → true, enqueue an announcement job.
+Stage 2 of the nudge PR already emits a `profile_published` `org_activities` row when `is_public` transitions to true on the create, update, and visibility-toggle paths (`server/src/routes/member-profiles.ts`, helper `recordProfilePublishedIfNeeded`). Workflow B listens for that event.
 
 ### Draft generation
 
@@ -115,15 +116,18 @@ elif tier in (individual_professional, individual_academic):
 
 Post draft to `#admin-editorial-review` with Slack Block Kit:
 - Header: "New member announcement ready: {Company}"
-- Section: visual preview (image block)
+- Section: visual preview (image block) + direct link to download the image file for LinkedIn upload
 - Section: Slack draft text
 - Section: LinkedIn draft text (in code block for clean paste)
-- Actions block: **Approve & Post** | **Edit Draft** | **Skip**
+- Actions block: **Approve & Post to Slack** | **Edit Draft** | **Skip**
 
 Handler routes:
-- `Approve & Post` → posts `slack_text` + visual to `#all-agentic-ads`, marks org as announced in `org_activities`
-- `Edit Draft` → opens a Slack modal with editable text fields, on submit posts the edited version
-- `Skip` → marks org as `announcement_skipped`, no future re-trigger
+- `Approve & Post to Slack` → posts `slack_text` + visual to `#all-agentic-ads`, records `announcement_published` activity with `metadata.channel = "slack"` (and `slack_ts`, `approver_user_id`). The draft message in `#admin-editorial-review` updates in place to show "✓ Slack posted · ⏳ LinkedIn pending" with a **Mark posted to LinkedIn** button.
+- `Mark posted to LinkedIn` → records `announcement_published` activity with `metadata.channel = "linkedin"` (and `marked_by_user_id`, optional `linkedin_url`). Updates the review message to "✓ Slack posted · ✓ LinkedIn posted".
+- `Edit Draft` → opens a Slack modal with editable Slack text + LinkedIn text fields, on submit updates the draft.
+- `Skip` → records `announcement_skipped`, no future re-trigger.
+
+The admin members page surfaces the same LI action: a "Mark posted to LinkedIn" button appears on rows where Slack is done but LinkedIn is not, for admins who do the LI post outside Slack.
 
 Requires Slack app interactivity endpoint. Verify scopes in `server/src/slack/` setup before building.
 
@@ -143,12 +147,13 @@ Don't try to backfill everyone. Curated retroactive wave only.
 
 Already exists per the explorer pass. Add new activity types:
 
-- `profile_nudge_sent` (with `nudge_day` in metadata)
-- `announcement_draft_posted`
-- `announcement_published` (with `slack_ts`, channel, approver_user_id)
-- `announcement_skipped` (with skipper_user_id)
+- `profile_nudge_sent` (with `nudge_day` in metadata) — shipped in Workflow A
+- `profile_published` — shipped in Workflow A Stage 2; trigger for Workflow B
+- `announcement_draft_posted` (with `review_message_ts`)
+- `announcement_published` — written **once per channel**. `metadata.channel` is `"slack"` or `"linkedin"`. Slack rows carry `slack_ts`, `approver_user_id`; LinkedIn rows carry `marked_by_user_id` and optional `linkedin_url`. An org is "fully announced" when both channels have a row.
+- `announcement_skipped` (with `skipper_user_id`)
 
-These give us idempotency and an audit trail without a new table.
+Storing per-channel rows (rather than one row with a channels array) makes the "who marked LI posted, when" audit trivial and lets us compute the admin `Announced` column via two `EXISTS` subqueries.
 
 ### Migration: `member_profiles.metadata`
 
@@ -174,7 +179,10 @@ No schema change — `metadata` is already JSONB. Reserved keys for this work:
 | **`announcement-drafter.ts` service** | Build | `server/src/services/` |
 | **Editorial review Slack flow + interactivity handler** | Build | `server/src/slack/` |
 | **Backfill script** | Build | `server/src/scripts/` |
-| LinkedIn API posting | Out of scope | Copy-paste in approval message |
+| LinkedIn API posting | Not possible | Human posts; admin clicks "Mark posted to LinkedIn" to record |
+| **`profile_published` event emit** | Shipped (Workflow A Stage 2) | `server/src/routes/member-profiles.ts` via `recordProfilePublishedIfNeeded` |
+| **Admin members announce-ready columns** | Shipped (Workflow A Stage 3) | `server/public/admin-members.html`, `server/src/routes/admin/members.ts` |
+| **Admin "Mark posted to LinkedIn" action** | Build | admin members row action + new `POST /api/admin/members/:orgId/announcement/linkedin` |
 
 ## Implementation stages
 
@@ -187,7 +195,7 @@ No schema change — `metadata` is already JSONB. Reserved keys for this work:
 
 ## Out of scope (v1)
 
-- LinkedIn API auto-posting. Copy-paste only.
+- LinkedIn API auto-posting. Not a v1 cut — a permanent one until LinkedIn's partner program opens up for our use case.
 - Twitter/X.
 - Personalized member-driven copy (that's `member-social-drafts.md`, distinct).
 - Re-engagement after day 30. If a member ignores all four nudges, that's a signal.
@@ -206,8 +214,9 @@ No schema change — `metadata` is already JSONB. Reserved keys for this work:
 
 - Paying members who haven't published get nudged on day 3/7/14/30, then stop
 - Member publishing their profile + brand.json triggers a draft within 5 minutes
-- Editorial team can approve/edit/skip in one Slack interaction
-- Approved announcements land in `#all-agentic-ads` with the correct visual
-- LinkedIn copy is paste-ready (no editing needed for format)
+- Editorial team can approve / edit / skip / mark-LI-posted in one Slack interaction
+- Approved Slack announcements land in `#all-agentic-ads` with the correct visual
+- LinkedIn copy is paste-ready (no editing needed for format); admin can mark LI posted either from the Slack review message or the admin members page
+- Admin members page shows Slack-posted vs fully-announced state so nothing stays half-announced
 - No surprise announcements — every published post had human approval
 - Backfill produces a curated wave of 10–15 retroactive welcomes spread over a week

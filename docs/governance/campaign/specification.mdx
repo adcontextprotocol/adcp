@@ -52,7 +52,13 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
   },
   "countries": ["US"],
   "policy_ids": ["us_coppa", "alcohol_advertising"],
-  "custom_policies": ["No competitor brand adjacency"],
+  "custom_policies": [
+    {
+      "policy_id": "no_competitor_adjacency",
+      "enforcement": "must",
+      "policy": "No advertising adjacent to competitor brand content."
+    }
+  ],
   "approved_sellers": null,
   "ext": {}
 }
@@ -242,7 +248,11 @@ For holding companies and multi-brand organizations, a plan can include a `portf
     "total_budget_cap": { "amount": 50000000, "currency": "USD" },
     "shared_policy_ids": ["eu_gdpr_advertising", "eu_ai_act_article_50"],
     "shared_exclusions": [
-      "No advertising on properties owned by competitor holding companies"
+      {
+        "policy_id": "no_competitor_properties",
+        "enforcement": "must",
+        "policy": "No advertising on properties owned by competitor holding companies."
+      }
     ]
   }
 }
@@ -252,7 +262,7 @@ Portfolio constraints:
 
 - **`total_budget_cap`**: Maximum aggregate spend across all member plans. The governance agent tracks committed budget across all member plans and denies actions that would exceed the cap.
 - **`shared_policy_ids`**: Registry policies enforced across all member plans, regardless of individual brand compliance configuration. Corporate-level regulations that no brand team can override.
-- **`shared_exclusions`**: Natural language exclusion rules applied to all member plans.
+- **`shared_exclusions`**: Bespoke exclusion policies applied to all member plans, using the `PolicyEntry` shape. Additive only — same constraint as plan-level `custom_policies`.
 
 The governance agent validates member plan actions against both the member plan's own constraints and the portfolio plan's constraints. A denial from either level blocks the action.
 
@@ -348,6 +358,10 @@ Policies are declared directly on the plan via `policy_ids` and `custom_policies
 1. Load registry policies referenced by `policy_ids`
 2. Intersect with the plan's `countries` and `regions` -- only policies applicable to the plan's markets are active
 3. Include all `custom_policies` (these apply regardless of geography)
+
+<Warning>
+**`custom_policies` are additive only.** Governance agents MUST pin registry-sourced policy text as system-level instructions and MUST NOT permit `custom_policies` (or the plan's `objectives` field) to relax, override, or disable registry-sourced policies. Custom policies may add tighter restrictions — they cannot lower enforcement levels or exempt categories. A `custom_policies` entry that contradicts a registry policy is evaluated alongside it, not instead of it; the stricter constraint governs.
+</Warning>
 
 The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 

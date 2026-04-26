@@ -6,7 +6,6 @@ on:
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
-      - 'server/tests/manual/run-one-storyboard.ts'
       - 'package.json'
       - 'package-lock.json'
       - 'static/compliance/source/**'
@@ -15,7 +14,6 @@ on:
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
-      - 'server/tests/manual/run-one-storyboard.ts'
       - 'package.json'
       - 'package-lock.json'
       - 'static/compliance/source/**'
@@ -38,23 +36,39 @@ jobs:
             flag_value: '0'
             # Baseline on main — keep in sync with the last clean run reported
             # in the PR description. Rising is fine; regressing fails CI.
-            # 35→27 temporarily after @adcp/client 5.6→5.8.1 bump (adcp#2663)
-            # surfaced stricter schema checks; recovered to 36 in adcp#2666 by
-            # fixing training-agent fixtures (creative format asset_type/
-            # catalog_type/dimensions.unit), adding required total_budget on
-            # get_media_buys, and tightening validate_property_delivery
-            # response shape.
-            min_clean_storyboards: 36
-            min_passing_steps: 295
+            # 378→380 after bumping @adcp/client to 5.15 (5.14 fixture-wins
+            # refactor exposed training-agent catalog gaps; aliased
+            # outdoor_ctv_q2/local_display_dynamic products and renamed
+            # two prism signal pricing ids to match the spec test-kit).
+            # 380→384 / 52→53 after implementing force_create_media_buy_arm
+            # in the training-agent: the create_media_buy_async storyboard
+            # (#3081) now passes 4 steps instead of grading not_applicable.
+            # 384→388 after bumping @adcp/client to 5.18.0 (#3191) and
+            # implementing force_task_completion (#3194).
+            # Passing-step asymmetry with framework mode is intentional:
+            # the two modes declare different capabilities, so the
+            # storyboard runner skips a different subset of steps in each.
+            # Both modes pass every step they run.
+            min_clean_storyboards: 53
+            min_passing_steps: 388
           - mode: framework
             flag_value: '1'
-            # Framework path is opt-in and trails legacy until zod parity
-            # lands. Gate keeps it from going backwards while we close the gap.
-            # Rebaselined alongside the legacy recovery in adcp#2666: the
-            # training-agent fixture fixes bought back the same 237→241
-            # passing-step delta for the framework path.
-            min_clean_storyboards: 21
-            min_passing_steps: 241
+            # 390→393 after bumping @adcp/client to 5.15 + seller catalog
+            # alignment (see legacy-mode comment).
+            # 393→370 / 52→41 after bumping @adcp/client to 5.17.0: the
+            # framework dispatch tightened request-side schema validation
+            # and the bundled storyboards sent additional properties their
+            # own request schemas rejected (sync_plans, list_property_lists,
+            # delete_property_list). Tracked at adcontextprotocol/adcp-client#940.
+            # 370→374 / 41→42 after implementing force_create_media_buy_arm
+            # (#3081 follow-up) — same +1 storyboard / +4 steps as legacy.
+            # 374→401 / 42→53 after bumping @adcp/client to 5.18.0 (#3191)
+            # which brought in adcp-client#943's schema-aware brand/account
+            # injection — the upstream fix for #940. Framework parity with
+            # legacy fully restored; passing-step asymmetry remains because
+            # framework declares more capabilities (more steps run, all pass).
+            min_clean_storyboards: 53
+            min_passing_steps: 401
     steps:
       - uses: actions/checkout@v6
 
@@ -69,17 +83,77 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Overlay in-repo compliance source onto SDK cache
+        # The storyboard runner loads from @adcp/client's bundled
+        # compliance cache, which is a snapshot synced from this repo's
+        # static/compliance/source/ on each SDK publish. To validate
+        # spec changes in this PR before waiting for an SDK republish,
+        # mirror the current source tree onto the cache — both edits to
+        # existing files AND new files added in this PR. mkdir -p creates
+        # any new subdirectories the source introduces so the cache stays
+        # in sync with whatever lands here.
+        #
+        # Caveat: this overlay does NOT regenerate the SDK's cache index
+        # (e.g., index.json bundles enumerated at build time). New files
+        # under existing protocols are picked up via directory walk, but
+        # adding a brand-new top-level bundle (a new specialism / universal
+        # file) may need a sync-schemas cycle on the SDK side before the
+        # runner enumerates it. New files under existing scenarios/ dirs
+        # are the common case and work fine.
+        run: |
+          SRC="static/compliance/source"
+          # 5.13 moved the cache dir from `latest` to the AdCP version
+          # string (e.g. `3.0.0`). Resolve whichever subdir exists so the
+          # overlay step doesn't have to bump with every SDK release.
+          CACHE_ROOT="node_modules/@adcp/client/compliance/cache"
+          DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
+          if [ -z "$DST" ] || [ ! -d "$DST" ]; then
+            echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
+            exit 0
+          fi
+          echo "Overlaying onto $DST"
+          # Mirror every source file onto the cache. New files (storyboards,
+          # specialisms) get added; existing files are overwritten so the
+          # branch's edits always win.
+          (cd "$SRC" && find . -type f) | while read -r rel; do
+            target="$DST/${rel#./}"
+            mkdir -p "$(dirname "$target")"
+            cp "$SRC/${rel#./}" "$target"
+          done
+          echo "Overlay complete."
+
       - name: Run storyboards (${{ matrix.mode }})
         id: run
         env:
           TRAINING_AGENT_USE_FRAMEWORK: ${{ matrix.flag_value }}
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
         run: |
+          set -euo pipefail
+          # `set -o pipefail` makes the storyboards-runner exit code propagate
+          # through the `tee` instead of getting swallowed. Without this a
+          # crash inside run-storyboards.ts would still report success here.
           npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log
+          # Disable -e for the parse pipelines — `grep` returning empty is
+          # not a fatal error, we want to detect that explicitly below.
+          set +e
           clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
           passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
+          set -e
+          if [ -z "${clean}" ] || [ -z "${passed}" ]; then
+            echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.mode }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
+            exit 1
+          fi
           echo "clean=${clean}" >> "$GITHUB_OUTPUT"
           echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload storyboards log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyboards-log-${{ matrix.mode }}
+          path: /tmp/storyboards.log
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Enforce non-regression (${{ matrix.mode }})
         env:
@@ -88,14 +162,79 @@ jobs:
           MIN_CLEAN: ${{ matrix.min_clean_storyboards }}
           MIN_PASSED: ${{ matrix.min_passing_steps }}
         run: |
+          set -euo pipefail
           echo "Mode: ${{ matrix.mode }} (flag=${{ matrix.flag_value }})"
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
           echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          # Helper that prints a uniform actionable next-step block whenever
+          # a floor is breached. Tells the contributor exactly which file
+          # and matrix key to edit, and where to download the log artifact
+          # to see *which* storyboards regressed.
+          regression_help() {
+            local metric="$1"
+            local observed="$2"
+            local floor="$3"
+            cat <<HELP
+          ::error::Regression: ${observed} ${metric} is below the ${floor} floor (mode: ${{ matrix.mode }}).
+
+          Next steps:
+            • If this drop is intentional (removed deprecated invariant, retired
+              storyboard, etc.): edit .github/workflows/training-agent-storyboards.yml,
+              find the matrix entry where mode == ${{ matrix.mode }}, and update the
+              floor to ${observed}. Add an entry to the comment block above noting
+              the transition (e.g. "${floor}→${observed} after <reason>").
+            • If unintentional: download the storyboards-log-${{ matrix.mode }} artifact
+              from this run to see which storyboards regressed and why.
+          HELP
+          }
           if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
-            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor."
+            regression_help "clean storyboards" "${CLEAN}" "${MIN_CLEAN}"
             exit 1
           fi
           if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
-            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor."
+            regression_help "passing steps" "${PASSED}" "${MIN_PASSED}"
             exit 1
+          fi
+          # Persist this matrix's results to an artifact so the summary
+          # job can compare framework vs legacy without rerunning anything.
+          mkdir -p /tmp/storyboard-results
+          printf '%s\n%s\n' "${CLEAN}" "${PASSED}" > /tmp/storyboard-results/results.txt
+
+      - name: Persist matrix results for summary job
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyboard-results-${{ matrix.mode }}
+          path: /tmp/storyboard-results/results.txt
+          retention-days: 1
+
+  asymmetric-invariant-check:
+    # Defense-in-depth gate: framework dispatch declares more capabilities
+    # than legacy, so it should run *more* passing steps. If that asymmetry
+    # ever silently inverts (framework_passed < legacy_passed) we want a
+    # visible signal — but only as a `::warning::`, not a hard fail. Hard-
+    # failing here would block legitimate dep-bump windows where the SDK
+    # introduces transient framework regressions before the fix lands
+    # (the 5.17→5.18 gap from #940 was exactly this).
+    needs: storyboards
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both matrix results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: storyboard-results-*
+          path: /tmp/storyboard-results
+
+      - name: Compare framework vs legacy passing-step count
+        run: |
+          set -euo pipefail
+          legacy_passed=$(sed -n '2p' /tmp/storyboard-results/storyboard-results-legacy/results.txt)
+          framework_passed=$(sed -n '2p' /tmp/storyboard-results/storyboard-results-framework/results.txt)
+          echo "Legacy passing steps:    ${legacy_passed}"
+          echo "Framework passing steps: ${framework_passed}"
+          if [ "${framework_passed}" -lt "${legacy_passed}" ]; then
+            echo "::warning::Asymmetric-mode invariant inverted: framework dispatch ran ${framework_passed} passing steps, fewer than legacy's ${legacy_passed}. Framework declares more capabilities than legacy and should run *more* steps. If this is a transient SDK regression (e.g. mid-bump), it'll resolve on the next bump. If it persists, investigate — the matrix comments in training-agent-storyboards.yml document which bumps drove past number changes."
+          else
+            echo "Asymmetric-mode invariant holds (framework >= legacy)."
           fi

@@ -14,6 +14,13 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
 
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy or
+# approved → processing on a creative asset.
+invariants:
+  - status.monotonic
+
 narrative: |
   You run a generative sell-side platform — an AI ad network, generative DSP, or any system that
   both sells inventory and generates creatives from a brief. The buyer doesn't upload finished
@@ -58,6 +65,31 @@ prerequisites:
     tone — that the generative seller uses to produce on-brand creatives. The test kit provides
     a sample brand with campaign parameters.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outdoor_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "outdoor_display_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
 
 phases:
   - id: capability_discovery
@@ -337,7 +369,9 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
-              scheme: "HMAC-SHA256"
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "creative-generative-seller-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_seller_create_buy_create_media_buy"
           context:
@@ -407,6 +441,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2"
                   objective: "conversion"
                   tone: "Bold, adventurous, urgent"
@@ -433,6 +468,7 @@ phases:
                 id: "video_30s_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2 - Video"
                   objective: "awareness"
                   tone: "Cinematic, energetic"
@@ -559,6 +595,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Test brief"
                   objective: "awareness"
                   tone: "Neutral"
@@ -629,6 +666,7 @@ phases:
                 id: "display_300x250_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2"
                   objective: "conversion"
                   tone: "Bold, adventurous, urgent"
@@ -642,6 +680,7 @@ phases:
                 id: "video_30s_generative"
               assets:
                 brief:
+                  asset_type: "brief"
                   name: "Acme Outdoor Summer Sale Q2 - Video"
                   objective: "awareness"
                   tone: "Cinematic, energetic"

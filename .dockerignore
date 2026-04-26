@@ -9,6 +9,10 @@ dist
 dist/schemas/latest
 dist/schemas/v*
 dist/schemas/registry.*
+# Include cosign-signed versioned tarballs from git — the builder only
+# regenerates latest.tgz, and re-signing requires OIDC creds we don't
+# have inside the Fly.io image build.
+!dist/protocol
 .docusaurus
 
 # Development files
@@ -17,6 +21,10 @@ dist/schemas/registry.*
 *.md
 !README.md
 !CHANGELOG.md
+# Shared agent infrastructure — required at runtime by Addie's rules
+# loader (server/src/addie/rules/index.ts) and by the triage routines.
+!.agents/**
+!.claude/agents/**
 .venv
 .conductor
 .context

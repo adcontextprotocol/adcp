@@ -15,7 +15,7 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "The plan this outcome is for.",
+      "description": "The plan this outcome is for. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
       "x-entity": "governance_plan"
     },
     "check_id": {

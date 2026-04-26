@@ -12,8 +12,13 @@ required_tools:
 # re-evaluation. The assertion gates any post-denial mutation on the
 # affected plan, catching sellers that ignore a mid-campaign denial and
 # keep delivering / committing new spend.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — paused → active → paused is fine,
+# active → pending_creatives fails.
 invariants:
   - governance.denial_blocks_mutation
+  - status.monotonic
 
 narrative: |
   After a media buy is confirmed with governance approval, the governance agent monitors
@@ -44,6 +49,57 @@ prerequisites:
     and an active media buy with delivery data. The governance plan defines a
     reallocation threshold that triggers re-evaluation.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outdoor_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "outdoor_display_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+  plans:
+    - plan_id: "gov_acme_delivery_monitor"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Delivery-phase governance with drift detection and rebalancing"
+      budget:
+        total: 40000
+        currency: "USD"
+        reallocation_threshold: 8000
+      flight:
+        start: "2027-01-01T00:00:00Z"
+        end: "2027-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "drift_reevaluation"
+          enforcement: "must"
+          policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+  media_buys:
+    - media_buy_id: "mb_acme_q2_2026"
+      status: "active"
+      budget:
+        total: 40000
+        currency: "USD"
+      flight:
+        start: "2026-04-01T00:00:00Z"
+        end: "2026-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery
@@ -172,11 +228,8 @@ phases:
           - monitoring: delivery phase governance is active
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
           payload:
             account:
@@ -205,6 +258,70 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "governance_delivery_monitor--check_governance_approved"
+            description: "Context correlation_id returned unchanged"
+  - id: create_buy
+    title: "Create media buy under governance approval"
+    narrative: |
+      With governance approved, the buyer creates the media buy. The seller confirms
+      and returns a media_buy_id the buyer will use to pull delivery metrics as the
+      campaign runs.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy"
+        narrative: |
+          The buyer creates the media buy with the governance_context from the approved
+          check. The seller confirms and returns a media_buy_id that subsequent delivery
+          monitoring steps reference.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Confirm the media buy:
+          - media_buy_id: platform-assigned identifier
+          - status: active
+          - packages: confirmed line items
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          governance_context: "gov_ctx_acme_delivery_approved"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_ctv_q2"
+              budget: 20000
+              pricing_option_id: "cpm_guaranteed"
+            - product_id: "outdoor_video_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_create_buy_create_media_buy"
+          context:
+            correlation_id: "governance_delivery_monitor--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response contains a media_buy_id for delivery monitoring"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--create_media_buy"
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery metrics show budget drift"
@@ -237,7 +354,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids:
-            - "mb_acme_q2_2026"
+            - "$context.media_buy_id"
           include_package_daily_breakdown: true
 
           context:
@@ -288,14 +405,10 @@ phases:
           - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
           phase: "delivery"
           governance_context: "gov_ctx_acme_delivery_approved"
-          media_buy_id: "mb_acme_q2_2026"
           delivery_metrics:
             reporting_period:
               start: "2026-05-01T00:00:00Z"
