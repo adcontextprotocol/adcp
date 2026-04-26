@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Recommend **Option A: first-class `catalog_agent_authorizations` table**, mirroring `catalog_identifiers` (evidence / confidence / disputed). It's the only option that supports the dominant query patterns at indexed-lookup speed, integrates cleanly with the override layer that already shipped (`adagents_authorization_overrides`), and unifies the two parallel legacy tables (`agent_property_authorizations` + `agent_publisher_authorizations`) into one.
+Recommend **Option A: first-class `catalog_agent_authorizations` table**, mirroring `catalog_identifiers`'s evidence + dispute pattern. It's the only option that supports the dominant query patterns at indexed-lookup speed, integrates cleanly with the override layer that already shipped (`adagents_authorization_overrides`), and unifies the two parallel legacy tables (`agent_property_authorizations` + `agent_publisher_authorizations`) into one.
 
 The other two options either sacrifice query performance (Option B: read JSONB on every call) or pay structural cost for flexibility we don't need (Option C: store auth as `catalog_facts`).
 
@@ -57,7 +57,7 @@ The manifest schema defines `authorized_agents[]` as a `oneOf` over six discrimi
 |---|---|---|
 | `property_ids` | Agent authorized for specific properties named by slug in the same manifest | One row per resolved `property_rid`. |
 | `inline_properties` | Agent authorized for properties defined inline in the auth entry (not in top-level `properties[]`) | One row per inline property; identifiers go through the same publisher-anchor guards as the top-level properties. |
-| `publisher_properties` | Agent authorized across multiple publishers' inventories (third-party sales agent pattern) | **Constrained**: only the lexically-anchored case lands at `confidence='authoritative'`. Cross-publisher claims (manifest at `agent.example` claiming `cnn.com` properties) are refused at the writer — same anchor rule as `projectPropertyToCatalog`. The v3 fix for the cross-publisher case requires either signed cross-attestation or a corroborating publisher-side claim; deferred. |
+| `publisher_properties` | Agent authorized across multiple publishers' inventories (third-party sales agent pattern) | **Constrained**: only the lexically-anchored case lands at `evidence='adagents_json'`. Cross-publisher claims (manifest at `agent.example` claiming `cnn.com` properties) are refused at the writer — same anchor rule as `projectPropertyToCatalog`. The v3 fix for the cross-publisher case requires either signed cross-attestation or a corroborating publisher-side claim; deferred. |
 | `property_tags` | Agent authorized for "all properties tagged X" | **Deferred**. Resolving tags at write time means writes block on the property catalog being current; properties tagged after the fact never become authorized. Resolving at read time means every reader scans tag bindings. Either way, behavior is qualitatively different from the per-property cases. Out of scope for v1; tag-scoped readers continue to read from the legacy table or `publishers.adagents_json` JSONB until a separate model lands. |
 | `signal_ids` / `signal_tags` | Agent authorized to use specific data-provider signals | **Out of scope**. Signal authorization has different semantics (data-provider hosted, different override layer keying) and gets its own table or a `host_type` discriminant on this one. Tracked but not part of the property registry unification. |
 
@@ -79,12 +79,11 @@ CREATE TABLE catalog_agent_authorizations (
   property_id_slug     TEXT,                              -- manifest slug at write time (for override JOIN)
   publisher_domain     TEXT,                              -- ONLY when property_rid IS NULL; derived via JOIN otherwise
   authorized_for       TEXT,                              -- free-text scope from manifest, length-capped 500
-  evidence             TEXT NOT NULL                      -- vocabulary aligned with catalog_identifiers
+  evidence             TEXT NOT NULL                      -- trust signal; sole source of truth (see column notes)
     CHECK (evidence IN ('adagents_json', 'agent_claim', 'community')),
-  confidence           TEXT NOT NULL
-    CHECK (confidence IN ('authoritative', 'strong', 'medium', 'weak')),
   disputed             BOOLEAN NOT NULL DEFAULT FALSE,
   created_by           TEXT,                              -- 'system', member_id, or asserting agent_url for claims
+  expires_at           TIMESTAMPTZ,                       -- only meaningful for evidence='agent_claim'
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),-- human-readable change time; NOT a sync cursor
   deleted_at           TIMESTAMPTZ,                       -- soft-delete tombstone
@@ -153,6 +152,12 @@ A few load-bearing column choices, since reviewers flagged each one:
 
 - **`created_by`** distinguishes which agent (or system) wrote each row. For `evidence='agent_claim'` rows, this is the asserting agent's URL — required for revocation paths ("agent X is no longer trusted; remove all rows where the claim came from agent X").
 
+- **`evidence` carries the trust signal; there is no separate `confidence` column.** `catalog_identifiers` uses a four-value `confidence` scale (`authoritative`/`strong`/`medium`/`weak`) calibrated for identifier corroboration across multiple data pipelines. Authorization has only three real trust states, and they map 1:1 to the `evidence` source: `adagents_json` is authoritative-by-definition (publisher's own .well-known file under HTTPS), `agent_claim` is the asserting agent's word for it, `community` is moderator-curated. Storing both columns invited writers to make up gradations that don't carry meaning at the reader. Drop `confidence`; if a future evidence source needs a separate trust gradation, add it as a new `evidence` value. The dispute layer (`disputed` boolean) handles the "this row is contested" case orthogonally.
+
+- **`expires_at` is for `agent_claim` rows.** Legacy `agent_publisher_authorizations` had this column; preserve the semantics. Claims sweep on expiry via the catalog cleanup job. `evidence='adagents_json'` rows have no `expires_at` — they're refreshed on every successful crawl, so a stale row means the publisher's manifest stopped declaring the auth and the row should soft-delete (not expire on a TTL).
+
+- **The override layer is scoped to `evidence='adagents_json'` rows only.** `adagents_authorization_overrides` was designed against the manifest body (publisher's declared authorizations); applying it to `agent_claim` rows doesn't make semantic sense (a moderator can't suppress someone's own self-assertion through an override layer keyed to a publisher's domain). Claims get revoked via `created_by`-based delete: when an asserting agent loses trust, the writer hard-deletes (or tombstones) every `evidence='agent_claim' AND created_by=<that_agent_url>` row in one statement. The schema PR enforces this scoping in the override view's JOIN condition.
+
 - **Partial indexes excluding `deleted_at IS NOT NULL`** mirror the override layer's `WHERE superseded_at IS NULL` pattern. The sync index (`idx_caa_seq`) deliberately is *not* partial because delta consumers need to see tombstones.
 
 - **`seq_no` must rotate on soft-delete.** A row that's tombstoned without a fresh `seq_no` is invisible to delta consumers (their cursor moved past the row's original `seq_no` when it was created), so revocations silently never propagate. This is a security-relevant failure: a revoked authorization continues to live in DSPs' local caches forever. Enforce via a trigger, not writer discipline:
@@ -178,7 +183,7 @@ The trigger ships in PR 4b-prereq alongside the table DDL.
 
 **Writer-side**: `cacheAdagentsManifest` extracts each `authorized_agents[]` entry from the manifest body. For each property-side variant covered above, the writer inserts one row per resolved `property_rid` (per-property scope) or one row with `property_rid IS NULL` (publisher-wide scope). Same security guards as the existing `projectPropertyToCatalog` (cross-publisher refusal, anchor rule) — the hijack risk on agent claims is symmetric to the property-identifier case.
 
-The buying-agent claim path (`recordPublisherFromAgent`, today writing `agent_publisher_authorizations` with `source='agent_claim'`) lands here as `evidence='agent_claim'`, `confidence='strong'`, `created_by=<asserting_agent_url>`. The two source types live side by side in one table; the snapshot endpoint **defaults to `evidence='adagents_json'` only** so a buy-side consumer that doesn't filter doesn't accidentally treat unverified claims as authorization (see "Agent-side sync" for the wire-format implication).
+The buying-agent claim path (`recordPublisherFromAgent`, today writing `agent_publisher_authorizations` with `source='agent_claim'`) lands here as `evidence='agent_claim'`, `created_by=<asserting_agent_url>`, `expires_at=<TTL from legacy>`. The two source types live side by side in one table; the snapshot endpoint **defaults to `evidence='adagents_json'` only** so a buy-side consumer that doesn't filter doesn't accidentally treat unverified claims as authorization (see "Agent-side sync" for the wire-format implication).
 
 **Override-layer integration**: the effective authorization set is the union of (base rows minus rows matched by an active `suppress` override) and (active `add` overrides projected into the base shape). LEFT JOIN alone doesn't compose because `add` overrides need to surface phantom rows where there's no base row — that's the dominant `add` use case (the publisher's file is broken or missing, and a moderator is granting auth manually).
 
@@ -197,9 +202,9 @@ WITH base AS (
     -- catalog_properties; tracked separately.
     COALESCE(caa.publisher_domain,
              regexp_replace(cp.created_by, '^[^:]+:', '')) AS publisher_domain,
-    caa.authorized_for, caa.evidence, caa.confidence,
-    caa.disputed, caa.created_by, caa.created_at, caa.updated_at,
-    caa.seq_no
+    caa.authorized_for, caa.evidence,
+    caa.disputed, caa.created_by, caa.expires_at,
+    caa.created_at, caa.updated_at, caa.seq_no
   FROM catalog_agent_authorizations caa
   LEFT JOIN catalog_properties cp ON cp.property_rid = caa.property_rid
   WHERE caa.deleted_at IS NULL
@@ -222,9 +227,10 @@ SELECT
   NULL::uuid AS property_rid,           -- 'add' overrides don't carry a rid
   ov.property_id AS property_id_slug,
   ov.host_domain AS publisher_domain,
-  ov.authorized_for, 'override' AS evidence, 'authoritative' AS confidence,
+  ov.authorized_for, 'override' AS evidence,
   FALSE AS disputed,
   ov.approved_by_user_id AS created_by,
+  NULL::timestamptz AS expires_at,
   ov.created_at, ov.created_at AS updated_at,
   NULL::bigint AS seq_no,                -- override sequencing is independent
   TRUE AS override_applied,
@@ -251,7 +257,7 @@ The view also exposes `override_applied` (boolean) and `override_reason` (overri
 **Pros**
 - Indexed lookups on every dominant query pattern. `getDomainsForAgent` is `WHERE agent_url = $1` — index hit.
 - `bulkGetFirstAuthForAgents` is `WHERE agent_url = ANY($1)` with the existing index pattern.
-- Symmetric with `catalog_identifiers` — readers reuse the same evidence/confidence vocabulary, dispute layer attaches naturally.
+- Symmetric with `catalog_identifiers` — readers reuse the same `evidence` vocabulary, dispute layer attaches naturally.
 - Override layer keys are already designed for it — `agent_url_canonical` and `property_id` line up directly.
 - Unifies the two legacy tables into one shape (NULL `property_rid` = publisher-wide).
 
@@ -351,10 +357,10 @@ Per-row footprint of `catalog_agent_authorizations`:
 | property_rid (uuid, nullable) | 8 B (50% null) | 16 B |
 | publisher_domain (text) | ~30 B | ~80 B |
 | authorized_for (text) | ~150 B | ~500 B |
-| evidence + confidence (text) | ~30 B | ~30 B |
+| evidence (text) | ~15 B | ~15 B |
 | property_id_slug (text) | ~20 B if present | ~80 B |
-| seq_no + disputed + 4× timestamp | ~40 B | ~40 B |
-| **row total** | **~370 B** | **~1.0 KB** |
+| seq_no + disputed + expires_at + 3× timestamp | ~50 B | ~50 B |
+| **row total** | **~360 B** | **~1.0 KB** |
 
 Cardinality:
 
@@ -454,23 +460,15 @@ Option C is technically the most flexible substrate, but flexibility is paid for
 
 ## Open questions (defer to PR 4b-prereq schema review)
 
-Reviewer feedback has resolved several questions from the original draft. The remaining open items:
+Reviewer feedback has resolved most questions from the original draft (`confidence` dropped; `agent_claim` lives in the same table with `expires_at` and override-layer scoping; tombstone TTL pinned to change-feed retention; `seq_no` rotation enforced by trigger). The remaining open items:
 
-1. **`confidence` vocabulary for authorizations.** Schema currently mirrors `catalog_identifiers` (`authoritative` / `strong` / `medium` / `weak`). For authorizations the natural mapping is narrower — `adagents_json` rows are `authoritative` by definition; `agent_claim` rows are `strong` (the claiming agent is a known principal but the publisher hasn't corroborated); `community` rows are `medium` (manual entry pending moderation). `weak` doesn't have a clear authorization use case and could be reserved or dropped. Pin the vocabulary in the schema PR.
+1. **Override sequencing wire format in the change feed.** Design intent settled: when an override is inserted or superseded, the change-feed emitter generates `authorization.modified` events with synthetic UUIDv7 `event_id`s — one per base row whose effective state changed (suppressed/unsuppressed) plus one for the override itself (granted/revoked). Consumers don't see override-vs-base distinction; they see effective-state transitions. **What's open**: the event payload shape (which fields ship in the body, whether `override_reason` is exposed, whether `add`-overrides include the override's `property_id_slug` or just the resolved publisher_domain). Settled in PR 4b-feed.
 
-2. **`agent_claim` lifecycle in the same table.** Reviewers flagged that `agent_claim` and `adagents_json` rows share storage but have different lifecycles (TTL, takedown, moderation cadence). Two viable shapes: (a) keep them in one table, document that the override layer is semantically scoped to `evidence='adagents_json'` only, with `agent_claim` rows handled directly via revocation by `created_by`; (b) split into `catalog_agent_authorizations` and `catalog_agent_claims`, with a UNION view for callers that want both. Recommend (a) for simplicity unless a concrete reader needs the asymmetric lifecycle exposed.
+2. **Wildcard agent (`url = '*'`).** The CHECK explicitly allows `*` as a sentinel that bypasses URL canonicalization. Pinned by the PR 3 baseline. Open: the semantics ("any agent") are publisher-wide and global, but readers must know to expand wildcard rows during effective-set computation. Document the expansion rule in the schema migration's comments.
 
-3. **Tombstone TTL.** Schema notes 90 days as the proposed default, but the actual choice depends on what offline-tolerance contract we make with consumers. Set the contract first (the change-feed spec calls for 30-day cursor lifetime — match it or document the difference).
+3. **`property_tags` and `inline_properties` projection.** Both are deferred from v1 (see "Authorization variants"). The legacy table continues to receive these rows; readers that need them go to the manifest body. When tag-scoped authorization becomes a real product requirement (signal-side first, probably), the projection model becomes its own design discussion — most likely a separate `catalog_tag_authorizations` table referencing the catalog's tag binding state.
 
-4. **`seq_no` rotation on soft-delete.** The writer must `UPDATE ... SET deleted_at = NOW(), seq_no = nextval('catalog_agent_authorizations_seq_no_seq')` whenever it tombstones a row, otherwise the delta consumer never sees the deletion. Either codify this in writer code (PR 4b) or enforce via a BEFORE UPDATE trigger. Recommend the trigger — it makes the invariant unconditional and survives future writers.
-
-5. **Override sequencing in the change feed.** Override rows have their own lifecycle (created, superseded) independent of base rows. The `v_effective_agent_authorizations` view emits `override_applied=TRUE` rows with `seq_no=NULL` (override sequencing isn't tied to base sequencing). Question: should the change feed emit `authorization.modified` events when an override changes the effective set for a previously-stable base row? Probably yes; defer the wire format to the change-feed spec PR.
-
-6. **Wildcard agent (`url = '*'`).** The CHECK explicitly allows `*` as a sentinel that bypasses URL canonicalization. Pinned by the PR 3 baseline. The semantics ("any agent") are publisher-wide and global; readers must know to expand wildcard rows during effective-set computation. Document in the schema migration's comments.
-
-7. **`property_tags` and `inline_properties` projection.** Both are deferred from v1 (see "Authorization variants"). The legacy table continues to receive these rows; readers that need them go to the manifest body. When tag-scoped authorization becomes a real product requirement (signal-side first, probably), the projection model becomes its own design discussion — most likely a separate `catalog_tag_authorizations` table referencing the catalog's tag binding state.
-
-8. **Cross-publisher `publisher_properties` (third-party sales).** Refused at write time by the anchor rule. Re-opening this requires a corroboration mechanism — the spec for that lives downstream and doesn't gate this work. Track separately.
+4. **Cross-publisher `publisher_properties` (third-party sales).** Refused at write time by the anchor rule. Re-opening this requires a corroboration mechanism — the spec for that lives downstream and doesn't gate this work. Track separately.
 
 ## Sequencing
 
