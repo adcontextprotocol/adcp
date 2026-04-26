@@ -118,7 +118,7 @@ import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
-import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -212,6 +212,97 @@ interface CacheEntry<T> {
 const workosOrgCache = new Map<string, CacheEntry<{ name: string }>>();
 const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Shape the dedup helper outcome into a serializable JSON object for the
+ * registry_audit_log details field. The admin UI reads this back to render
+ * the dedup history panel.
+ */
+function dedupAuditDetails(
+  outcome: Awaited<ReturnType<typeof dedupOnSubscriptionCreated>>,
+  newSub: Stripe.Subscription,
+  customerId: string,
+): Record<string, unknown> {
+  const base = {
+    kind: outcome.kind,
+    customer_id: customerId,
+    new_sub_id: newSub.id,
+  };
+  switch (outcome.kind) {
+    case 'canceled_new':
+      return {
+        ...base,
+        existing_live_sub_ids: outcome.existingLiveSubIds,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'canceled_existing':
+      return {
+        ...base,
+        canceled_sub_id: outcome.canceledSubId,
+        surviving_new_sub_id: outcome.survivingNewSubId,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'manual_review':
+      return {
+        ...base,
+        all_live_sub_ids: outcome.allLiveSubIds,
+        reason: outcome.reason,
+      };
+    default:
+      // Caller already filters to the three above; this is a defensive
+      // fallthrough so a future outcome variant doesn't write nothing.
+      return base;
+  }
+}
+
+/**
+ * Fire-and-forget customer notification when the webhook dedup helper
+ * canceled a duplicate subscription on this org. We always send to the
+ * full set of org admins (typically a single founder/owner). All failures
+ * are logged but never thrown — the dedup itself is the primary action.
+ */
+function fireDedupNotice(args: {
+  org: { workos_organization_id: string; name: string | null };
+  workos: WorkOS;
+  logger: import('pino').Logger;
+  scenario: 'canceled_new' | 'canceled_existing';
+  survivingTierLabel: string | null;
+}): void {
+  const { org, workos: workosClient, logger: log, scenario, survivingTierLabel } = args;
+  void (async () => {
+    try {
+      const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+      const adminEmails = await getOrgAdminEmails(workosClient, org.workos_organization_id);
+      if (adminEmails.length === 0) {
+        log.warn(
+          { orgId: org.workos_organization_id, scenario },
+          'No admin emails found for org — skipping duplicate-subscription notice',
+        );
+        return;
+      }
+      await Promise.all(
+        adminEmails.map((to) =>
+          sendDuplicateSubscriptionNotice({
+            to,
+            organizationName: org.name ?? 'your organization',
+            scenario,
+            survivingTierLabel,
+            workosOrganizationId: org.workos_organization_id,
+          }).catch((err) =>
+            log.error({ err, to, orgId: org.workos_organization_id }, 'Failed to send dedup notice'),
+          ),
+        ),
+      );
+    } catch (err) {
+      log.error(
+        { err, orgId: org.workos_organization_id, scenario },
+        'Error dispatching duplicate-subscription notice',
+      );
+    }
+  })();
+}
 
 function getCachedOrg(orgId: string): { name: string } | null {
   const entry = workosOrgCache.get(orgId);
@@ -3500,6 +3591,15 @@ export class HTTPServer {
                   // duplicate). Keep the org row pointing at the surviving
                   // existing sub.
                   suppressOrgUpdate = true;
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_new',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
                   break;
                 case 'retry_skip':
                   // Stripe retried `customer.subscription.created` after a
@@ -3517,6 +3617,15 @@ export class HTTPServer {
                   // The new sub becomes the org's tracked sub. Let the
                   // UPDATE block below run, but skip handleSubscriptionCreated
                   // — this is a tier swap, not a fresh activation.
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_existing',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
                   break;
                 case 'no_duplicate':
                   if (org) {
@@ -3534,6 +3643,35 @@ export class HTTPServer {
                     });
                   }
                   break;
+              }
+
+              // Persist the dedup decision to the audit log so admins can
+              // retroactively see what happened on this org. We only record
+              // the cases where the helper actually decided something; the
+              // common no_duplicate / retry_skip paths are uninteresting and
+              // would drown the log. Failure here is logged but never
+              // throws — the dedup itself is the primary action.
+              if (
+                org &&
+                (dedup.kind === 'canceled_new' ||
+                  dedup.kind === 'canceled_existing' ||
+                  dedup.kind === 'manual_review')
+              ) {
+                try {
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: SYSTEM_USER_ID,
+                    action: 'subscription_dedup',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: dedupAuditDetails(dedup, subscription, customerId),
+                  });
+                } catch (auditErr) {
+                  logger.error(
+                    { err: auditErr, orgId: org.workos_organization_id, dedupKind: dedup.kind },
+                    'Failed to persist dedup audit log entry',
+                  );
+                }
               }
             }
 
@@ -6716,15 +6854,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           statuses: ['active'],
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              statuses: ['active'],
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            statuses: ['active'],
+          });
         }
 
         // Map memberships to organization details with roles
