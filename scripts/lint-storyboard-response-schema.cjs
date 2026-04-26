@@ -109,10 +109,16 @@ async function getValidator(schemaRef) {
 
 async function validateStep({ schemaRef, payload }) {
   const schema = loadSchema(schemaRef);
-  if (!schema) return { ok: true, skipped: 'schema_not_found', schemaRef };
+  if (!schema) {
+    return { ok: false, errors: [{ path: '/', message: `schema not found: ${schemaRef}`, keyword: 'schema_not_found', params: {} }] };
+  }
   const validate = await getValidator(schemaRef);
-  if (!validate) return { ok: true, skipped: 'schema_not_found', schemaRef };
-  if (validate.compileError) return { ok: true, skipped: `compile_error: ${validate.compileError}`, schemaRef };
+  if (!validate) {
+    return { ok: false, errors: [{ path: '/', message: `schema not found: ${schemaRef}`, keyword: 'schema_not_found', params: {} }] };
+  }
+  if (validate.compileError) {
+    return { ok: false, errors: [{ path: '/', message: `compile error: ${validate.compileError}`, keyword: 'compile_error', params: {} }] };
+  }
   const valid = validate(payload);
   if (valid) return { ok: true };
   return {
@@ -128,11 +134,12 @@ async function validateStep({ schemaRef, payload }) {
 
 async function lintFile(file) {
   const violations = [];
+  let skips = 0;
   let doc;
   try {
     doc = yaml.load(fs.readFileSync(file, 'utf8'));
   } catch (err) {
-    return { violations, parseError: `yaml_parse: ${err.message}` };
+    return { violations, skips, parseError: `yaml_parse: ${err.message}` };
   }
   const phases = Array.isArray(doc?.phases) ? doc.phases : [];
   for (const phase of phases) {
@@ -146,27 +153,32 @@ async function lintFile(file) {
       if (!stepId) continue;
       const schemaRef = step.response_schema_ref;
       const sampleResponse = step.sample_response;
-      if (!schemaRef || schemaRef.startsWith('$test_kit.') || !sampleResponse) continue;
-      if (!sampleResponse || typeof sampleResponse !== 'object') continue;
+      if (!schemaRef || !sampleResponse || typeof sampleResponse !== 'object') continue;
+      if (schemaRef.startsWith('$test_kit.')) {
+        skips++;
+        continue;
+      }
       const result = await validateStep({ schemaRef, payload: sampleResponse });
       if (!result.ok) {
         violations.push({ file, phaseId, stepId, schemaRef, errors: result.errors });
       }
     }
   }
-  return { violations };
+  return { violations, skips };
 }
 
 async function lintAll() {
   const files = walkYaml(STORYBOARD_DIR);
   const violations = [];
   const parseErrors = [];
+  let skips = 0;
   for (const file of files) {
     const r = await lintFile(file);
     if (r.parseError) parseErrors.push({ file, error: r.parseError });
     violations.push(...r.violations);
+    skips += r.skips;
   }
-  return { violations, parseErrors };
+  return { violations, parseErrors, skips };
 }
 
 function formatViolation(v) {
@@ -270,7 +282,7 @@ function sortEntries(entries) {
 
 async function main() {
   const args = new Set(process.argv.slice(2));
-  const { violations, parseErrors } = await lintAll();
+  const { violations, parseErrors, skips } = await lintAll();
 
   if (args.has('--write-allowlist')) {
     if (parseErrors.length > 0) {
@@ -318,7 +330,10 @@ async function main() {
 
   const hasFailure = newDrift.length > 0 || stale.length > 0 || parseErrors.length > 0;
   if (!hasFailure) {
-    const suffix = grandfathered.length > 0 ? ` (${grandfathered.length} grandfathered)` : '';
+    const parts = [];
+    if (grandfathered.length > 0) parts.push(`${grandfathered.length} grandfathered`);
+    if (skips > 0) parts.push(`${skips} skipped ($test_kit.)`);
+    const suffix = parts.length > 0 ? ` (${parts.join(', ')})` : '';
     console.log(`✅ sample_response schema lint: no new drift${suffix}`);
     process.exit(0);
   }

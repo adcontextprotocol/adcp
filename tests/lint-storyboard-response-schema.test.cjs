@@ -16,6 +16,7 @@ const {
   lintAll,
   loadAllowlist,
   reconcileAgainstAllowlist,
+  validateStep,
   fingerprintError,
   formatViolation,
   entryKey,
@@ -60,6 +61,13 @@ test('allowlist has no stale entries', async () => {
         rendered,
     );
   }
+});
+
+test('validateStep: schema_not_found is a hard fail, not a soft skip', async () => {
+  const result = await validateStep({ schemaRef: 'does/not/exist.json', payload: {} });
+  assert.equal(result.ok, false, 'schema_not_found must not be ok:true');
+  assert.equal(result.errors.length, 1);
+  assert.equal(result.errors[0].keyword, 'schema_not_found');
 });
 
 test('fingerprintError produces stable output for common error shapes', () => {
