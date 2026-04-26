@@ -119,22 +119,6 @@ async function getPendingContentForUser(
  * `started_at` rather than trying to infer engagement from this field.
  */
 /**
- * Fetch the most recent agent_test_history row for the user. Powers
- * the builder-persona "test your agent" prompt rule for builders whose
- * last test run is stale.
- */
-async function fetchAgentTesting(
-  workosUserId: string,
-): Promise<MemberContext['agent_testing']> {
-  const latest = await agentContextDb.getLatestTestForUser(workosUserId);
-  if (!latest) return { last_test_at: null, last_outcome: null };
-  return {
-    last_test_at: new Date(latest.started_at),
-    last_outcome: latest.overall_passed ? 'passed' : 'failed',
-  };
-}
-
-/**
  * Count of perspectives this user has published, with the most recent
  * publish timestamp. Drives the "share what you're building" prompt.
  *
@@ -470,20 +454,6 @@ export interface MemberContext {
   };
 
   /**
-   * Most recent agent test the user has run against any of their saved
-   * agents. Powers the builder-persona "test your agent" prompt for
-   * builders whose last test is stale.
-   *
-   * Tests against the public test agent or unsaved URLs are not
-   * recorded — they don't count here either, which matches the rule's
-   * audience (builders who have already saved their seller agent).
-   */
-  agent_testing?: {
-    last_test_at: Date | null;
-    last_outcome: 'passed' | 'failed' | null;
-  };
-
-  /**
    * The user's published-perspectives footprint. Powers the "share
    * what you're building" prompt for active members who haven't
    * written one yet.
@@ -749,13 +719,6 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, workosUserId }, 'Addie: Failed to load certification context');
     }
 
-    // Latest agent test — drives the "test your agent" prompt for builders.
-    try {
-      context.agent_testing = await fetchAgentTesting(workosUserId);
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie: Failed to load agent testing context');
-    }
-
     // Published-perspectives footprint — drives the "share what you're building" prompt.
     try {
       context.perspectives = await fetchPerspectives(workosUserId);
@@ -987,12 +950,6 @@ async function resolveContextFromLocalDb(
     context.certification = await fetchCertification(workosUserId);
   } catch (error) {
     logger.warn({ error, workosUserId }, 'Addie Web: Failed to load certification context');
-  }
-
-  try {
-    context.agent_testing = await fetchAgentTesting(workosUserId);
-  } catch (error) {
-    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load agent testing context');
   }
 
   try {
