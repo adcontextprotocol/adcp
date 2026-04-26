@@ -3506,6 +3506,35 @@ export class HTTPServer {
               }
             }
 
+            // For `.updated`/`.deleted` events, ignore the event when its
+            // subscription id is not the one we currently track for this org
+            // AND the event's status is non-live. That covers two cases:
+            // (a) the dedup helper just canceled a duplicate, and Stripe is
+            // now firing the follow-up `.updated`/`.deleted` for that
+            // canceled duplicate — without this guard, those events would
+            // overwrite the surviving sub's row state. (b) a customer's
+            // long-canceled standby sub gets a webhook event by some Stripe
+            // path; we shouldn't reset the org's tracked sub.
+            // `.created` is exempt because that's how we *learn* about a new
+            // sub the org row doesn't yet point to.
+            const isStaleNonLiveEvent =
+              event.type !== 'customer.subscription.created' &&
+              org !== null &&
+              org.stripe_subscription_id !== null &&
+              org.stripe_subscription_id !== subscription.id &&
+              !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status);
+
+            if (isStaleNonLiveEvent) {
+              logger.info({
+                eventType: event.type,
+                eventSubId: subscription.id,
+                trackedSubId: org!.stripe_subscription_id,
+                eventStatus: subscription.status,
+                orgId: org!.workos_organization_id,
+              }, 'Ignoring webhook event for non-tracked sub in non-live status');
+              break;
+            }
+
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {

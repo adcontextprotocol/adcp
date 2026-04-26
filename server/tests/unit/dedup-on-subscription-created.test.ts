@@ -12,8 +12,31 @@ import type Stripe from 'stripe';
 import type { Logger } from 'pino';
 import { dedupOnSubscriptionCreated } from '../../src/billing/dedup-on-subscription-created.js';
 
-function makeSub(id: string, status: Stripe.Subscription.Status): Stripe.Subscription {
-  return { id, status, customer: 'cus_test' } as unknown as Stripe.Subscription;
+function makeSub(
+  id: string,
+  status: Stripe.Subscription.Status,
+  extras?: {
+    unit_amount?: number;
+    lookup_key?: string;
+    collection_method?: 'charge_automatically' | 'send_invoice';
+  },
+): Stripe.Subscription {
+  return {
+    id,
+    status,
+    customer: 'cus_test',
+    collection_method: extras?.collection_method ?? 'charge_automatically',
+    items: {
+      data: [
+        {
+          price: {
+            unit_amount: extras?.unit_amount ?? 300000,
+            lookup_key: extras?.lookup_key ?? 'aao_membership_builder_3000',
+          },
+        },
+      ],
+    },
+  } as unknown as Stripe.Subscription;
 }
 
 function makeStripe(opts: {
@@ -195,6 +218,118 @@ describe('dedupOnSubscriptionCreated', () => {
     expect(result.existingLiveSubIds).toEqual(['sub_existing']);
     expect(notifySystemError).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('returns duplicate=false without listing when the new sub is already canceled (Stripe webhook retry)', async () => {
+    const newSub = makeSub('sub_new', 'canceled');
+    const list = vi.fn().mockResolvedValue({ data: [] });
+    const cancel = vi.fn();
+    const stripe = makeStripe({ list, cancel });
+
+    const result = await dedupOnSubscriptionCreated({
+      subscription: newSub,
+      customerId: 'cus_test',
+      orgId: 'org_test',
+      stripe,
+      logger,
+      notifySystemError,
+    });
+
+    expect(result.duplicate).toBe(false);
+    expect(list).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('returns duplicate=false when the new sub is incomplete_expired (no live status)', async () => {
+    const newSub = makeSub('sub_new', 'incomplete_expired');
+    const list = vi.fn().mockResolvedValue({ data: [] });
+    const stripe = makeStripe({ list });
+
+    const result = await dedupOnSubscriptionCreated({
+      subscription: newSub,
+      customerId: 'cus_test',
+      orgId: 'org_test',
+      stripe,
+      logger,
+      notifySystemError,
+    });
+
+    expect(result.duplicate).toBe(false);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('warns when subscriptions.list returns has_more (page overflow)', async () => {
+    const newSub = makeSub('sub_new', 'active');
+    const stripe = makeStripe({
+      list: vi.fn().mockResolvedValue({
+        data: [newSub, makeSub('sub_existing', 'active')],
+        has_more: true,
+      }),
+    });
+
+    await dedupOnSubscriptionCreated({
+      subscription: newSub,
+      customerId: 'cus_test',
+      orgId: 'org_test',
+      stripe,
+      logger,
+      notifySystemError,
+    });
+
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('alert message reflects cancel failure (no false "was canceled" claim)', async () => {
+    const newSub = makeSub('sub_new', 'active', { unit_amount: 300000, lookup_key: 'aao_membership_builder_3000' });
+    const cancel = vi.fn().mockRejectedValue(new Error('cannot cancel'));
+    const stripe = makeStripe({
+      list: vi.fn().mockResolvedValue({
+        data: [newSub, makeSub('sub_existing', 'active')],
+      }),
+      cancel,
+    });
+
+    await dedupOnSubscriptionCreated({
+      subscription: newSub,
+      customerId: 'cus_test',
+      orgId: 'org_test',
+      stripe,
+      logger,
+      notifySystemError,
+    });
+
+    const msg = notifySystemError.mock.calls[0][0].errorMessage;
+    expect(msg).toContain('COULD NOT be canceled');
+    expect(msg).toContain('cancel manually');
+    expect(msg).not.toContain('was canceled with proration');
+  });
+
+  it('alert message includes new sub amount, lookup_key, and collection_method', async () => {
+    const newSub = makeSub('sub_new', 'active', {
+      unit_amount: 300000,
+      lookup_key: 'aao_membership_builder_3000',
+      collection_method: 'send_invoice',
+    });
+    const stripe = makeStripe({
+      list: vi.fn().mockResolvedValue({
+        data: [newSub, makeSub('sub_existing', 'active')],
+      }),
+    });
+
+    await dedupOnSubscriptionCreated({
+      subscription: newSub,
+      customerId: 'cus_test',
+      orgId: 'org_test',
+      stripe,
+      logger,
+      notifySystemError,
+    });
+
+    const msg = notifySystemError.mock.calls[0][0].errorMessage;
+    expect(msg).toContain('amount=300000');
+    expect(msg).toContain('lookup_key=aao_membership_builder_3000');
+    expect(msg).toContain('collection=send_invoice');
   });
 
   it('handles missing orgId in the alert message', async () => {

@@ -53,13 +53,30 @@ export interface DedupResult {
 export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<DedupResult> {
   const { subscription, customerId, orgId, stripe, logger, notifySystemError } = args;
 
+  // Stripe retries `customer.subscription.created` on 5xx / slow handlers.
+  // On retry the new sub will already be canceled by the prior invocation;
+  // skip cleanly so we don't try to cancel-again (returns 400) and re-alert.
+  if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
+    return { duplicate: false, existingLiveSubIds: [] };
+  }
+
   let liveSubs: Stripe.Subscription[];
   try {
+    // limit: 100 is Stripe's max per page. A customer with >100 historical
+    // subs would still have all live ones returned: Stripe lists in
+    // most-recent-first order, and the live ones include the just-created
+    // one, so they're at the head. We log when has_more so ops can confirm.
     const list = await stripe.subscriptions.list({
       customer: customerId,
       status: 'all',
-      limit: 20,
+      limit: 100,
     });
+    if (list.has_more) {
+      logger.warn(
+        { customerId, newSubId: subscription.id, orgId },
+        'dedup-on-subscription-created: subscriptions.list paginated — only first 100 inspected',
+      );
+    }
     liveSubs = list.data;
   } catch (err) {
     logger.warn(
@@ -89,8 +106,10 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
     'Duplicate subscription detected on customer.subscription.created — canceling new sub',
   );
 
+  let canceled = false;
   try {
     await stripe.subscriptions.cancel(subscription.id, { prorate: true });
+    canceled = true;
   } catch (cancelErr) {
     logger.error(
       { err: cancelErr, customerId, newSubId: subscription.id, orgId },
@@ -99,11 +118,23 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
     // Continue with the alert; ops needs to know either way.
   }
 
+  // Enrich the alert so ops can triage without clicking into Stripe.
+  const newSubItem = subscription.items?.data?.[0];
+  const newSubAmount = newSubItem?.price?.unit_amount ?? null;
+  const newSubLookupKey = newSubItem?.price?.lookup_key ?? null;
+  const newSubCollection = subscription.collection_method ?? null;
+
+  const cancelStatus = canceled
+    ? 'was canceled with proration'
+    : 'COULD NOT be canceled (Stripe error) — cancel manually in Stripe';
+
   notifySystemError({
     source: 'stripe-subscription-dedup',
     errorMessage:
       `Duplicate subscription ${subscription.id} on customer ${customerId} ` +
-      `(org ${orgId ?? 'unknown'}) was canceled with proration. ` +
+      `(org ${orgId ?? 'unknown'}) ${cancelStatus}. ` +
+      `New sub: amount=${newSubAmount ?? 'unknown'} lookup_key=${newSubLookupKey ?? 'unknown'} ` +
+      `collection=${newSubCollection ?? 'unknown'}. ` +
       `Existing live subs kept: ${otherIds.join(', ')}.`,
   });
 
