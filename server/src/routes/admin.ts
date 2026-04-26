@@ -437,7 +437,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const token = await workos.widgets.getToken({
+        const token = await workos.widgets.createToken({
           organizationId,
           userId: req.user.id,
           scopes: [requestedScope],

@@ -2407,9 +2407,7 @@ export function setupAccountRoutes(
 
         // Verify the target role exists in WorkOS for this organization
         try {
-          const roles = await workos.organizations.listOrganizationRoles({
-            organizationId: orgId,
-          });
+          const roles = await workos.authorization.listOrganizationRoles(orgId);
           const roleExists = roles.data.some((r) => r.slug === role);
           if (!roleExists) {
             logger.warn(

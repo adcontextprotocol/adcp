@@ -104,7 +104,7 @@ function buildBearerAuthenticator(): Authenticator | null {
     authenticators.push(verifyApiKey({
       verify: async (token) => {
         if (!isWorkOSApiKeyFormat(token)) return null;
-        const result = await workosClient.apiKeys.validateApiKey({ value: token });
+        const result = await workosClient.apiKeys.createValidation({ value: token });
         if (!result.apiKey) return null;
         const orgId = result.apiKey.owner.id;
         logger.info({ orgId }, 'Training agent: authenticated via AAO API key');

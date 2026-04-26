@@ -32,7 +32,7 @@ vi.mock('../../src/auth/workos-client.js', () => ({
         });
       }),
     },
-    portal: {
+    adminPortal: {
       generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
     },
   },
