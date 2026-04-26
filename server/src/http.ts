@@ -28,6 +28,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
+import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -3473,25 +3474,71 @@ export class HTTPServer {
             // until the organizations row reflects the activated membership.
             let activationAdminContext: ActivationAdminContext | undefined;
 
-            if (event.type === 'customer.subscription.created' && org) {
-              activationAdminContext = await handleSubscriptionCreated({
+            // When the just-created sub is a duplicate that we cancel,
+            // skip the org-row UPDATE so the surviving sub's state stays.
+            let suppressOrgUpdate = false;
+
+            if (event.type === 'customer.subscription.created') {
+              const dedup = await dedupOnSubscriptionCreated({
                 subscription,
                 customerId,
-                org,
+                orgId: org?.workos_organization_id,
                 stripe,
-                workos: workos!,
-                orgDb,
-                pool,
                 logger,
                 notifySystemError,
-                notifyNewSubscription,
               });
+
+              if (dedup.duplicate) {
+                suppressOrgUpdate = true;
+              } else if (org) {
+                activationAdminContext = await handleSubscriptionCreated({
+                  subscription,
+                  customerId,
+                  org,
+                  stripe,
+                  workos: workos!,
+                  orgDb,
+                  pool,
+                  logger,
+                  notifySystemError,
+                  notifyNewSubscription,
+                });
+              }
+            }
+
+            // For `.updated`/`.deleted` events, ignore the event when its
+            // subscription id is not the one we currently track for this org
+            // AND the event's status is non-live. That covers two cases:
+            // (a) the dedup helper just canceled a duplicate, and Stripe is
+            // now firing the follow-up `.updated`/`.deleted` for that
+            // canceled duplicate — without this guard, those events would
+            // overwrite the surviving sub's row state. (b) a customer's
+            // long-canceled standby sub gets a webhook event by some Stripe
+            // path; we shouldn't reset the org's tracked sub.
+            // `.created` is exempt because that's how we *learn* about a new
+            // sub the org row doesn't yet point to.
+            const isStaleNonLiveEvent =
+              event.type !== 'customer.subscription.created' &&
+              org !== null &&
+              org.stripe_subscription_id !== null &&
+              org.stripe_subscription_id !== subscription.id &&
+              !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status);
+
+            if (isStaleNonLiveEvent) {
+              logger.info({
+                eventType: event.type,
+                eventSubId: subscription.id,
+                trackedSubId: org!.stripe_subscription_id,
+                eventStatus: subscription.status,
+                orgId: org!.workos_organization_id,
+              }, 'Ignoring webhook event for non-tracked sub in non-live status');
+              break;
             }
 
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
-              if (org) {
+              if (org && !suppressOrgUpdate) {
                 const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
                 // Capture current tier before update for change detection
