@@ -357,13 +357,7 @@
                                 "description": "The targeted keyword"
                               },
                               "match_type": {
-                                "type": "string",
-                                "enum": [
-                                  "broad",
-                                  "phrase",
-                                  "exact"
-                                ],
-                                "description": "Match type for this keyword"
+                                "$ref": "/schemas/enums/match-type.json"
                               }
                             },
                             "required": [

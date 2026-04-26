@@ -23,9 +23,7 @@
           "description": "Travel time limit."
         },
         "unit": {
-          "type": "string",
-          "enum": ["min", "hr"],
-          "description": "Time unit."
+          "$ref": "/schemas/enums/travel-time-unit.json"
         }
       },
       "required": ["value", "unit"],

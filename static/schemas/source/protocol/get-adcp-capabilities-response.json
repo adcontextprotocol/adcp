@@ -107,8 +107,7 @@
           "type": "array",
           "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The buyer must pass one of these values in sync_accounts.",
           "items": {
-            "type": "string",
-            "enum": ["operator", "agent", "advertiser"]
+            "$ref": "/schemas/enums/billing-party.json"
           },
           "minItems": 1
         },
@@ -292,8 +291,7 @@
                       "type": "array",
                       "description": "Match types this seller supports for keyword targets. Sellers must reject goals with unsupported match types.",
                       "items": {
-                        "type": "string",
-                        "enum": ["broad", "phrase", "exact"]
+                        "$ref": "/schemas/enums/match-type.json"
                       },
                       "minItems": 1
                     }
@@ -308,8 +306,7 @@
                       "type": "array",
                       "description": "Match types this seller supports for negative keywords. Sellers must reject goals with unsupported match types.",
                       "items": {
-                        "type": "string",
-                        "enum": ["broad", "phrase", "exact"]
+                        "$ref": "/schemas/enums/match-type.json"
                       },
                       "minItems": 1
                     }

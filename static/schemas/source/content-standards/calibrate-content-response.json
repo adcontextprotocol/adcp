@@ -10,9 +10,7 @@
       "description": "Success response with detailed calibration feedback",
       "properties": {
         "verdict": {
-          "type": "string",
-          "enum": ["pass", "fail"],
-          "description": "Overall pass/fail verdict for the content evaluation"
+          "$ref": "/schemas/enums/binary-verdict.json"
         },
         "confidence": {
           "type": "number",
@@ -35,9 +33,7 @@
                 "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'competitor_adjacency'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact'. Reserved prefixes: 'record:', 'delivery:'."
               },
               "status": {
-                "type": "string",
-                "enum": ["passed", "failed", "warning", "unevaluated"],
-                "description": "Evaluation status for this feature"
+                "$ref": "/schemas/enums/feature-check-status.json"
               },
               "policy_id": {
                 "type": "string",
