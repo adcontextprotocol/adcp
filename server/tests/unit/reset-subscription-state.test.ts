@@ -163,14 +163,17 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
     expect(res.body.organization_name).toBe(ORG_NAME);
   });
 
-  it('returns 400 when Stripe shows live subscriptions on the customer', async () => {
+  it('returns 400 when Stripe shows live subscriptions on the customer (active/trialing/past_due)', async () => {
+    // All three statuses in TIER_PRESERVING_STATUSES must block the reset.
+    // If a future change drops past_due from the blocking set, this test must fail.
     mockPoolQuery.mockResolvedValueOnce({ rows: [makeOrgRow()] });
     mockStripeCustomersRetrieve.mockResolvedValueOnce({
       deleted: false,
       subscriptions: {
         data: [
-          { id: 'sub_live_01', status: 'active' },
-          { id: 'sub_live_02', status: 'trialing' },
+          { id: 'sub_live_active', status: 'active' },
+          { id: 'sub_live_trial', status: 'trialing' },
+          { id: 'sub_live_pastdue', status: 'past_due' },
           { id: 'sub_canceled', status: 'canceled' },
         ],
       },
@@ -183,7 +186,11 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Live subscriptions exist');
-    expect(res.body.live_subscription_ids).toEqual(['sub_live_01', 'sub_live_02']);
+    expect(res.body.live_subscription_ids).toEqual([
+      'sub_live_active',
+      'sub_live_trial',
+      'sub_live_pastdue',
+    ]);
   });
 
   it('returns 503 when stripe_customer_id is set but Stripe is unconfigured', async () => {
@@ -197,6 +204,8 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
 
     expect(res.status).toBe(503);
     expect(res.body.error).toBe('Stripe not configured');
+    // The route must short-circuit *before* trying to call Stripe.
+    expect(mockStripeCustomersRetrieve).not.toHaveBeenCalled();
   });
 
   it('proceeds when Stripe shows only non-live subscriptions', async () => {
@@ -236,6 +245,9 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
       .send({ confirmation: ORG_NAME, reason: 'cleanup of stale row' });
 
     expect(res.status).toBe(200);
+    // Transaction must still run even when the Stripe live-sub check is bypassed.
+    expect(tx.calls[0]).toBe('BEGIN');
+    expect(tx.calls).toContain('COMMIT');
   });
 
   it('proceeds without a Stripe check when stripe_customer_id is null', async () => {
@@ -255,7 +267,10 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
   });
 
   it('happy path: clears 13 fields, leaves stripe_customer_id intact, records audit log in one transaction', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [makeOrgRow()] });
+    // makeOrgRow() defaults set 12 fields non-null and leave subscription_metadata null.
+    // Set metadata too so cleared_fields covers all 13.
+    const fullOrg = makeOrgRow({ subscription_metadata: { foo: 'bar' } });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [fullOrg] });
     mockStripeCustomersRetrieve.mockResolvedValueOnce({
       deleted: false,
       subscriptions: { data: [] },
@@ -275,22 +290,69 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
       org_name: ORG_NAME,
     });
 
-    // Transaction sequence: BEGIN, UPDATE, INSERT audit, COMMIT
-    expect(tx.calls[0]).toBe('BEGIN');
-    expect(tx.calls[1]).toMatch(/^UPDATE organizations/);
-    expect(tx.calls[2]).toMatch(/^INSERT INTO registry_audit_log/);
-    expect(tx.calls[3]).toBe('COMMIT');
-    expect(tx.release).toHaveBeenCalled();
+    // Pin the exact set of cleared fields so a future regression that drops a
+    // column from the UPDATE list fails this test.
+    expect(res.body.cleared_fields).toEqual(
+      expect.arrayContaining([
+        'subscription_status',
+        'stripe_subscription_id',
+        'subscription_amount',
+        'subscription_currency',
+        'subscription_interval',
+        'subscription_current_period_end',
+        'subscription_canceled_at',
+        'subscription_product_id',
+        'subscription_product_name',
+        'subscription_price_id',
+        'subscription_price_lookup_key',
+        'membership_tier',
+        'subscription_metadata',
+      ]),
+    );
+    expect(res.body.cleared_fields).toHaveLength(13);
+    expect(res.body.cleared_fields).not.toContain('stripe_customer_id');
 
-    // Audit log details should capture before_state (cleared fields), reason, admin actor.
-    const insertCallArgs = tx.query.mock.calls.find((c) =>
-      String(c[0]).startsWith('INSERT INTO registry_audit_log')
+    // Invariant transaction shape — BEGIN first, COMMIT last, INSERT audit
+    // after UPDATE. Avoids brittle positional asserts so adding a SET LOCAL
+    // statement_timeout between BEGIN and UPDATE wouldn't break the test.
+    expect(tx.calls[0]).toBe('BEGIN');
+    expect(tx.calls[tx.calls.length - 1]).toBe('COMMIT');
+    const updateIdx = tx.calls.findIndex((s) => s.startsWith('UPDATE organizations'));
+    const insertIdx = tx.calls.findIndex((s) => s.startsWith('INSERT INTO registry_audit_log'));
+    expect(updateIdx).toBeGreaterThan(0);
+    expect(insertIdx).toBeGreaterThan(updateIdx);
+    expect(tx.release).toHaveBeenCalledTimes(1);
+
+    // Verify the UPDATE actually nulls the columns it claims to. Spot-check
+    // the first/last in the column list and the parameterized id.
+    const updateCall = tx.query.mock.calls.find((c) =>
+      String(c[0]).startsWith('UPDATE organizations'),
     )!;
-    const auditDetails = JSON.parse(String((insertCallArgs[1] as unknown[])[5]));
+    const updateSql = String(updateCall[0]);
+    expect(updateSql).toMatch(/subscription_status\s*=\s*NULL/);
+    expect(updateSql).toMatch(/membership_tier\s*=\s*NULL/);
+    expect(updateSql).toMatch(/subscription_metadata\s*=\s*NULL/);
+    expect((updateCall[1] as unknown[])[0]).toBe(ORG_ID);
+
+    // Audit log: assert by parameter index that we record the correct action,
+    // resource type, and details payload — so a future param-order shuffle
+    // fails loudly instead of silently picking up a different column.
+    const insertCallArgs = tx.query.mock.calls.find((c) =>
+      String(c[0]).startsWith('INSERT INTO registry_audit_log'),
+    )!;
+    const insertParams = insertCallArgs[1] as unknown[];
+    expect(insertParams[0]).toBe(ORG_ID);
+    expect(insertParams[1]).toBe('user_admin_01');
+    expect(insertParams[2]).toBe('subscription_state_reset');
+    expect(insertParams[3]).toBe('organization');
+    expect(insertParams[4]).toBe(ORG_ID);
+
+    const auditDetails = JSON.parse(String(insertParams[5]));
     expect(auditDetails.reason).toBe('orphaned subscription_id blocking unique constraint');
     expect(auditDetails.admin_email).toBe('admin@test');
     expect(auditDetails.before_state.stripe_customer_id).toBe(STRIPE_CUSTOMER_ID);
     expect(auditDetails.before_state.stripe_subscription_id).toBe('sub_old_01');
+    expect(auditDetails.before_state.subscription_metadata).toEqual({ foo: 'bar' });
   });
 
   it('atomicity: rolls back the UPDATE if the audit-log INSERT fails', async () => {
@@ -331,6 +393,7 @@ describe('POST /api/admin/accounts/:orgId/reset-subscription-state', () => {
     expect(res.status).toBe(500);
     expect(tx.calls).toContain('ROLLBACK');
     expect(tx.calls).not.toContain('COMMIT');
-    expect(tx.release).toHaveBeenCalled();
+    // Exactly once — a finally-block refactor that double-releases is a real pg footgun.
+    expect(tx.release).toHaveBeenCalledTimes(1);
   });
 });
