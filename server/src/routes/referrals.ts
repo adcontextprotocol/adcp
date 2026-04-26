@@ -48,15 +48,17 @@ export function createReferralsRouter(): Router {
       let brand_color: string | null = null;
       if (profile?.primary_brand_domain) {
         const domain = profile.primary_brand_domain;
+        // Skip orphaned brands — manifest is preserved server-side for adoption
+        // but must not surface on public read paths until claim is applied.
         const hosted = await brandDb.getHostedBrandByDomain(domain);
-        if (hosted?.brand_json) {
+        if (hosted?.brand_json && !hosted.manifest_orphaned) {
           const resolved = resolveBrandFromJson(domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified ?? false);
           logo_url = resolved.logo_url ?? null;
           brand_color = resolved.brand_color ?? null;
         }
         if (!logo_url) {
           const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-          if (discovered?.brand_manifest) {
+          if (discovered?.brand_manifest && !discovered.manifest_orphaned) {
             const resolved = resolveBrandFromJson(domain, discovered.brand_manifest as Record<string, unknown>, discovered.domain_verified ?? false);
             logo_url = resolved.logo_url ?? null;
             brand_color = brand_color || (resolved.brand_color ?? null);

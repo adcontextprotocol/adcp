@@ -16,6 +16,9 @@ import {
   findSuccessorForPromotion,
   setMembershipRole,
   autoLinkByVerifiedDomain,
+  findOrgsWithNewAutoProvisionedMembers,
+  listNewAutoProvisionedMembers,
+  markAutoProvisionDigestSent,
 } from '../../src/db/membership-db.js';
 import type { WorkOS } from '@workos-inc/node';
 import type { Pool } from 'pg';
@@ -264,15 +267,15 @@ describe('Membership webhook DB operations', () => {
   // =========================================================================
 
   describe('consumeInvitationSeatType', () => {
-    it('returns and deletes the pending seat type', async () => {
+    it('returns and deletes the pending seat type and source', async () => {
       await pool.query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
-        ['inv_test_1', TEST_ORG_ID, 'invited@test.com', 'contributor'],
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, $5)`,
+        ['inv_test_1', TEST_ORG_ID, 'invited@test.com', 'contributor', 'invited'],
       );
 
       const result = await consumeInvitationSeatType(TEST_ORG_ID, 'invited@test.com');
-      expect(result).toBe('contributor');
+      expect(result).toEqual({ seat_type: 'contributor', source: 'invited' });
 
       // Should be consumed (deleted)
       const second = await consumeInvitationSeatType(TEST_ORG_ID, 'invited@test.com');
@@ -281,13 +284,26 @@ describe('Membership webhook DB operations', () => {
 
     it('matches case-insensitively', async () => {
       await pool.query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
-        ['inv_test_2', TEST_ORG_ID, 'CamelCase@Test.com', 'contributor'],
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, $5)`,
+        ['inv_test_2', TEST_ORG_ID, 'CamelCase@Test.com', 'contributor', 'invited'],
       );
 
       const result = await consumeInvitationSeatType(TEST_ORG_ID, 'camelcase@test.com');
-      expect(result).toBe('contributor');
+      expect(result?.seat_type).toBe('contributor');
+      expect(result?.source).toBe('invited');
+    });
+
+    it('returns null source when staging row predates the source column', async () => {
+      // Backward compatibility: rows written before migration 436 have NULL source.
+      await pool.query(
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
+         VALUES ($1, $2, $3, $4)`,
+        ['inv_test_legacy', TEST_ORG_ID, 'legacy@test.com', 'community_only'],
+      );
+
+      const result = await consumeInvitationSeatType(TEST_ORG_ID, 'legacy@test.com');
+      expect(result).toEqual({ seat_type: 'community_only', source: null });
     });
 
     it('returns null when no invitation exists', async () => {
@@ -415,7 +431,7 @@ describe('Membership webhook DB operations', () => {
       );
     }
 
-    it('creates membership when email domain matches verified domain with active subscription', async () => {
+    it('always creates membership as member; upsert path handles auto-promotion atomically', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       const workos = makeWorkOSMock();
 
@@ -424,16 +440,16 @@ describe('Membership webhook DB operations', () => {
       expect(result).not.toBeNull();
       expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
       expect(result!.organizationName).toBe('AutoLink Corp');
+      expect(result!.role).toBe('member');
       expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith({
         userId: AUTOLINK_USER,
         organizationId: TEST_AUTOLINK_ORG_ID,
-        roleSlug: 'owner', // no existing admin/owner
+        roleSlug: 'member',
       });
     });
 
-    it('assigns member role when org already has an admin', async () => {
+    it('still creates as member when org already has an admin', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
-      // Add an existing owner
       await pool.query(
         `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
          VALUES ('user_existing_owner', $1, 'boss@autolink.com', 'owner', 'contributor', NOW(), NOW(), NOW())`,
@@ -512,6 +528,281 @@ describe('Membership webhook DB operations', () => {
       const workos = makeWorkOSMock();
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'nodomain');
       expect(result).toBeNull();
+    });
+
+    it('returns null when org has auto_provision_verified_domain disabled', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      await pool.query(
+        `UPDATE organizations SET auto_provision_verified_domain = false
+         WHERE workos_organization_id = $1`,
+        [TEST_AUTOLINK_ORG_ID],
+      );
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+    });
+
+    it('short-circuits when user already has a cached membership in the candidate org', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
+         VALUES ($1, $2, 'matt@autolink.com', 'member', 'community_only', NOW(), NOW(), NOW())`,
+        [AUTOLINK_USER, TEST_AUTOLINK_ORG_ID],
+      );
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+    });
+
+    it('still creates membership when user has memberships in OTHER orgs (the Triton case)', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      // Seed an unrelated personal org membership for the user.
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
+         VALUES ($1, 'org_personal_autolink_user', 'matt@autolink.com', 'owner', 'community_only', NOW(), NOW(), NOW())
+         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+        [AUTOLINK_USER],
+      );
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+
+      expect(result).not.toBeNull();
+      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: AUTOLINK_USER,
+          organizationId: TEST_AUTOLINK_ORG_ID,
+        }),
+      );
+
+      // Cleanup the personal-org seed
+      await pool.query(
+        `DELETE FROM organization_memberships WHERE workos_organization_id = 'org_personal_autolink_user'`,
+      );
+    });
+
+    it('stages provisioning_source=verified_domain so the webhook can record it', async () => {
+      await seedOrgWithVerifiedDomain('autolink.com');
+      const workos = makeWorkOSMock();
+
+      const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
+      expect(result).not.toBeNull();
+
+      // The staging row should now exist for the org+email pair so the
+      // organization_membership.created webhook can consume it.
+      const staged = await pool.query<{ seat_type: string; source: string | null }>(
+        `SELECT seat_type, source FROM invitation_seat_types
+         WHERE workos_organization_id = $1 AND lower(email) = lower($2)`,
+        [TEST_AUTOLINK_ORG_ID, 'matt@autolink.com'],
+      );
+      expect(staged.rows[0]).toBeDefined();
+      expect(staged.rows[0].seat_type).toBe('community_only');
+      expect(staged.rows[0].source).toBe('verified_domain');
+    });
+  });
+
+  describe('Auto-provision digest queries', () => {
+    const DIGEST_ORG_ID = 'org_digest_test';
+    const DIGEST_USER_NEW = 'user_digest_new';
+    const DIGEST_USER_OLD = 'user_digest_old';
+    const DIGEST_USER_INVITED = 'user_digest_invited';
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, subscription_status, auto_provision_verified_domain, last_auto_provision_digest_sent_at, created_at, updated_at)
+         VALUES ($1, 'Digest Test Org', false, 'active', true, $2, NOW(), NOW())`,
+        [DIGEST_ORG_ID, new Date('2026-04-01T00:00:00Z')],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+    });
+
+    async function seedMember(opts: {
+      userId: string;
+      email: string;
+      source: 'verified_domain' | 'invited' | 'admin_added';
+      createdAt: Date;
+    }) {
+      await pool.query(
+        `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, email, role, seat_type, provisioning_source, created_at, updated_at, synced_at)
+         VALUES ($1, $2, $3, 'member', 'community_only', $4, $5, $5, $5)`,
+        [opts.userId, DIGEST_ORG_ID, opts.email, opts.source, opts.createdAt],
+      );
+    }
+
+    it('finds orgs with new verified_domain members since the watermark', async () => {
+      // Member joined BEFORE watermark — excluded.
+      await seedMember({
+        userId: DIGEST_USER_OLD,
+        email: 'old@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-03-15T00:00:00Z'),
+      });
+      // Member joined AFTER watermark — included.
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+      // Invited member — wrong source, excluded.
+      await seedMember({
+        userId: DIGEST_USER_INVITED,
+        email: 'invited@digest.com',
+        source: 'invited',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      const target = rows.find(r => r.workos_organization_id === DIGEST_ORG_ID);
+      expect(target).toBeDefined();
+      expect(target!.new_member_count).toBe(1);
+      expect(target!.org_name).toBe('Digest Test Org');
+    });
+
+    it('skips orgs with auto_provision_verified_domain disabled', async () => {
+      await pool.query(
+        'UPDATE organizations SET auto_provision_verified_domain = false WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      expect(rows.find(r => r.workos_organization_id === DIGEST_ORG_ID)).toBeUndefined();
+    });
+
+    it('skips orgs with no new members since watermark', async () => {
+      await seedMember({
+        userId: DIGEST_USER_OLD,
+        email: 'old@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-03-15T00:00:00Z'), // before watermark
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      expect(rows.find(r => r.workos_organization_id === DIGEST_ORG_ID)).toBeUndefined();
+    });
+
+    it('treats NULL watermark as the beginning of time', async () => {
+      await pool.query(
+        'UPDATE organizations SET last_auto_provision_digest_sent_at = NULL WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      const target = rows.find(r => r.workos_organization_id === DIGEST_ORG_ID);
+      expect(target).toBeDefined();
+      expect(target!.new_member_count).toBe(1);
+      expect(target!.last_sent_at).toBeNull();
+    });
+
+    it('lists members chronologically, excluding non-verified-domain sources', async () => {
+      const t1 = new Date('2026-04-10T00:00:00Z');
+      const t2 = new Date('2026-04-12T00:00:00Z');
+      const t3 = new Date('2026-04-14T00:00:00Z');
+
+      await seedMember({ userId: 'u_b', email: 'b@digest.com', source: 'verified_domain', createdAt: t2 });
+      await seedMember({ userId: 'u_a', email: 'a@digest.com', source: 'verified_domain', createdAt: t1 });
+      await seedMember({ userId: 'u_c', email: 'c@digest.com', source: 'verified_domain', createdAt: t3 });
+      await seedMember({ userId: 'u_inv', email: 'inv@digest.com', source: 'invited', createdAt: t2 });
+
+      const members = await listNewAutoProvisionedMembers(DIGEST_ORG_ID, new Date('2026-04-01T00:00:00Z'));
+      expect(members.map(m => m.email)).toEqual(['a@digest.com', 'b@digest.com', 'c@digest.com']);
+    });
+
+    it('markAutoProvisionDigestSent updates the watermark', async () => {
+      const sent = new Date('2026-04-26T12:00:00Z');
+      await markAutoProvisionDigestSent(DIGEST_ORG_ID, sent);
+      const row = await pool.query<{ last_auto_provision_digest_sent_at: Date }>(
+        'SELECT last_auto_provision_digest_sent_at FROM organizations WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      expect(row.rows[0].last_auto_provision_digest_sent_at.toISOString()).toBe(sent.toISOString());
+    });
+  });
+
+  describe('upsertOrganizationMembership provisioning_source', () => {
+    it('writes provisioning_source on insert', async () => {
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_source_test',
+        email: 'src@test.com',
+        first_name: 'Src',
+        last_name: 'Test',
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'verified_domain',
+      });
+
+      const row = await pool.query<{ provisioning_source: string | null }>(
+        'SELECT provisioning_source FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      expect(row.rows[0].provisioning_source).toBe('verified_domain');
+    });
+
+    it('preserves an existing provisioning_source on subsequent upserts', async () => {
+      // Initial insert tags the row.
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_pres_1',
+        email: 'pres@test.com',
+        first_name: null,
+        last_name: null,
+        role: 'member',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'admin_added',
+      });
+
+      // Subsequent webhook upsert with a less-specific source must not overwrite.
+      await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_pres_1',
+        email: 'pres@test.com',
+        first_name: null,
+        last_name: null,
+        role: 'admin',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+        provisioning_source: 'webhook',
+      });
+
+      const row = await pool.query<{ provisioning_source: string | null; role: string }>(
+        'SELECT provisioning_source, role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      expect(row.rows[0].provisioning_source).toBe('admin_added');
+      // Role still updates normally.
+      expect(row.rows[0].role).toBe('admin');
     });
   });
 });

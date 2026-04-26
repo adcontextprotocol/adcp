@@ -206,3 +206,98 @@ describe('e2e: real runner → formatter — context_value_rejected fix plan', (
     `);
   }, 30_000);
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// Second e2e: shape_drift through real transport
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Single-step storyboard against `build_creative`. The broken seller
+ * returns platform-native keys (`tag_url`, `creative_id`, `media_type`)
+ * at the top level instead of `{ creative_manifest: { format_id, assets } }`
+ * — the `platform_native_fields` shape-drift variant per
+ * shape-drift-hints.ts. We use `build_creative` rather than the
+ * bare-array `list_creatives` case because MCP transport rejects an
+ * array `structuredContent` before the detector ever sees it.
+ */
+const shapeDriftStoryboard = {
+  id: 'addie_shape_drift_e2e',
+  version: '1.0.0',
+  title: 'Addie shape drift E2E',
+  category: 'test',
+  summary: '',
+  narrative: '',
+  agent: { interaction_model: '*', capabilities: [] },
+  caller: { role: 'buyer_agent' },
+  phases: [
+    {
+      id: 'p1',
+      title: 'build creative',
+      steps: [
+        {
+          id: 'build',
+          title: 'build creative',
+          task: 'build_creative',
+          sample_request: {
+            format_id: { agent_url: 'https://x.example', id: 'audio_ad' },
+            assets: {},
+          },
+        },
+      ],
+    },
+  ],
+} as unknown as Storyboard;
+
+function createPlatformNativeCreativeAgent() {
+  return createAdcpServer({
+    name: 'Addie hint e2e — platform-native build_creative',
+    version: '0.0.1',
+    // Validation off so we can return a deliberately-wrong shape.
+    validation: { requests: 'off', responses: 'off' },
+    creative: {
+      // Platform-native keys at top level instead of `creative_manifest`.
+      // This is exactly the agentic-adapters#100 reporter case the
+      // shape-drift detector was built for.
+      buildCreative: async () => ({
+        content: [{ type: 'text', text: 'platform-native shape drift fixture' }],
+        structuredContent: {
+          tag_url: 'https://cdn.example.com/ad.mp3',
+          creative_id: 'c1',
+          media_type: 'audio/mpeg',
+        },
+      }),
+    },
+  });
+}
+
+describe('e2e: real runner → formatter — shape_drift fix plan', () => {
+  it('the runner emits a shape_drift hint and the formatter dispatches the wire-shape playbook', async () => {
+    const result = await runAgainstLocalAgent({
+      createAgent: () => createPlatformNativeCreativeAgent(),
+      storyboards: [shapeDriftStoryboard],
+      fixtures: false,
+      webhookReceiver: false,
+    });
+
+    expect(result.results).toHaveLength(1);
+    const build = result.results[0]!.phases[0]!.steps[0]!;
+    expect(build.hints).toBeDefined();
+    const hint = build.hints!.find(h => h.kind === 'shape_drift')!;
+    expect(hint).toBeDefined();
+    expect(hint.tool).toBe('build_creative');
+    expect(hint.observed_variant).toBe('platform_native_fields');
+    expect(hint.expected_variant).toContain('creative_manifest');
+
+    const fixPlan = renderAllHintFixPlans(build.hints, {
+      current_step_id: build.step_id,
+      current_task: build.task,
+      surface: 'step',
+    });
+    expect(fixPlan).not.toBeNull();
+    expect(fixPlan).toContain('💡 **Wire-shape drift detected.**');
+    expect(fixPlan).toContain('`build_creative`');
+    expect(fixPlan).toContain('`platform_native_fields`');
+    expect(fixPlan).toContain('`@adcp/client/server`');
+    expect(fixPlan).toContain('"build"'); // verify call cites the step id
+  }, 30_000);
+});

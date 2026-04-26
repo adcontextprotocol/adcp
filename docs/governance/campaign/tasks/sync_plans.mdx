@@ -65,7 +65,11 @@ Push campaign plans to the governance agent. A plan defines the authorized param
         "min_audience_size": 1000,
         "policy_ids": ["us_coppa", "alcohol_advertising"],
         "custom_policies": [
-          "No advertising adjacent to competitor content"
+          {
+            "policy_id": "no_competitor_adjacency",
+            "enforcement": "must",
+            "policy": "No advertising adjacent to competitor content."
+          }
         ],
         "approved_sellers": null,
         "ext": {}
@@ -148,7 +152,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].restricted_attributes_custom` | array | No | Additional restricted attributes not covered by the enum. Freeform strings for jurisdiction-specific restrictions (e.g., `financial_status`). |
 | `plans[].min_audience_size` | integer | No | Minimum audience segment size for k-anonymity. Applies to the estimated intersection audience when multiple criteria are used. |
 | `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
-| `plans[].custom_policies` | array | No | Natural language policy statements specific to this campaign (e.g., "No advertising adjacent to competitor content"). |
+| `plans[].custom_policies` | array | No | Campaign-specific policies using the `PolicyEntry` shape (`policy_id`, `enforcement`, `policy` text required). Additive only — cannot relax or override registry-sourced policies. See [policy resolution](/docs/governance/campaign/specification#policy-resolution). |
 | `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
 | `plans[].delegations` | array | No | Agents authorized to execute against this plan. See [specification](/docs/governance/campaign/specification#delegations). |
 | `plans[].delegations[].agent_url` | string | Yes | URL of the delegated agent. |
@@ -160,7 +164,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].portfolio.member_plan_ids` | array | Yes | Plan IDs governed by this portfolio plan. |
 | `plans[].portfolio.total_budget_cap` | object | No | Maximum aggregate budget across member plans. |
 | `plans[].portfolio.shared_policy_ids` | array | No | Registry policy IDs enforced across all member plans. |
-| `plans[].portfolio.shared_exclusions` | array | No | Natural language exclusion rules for all member plans. |
+| `plans[].portfolio.shared_exclusions` | array | No | Bespoke exclusion policies applied to all member plans, using the `PolicyEntry` shape (`policy_id`, `enforcement`, `policy` text required). |
 | `plans[].ext` | object | No | Extension data. |
 
 ### Response

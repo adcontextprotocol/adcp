@@ -14,7 +14,7 @@ if (!STRIPE_SECRET_KEY) {
 
 export const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
-      apiVersion: '2026-03-25.dahlia',
+      apiVersion: '2026-04-22.dahlia',
     })
   : null;
 
@@ -626,34 +626,97 @@ export async function createCustomerSession(
 }
 
 /**
- * List all Stripe customers with their WorkOS organization IDs
- * Used for syncing Stripe data to local database on startup
+ * Backward-compatible filter: every customer that has a
+ * `metadata.workos_organization_id` set.
  */
 export async function listCustomersWithOrgIds(): Promise<
   Array<{ stripeCustomerId: string; workosOrgId: string }>
 > {
+  const all = await listAllStripeCustomers();
+  return all
+    .filter((c) => c.metadataWorkosOrgId !== null)
+    .map((c) => ({
+      stripeCustomerId: c.id,
+      workosOrgId: c.metadataWorkosOrgId!,
+    }));
+}
+
+export interface StripeCustomerSummary {
+  id: string;
+  email: string | null;
+  name: string | null;
+  /** Set when `customer.metadata.workos_organization_id` is present. */
+  metadataWorkosOrgId: string | null;
+  /** True when Stripe has marked this customer deleted. */
+  deleted: boolean;
+}
+
+/**
+ * Walk every Stripe customer and return the fields needed for cross-customer
+ * duplicate detection: id, email, name, metadata-linked org id, deleted flag.
+ *
+ * Replaces the old `listCustomersWithOrgIds` which only returned customers
+ * that already had a `workos_organization_id` metadata pointer — that filter
+ * hid orphan duplicates whose only signal was a shared email or name (the
+ * ResponsiveAds case in #3200).
+ */
+export async function listAllStripeCustomers(): Promise<StripeCustomerSummary[]> {
   if (!stripe) {
     return [];
   }
 
-  const results: Array<{ stripeCustomerId: string; workosOrgId: string }> = [];
+  const results: StripeCustomerSummary[] = [];
 
   try {
-    // Iterate through all customers (auto-pagination)
     for await (const customer of stripe.customers.list({ limit: 100 })) {
-      const workosOrgId = customer.metadata?.workos_organization_id;
-      if (workosOrgId) {
-        results.push({
-          stripeCustomerId: customer.id,
-          workosOrgId,
-        });
-      }
+      results.push({
+        id: customer.id,
+        email: customer.email ?? null,
+        name: customer.name ?? null,
+        metadataWorkosOrgId: customer.metadata?.workos_organization_id ?? null,
+        deleted: (customer as { deleted?: boolean }).deleted === true,
+      });
     }
 
     return results;
   } catch (error) {
     logger.error({ err: error }, 'Error listing Stripe customers');
     return [];
+  }
+}
+
+/**
+ * Returns the set of customer IDs that have at least one live (active /
+ * trialing / past_due) subscription. Stripe's subscriptions.list filters by
+ * a single status at a time, so this issues three paginated calls. The total
+ * row count is bounded by live subs (small), not all subs.
+ */
+export async function listCustomerIdsWithLiveSubscriptions(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!stripe) {
+    return ids;
+  }
+
+  const liveStatuses: Array<'active' | 'trialing' | 'past_due'> = [
+    'active',
+    'trialing',
+    'past_due',
+  ];
+
+  try {
+    for (const status of liveStatuses) {
+      for await (const sub of stripe.subscriptions.list({ status, limit: 100 })) {
+        const customerId =
+          typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+        if (customerId) {
+          ids.add(customerId);
+        }
+      }
+    }
+    return ids;
+  } catch (error) {
+    logger.error({ err: error }, 'Error listing live Stripe subscriptions');
+    return ids;
   }
 }
 

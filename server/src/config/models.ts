@@ -94,10 +94,20 @@ export const AddieModelConfig = {
   chat: process.env.ADDIE_ANTHROPIC_MODEL || ModelConfig.primary,
 
   /**
-   * Model for anonymous web chat (cost-controlled)
-   * Override: ADDIE_ANONYMOUS_MODEL (falls back to fast/Haiku)
+   * Model for anonymous web chat.
+   *
+   * Defaults to Sonnet (`primary`). Anonymous traffic exposes Addie's worst
+   * failure modes — ritual phrases, length blow-out on short questions,
+   * fabrication of integration details — which trace to Haiku's poor
+   * adherence to negative instructions and conservative tool-call gating.
+   * Sonnet handles those substantially better at ~10x per-turn cost.
+   * Total spend is bounded by `anonymousDailyLimiter` (50 messages/IP/day)
+   * + the per-IP $5 daily Claude API cap, both unchanged by this default.
+   *
+   * Override: ADDIE_ANONYMOUS_MODEL — set to Haiku/`fast` if cost pressure
+   * forces a downgrade.
    */
-  anonymousChat: process.env.ADDIE_ANONYMOUS_MODEL || ModelConfig.fast,
+  anonymousChat: process.env.ADDIE_ANONYMOUS_MODEL || ModelConfig.primary,
 
   /**
    * Model for voice/video conversations

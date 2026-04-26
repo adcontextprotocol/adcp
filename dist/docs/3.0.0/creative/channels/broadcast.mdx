@@ -1,0 +1,268 @@
+---
+title: Broadcast TV
+description: "Broadcast TV ad formats in AdCP define spot file delivery, Ad-ID integration, and measurement maturation windows for linear television."
+"og:title": "AdCP — Broadcast TV"
+---
+
+
+This guide covers how AdCP represents broadcast television (linear TV) advertising — traditional over-the-air, cable, and satellite television spots.
+
+Broadcast TV differs from CTV in fundamental ways: there is no ad server, no VAST tags, no impression pixels, and no clickthrough URLs. A broadcast spot is a video file delivered to a station and played during a scheduled avail. Measurement comes from panel data and set-top box telemetry, not from pixel fires.
+
+The protocol-level operations (`list_creative_formats`, `build_creative`, `sync_creatives`) work identically for broadcast as for any other format. The broadcast-specific details are in format definitions, asset requirements, and measurement models covered below.
+
+## How broadcast differs from CTV
+
+| | Broadcast | CTV |
+|---|---|---|
+| **Delivery** | Spot file to station | VAST tag or SSAI muxed file |
+| **Tracking** | No impression pixels | Pixel fires, VAST tracking events |
+| **Clickthrough** | None (no interaction) | Clickthrough URL, QR codes |
+| **Measurement** | Panel/STB data, arrives days later | Server logs, real-time or near-real-time |
+| **Creative ID** | Ad-ID (industry standard) | Protocol creative_id |
+| **Financial ref** | Agency Estimate Number | PO number |
+
+## Format characteristics
+
+Broadcast spots are:
+- **Video files only** — H.264 or MPEG-4 HD, delivered as MP4 or MOV
+- **Fixed durations** — :15, :30, and :60 are standard
+- **No tracker assets** — No impression pixels, no VAST, no JavaScript
+- **No interactive elements** — No clickthrough, no companion, no overlay
+- **Identified by Ad-ID** — Industry-standard creative identifier that ties the spot to rotation instructions
+
+## Standard broadcast formats
+
+### :30 spot (standard)
+
+```json
+{
+  "$schema": "/schemas/3.0.0/core/format.json",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org/",
+    "id": "broadcast_spot_30s"
+  },
+  "name": "Broadcast TV Spot - 30 seconds",
+  "description": "30-second broadcast television spot. H.264 HD video file delivered directly to station.",
+  "type": "video",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "min_duration_ms": 30000,
+        "max_duration_ms": 30000,
+        "containers": ["mp4", "mov"],
+        "codecs": ["h264"],
+        "min_width": 1920,
+        "max_width": 1920,
+        "min_height": 1080,
+        "max_height": 1080,
+        "min_bitrate_kbps": 15000,
+        "frame_rates": [29.97, 30],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "gop_type": "closed",
+        "min_gop_interval_seconds": 1,
+        "max_gop_interval_seconds": 2,
+        "audio_required": true,
+        "audio_codecs": ["aac", "pcm"],
+        "audio_sample_rates": [48000],
+        "audio_channels": ["stereo"],
+        "loudness_lufs": -24,
+        "loudness_tolerance_db": 2,
+        "true_peak_dbfs": -2
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "captions_file",
+      "asset_type": "url",
+      "required": false,
+      "requirements": {
+        "description": "Closed captions file (SRT or WebVTT)"
+      }
+    }
+  ]
+}
+```
+
+The :15 and :60 formats are identical except for `min_duration_ms` and `max_duration_ms`. All three are available in the reference agent as `broadcast_spot_15s`, `broadcast_spot_30s`, and `broadcast_spot_60s`.
+
+### What is absent
+
+Broadcast formats deliberately exclude assets that exist in CTV and digital video formats:
+
+- No `impression_tracker` — there is no pixel to fire on a television
+- No `vast_tag` — stations play files, not VAST XML
+- No `click_url` — there is no clickthrough on a TV screen
+- No `overlay_html` — no interactive overlay capability
+- No `companion_image` — no companion banner slot
+
+### Third-party tracker support
+
+Whether a creative format supports third-party tracking is determined by whether the format defines a tracker asset slot. Broadcast formats have no `impression_tracker` or `tracker_pixel` asset — a buyer agent inspecting the format's `assets` array can confirm this. Digital and CTV formats include optional tracker slots; broadcast formats do not.
+
+A buyer agent that requires third-party measurement (DoubleVerify viewability, IAS brand safety) should check the format's assets before assigning creatives. If no tracker slot exists, those measurement vendors cannot instrument the creative. Measurement for broadcast comes from panel and set-top box data through the measurement vendor declared in `billing_measurement`, not from creative-level pixels.
+
+## Ad-ID integration
+
+[Ad-ID](https://www.ad-id.org/) is the industry standard for identifying advertising assets. It replaced ISCI codes and is required for broadcast buying. An Ad-ID is a 12-character alphanumeric code (4-character company prefix + 8-character unique identifier).
+
+Ad-IDs serve two purposes in broadcast:
+1. **Asset identification** — uniquely identifies the spot across all systems
+2. **Rotation instructions** — when a buy has multiple creatives, the Ad-ID tells the station which spot to run in which window
+
+### Creative with Ad-ID
+
+```json
+{
+  "creative_id": "nova_spring_broadcast_30s",
+  "name": "Nova Spring Campaign :30",
+  "industry_identifiers": [
+    { "type": "ad_id", "value": "NOVA1234000H" }
+  ],
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org/",
+    "id": "broadcast_spot_30s"
+  },
+  "assets": {
+    "video_file": {
+      "url": "https://cdn.nova-brands.example/broadcast/spring_30s_1080p.mp4",
+      "width": 1920,
+      "height": 1080,
+      "duration_ms": 30000,
+      "container_format": "mp4",
+      "video_codec": "h264",
+      "video_bitrate_kbps": 15000,
+      "frame_rate": "29.97",
+      "frame_rate_type": "constant",
+      "gop_type": "closed",
+      "gop_interval_seconds": 2,
+      "has_audio": true,
+      "audio_codec": "aac",
+      "audio_sampling_rate_hz": 48000,
+      "audio_channels": "stereo",
+      "audio_loudness_lufs": -24,
+      "audio_true_peak_dbfs": -2
+    }
+  }
+}
+```
+
+When the same source creative has different cuts (:15 and :30), each cut gets its own Ad-ID. Use `industry_identifiers` on the manifest level to assign distinct Ad-IDs per format version.
+
+### Supported identifier types
+
+| Type | Description |
+|---|---|
+| `ad_id` | Ad-ID registry code (US/international standard) |
+| `isci` | Legacy ISCI code (older traffic systems) |
+| `clearcast_clock` | UK Clearcast clock number |
+
+## Agency Estimate Number
+
+The Agency Estimate Number is the financial reference that ties a broadcast order to the agency's media plan. It originates from the agency's billing system and must travel with the order through the transaction lifecycle.
+
+In AdCP, the estimate number appears on the media buy and optionally on individual packages:
+
+```json
+{
+  "account": { "brand": { "domain": "nova-brands.example" } },
+  "brand": { "domain": "nova-brands.example" },
+  "po_number": "PO-2026-1847",
+  "agency_estimate_number": "EST-2026-04821",
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-06-30T23:59:59Z",
+  "packages": [
+    {
+      "product_id": "onx-prime-30s",
+      "budget": 50000,
+      "pricing_option_id": "cpm_guaranteed"
+    }
+  ]
+}
+```
+
+When different packages within a buy correspond to different agency estimates (different flights or stations), the package-level `agency_estimate_number` overrides the buy-level value.
+
+## Measurement windows
+
+Broadcast measurement matures over time as time-shifted (DVR) viewing accumulates. This is fundamentally different from digital measurement, where data is available in real-time or near-real-time.
+
+### Standard windows
+
+| Window | Duration | Description |
+|---|---|---|
+| `live` | 0 days | Real-time viewers only |
+| `c3` | 3 days | Live + 3 days of time-shifted viewing |
+| `c7` | 7 days | Live + 7 days of time-shifted viewing |
+
+### How it works
+
+1. A spot airs on March 1
+2. The measurement vendor (VideoAmp, Nielsen, Comscore) collects data from set-top boxes, smart TV ACR, and panels
+3. Data is deduplicated across sources and delivered ~15 days after broadcast
+4. The C7 window (live + 7 days DVR) is typically the guarantee basis for reconciliation
+
+Sellers declare available measurement windows on their products:
+
+```json
+{
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 1440,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": ["impressions", "spend"],
+    "date_range_support": "date_range",
+    "measurement_windows": [
+      {
+        "window_id": "live",
+        "description": "Live broadcast impressions only",
+        "duration_days": 0,
+        "expected_availability_days": 15,
+        "is_guarantee_basis": false
+      },
+      {
+        "window_id": "c3",
+        "description": "Live plus 3 days of time-shifted viewing",
+        "duration_days": 3,
+        "expected_availability_days": 18,
+        "is_guarantee_basis": false
+      },
+      {
+        "window_id": "c7",
+        "description": "Live plus 7 days of time-shifted viewing",
+        "duration_days": 7,
+        "expected_availability_days": 22,
+        "is_guarantee_basis": true
+      }
+    ]
+  }
+}
+```
+
+Buyers reference the guarantee basis window in measurement terms:
+
+```json
+{
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "videoamp.com" },
+      "measurement_window": "c7",
+      "max_variance_percent": 10
+    }
+  }
+}
+```
+
+## Related documentation
+
+- [CTV and connected TV](/dist/docs/3.0.0/creative/channels/ctv) — CTV format specs, SSAI/CSAI delivery, VAST tag generation
+- [Video ads](/dist/docs/3.0.0/creative/channels/video) — Video format specs, codecs, and encoding details
+- [Accountability](/dist/docs/3.0.0/media-buy/advanced-topics/accountability) — Performance standards, measurement terms, makegood policy
+- [Optimization and reporting](/dist/docs/3.0.0/media-buy/media-buys/optimization-reporting) — Delivery reporting, delayed data, reconciliation
+- [Creative manifests](/dist/docs/3.0.0/creative/creative-manifests) — Manifest structure and asset specifications

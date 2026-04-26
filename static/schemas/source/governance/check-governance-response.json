@@ -121,7 +121,11 @@
       "items": {
         "type": "string"
       },
-      "description": "Registry policy IDs evaluated during this check."
+      "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`."
+    },
+    "mode": {
+      "$ref": "/schemas/enums/governance-mode.json",
+      "description": "Governance enforcement mode active when this check was evaluated. Allows counterparties, regulators, and auditors to distinguish whether a finding blocked execution (enforce) or was logged silently (audit)."
     },
     "governance_context": {
       "type": "string",
