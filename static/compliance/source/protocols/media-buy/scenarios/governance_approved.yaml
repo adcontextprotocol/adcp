@@ -91,7 +91,7 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 100000
               flight:
-                start: "2026-04-01T00:00:00Z"
+                start: "2027-06-01T00:00:00Z"
                 end: "2026-06-30T23:59:59Z"
               countries: ["US", "CA"]
         validations:
@@ -196,7 +196,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-04-01T00:00:00Z"
+          start_time: "2027-06-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
             - product_id: "outdoor_display_q2"

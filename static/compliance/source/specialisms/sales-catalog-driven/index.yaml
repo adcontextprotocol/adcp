@@ -522,7 +522,7 @@ phases:
             brand:
               domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-04-07T00:00:00Z"
+          start_time: "2027-06-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
             - product_id: "local_display_dynamic"
@@ -713,7 +713,7 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           measurement_period:
-            start: "2026-04-07T00:00:00Z"
+            start: "2027-06-01T00:00:00Z"
             end: "2026-04-14T23:59:59Z"
           performance_index: 1.4
           metric_type: "conversion_rate"

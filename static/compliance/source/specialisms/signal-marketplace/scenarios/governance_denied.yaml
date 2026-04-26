@@ -69,7 +69,7 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 50
               flight:
-                start: "2026-04-01T00:00:00Z"
+                start: "2027-06-01T00:00:00Z"
                 end: "2026-06-30T23:59:59Z"
               countries: ["US"]
           idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_governance_plan_setup_sync_plans"

@@ -254,7 +254,7 @@ phases:
             uses:
               - "likeness"
               - "commercial"
-            start_date: "2026-04-01"
+            start_date: "2027-06-01"
             end_date: "2026-06-30"
           revocation_webhook:
             url: "https://pinnacle-agency.example/webhooks/revocation"
