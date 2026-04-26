@@ -543,6 +543,89 @@ describe('dedupOnSubscriptionCreated', () => {
     });
   });
 
+  describe('canceledFacts payload (drives customer apology email)', () => {
+    it('canceled_new outcome carries cancelSucceeded=true on successful cancel', async () => {
+      const newSub = makeSub('sub_new', 'active', {
+        latest_invoice_status: 'open',
+        unit_amount: 300000,
+        lookup_key: 'aao_membership_builder_3000',
+      });
+      const existing = makeSub('sub_existing', 'active', { latest_invoice_status: 'paid' });
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_new');
+      if (result.kind === 'canceled_new') {
+        expect(result.canceledFacts.cancelSucceeded).toBe(true);
+        expect(result.canceledFacts.wasPaid).toBe(false);
+        expect(result.canceledFacts.amountCents).toBe(300000);
+        expect(result.canceledFacts.lookupKey).toBe('aao_membership_builder_3000');
+      }
+    });
+
+    it('canceled_new outcome carries cancelSucceeded=false on cancel failure', async () => {
+      const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'open' });
+      const existing = makeSub('sub_existing', 'active', { latest_invoice_status: 'paid' });
+      const cancel = vi.fn().mockRejectedValue(new Error('Stripe error'));
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
+        cancel,
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_new');
+      if (result.kind === 'canceled_new') {
+        expect(result.canceledFacts.cancelSucceeded).toBe(false);
+      }
+    });
+
+    it('canceled_existing outcome surfaces facts about the canceled existing sub', async () => {
+      const newSub = makeSub('sub_new_leader', 'active', { latest_invoice_status: 'paid' });
+      const oldUnpaid = makeSub('sub_old_pro', 'active', {
+        latest_invoice_status: 'open',
+        unit_amount: 25000,
+        lookup_key: 'aao_membership_pro_250',
+      });
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, oldUnpaid] }),
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_existing');
+      if (result.kind === 'canceled_existing') {
+        expect(result.canceledFacts.cancelSucceeded).toBe(true);
+        expect(result.canceledFacts.amountCents).toBe(25000);
+        expect(result.canceledFacts.lookupKey).toBe('aao_membership_pro_250');
+      }
+    });
+  });
+
   describe('failure modes', () => {
     it('still alerts ops when cancel fails — manual intervention is needed', async () => {
       const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'open' });

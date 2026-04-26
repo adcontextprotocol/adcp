@@ -50,11 +50,33 @@ export interface DedupArgs {
  *   - `manual_review`       → skip UPDATE; don't fire activation hooks; ops
  *                              alerted to resolve manually
  */
+export interface CanceledSubFacts {
+  /** True iff the canceled sub had a paid latest_invoice — money moved. */
+  wasPaid: boolean;
+  /** Whether the Stripe cancel API call succeeded. False = ops manual cleanup. */
+  cancelSucceeded: boolean;
+  /** Stripe price.unit_amount on the canceled sub (cents); null if unknown. */
+  amountCents: number | null;
+  /** Stripe price.lookup_key on the canceled sub; null if unknown. */
+  lookupKey: string | null;
+  /** Stripe product.name or item description, when we can derive it. */
+  productLabel: string | null;
+}
+
 export type DedupOutcome =
   | { kind: 'no_duplicate' }
   | { kind: 'retry_skip' }
-  | { kind: 'canceled_new'; existingLiveSubIds: string[] }
-  | { kind: 'canceled_existing'; canceledSubId: string; survivingNewSubId: string }
+  | {
+      kind: 'canceled_new';
+      existingLiveSubIds: string[];
+      canceledFacts: CanceledSubFacts;
+    }
+  | {
+      kind: 'canceled_existing';
+      canceledSubId: string;
+      survivingNewSubId: string;
+      canceledFacts: CanceledSubFacts;
+    }
   | { kind: 'manual_review'; allLiveSubIds: string[]; reason: string };
 
 interface SubPaidStatus {
@@ -131,6 +153,7 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
   // Exactly one unpaid → cancel it. Only safe auto-action.
   if (unpaid.length === 1) {
     const target = unpaid[0].sub;
+    const targetWasPaid = unpaid[0].paid; // false by definition; surfaced for downstream copy
     const survivors = liveSubs.filter((s) => s.id !== target.id);
 
     const canceled = await tryCancel({
@@ -150,16 +173,20 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
       survivors,
     });
 
+    const canceledFacts = factsForSub(target, targetWasPaid, canceled);
+
     if (target.id === subscription.id) {
       return {
         kind: 'canceled_new',
         existingLiveSubIds: survivors.map((s) => s.id),
+        canceledFacts,
       };
     }
     return {
       kind: 'canceled_existing',
       canceledSubId: target.id,
       survivingNewSubId: subscription.id,
+      canceledFacts,
     };
   }
 
@@ -199,6 +226,28 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
     kind: 'manual_review',
     allLiveSubIds: liveSubs.map((s) => s.id),
     reason,
+  };
+}
+
+function factsForSub(
+  sub: Stripe.Subscription,
+  wasPaid: boolean,
+  cancelSucceeded: boolean,
+): CanceledSubFacts {
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  const product = price?.product;
+  const productLabel =
+    typeof product === 'string'
+      ? null
+      : (product as Stripe.Product | undefined)?.name ?? null;
+
+  return {
+    wasPaid,
+    cancelSucceeded,
+    amountCents: price?.unit_amount ?? null,
+    lookupKey: price?.lookup_key ?? null,
+    productLabel,
   };
 }
 
