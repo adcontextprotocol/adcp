@@ -13,7 +13,7 @@ import Stripe from "stripe";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { OrganizationDatabase } from "../../db/organization-db.js";
+import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
 
 const logger = createLogger("admin-accounts-billing");
@@ -431,6 +431,197 @@ export function setupAccountsBillingRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to delete organization",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/reset-subscription-state
+  // Atomically clears all subscription-related fields to NULL.
+  // Use when Stripe state is gone but the DB row is stale (e.g., post-audit cleanup,
+  // unlinked customer with orphaned stripe_subscription_id blocking a unique constraint).
+  apiRouter.post(
+    "/accounts/:orgId/reset-subscription-state",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      const { confirmation, reason } = req.body;
+
+      try {
+        const pool = getPool();
+
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, stripe_customer_id,
+                  subscription_status, stripe_subscription_id,
+                  subscription_amount, subscription_currency, subscription_interval,
+                  subscription_current_period_end, subscription_canceled_at,
+                  subscription_product_id, subscription_product_name,
+                  subscription_price_id, subscription_price_lookup_key,
+                  membership_tier, subscription_metadata
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The specified organization does not exist",
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+          return res.status(400).json({
+            error: "Reason required",
+            message:
+              "A reason of at least 10 characters is required for the audit record.",
+          });
+        }
+
+        if (!confirmation || confirmation !== org.name) {
+          return res.status(400).json({
+            error: "Confirmation required",
+            message: `To reset subscription state, provide the exact organization name "${org.name}" in the confirmation field.`,
+            requires_confirmation: true,
+            organization_name: org.name,
+          });
+        }
+
+        // Refuse if the org has live Stripe subscriptions — caller should /sync or cancel first.
+        // If stripe_customer_id is set but Stripe is unconfigured we can't verify — block the reset.
+        if (org.stripe_customer_id) {
+          if (!stripe) {
+            return res.status(503).json({
+              error: "Stripe not configured",
+              message:
+                "Cannot verify live subscription status — Stripe is not configured. Unlink the customer first or configure Stripe.",
+            });
+          }
+
+          const customer = await stripe.customers.retrieve(
+            org.stripe_customer_id,
+            { expand: ["subscriptions"] }
+          );
+
+          if (!customer.deleted) {
+            // Reuse the canonical "live subscription" set (active/trialing/past_due)
+            // from organization-db.ts so this endpoint's safety check stays in
+            // sync with blockIfActiveSubscription. `incomplete` is intentionally
+            // not blocking — Stripe is still trying the initial charge; if it
+            // succeeds later, the customer.subscription.updated webhook will
+            // re-populate the cleared fields.
+            const liveSubs =
+              (customer as Stripe.Customer).subscriptions?.data.filter(
+                (sub: Stripe.Subscription) =>
+                  (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status)
+              ) ?? [];
+
+            if (liveSubs.length > 0) {
+              return res.status(400).json({
+                error: "Live subscriptions exist",
+                message: `Organization has ${liveSubs.length} live Stripe subscription(s). Run /sync or cancel the subscription before resetting.`,
+                live_subscription_ids: liveSubs.map((s: Stripe.Subscription) => s.id),
+              });
+            }
+          }
+        }
+
+        // stripe_customer_id is intentionally not cleared — it is managed by the
+        // separate /stripe-customer/unlink endpoint. Included in beforeState for
+        // audit completeness only.
+        const beforeState = {
+          stripe_customer_id: org.stripe_customer_id,
+          subscription_status: org.subscription_status,
+          stripe_subscription_id: org.stripe_subscription_id,
+          subscription_amount: org.subscription_amount,
+          subscription_currency: org.subscription_currency,
+          subscription_interval: org.subscription_interval,
+          subscription_current_period_end: org.subscription_current_period_end,
+          subscription_canceled_at: org.subscription_canceled_at,
+          subscription_product_id: org.subscription_product_id,
+          subscription_product_name: org.subscription_product_name,
+          subscription_price_id: org.subscription_price_id,
+          subscription_price_lookup_key: org.subscription_price_lookup_key,
+          membership_tier: org.membership_tier,
+          subscription_metadata: org.subscription_metadata,
+        };
+
+        // Wrap the UPDATE and audit-log INSERT in a single transaction so
+        // either both succeed or neither does. Without this, a crash or
+        // connection drop between the two writes could leave subscription
+        // state cleared with no audit trail of who did it.
+        const txClient = await pool.connect();
+        try {
+          await txClient.query("BEGIN");
+          await txClient.query(
+            `UPDATE organizations
+             SET subscription_status = NULL,
+                 stripe_subscription_id = NULL,
+                 subscription_amount = NULL,
+                 subscription_currency = NULL,
+                 subscription_interval = NULL,
+                 subscription_current_period_end = NULL,
+                 subscription_canceled_at = NULL,
+                 subscription_product_id = NULL,
+                 subscription_product_name = NULL,
+                 subscription_price_id = NULL,
+                 subscription_price_lookup_key = NULL,
+                 membership_tier = NULL,
+                 subscription_metadata = NULL,
+                 updated_at = NOW()
+             WHERE workos_organization_id = $1`,
+            [orgId]
+          );
+          // Mirrors OrganizationDatabase.recordAuditLog inline so it shares the
+          // transaction. Same table + columns; just executed via the locked
+          // client instead of a fresh pool query.
+          await txClient.query(
+            `INSERT INTO registry_audit_log
+             (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              orgId,
+              req.user!.id,
+              "subscription_state_reset",
+              "organization",
+              orgId,
+              JSON.stringify({
+                org_name: org.name,
+                admin_email: req.user!.email,
+                reason: reason.trim(),
+                before_state: beforeState,
+              }),
+            ]
+          );
+          await txClient.query("COMMIT");
+        } catch (txErr) {
+          try { await txClient.query("ROLLBACK"); } catch { /* swallow */ }
+          throw txErr;
+        } finally {
+          txClient.release();
+        }
+
+        logger.info(
+          { orgId, orgName: org.name, adminEmail: req.user!.email },
+          "Reset subscription state for organization"
+        );
+
+        res.json({
+          success: true,
+          message: `Subscription state reset for ${org.name}`,
+          org_id: orgId,
+          org_name: org.name,
+          cleared_fields: Object.entries(beforeState)
+            .filter(([k, v]) => k !== 'stripe_customer_id' && v !== null)
+            .map(([k]) => k),
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId }, "Error resetting subscription state");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to reset subscription state",
         });
       }
     }
