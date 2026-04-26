@@ -98,7 +98,8 @@ import {
   createImageToolHandlers,
 } from './mcp/image-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
+import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
+import { buildSuggestedPrompts } from './home/builders/suggested-prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -470,14 +471,14 @@ async function createUserScopedTools(
   };
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    return buildSuggestedPrompts(memberContext, userIsAdmin).map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
