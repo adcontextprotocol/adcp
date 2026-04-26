@@ -219,6 +219,50 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * full set of org admins (typically a single founder/owner). All failures
  * are logged but never thrown — the dedup itself is the primary action.
  */
+/**
+ * Shape the dedup helper outcome into a serializable JSON object for the
+ * registry_audit_log details field. The admin UI reads this back to render
+ * the dedup history panel.
+ */
+function dedupAuditDetails(
+  outcome: Awaited<ReturnType<typeof dedupOnSubscriptionCreated>>,
+  newSub: Stripe.Subscription,
+  customerId: string,
+): Record<string, unknown> {
+  const base = {
+    kind: outcome.kind,
+    customer_id: customerId,
+    new_sub_id: newSub.id,
+  };
+  switch (outcome.kind) {
+    case 'canceled_new':
+      return {
+        ...base,
+        existing_live_sub_ids: outcome.existingLiveSubIds,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'canceled_existing':
+      return {
+        ...base,
+        canceled_sub_id: outcome.canceledSubId,
+        surviving_new_sub_id: outcome.survivingNewSubId,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'manual_review':
+      return {
+        ...base,
+        all_live_sub_ids: outcome.allLiveSubIds,
+        reason: outcome.reason,
+      };
+    default:
+      // Caller already filters to the three above; this is a defensive
+      // fallthrough so a future outcome variant doesn't write nothing.
+      return base;
+  }
+}
+
 function fireDedupNotice(args: {
   org: { workos_organization_id: string; name: string | null };
   workos: WorkOS;
@@ -3599,6 +3643,35 @@ export class HTTPServer {
                     });
                   }
                   break;
+              }
+
+              // Persist the dedup decision to the audit log so admins can
+              // retroactively see what happened on this org. We only record
+              // the cases where the helper actually decided something; the
+              // common no_duplicate / retry_skip paths are uninteresting and
+              // would drown the log. Failure here is logged but never
+              // throws — the dedup itself is the primary action.
+              if (
+                org &&
+                (dedup.kind === 'canceled_new' ||
+                  dedup.kind === 'canceled_existing' ||
+                  dedup.kind === 'manual_review')
+              ) {
+                try {
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: SYSTEM_USER_ID,
+                    action: 'subscription_dedup',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: dedupAuditDetails(dedup, subscription, customerId),
+                  });
+                } catch (auditErr) {
+                  logger.error(
+                    { err: auditErr, orgId: org.workos_organization_id, dedupKind: dedup.kind },
+                    'Failed to persist dedup audit log entry',
+                  );
+                }
               }
             }
 
