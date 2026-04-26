@@ -1,14 +1,24 @@
 /**
- * Public JWKS for Addie's request-signing key.
+ * Public JWKS for Addie's signing keys.
  *
- * Derived from the committed `EXPECTED_PUBLIC_KEY_PEM` so the published key
- * and the signer's tripwire always reference the same source of truth —
- * rotation is a one-line edit to that file plus a `GCP_KMS_KEY_VERSION`
- * secret update.
+ * Two entries — one per AdCP signing purpose. AdCP receivers enforce key
+ * purpose at the JWK's `adcp_use` field (`docs/guides/SIGNING-GUIDE.md` §
+ * Key separation), so request-signing and webhook-signing keys must
+ * appear as distinct JWK entries with their respective `adcp_use` values.
+ *
+ * Both derived from the committed PEM constants so the published JWKS
+ * and each signer's tripwire reference the same source of truth —
+ * rotation is a one-line edit to `expected-public-key.ts` plus a
+ * `GCP_KMS_*_KEY_VERSION` secret update.
  */
 
 import { createPublicKey } from 'node:crypto';
-import { EXPECTED_PUBLIC_KEY_PEM, KID } from './expected-public-key.js';
+import {
+  REQUEST_SIGNING_PUBLIC_KEY_PEM,
+  REQUEST_SIGNING_KID,
+  WEBHOOK_SIGNING_PUBLIC_KEY_PEM,
+  WEBHOOK_SIGNING_KID,
+} from './expected-public-key.js';
 
 interface PublicJwk {
   kty: string;
@@ -25,29 +35,37 @@ let cached: { keys: PublicJwk[] } | null = null;
 
 export function getPublicSigningJwks(): { keys: PublicJwk[] } {
   if (cached) return cached;
-  const raw = createPublicKey(EXPECTED_PUBLIC_KEY_PEM).export({ format: 'jwk' }) as {
+  cached = {
+    keys: [
+      pemToAdcpJwk(REQUEST_SIGNING_PUBLIC_KEY_PEM, REQUEST_SIGNING_KID, 'request-signing'),
+      pemToAdcpJwk(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID, 'webhook-signing'),
+    ],
+  };
+  return cached;
+}
+
+function pemToAdcpJwk(pem: string, kid: string, adcpUse: 'request-signing' | 'webhook-signing'): PublicJwk {
+  const raw = createPublicKey(pem).export({ format: 'jwk' }) as {
     kty?: string;
     crv?: string;
     x?: string;
   };
   if (raw.kty !== 'OKP' || raw.crv !== 'Ed25519' || typeof raw.x !== 'string') {
     throw new Error(
-      `Expected public key is not Ed25519 OKP (got kty=${raw.kty}, crv=${raw.crv}). ` +
+      `Expected public key for ${adcpUse} is not Ed25519 OKP (got kty=${raw.kty}, crv=${raw.crv}). ` +
         'Update expected-public-key.ts.'
     );
   }
-  const jwk: PublicJwk = {
+  return {
     kty: 'OKP',
     crv: 'Ed25519',
     x: raw.x,
-    kid: KID,
+    kid,
     alg: 'EdDSA',
     use: 'sig',
-    adcp_use: 'request-signing',
+    adcp_use: adcpUse,
     key_ops: ['verify'],
   };
-  cached = { keys: [jwk] };
-  return cached;
 }
 
 export function resetJwksForTests(): void {

@@ -85,6 +85,10 @@ show('Compound: lapsed Explorer owner, persona, no WG, incomplete profile', base
   persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
   engagement: { login_count_30d: 0, last_login: ago(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
 }));
+show('Learner mid-certification', base({
+  certification: { track_id: 'A', module_id: 'A1', status: 'in_progress', started_at: ago(7), last_activity_at: ago(2) },
+  community_profile: { is_public: false, slug: null, completeness: 40, github_username: null },
+}));
 show('Brand new member, day 2, no persona', base({
   working_groups: [],
   community_profile: { is_public: false, slug: null, completeness: 10, github_username: null },

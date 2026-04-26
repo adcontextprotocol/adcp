@@ -100,7 +100,8 @@ import {
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
 import { pickPrompts } from './home/builders/suggested-prompts.js';
-import { recordPromptsShown } from '../db/addie-prompt-telemetry-db.js';
+import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
+import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -556,6 +557,14 @@ export async function handleAssistantMessage(
 
   // Build per-request context for system prompt
   const { requestContext, memberContext, personId } = await buildRequestContext(event.user);
+
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  const matchedRuleId = matchRuleIdFromMessage(event.text);
+  const messageWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && messageWorkosUserId) {
+    void recordPromptClicked(messageWorkosUserId, matchedRuleId);
+  }
 
   // Record the user's message in the relationship and event log
   if (personId) {

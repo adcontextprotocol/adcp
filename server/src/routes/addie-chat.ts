@@ -23,6 +23,8 @@ import {
   sanitizeInput,
   validateOutput,
 } from "../addie/security.js";
+import { matchRuleIdFromMessage } from "../addie/home/builders/rules/prompt-rules.js";
+import { recordPromptClicked } from "../db/addie-prompt-telemetry-db.js";
 import {
   isKnowledgeReady,
   initializeKnowledgeSearch,
@@ -712,6 +714,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
 
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
+      }
+
       // Get or create thread using unified service
       // For web chat, the external_id is the conversation_id (UUID)
       // If no conversation_id provided, we'll generate a new one via the thread
@@ -992,6 +1001,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const inputValidation = sanitizeInput(message);
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
+      }
+
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
       }
 
       // Get or create thread

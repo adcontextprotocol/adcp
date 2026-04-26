@@ -1026,7 +1026,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Generate portal link for domain verification
-      const { link } = await workos!.portal.generateLink({
+      const { link } = await workos!.adminPortal.generateLink({
         organization: orgId,
         intent: 'domain_verification' as any,
       });
@@ -3443,7 +3443,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Get available roles from WorkOS
-      const roles = await workos!.organizations.listOrganizationRoles({ organizationId: orgId });
+      const roles = await workos!.authorization.listOrganizationRoles(orgId);
 
       res.json({
         roles: roles.data.map(role => ({
