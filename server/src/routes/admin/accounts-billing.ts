@@ -13,7 +13,7 @@ import Stripe from "stripe";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { OrganizationDatabase } from "../../db/organization-db.js";
+import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
 
 const logger = createLogger("admin-accounts-billing");
@@ -506,17 +506,23 @@ export function setupAccountsBillingRoutes(
           );
 
           if (!customer.deleted) {
-            const liveStatuses = ["active", "trialing", "past_due", "incomplete"];
+            // Reuse the canonical "live subscription" set (active/trialing/past_due)
+            // from organization-db.ts so this endpoint's safety check stays in
+            // sync with blockIfActiveSubscription. `incomplete` is intentionally
+            // not blocking — Stripe is still trying the initial charge; if it
+            // succeeds later, the customer.subscription.updated webhook will
+            // re-populate the cleared fields.
             const liveSubs =
               (customer as Stripe.Customer).subscriptions?.data.filter(
-                (sub: any) => liveStatuses.includes(sub.status)
+                (sub: Stripe.Subscription) =>
+                  (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status)
               ) ?? [];
 
             if (liveSubs.length > 0) {
               return res.status(400).json({
                 error: "Live subscriptions exist",
                 message: `Organization has ${liveSubs.length} live Stripe subscription(s). Run /sync or cancel the subscription before resetting.`,
-                live_subscription_ids: liveSubs.map((s: any) => s.id),
+                live_subscription_ids: liveSubs.map((s: Stripe.Subscription) => s.id),
               });
             }
           }
@@ -542,40 +548,60 @@ export function setupAccountsBillingRoutes(
           subscription_metadata: org.subscription_metadata,
         };
 
-        await pool.query(
-          `UPDATE organizations
-           SET subscription_status = NULL,
-               stripe_subscription_id = NULL,
-               subscription_amount = NULL,
-               subscription_currency = NULL,
-               subscription_interval = NULL,
-               subscription_current_period_end = NULL,
-               subscription_canceled_at = NULL,
-               subscription_product_id = NULL,
-               subscription_product_name = NULL,
-               subscription_price_id = NULL,
-               subscription_price_lookup_key = NULL,
-               membership_tier = NULL,
-               subscription_metadata = NULL,
-               updated_at = NOW()
-           WHERE workos_organization_id = $1`,
-          [orgId]
-        );
-
-        const orgDb = new OrganizationDatabase();
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: req.user!.id,
-          action: "subscription_state_reset",
-          resource_type: "organization",
-          resource_id: orgId,
-          details: {
-            org_name: org.name,
-            admin_email: req.user!.email,
-            reason: reason.trim(),
-            before_state: beforeState,
-          },
-        });
+        // Wrap the UPDATE and audit-log INSERT in a single transaction so
+        // either both succeed or neither does. Without this, a crash or
+        // connection drop between the two writes could leave subscription
+        // state cleared with no audit trail of who did it.
+        const txClient = await pool.connect();
+        try {
+          await txClient.query("BEGIN");
+          await txClient.query(
+            `UPDATE organizations
+             SET subscription_status = NULL,
+                 stripe_subscription_id = NULL,
+                 subscription_amount = NULL,
+                 subscription_currency = NULL,
+                 subscription_interval = NULL,
+                 subscription_current_period_end = NULL,
+                 subscription_canceled_at = NULL,
+                 subscription_product_id = NULL,
+                 subscription_product_name = NULL,
+                 subscription_price_id = NULL,
+                 subscription_price_lookup_key = NULL,
+                 membership_tier = NULL,
+                 subscription_metadata = NULL,
+                 updated_at = NOW()
+             WHERE workos_organization_id = $1`,
+            [orgId]
+          );
+          // Mirrors OrganizationDatabase.recordAuditLog inline so it shares the
+          // transaction. Same table + columns; just executed via the locked
+          // client instead of a fresh pool query.
+          await txClient.query(
+            `INSERT INTO registry_audit_log
+             (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              orgId,
+              req.user!.id,
+              "subscription_state_reset",
+              "organization",
+              orgId,
+              JSON.stringify({
+                org_name: org.name,
+                admin_email: req.user!.email,
+                reason: reason.trim(),
+                before_state: beforeState,
+              }),
+            ]
+          );
+          await txClient.query("COMMIT");
+        } catch (txErr) {
+          try { await txClient.query("ROLLBACK"); } catch { /* swallow */ }
+          throw txErr;
+        } finally {
+          txClient.release();
+        }
 
         logger.info(
           { orgId, orgName: org.name, adminEmail: req.user!.email },
