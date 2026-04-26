@@ -19,7 +19,47 @@
     }
     .container { flex: 1; max-width: 1400px; margin: 0 auto; padding: 40px 20px; width: 100%; }
     h1 { color: var(--color-text-heading); margin-bottom: 8px; font-size: 28px; }
-    .subtitle { color: var(--color-text-secondary); margin-bottom: 30px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: 24px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+    .caveat {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 24px;
+      max-width: 720px;
+      line-height: 1.5;
+    }
+    .cards-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .card-label {
+      color: var(--color-text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .card-value {
+      color: var(--color-text-heading);
+      font-size: 26px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .card-detail {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      margin-top: 4px;
+    }
 
     table {
       width: 100%;
@@ -93,10 +133,36 @@
   <div class="container">
     <h1>Suggested-prompt metrics</h1>
     <p class="subtitle">
-      Per-rule shown / clicked counts and CTR for Addie's suggested-prompts engine.
+      Per-rule shown / clicked counts and engagement rate for Addie's suggested-prompts engine.
       Click data is heuristic: an incoming user message that exactly matches a
       rule's prompt text counts as a click. Dormant rules (red) have never been shown.
     </p>
+
+    <div class="caveat">
+      <strong>Reading these numbers:</strong> low CTR is not always low value.
+      Persona prompts (e.g. <code>persona.data_decoder</code>) are designed to telegraph
+      context to Addie even when the user types something else — they shouldn't be cut on
+      CTR alone. Suppression rate is the cleaner "this prompt is wearing out its welcome"
+      signal.
+    </div>
+
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-label">Active rules</div>
+        <div class="card-value" id="card-active">—</div>
+        <div class="card-detail" id="card-active-detail"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Median CTR</div>
+        <div class="card-value" id="card-ctr">—</div>
+        <div class="card-detail">across rules with ≥1 show</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Dormant rules</div>
+        <div class="card-value" id="card-dormant">—</div>
+        <div class="card-detail">never shown — gating may be off</div>
+      </div>
+    </div>
 
     <table id="metrics-table">
       <thead>
@@ -108,7 +174,7 @@
           <th data-sort="total_shown" class="num sorted-desc">Total shown</th>
           <th data-sort="total_clicked" class="num">Clicked</th>
           <th data-sort="ctr" class="num">CTR</th>
-          <th data-sort="distinct_users_suppressed" class="num">Suppressed</th>
+          <th data-sort="suppression_rate" class="num">Suppression %</th>
           <th data-sort="last_shown_at">Last shown</th>
         </tr>
       </thead>
@@ -158,6 +224,9 @@
         const ctrCell = ctrPct === null
           ? '<span class="pill pill-dormant">never shown</span>'
           : '<span class="ctr-bar" style="width: ' + Math.min(80, ctrPct * 80) + 'px"></span>' + fmtPct(ctrPct);
+        const suppressCell = dormant
+          ? '—'
+          : fmtPct(r.suppression_rate ?? 0) + ' (' + r.distinct_users_suppressed + '/' + r.distinct_users_shown + ')';
         return '<tr>' +
           '<td class="num">' + (r.priority ?? '—') + '</td>' +
           '<td class="rule-id">' + escapeHtml(r.rule_id) + '</td>' +
@@ -167,7 +236,7 @@
           '<td class="num">' + r.total_shown + '</td>' +
           '<td class="num">' + r.total_clicked + '</td>' +
           '<td class="num">' + ctrCell + '</td>' +
-          '<td class="num">' + r.distinct_users_suppressed +
+          '<td class="num">' + suppressCell +
             (r.decay === false ? ' <span class="pill pill-decay-off">no decay</span>' : '') +
           '</td>' +
           '<td>' + fmtDate(r.last_shown_at) + '</td>' +
@@ -197,12 +266,33 @@
       });
     });
 
-    fetch('/api/admin/prompt-metrics', { credentials: 'include' })
+    function renderCards() {
+      const active = rules.filter((r) => r.total_shown > 0);
+      const dormant = rules.length - active.length;
+      const ctrs = active.map((r) => r.ctr).sort((a, b) => a - b);
+      const median = ctrs.length === 0
+        ? null
+        : ctrs.length % 2 === 1
+          ? ctrs[(ctrs.length - 1) / 2]
+          : (ctrs[ctrs.length / 2 - 1] + ctrs[ctrs.length / 2]) / 2;
+
+      document.getElementById('card-active').textContent = active.length;
+      document.getElementById('card-active-detail').textContent =
+        'of ' + rules.length + ' total rules';
+      document.getElementById('card-ctr').textContent = median === null ? '—' : fmtPct(median);
+      document.getElementById('card-dormant').textContent = dormant;
+    }
+
+    const fetcher = (window.AdminSidebar && window.AdminSidebar.fetch)
+      || ((url) => fetch(url, { credentials: 'include' }));
+
+    fetcher('/api/admin/prompt-metrics')
       .then((r) => r.json())
       .then((data) => {
         rules = data.rules ?? [];
         document.getElementById('updated').textContent =
           'Loaded ' + rules.length + ' rules at ' + new Date().toLocaleTimeString();
+        renderCards();
         render();
       })
       .catch((err) => {

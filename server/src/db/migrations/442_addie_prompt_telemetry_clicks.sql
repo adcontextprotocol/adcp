@@ -10,6 +10,15 @@
 -- matches a known rule's prompt string, record a click on that rule.
 -- ~95% accurate (false positives only when a user copy-pastes the same
 -- text), good enough for relative ranking.
+--
+-- Wired at message-receipt sites where suggested prompts surface:
+--   - Slack Assistant thread (bolt-app.ts handleAssistantUserMessage)
+--   - Slack assistant message (handler.ts handleAssistantMessage)
+--   - Web chat stream and non-stream endpoints (addie-chat.ts)
+--
+-- Intentionally NOT wired at app_mention handlers — channel mentions
+-- never come from the suggested-prompts UI, so any verbatim match
+-- there would be coincidence, not a click.
 
 ALTER TABLE addie_prompt_telemetry
   ADD COLUMN IF NOT EXISTS clicked_count INTEGER NOT NULL DEFAULT 0,

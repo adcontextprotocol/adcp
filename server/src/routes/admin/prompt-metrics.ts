@@ -39,6 +39,7 @@ export function setupPromptMetricsRoutes(apiRouter: Router): void {
         total_clicked: 0,
         ctr: 0,
         distinct_users_suppressed: 0,
+        suppression_rate: 0,
         last_shown_at: null,
         last_clicked_at: null,
       }));

@@ -116,6 +116,10 @@ export async function recordPromptsShown(
  * acting on the prompt, so we should re-evaluate normally rather than
  * keep suppressing.
  *
+ * clicked_count is bucketed by UTC day to match recordPromptsShown's
+ * bucketing — without this, a user who clicks twice in one day would
+ * push the rule's CTR above 100%. last_clicked_at always advances.
+ *
  * Fire-and-forget: callers don't await the result.
  */
 export async function recordPromptClicked(
@@ -130,7 +134,12 @@ export async function recordPromptClicked(
           clicked_count, last_clicked_at)
        VALUES ($1, $2, 0, NULL, 1, NOW())
        ON CONFLICT (workos_user_id, rule_id) DO UPDATE SET
-         clicked_count = addie_prompt_telemetry.clicked_count + 1,
+         clicked_count = CASE
+           WHEN addie_prompt_telemetry.last_clicked_at IS NULL
+             OR addie_prompt_telemetry.last_clicked_at < CURRENT_DATE
+           THEN addie_prompt_telemetry.clicked_count + 1
+           ELSE addie_prompt_telemetry.clicked_count
+         END,
          last_clicked_at = NOW(),
          suppressed_until = NULL`,
       [workosUserId, ruleId],
@@ -147,6 +156,8 @@ export interface RuleMetricsRow {
   total_clicked: number;
   ctr: number;
   distinct_users_suppressed: number;
+  /** Fraction (0–1) of users-who-saw-the-rule who are currently suppressed. */
+  suppression_rate: number;
   last_shown_at: Date | null;
   last_clicked_at: Date | null;
 }
@@ -154,9 +165,13 @@ export interface RuleMetricsRow {
 /**
  * Per-rule aggregate metrics for the admin dashboard.
  *
- * total_shown is summed across users. distinct_users_shown is the
- * number of users who saw the rule at least once. CTR is
- * total_clicked / total_shown (0 when no shows).
+ * - total_shown: sum of shown_count across users (UTC-day-bucketed).
+ * - total_clicked: sum of clicked_count (also UTC-day-bucketed).
+ * - distinct_users_shown: users who saw the rule at least once.
+ * - distinct_users_suppressed: users currently in a suppression window.
+ * - suppression_rate: fraction of shown users currently suppressed —
+ *   the headline "is this prompt wearing out its welcome" signal.
+ * - ctr: total_clicked / total_shown (0 when no shows).
  */
 export async function getRuleMetrics(): Promise<RuleMetricsRow[]> {
   const result = await query<{
@@ -173,7 +188,8 @@ export async function getRuleMetrics(): Promise<RuleMetricsRow[]> {
        COUNT(DISTINCT workos_user_id)::text AS distinct_users_shown,
        SUM(shown_count)::text AS total_shown,
        SUM(clicked_count)::text AS total_clicked,
-       SUM(CASE WHEN suppressed_until > NOW() THEN 1 ELSE 0 END)::text AS distinct_users_suppressed,
+       COUNT(DISTINCT workos_user_id) FILTER (WHERE suppressed_until > NOW())::text
+         AS distinct_users_suppressed,
        MAX(last_shown_at) AS last_shown_at,
        MAX(last_clicked_at) AS last_clicked_at
      FROM addie_prompt_telemetry
@@ -183,13 +199,16 @@ export async function getRuleMetrics(): Promise<RuleMetricsRow[]> {
   return result.rows.map((r) => {
     const totalShown = parseInt(r.total_shown || '0', 10);
     const totalClicked = parseInt(r.total_clicked || '0', 10);
+    const distinctShown = parseInt(r.distinct_users_shown || '0', 10);
+    const distinctSuppressed = parseInt(r.distinct_users_suppressed || '0', 10);
     return {
       rule_id: r.rule_id,
-      distinct_users_shown: parseInt(r.distinct_users_shown || '0', 10),
+      distinct_users_shown: distinctShown,
       total_shown: totalShown,
       total_clicked: totalClicked,
       ctr: totalShown > 0 ? totalClicked / totalShown : 0,
-      distinct_users_suppressed: parseInt(r.distinct_users_suppressed || '0', 10),
+      distinct_users_suppressed: distinctSuppressed,
+      suppression_rate: distinctShown > 0 ? distinctSuppressed / distinctShown : 0,
       last_shown_at: r.last_shown_at ? new Date(r.last_shown_at) : null,
       last_clicked_at: r.last_clicked_at ? new Date(r.last_clicked_at) : null,
     };

@@ -1419,19 +1419,6 @@ async function handleUserMessage({
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
 
-  // Heuristic click telemetry: if the incoming message text matches a
-  // known suggested-prompt verbatim, record a click against that rule.
-  try {
-    const matchedRuleId = matchRuleIdFromMessage(messageText);
-    if (matchedRuleId) {
-      const mc = await getMemberContext(userId);
-      const wid = mc?.workos_user?.workos_user_id;
-      if (wid) void recordPromptClicked(wid, matchedRuleId);
-    }
-  } catch (err) {
-    logger.debug({ err }, 'Addie Bolt: prompt click telemetry skipped');
-  }
-
   // Record inbound message in the relationship system (resets unreplied count, derives sentiment)
   recordPersonInboundMessage(userId, 'slack', 'assistant_thread', (messageText || '').length);
 
@@ -1479,6 +1466,15 @@ async function handleUserMessage({
     memberContext = await getMemberContext(userId);
   } catch (error) {
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for thread creation');
+  }
+
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  // Reuses the memberContext lookup above to avoid a second DB round-trip.
+  const matchedRuleId = matchRuleIdFromMessage(messageText);
+  const clickWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && clickWorkosUserId) {
+    void recordPromptClicked(clickWorkosUserId, matchedRuleId);
   }
 
   // Get or create unified thread (including user_display_name for admin UI)
