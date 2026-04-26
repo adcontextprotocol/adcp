@@ -165,9 +165,11 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
-### Exercise
+### Exercises
 
 Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
+
+**Broadcast delivery reporting:** Given a broadcast product with `measurement_windows: [{window: "c3"}, {window: "c7"}]`, a buyer calls `get_media_buy_delivery` two days after the flight date. Describe what data is available in each window, why the `c7` window is still incomplete, and how the seller should represent delivery to avoid the buyer misreading partial data as underdelivery.
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module B3."
