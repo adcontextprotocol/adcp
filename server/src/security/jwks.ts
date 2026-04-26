@@ -8,8 +8,7 @@
  */
 
 import { createPublicKey } from 'node:crypto';
-import { EXPECTED_PUBLIC_KEY_PEM } from './expected-public-key.js';
-import { KID } from './gcp-kms-signer.js';
+import { EXPECTED_PUBLIC_KEY_PEM, KID } from './expected-public-key.js';
 
 interface PublicJwk {
   kty: string;

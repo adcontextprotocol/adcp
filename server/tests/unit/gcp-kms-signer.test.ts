@@ -9,9 +9,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createPublicKey } from 'node:crypto';
 
-import { getGcpKmsSigningProvider, resetGcpKmsSignerForTests, KID } from '../../src/security/gcp-kms-signer.js';
+import { getGcpKmsSigningProvider, resetGcpKmsSignerForTests } from '../../src/security/gcp-kms-signer.js';
 import { getPublicSigningJwks, resetJwksForTests } from '../../src/security/jwks.js';
-import { EXPECTED_PUBLIC_KEY_PEM } from '../../src/security/expected-public-key.js';
+import { EXPECTED_PUBLIC_KEY_PEM, KID } from '../../src/security/expected-public-key.js';
 
 describe('gcp-kms-signer env handling', () => {
   const originalSa = process.env.GCP_SA_JSON;
@@ -56,6 +56,30 @@ describe('gcp-kms-signer env handling', () => {
     process.env.GCP_SA_JSON = '{"client_email":"x@example.com"}';
     process.env.GCP_KMS_KEY_VERSION = 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1';
     await expect(getGcpKmsSigningProvider()).rejects.toThrow(/client_email.*private_key|private_key.*client_email/i);
+  });
+
+  it('JSON.parse error message does NOT include parser detail (parser offset can quote secret bytes)', async () => {
+    process.env.GCP_SA_JSON = '{"private_key":"-----BEGIN ROOT_OF_TRUST_BYTES-----';
+    process.env.GCP_KMS_KEY_VERSION = 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1';
+    await expect(getGcpKmsSigningProvider()).rejects.toThrow(/^GCP_SA_JSON is not valid JSON$/);
+    // Negative assertion: the rejected error must not echo the malformed payload.
+    await expect(
+      getGcpKmsSigningProvider().catch((e: Error) => e.message)
+    ).resolves.not.toMatch(/ROOT_OF_TRUST_BYTES|position \d+|Unexpected/);
+  });
+
+  it('concurrent first calls share one in-flight init (env-rejection path)', async () => {
+    process.env.GCP_SA_JSON = '{"client_email":"x@example.com"}';
+    process.env.GCP_KMS_KEY_VERSION = 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1';
+    // Both should reject for the same reason (missing private_key) — and the
+    // race-fix guarantees they don't fan out to two independent KMS clients
+    // even when the rejection is synchronous-ish.
+    const [a, b] = await Promise.allSettled([
+      getGcpKmsSigningProvider(),
+      getGcpKmsSigningProvider(),
+    ]);
+    expect(a.status).toBe('rejected');
+    expect(b.status).toBe('rejected');
   });
 });
 

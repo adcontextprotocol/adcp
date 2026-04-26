@@ -7,31 +7,27 @@
  *     `projects/.../keyRings/.../cryptoKeys/.../cryptoKeyVersions/N`
  *
  * On first call, builds a `KeyManagementServiceClient`, fetches the public
- * key, asserts it's Ed25519, and asserts it matches the committed PEM at
- * `expected-public-key.pem`. Mismatch fails loudly — tripwire against an
- * out-of-band key swap in GCP that would otherwise silently re-sign with
- * an unexpected key.
+ * key, asserts it's Ed25519, and asserts it matches `EXPECTED_PUBLIC_KEY_PEM`.
+ * Mismatch fails loudly — tripwire against an out-of-band key swap in GCP
+ * that would otherwise silently re-sign with an unexpected key.
  *
  * Singleton — one provider per process. The KMS client is fetched lazily so
- * boot doesn't fail in dev where the secrets aren't set.
+ * boot doesn't fail in dev where the secrets aren't set; production callers
+ * can opt into eager init via `eagerInitGcpKmsSigningProvider()`.
  */
 
 import { createPublicKey } from 'node:crypto';
 import { KeyManagementServiceClient } from '@google-cloud/kms';
 import type { SigningProvider } from '@adcp/client/signing';
 import { createLogger } from '../logger.js';
-import { EXPECTED_PUBLIC_KEY_PEM } from './expected-public-key.js';
+import { EXPECTED_PUBLIC_KEY_PEM, KID, ALGORITHM } from './expected-public-key.js';
 
 const logger = createLogger('gcp-kms-signer');
 
-export const KID = 'aao-signing-2026-04';
-export const ALGORITHM = 'ed25519' as const;
-
 const KMS_ALG_ED25519 = 'EC_SIGN_ED25519';
-const KMS_ALG_P256 = 'EC_SIGN_P256_SHA256';
 
-let cached: { provider: SigningProvider; publicKeyPem: string } | null = null;
-let initInFlight: Promise<{ provider: SigningProvider; publicKeyPem: string }> | null = null;
+let cached: SigningProvider | null = null;
+let initInFlight: Promise<SigningProvider> | null = null;
 
 /**
  * Returns the GCP KMS-backed signing provider, or null if env vars are
@@ -46,7 +42,7 @@ let initInFlight: Promise<{ provider: SigningProvider; publicKeyPem: string }> |
  * many `getPublicKey` calls.
  */
 export async function getGcpKmsSigningProvider(): Promise<SigningProvider | null> {
-  if (cached) return cached.provider;
+  if (cached) return cached;
 
   const saJson = process.env.GCP_SA_JSON;
   const keyVersion = process.env.GCP_KMS_KEY_VERSION;
@@ -61,32 +57,36 @@ export async function getGcpKmsSigningProvider(): Promise<SigningProvider | null
   }
 
   if (!initInFlight) {
+    // Set `cached` inside the IIFE *before* the .finally clears
+    // initInFlight. If a third caller arrives between the .finally
+    // microtask and the outer await resume, they'll see `cached` already
+    // populated and skip init entirely.
     initInFlight = (async () => {
       const credentials = parseServiceAccountJson(saJson);
       const client = new KeyManagementServiceClient({ credentials });
-      return buildProvider(client, keyVersion);
+      const provider = await buildProvider(client, keyVersion);
+      cached = provider;
+      logger.info(
+        { kid: KID, algorithm: ALGORITHM, keyVersion: redactKeyVersion(keyVersion) },
+        'GCP KMS signing provider initialized'
+      );
+      return provider;
     })().finally(() => {
-      // Release the in-flight slot once the promise settles. Success-cache
-      // is set in the .then below; failure is retried on the next call.
       initInFlight = null;
     });
   }
 
-  const result = await initInFlight;
-  cached = result;
-  logger.info(
-    { kid: KID, algorithm: ALGORITHM, keyVersion: redactKeyVersion(keyVersion) },
-    'GCP KMS signing provider initialized'
-  );
-  return result.provider;
+  return initInFlight;
 }
 
 /**
- * Returns the cached PEM public key after `getGcpKmsSigningProvider()` has
- * been called at least once. Used by the JWKS endpoint to publish the key.
+ * Boot-path eager init. Call from the server startup if KMS env is set so
+ * deploy fails before traffic is taken (rather than every tool-call
+ * failing post-rollout). Silent no-op when env is unset.
  */
-export function getCachedPublicKeyPem(): string | null {
-  return cached?.publicKeyPem ?? null;
+export async function eagerInitGcpKmsSigningProvider(): Promise<void> {
+  if (!process.env.GCP_SA_JSON && !process.env.GCP_KMS_KEY_VERSION) return;
+  await getGcpKmsSigningProvider();
 }
 
 interface ServiceAccountCredentials {
@@ -98,8 +98,10 @@ function parseServiceAccountJson(raw: string): ServiceAccountCredentials {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new Error(`GCP_SA_JSON is not valid JSON: ${(err as Error).message}`);
+  } catch {
+    // Don't include the parser detail — the offset/character it cites can
+    // quote bytes from the malformed value, including private-key fragments.
+    throw new Error('GCP_SA_JSON is not valid JSON');
   }
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('GCP_SA_JSON must be a JSON object');
@@ -116,7 +118,7 @@ function parseServiceAccountJson(raw: string): ServiceAccountCredentials {
 async function buildProvider(
   client: KeyManagementServiceClient,
   keyVersion: string
-): Promise<{ provider: SigningProvider; publicKeyPem: string }> {
+): Promise<SigningProvider> {
   const [pubResp] = await client.getPublicKey({ name: keyVersion });
   const kmsAlgorithm = pubResp.algorithm ?? '';
   const pem = pubResp.pem ?? '';
@@ -131,7 +133,7 @@ async function buildProvider(
 
   assertPublicKeyMatchesCommitted(pem, keyVersion);
 
-  const provider: SigningProvider = {
+  return {
     keyid: KID,
     algorithm: ALGORITHM,
     fingerprint: keyVersion,
@@ -140,12 +142,9 @@ async function buildProvider(
         name: keyVersion,
         data: payload,
       });
-      const sig = coerceSignature(resp.signature);
-      return sig;
+      return coerceSignature(resp.signature);
     },
   };
-
-  return { provider, publicKeyPem: pem };
 }
 
 function coerceSignature(value: Buffer | Uint8Array | string | null | undefined): Uint8Array {
@@ -153,7 +152,10 @@ function coerceSignature(value: Buffer | Uint8Array | string | null | undefined)
     throw new Error('GCP KMS asymmetricSign returned no signature bytes');
   }
   if (typeof value === 'string') {
-    return new Uint8Array(Buffer.from(value, 'base64'));
+    // The Node KMS client returns Buffer in practice; the string union is
+    // declared by the proto-generated types but doesn't appear at runtime.
+    // Refuse rather than guess at an encoding.
+    throw new Error('GCP KMS asymmetricSign returned a string signature; expected Buffer/Uint8Array');
   }
   return value instanceof Uint8Array ? value : new Uint8Array(value);
 }
