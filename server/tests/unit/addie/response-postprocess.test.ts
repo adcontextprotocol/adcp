@@ -5,7 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   stripBannedRituals,
+  truncateLongResponseToShortQuestion,
   __test_BANNED_RITUAL_LITERALS,
+  __test_lengthThresholds,
 } from '../../../src/addie/response-postprocess.js';
 
 describe('stripBannedRituals', () => {
@@ -92,5 +94,93 @@ describe('stripBannedRituals', () => {
     expect(output).not.toMatch(/to be clear/i);
     expect(output).not.toMatch(/sharp question/i);
     expect(output).toContain("AdCP is a campaign-layer protocol");
+  });
+});
+
+describe('truncateLongResponseToShortQuestion', () => {
+  const { SHORT_QUESTION_MAX_WORDS, RESPONSE_CAP_WORDS, TRUNCATION_SUFFIX } = __test_lengthThresholds;
+
+  // Build a deterministic prose string of N words made of N short sentences.
+  function makeProse(words: number): string {
+    const sentences: string[] = [];
+    let used = 0;
+    let i = 0;
+    while (used < words) {
+      const w = Math.min(8, words - used);
+      // Each sentence has `w` tokens — w-1 word tokens + 1 trailing terminator-included token.
+      const tokens: string[] = [];
+      for (let j = 0; j < w - 1; j++) tokens.push(`word${i++}`);
+      tokens.push(`final${i++}.`);
+      sentences.push(tokens.join(' '));
+      used += w;
+    }
+    return sentences.join(' ');
+  }
+
+  it('returns text unchanged when the question is long', () => {
+    const longQ = Array.from({ length: SHORT_QUESTION_MAX_WORDS + 5 }, (_, i) => `q${i}`).join(' ');
+    const longResp = makeProse(RESPONSE_CAP_WORDS + 50);
+    expect(truncateLongResponseToShortQuestion(longQ, longResp)).toBe(longResp);
+  });
+
+  it('returns text unchanged when the response is at or below the cap', () => {
+    const q = "What is X?";
+    const resp = makeProse(RESPONSE_CAP_WORDS); // exactly at cap
+    expect(truncateLongResponseToShortQuestion(q, resp)).toBe(resp);
+  });
+
+  it('truncates and appends the suffix when question is short and response is long', () => {
+    const q = "What does AdCP not do?"; // 5 words
+    const resp = makeProse(300);
+    const out = truncateLongResponseToShortQuestion(q, resp);
+    expect(out).not.toBe(resp);
+    expect(out).toContain(TRUNCATION_SUFFIX.trim());
+    // Word count of body should be at or below the truncation target plus the
+    // suffix (a handful of words).
+    const bodyWords = out.replace(TRUNCATION_SUFFIX, '').trim().split(/\s+/).length;
+    expect(bodyWords).toBeLessThanOrEqual(150);
+  });
+
+  it('preserves complete sentences at the truncation boundary', () => {
+    const q = "What is X?";
+    const resp = makeProse(250);
+    const out = truncateLongResponseToShortQuestion(q, resp);
+    // Body should end with a sentence terminator before the suffix.
+    const body = out.slice(0, out.length - TRUNCATION_SUFFIX.length).trim();
+    expect(body).toMatch(/[.!?]$/);
+  });
+
+  it('keeps the first sentence even if it alone exceeds the target', () => {
+    const q = "What is X?";
+    // One giant sentence of 200 words.
+    const giant = Array.from({ length: 199 }, (_, i) => `word${i}`).join(' ') + ' end.';
+    const out = truncateLongResponseToShortQuestion(q, giant);
+    expect(out).toContain('end.');
+    expect(out).toContain(TRUNCATION_SUFFIX.trim());
+  });
+
+  it('does not truncate inside fenced code blocks', () => {
+    const q = "What is X?";
+    const codeBlock = '```\n' + Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n') + '\n```';
+    const resp = makeProse(50) + '\n\n' + codeBlock + '\n\n' + makeProse(80);
+    const out = truncateLongResponseToShortQuestion(q, resp);
+    if (out !== resp) {
+      // If we truncated, the code block should appear whole or be excluded entirely.
+      const fenceCount = (out.match(/```/g) || []).length;
+      expect(fenceCount % 2).toBe(0); // matched pairs only
+    }
+  });
+
+  it('idempotent on already-truncated text', () => {
+    const q = "What is X?";
+    const resp = makeProse(300);
+    const once = truncateLongResponseToShortQuestion(q, resp);
+    const twice = truncateLongResponseToShortQuestion(q, once);
+    expect(twice).toBe(once);
+  });
+
+  it('handles empty inputs gracefully', () => {
+    expect(truncateLongResponseToShortQuestion('', 'something')).toBe('something');
+    expect(truncateLongResponseToShortQuestion('what?', '')).toBe('');
   });
 });

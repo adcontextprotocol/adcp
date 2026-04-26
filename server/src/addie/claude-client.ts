@@ -19,7 +19,7 @@ import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummar
 import { notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
-import { stripBannedRituals } from './response-postprocess.js';
+import { stripBannedRituals, truncateLongResponseToShortQuestion } from './response-postprocess.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -767,7 +767,7 @@ export class AddieClaudeClient {
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
-        const text = stripBannedRituals(rawText);
+        const text = truncateLongResponseToShortQuestion(userMessage, stripBannedRituals(rawText));
 
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
@@ -898,7 +898,7 @@ export class AddieClaudeClient {
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
           const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
-          const text = stripBannedRituals(rawText);
+          const text = truncateLongResponseToShortQuestion(userMessage, stripBannedRituals(rawText));
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
           return {
             text,
@@ -1420,7 +1420,7 @@ export class AddieClaudeClient {
           yield {
             type: 'done',
             response: {
-              text: stripBannedRituals(fullText),
+              text: truncateLongResponseToShortQuestion(userMessage, stripBannedRituals(fullText)),
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
               flagged: !!hallucinationReason,
@@ -1451,7 +1451,7 @@ export class AddieClaudeClient {
             yield {
               type: 'done',
               response: {
-                text: stripBannedRituals(fullText),
+                text: truncateLongResponseToShortQuestion(userMessage, stripBannedRituals(fullText)),
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
                 flagged: false,
