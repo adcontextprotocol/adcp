@@ -23,6 +23,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 |-----------|---------|
 | `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
 | `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| `v3-envelope-integrity` | v3 envelope MUST carry the canonical `status` field and MUST NOT carry the v2 legacy `task_status` / `response_status` fields at the envelope root. Schema-level enforcement is immediate via `protocol-envelope.json`; the storyboard's `field_absent` checks await runner support in `@adcp/client`. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/integration/authentication). |
