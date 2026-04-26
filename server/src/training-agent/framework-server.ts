@@ -30,7 +30,7 @@ import type { Product } from '@adcp/client';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
 import { getIdempotencyStore, scopedPrincipal } from './idempotency.js';
-import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
+import { getWebhookSigningMaterial, maybeEmitCompletionWebhook } from './webhooks.js';
 import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
 import { getSession, runWithSessionContext, flushDirtySessions, sessionKeyFromArgs } from './state.js';
@@ -478,7 +478,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     version: '1.0.0',
 
     idempotency: getIdempotencyStore(),
-    webhooks: { signerKey: getWebhookSigningKey() },
+    webhooks: getWebhookSigningMaterial(),
 
     // Only `static:public` is account-scoped: it's the shared sandbox token,
     // so unscoped idempotency keys would collide across callers. Other
