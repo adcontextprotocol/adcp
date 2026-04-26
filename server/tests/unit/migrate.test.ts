@@ -234,6 +234,50 @@ describe("Database Migrations", () => {
     });
   });
 
+  describe("migrations directory invariant", () => {
+    // Real filesystem (un-mocks the fs/promises mock that the rest of the
+    // suite uses). This is a fast structural assertion — the migrations
+    // directory itself, as committed, must have no duplicate version
+    // numbers and no malformed filenames. Catches the case where two
+    // branches both passed the pull_request workflow on different snapshots
+    // of main and got merged with colliding numbers.
+    it("has no duplicate migration version numbers on disk", async () => {
+      vi.doUnmock("fs/promises");
+      const realFs = await vi.importActual<typeof import("fs/promises")>("fs/promises");
+      const { fileURLToPath } = await import("node:url");
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const migrationsDir = path.resolve(here, "../../src/db/migrations");
+
+      const files = await realFs.readdir(migrationsDir);
+      const sqlFiles = files.filter((f) => f.endsWith(".sql"));
+
+      const versionsByNumber: Record<number, string[]> = {};
+      const malformed: string[] = [];
+      for (const file of sqlFiles) {
+        const m = file.match(/^(\d+)_(.+)\.sql$/);
+        if (!m) {
+          malformed.push(file);
+          continue;
+        }
+        const version = parseInt(m[1], 10);
+        if (isNaN(version)) {
+          malformed.push(file);
+          continue;
+        }
+        (versionsByNumber[version] ||= []).push(file);
+      }
+
+      const dupes = Object.entries(versionsByNumber).filter(([, fs]) => fs.length > 1);
+      expect(
+        dupes.map(([v, fs]) => `version ${v}: ${fs.join(", ")}`),
+        "Duplicate migration version numbers found — rebase your branch and renumber the colliding migration",
+      ).toEqual([]);
+      expect(malformed, "Migration filenames must match NNN_description.sql").toEqual([]);
+
+      vi.doMock("fs/promises");
+    });
+  });
+
   describe("error handling", () => {
     it("should handle missing migrations directory", async () => {
       vi.mocked(fs.readdir).mockRejectedValue(
