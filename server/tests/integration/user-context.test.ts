@@ -31,60 +31,72 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-// Mock WorkOS client to avoid external API calls
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
-    userManagement: {
-      getUser: vi.fn().mockImplementation((userId: string) => {
-        if (userId === 'user_test_workos') {
-          return Promise.resolve({
-            id: 'user_test_workos',
-            email: 'test@example.com',
-            firstName: 'Test',
-            lastName: 'User',
-            emailVerified: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        if (userId === 'user_nonexistent') {
-          return Promise.reject(new Error('User not found'));
-        }
+// Mock WorkOS client to avoid external API calls.
+// workos-client.ts exports getWorkos() (a function), not a `workos` singleton —
+// so we export both: `workos` for any direct property access and `getWorkos` for
+// the call sites in member-context.ts (getWorkos().userManagement.*).
+vi.mock('../../src/auth/workos-client.js', () => {
+  const mockUserManagement = {
+    getUser: vi.fn().mockImplementation((userId: string) => {
+      if (userId === 'user_test_workos') {
         return Promise.resolve({
-          id: userId,
-          email: `${userId}@example.com`,
-          firstName: 'Unknown',
+          id: 'user_test_workos',
+          email: 'test@example.com',
+          firstName: 'Test',
           lastName: 'User',
           emailVerified: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-      }),
-      listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }: any) => {
-        if (userId === 'user_test_workos') {
-          return Promise.resolve({
-            data: [
-              {
-                organizationId: 'org_test_context',
-                role: { slug: 'admin' },
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          });
-        }
-        if (organizationId === 'org_test_context') {
-          return Promise.resolve({
-            data: [
-              { organizationId: 'org_test_context', userId: 'user_test_workos' },
-              { organizationId: 'org_test_context', userId: 'user_test_2' },
-            ],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
-    },
-  },
-}));
+      }
+      if (userId === 'user_nonexistent') {
+        const err: any = new Error('User not found');
+        err.status = 404;
+        return Promise.reject(err);
+      }
+      return Promise.resolve({
+        id: userId,
+        email: `${userId}@example.com`,
+        firstName: 'Unknown',
+        lastName: 'User',
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }),
+    // getWebMemberContext calls this twice: once with { userId } for the user's own
+    // memberships, and once with { organizationId } for the org's full member list.
+    listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }: any) => {
+      if (userId === 'user_test_workos') {
+        return Promise.resolve({
+          data: [
+            {
+              organizationId: 'org_test_context',
+              userId: 'user_test_workos',
+              role: { slug: 'admin' },
+              status: 'active',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        });
+      }
+      if (organizationId === 'org_test_context') {
+        return Promise.resolve({
+          data: [
+            { organizationId: 'org_test_context', userId: 'user_test_workos', status: 'active', role: { slug: 'admin' } },
+            { organizationId: 'org_test_context', userId: 'user_test_2', status: 'active', role: { slug: 'member' } },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    }),
+  };
+  const mockInstance = { userManagement: mockUserManagement };
+  return {
+    workos: mockInstance,
+    getWorkos: () => mockInstance,
+  };
+});
 
 // Mock Stripe client
 vi.mock('../../src/billing/stripe-client.js', () => ({
@@ -97,11 +109,7 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   }),
 }));
 
-// Skipped: see #3289 — Slack-path tests pass, but the WorkOS-path tests fail
-// because the route's user-lookup chain (auth/workos-client.js → various
-// db helpers) returns different shape than what the mock supplies. Needs
-// a closer look at the lookup chain or a richer WorkOS-side mock.
-describe.skip('User Context API Tests', () => {
+describe('User Context API Tests', () => {
   let server: HTTPServer;
   let app: any;
   let pool: Pool;
