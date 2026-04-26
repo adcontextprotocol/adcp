@@ -43,6 +43,19 @@ function isLapsed(ctx: MemberContext | null): boolean {
   return sinceLogin > THIRTY_DAYS_MS && sinceLogin < 3 * THIRTY_DAYS_MS;
 }
 
+/**
+ * True when the user has an in-progress certification attempt that's
+ * fresh enough to "continue." Started >45 days ago without completion
+ * usually means the learner has moved on; nudging them about it is
+ * stale-state behaviour, not re-engagement.
+ */
+function hasFreshInProgressCertification(ctx: MemberContext | null): boolean {
+  const cert = ctx?.certification;
+  if (!cert || cert.status !== 'in_progress') return false;
+  const age = Date.now() - new Date(cert.started_at).getTime();
+  return age < 45 * 24 * 60 * 60 * 1000;
+}
+
 function isLowLoginActive(ctx: MemberContext | null): boolean {
   const last = lastLoginMs(ctx);
   if (last === null) return false;
@@ -161,10 +174,15 @@ export const MEMBER_RULES: PromptRule[] = [
     id: 'persona.ladder_or_simple_starter',
     priority: 90,
     decay: false,
-    when: ({ memberContext }) =>
-      isMember(memberContext) &&
-      (persona(memberContext) === 'ladder_climber' ||
-        persona(memberContext) === 'simple_starter'),
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const p = persona(memberContext);
+      if (p !== 'ladder_climber' && p !== 'simple_starter') return false;
+      // Once the learner is in a certification, "Continue certification"
+      // (id: cert.continue_in_progress) is more accurate than "Start with
+      // the Academy."
+      return !hasFreshInProgressCertification(memberContext);
+    },
     label: 'Start with the Academy',
     prompt: 'Which Academy module should I start with?',
   },
@@ -192,6 +210,18 @@ export const MEMBER_RULES: PromptRule[] = [
       memberContext?.organization?.membership_tier === 'individual_academic',
     label: 'Upgrade for Slack & working group access',
     prompt: 'What do I get if I upgrade from Explorer?',
+  },
+  {
+    id: 'cert.continue_in_progress',
+    priority: 93,
+    // Never auto-suppress: re-engaging a stalled learner is exactly the
+    // high-value case. The 45-day freshness guard inside `when` handles
+    // genuinely abandoned attempts.
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && hasFreshInProgressCertification(memberContext),
+    label: 'Continue certification',
+    prompt: 'Pick up where I left off in certification.',
   },
   {
     id: 'profile.incomplete',

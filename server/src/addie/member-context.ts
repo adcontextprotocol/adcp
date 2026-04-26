@@ -14,6 +14,7 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
+import { getLatestAttempt } from '../db/certification-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -101,6 +102,32 @@ async function getPendingContentForUser(
   }
 
   return { total, by_committee: byCommittee };
+}
+
+/**
+ * Fetch the most recent certification attempt for the user — prefer a
+ * still-in-progress attempt so the "Continue certification" prompt
+ * always points at unfinished work; fall back to the most recent
+ * completed attempt for context.
+ *
+ * `last_activity_at` here means "started_at, or completed_at if completed."
+ * It's not a true last-touch timestamp (the schema doesn't track that),
+ * which is why the cert prompt rule uses a 45-day freshness guard against
+ * `started_at` rather than trying to infer engagement from this field.
+ */
+async function fetchCertification(
+  workosUserId: string,
+): Promise<MemberContext['certification']> {
+  const latest = await getLatestAttempt(workosUserId);
+  if (!latest) return undefined;
+  const lastActivityIso = latest.completed_at ?? latest.started_at;
+  return {
+    track_id: latest.track_id,
+    module_id: latest.module_id,
+    status: latest.status,
+    started_at: new Date(latest.started_at),
+    last_activity_at: new Date(lastActivityIso),
+  };
 }
 
 /**
@@ -345,6 +372,24 @@ export interface MemberContext {
   };
 
   /**
+   * Most recent certification attempt for this user, if any. Used by the
+   * "Continue certification" suggested-prompt rule and by Addie's tools
+   * to anchor learner conversations on the right module.
+   */
+  certification?: {
+    /** Track id (e.g. 'A', 'B') of the latest attempt. */
+    track_id: string;
+    /** Module id of the latest attempt (may be null for old rows). */
+    module_id: string | null;
+    /** Status of that attempt. */
+    status: 'in_progress' | 'passed' | 'failed';
+    /** When that attempt was started. */
+    started_at: Date;
+    /** When the user last touched the attempt — last completed_at if any, else started_at. */
+    last_activity_at: Date;
+  };
+
+  /**
    * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
    * suppress themselves after being shown without action. Map is keyed
    * by rule_id; absent keys mean the rule has never been shown.
@@ -576,6 +621,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, workosUserId }, 'Addie: Failed to load prompt telemetry');
     }
 
+    // Latest certification attempt — drives the "Continue certification" prompt.
+    try {
+      context.certification = await fetchCertification(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load certification context');
+    }
+
     // Process subscription info
     if (subscriptionInfo && subscriptionInfo.status !== 'none') {
       context.subscription = {
@@ -778,6 +830,12 @@ async function resolveContextFromLocalDb(
     context.prompt_telemetry = await getTelemetryForUser(workosUserId);
   } catch (error) {
     logger.warn({ error, workosUserId }, 'Addie Web: Failed to load prompt telemetry');
+  }
+
+  try {
+    context.certification = await fetchCertification(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load certification context');
   }
 
   try {
