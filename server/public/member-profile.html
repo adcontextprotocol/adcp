@@ -1004,6 +1004,11 @@
                     <button type="button" onclick="copyDomainClaimField('value', this)" style="padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
                   </div>
 
+                  <div style="margin-bottom: var(--space-3); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+                    <button type="button" onclick="copyDomainClaimAll(this)" style="padding: var(--space-2) var(--space-3); background: var(--color-bg-card); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm); cursor: pointer;">Copy all (for IT)</button>
+                    <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Self-contained text block to paste into a ticket.</span>
+                  </div>
+
                   <label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
                     <input type="checkbox" id="domain-claim-adopt-prior" style="margin: 0;">
                     Inherit prior brand identity (only check if a previous owner relinquished this domain and you want their logos / colors / agents as a starting point — typical for acquisitions).
@@ -1944,6 +1949,32 @@
       if (!text || !btn) return;
       var original = btn.textContent;
       navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+      });
+    }
+
+    // Self-contained DNS instructions an admin can paste into an IT ticket.
+    // CMOs / CTOs typically don't publish DNS themselves; this gives them a
+    // hand-off block their IT team can act on without bouncing back for
+    // clarification.
+    function copyDomainClaimAll(btn) {
+      var domain = (currentProfile && currentProfile.primary_brand_domain) || '';
+      var fqdn = document.getElementById('domain-claim-record-name').textContent || '';
+      var token = document.getElementById('domain-claim-record-value').textContent || '';
+      if (!fqdn || !token || !btn) return;
+      var block =
+        'Domain: ' + domain + '\n' +
+        'Add a DNS TXT record:\n' +
+        '  Name:  ' + fqdn + '\n' +
+        '  Type:  TXT\n' +
+        '  Value: ' + token + '\n' +
+        '  TTL:   300 (or your registrar\'s minimum)\n' +
+        '\n' +
+        'Once published, propagation is usually 5-15 minutes (sometimes longer with slow registrars). The brand admin will run verification at:\n' +
+        '  https://agenticadvertising.org/member-profile\n';
+      var original = btn.textContent;
+      navigator.clipboard.writeText(block).then(function() {
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = original; }, 2000);
       });
