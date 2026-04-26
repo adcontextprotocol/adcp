@@ -322,6 +322,118 @@ describe('buildSuggestedPrompts', () => {
     });
   });
 
+  describe('certification continuation', () => {
+    it('shows Continue certification when a fresh attempt is in_progress', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: DAYS_AGO(7),
+          last_activity_at: DAYS_AGO(2),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Continue certification');
+    });
+
+    it('does not show the cert prompt when the latest attempt is passed', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'passed',
+          started_at: DAYS_AGO(30),
+          last_activity_at: DAYS_AGO(20),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+    });
+
+    it('does not show the cert prompt when the latest attempt is failed', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'failed',
+          started_at: DAYS_AGO(30),
+          last_activity_at: DAYS_AGO(20),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+    });
+
+    it('does not show the cert prompt when there is no attempt', () => {
+      const ctx = makeMember({ certification: undefined });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+    });
+
+    it('does not show the cert prompt when the attempt is older than 45 days (stale)', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: DAYS_AGO(60),
+          last_activity_at: DAYS_AGO(60),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue certification');
+    });
+
+    it('cert continuation outranks profile completeness', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const certIdx = labels.indexOf('Continue certification');
+      const profileIdx = labels.indexOf('Complete my profile');
+      expect(certIdx).toBeGreaterThanOrEqual(0);
+      expect(profileIdx).toBeGreaterThanOrEqual(0);
+      expect(certIdx).toBeLessThan(profileIdx);
+    });
+
+    it('cert continuation outranks lapsed re-engagement (concrete unfinished thing wins)', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+        engagement: { login_count_30d: 0, last_login: DAYS_AGO(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const certIdx = labels.indexOf('Continue certification');
+      const lapsedIdx = labels.indexOf("What's new since you were last here?");
+      expect(certIdx).toBeGreaterThanOrEqual(0);
+      expect(lapsedIdx).toBeGreaterThanOrEqual(0);
+      expect(certIdx).toBeLessThan(lapsedIdx);
+    });
+
+    it('suppresses Start with the Academy persona prompt when learner is mid-cert', () => {
+      const ctx = makeMember({
+        persona: { persona: 'ladder_climber', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue certification');
+      expect(labels).not.toContain('Start with the Academy');
+    });
+
+    it('still shows Start with the Academy when ladder_climber has no in-progress cert', () => {
+      const ctx = makeMember({
+        persona: { persona: 'ladder_climber', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        certification: undefined,
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Start with the Academy');
+    });
+  });
+
   describe('profile and working groups', () => {
     it('shows Complete my profile when completeness < 80', () => {
       const ctx = makeMember({
