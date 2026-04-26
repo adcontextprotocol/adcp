@@ -389,6 +389,11 @@ describe('buildSuggestedPrompts', () => {
       expect(matchRuleIdFromMessage('My next event is coming up. What do I need to know?'))
         .toBe('event.upcoming_registered');
     });
+
+    it('does not fire for non-members even with an upcoming event', () => {
+      const ctx = makeMember({ is_member: false, next_event: event(7) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
   });
 
   describe('agent stale-test rule', () => {

@@ -169,11 +169,16 @@ async function fetchPerspectives(
 async function fetchNextEvent(
   workosUserId: string,
 ): Promise<MemberContext['next_event']> {
+  // Only count registrations the user is actually attending —
+  // 'cancelled' and 'no_show' should never produce a prep prompt.
+  // 'waitlisted' counts because the user has expressed intent and may
+  // get a seat as the event approaches.
   const result = await query<{ title: string; slug: string; start_time: Date }>(
     `SELECT e.title, e.slug, e.start_time
        FROM event_registrations r
        JOIN events e ON e.id = r.event_id
        WHERE r.workos_user_id = $1
+         AND r.registration_status IN ('registered', 'waitlisted')
          AND e.start_time > NOW()
          AND e.status = 'published'
        ORDER BY e.start_time ASC
