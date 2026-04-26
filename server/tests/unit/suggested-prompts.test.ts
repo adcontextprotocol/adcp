@@ -627,6 +627,16 @@ describe('buildSuggestedPrompts', () => {
         .toBe('cert.continue_in_progress');
     });
 
+    it('matches cert clicks via track-only phrasing when no module_id', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with C. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('matches cert clicks for ids with underscores (future-proof)', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with A1_intro. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
     it('matches the cert continuation rule via the generic fallback phrasing', () => {
       expect(matchRuleIdFromMessage('Pick up where I left off in certification.'))
         .toBe('cert.continue_in_progress');

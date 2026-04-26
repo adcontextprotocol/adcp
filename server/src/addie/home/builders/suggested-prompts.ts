@@ -56,7 +56,10 @@ function evaluate(
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
 
   // Resolve dynamic labels/prompts once per rule so dedup-by-label
-  // operates on the rendered text, not the function reference.
+  // operates on the rendered text, not the function reference. If a
+  // dynamic rule ever renders to the same label as a higher-priority
+  // static rule, the higher-priority rule wins (priority sort above
+  // runs first); the dynamic rule is dropped from this render.
   const ruleCtx: PromptRuleContext = ctx;
   const seenLabels = new Set<string>();
   const picked: { rule: PromptRule; label: string; prompt: string }[] = [];

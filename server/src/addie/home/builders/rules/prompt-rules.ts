@@ -243,9 +243,12 @@ export const MEMBER_RULES: PromptRule[] = [
         : 'Pick up where I left off in certification.';
     },
     // Dynamic prompt → can't live in the static reverse-index. Match
-    // against either the module-specific or the generic phrasing.
+    // against either the module-specific or the generic phrasing. The
+    // character class stays in sync with certModuleLabel's output (the
+    // module_id or track_id from the certification schema) — \w lets
+    // future ids like 'A1_intro' still register as a click on this rule.
     matchClick: (msg) =>
-      /^Let's keep going with [A-Za-z0-9-]+\. Where did we leave off\?$/.test(msg) ||
+      /^Let's keep going with [\w-]+\. Where did we leave off\?$/.test(msg) ||
       msg === 'Pick up where I left off in certification.',
   },
   {
