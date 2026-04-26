@@ -1326,7 +1326,16 @@ export class OrganizationDatabase {
     }>(
       `SELECT workos_organization_id, name, stripe_customer_id
        FROM organizations
-       WHERE stripe_customer_id IS NOT NULL`
+       WHERE stripe_customer_id IS NOT NULL
+       ORDER BY workos_organization_id`
+    );
+
+    // Set of every Stripe customer that is some org's linked customer.
+    // We use this to avoid reporting another org's linked customer as an
+    // "orphan" of *this* org — that situation is a metadata conflict, not
+    // a duplicate, and is already surfaced by findStripeCustomerConflicts.
+    const allLinkedCustomerIds = new Set(
+      linkedOrgsResult.rows.map((r) => r.stripe_customer_id),
     );
 
     const mismatches: Mismatch[] = [];
@@ -1355,10 +1364,14 @@ export class OrganizationDatabase {
       // Pass 1: metadata — orphan customer's metadata points at this org.
       // This pass runs even when the linked customer is missing from Stripe
       // (e.g., deleted) — the legacy detector worked that way too.
+      // Skip candidates that are another org's linked customer; that's a
+      // metadata conflict (handled by findStripeCustomerConflicts), not a
+      // duplicate, and reporting it here would double-flag the row.
       for (const candidate of allCustomers) {
         if (
           candidate.metadataWorkosOrgId === org.workos_organization_id &&
-          candidate.id !== org.stripe_customer_id
+          candidate.id !== org.stripe_customer_id &&
+          !allLinkedCustomerIds.has(candidate.id)
         ) {
           recordPair(org, candidate, 'metadata');
         }
@@ -1373,6 +1386,9 @@ export class OrganizationDatabase {
 
       for (const candidate of allCustomers) {
         if (candidate.id === linkedCustomer.id || candidate.deleted) continue;
+        // Same exclusion as the metadata pass: another org's linked customer
+        // is not an orphan of this org.
+        if (allLinkedCustomerIds.has(candidate.id)) continue;
 
         // Pass 2: email match (case-insensitive, trimmed).
         if (

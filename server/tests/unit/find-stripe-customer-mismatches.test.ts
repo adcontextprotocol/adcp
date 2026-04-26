@@ -281,6 +281,85 @@ describe('findStripeCustomerMismatches', () => {
     });
   });
 
+  it("does not flag another org's linked customer as an orphan even when its metadata points at this org (would be a metadata conflict, not a duplicate)", async () => {
+    // cus_B is org_B's linked customer, but its metadata says it belongs to
+    // org_A. The legacy duplicate detector would have reported this as an
+    // orphan of org_A. That's wrong — it's a metadata-conflict (handled by
+    // findStripeCustomerConflicts), not a duplicate.
+    mockListAllStripeCustomers.mockResolvedValue([
+      makeCustomer({ id: 'cus_A', email: 'a@x.com', name: 'Org A' }),
+      makeCustomer({
+        id: 'cus_B',
+        email: 'b@y.com',
+        name: 'Org B',
+        metadataWorkosOrgId: 'org_A',
+      }),
+    ]);
+    mockListLiveSubCustomerIds.mockResolvedValue(new Set());
+    mockPoolQuery.mockResolvedValue({
+      rows: [
+        { workos_organization_id: 'org_A', name: 'Org A', stripe_customer_id: 'cus_A' },
+        { workos_organization_id: 'org_B', name: 'Org B', stripe_customer_id: 'cus_B' },
+      ],
+    });
+
+    const result = await db.findStripeCustomerMismatches();
+
+    expect(result).toEqual([]);
+  });
+
+  it("excludes another org's linked customer from email/name passes too", async () => {
+    // cus_legit_B is the legit linked customer for org_B but happens to
+    // share an email/name with org_A's linked customer (e.g., founder runs
+    // both orgs on the same email). It must NOT be reported as an orphan
+    // of org_A.
+    mockListAllStripeCustomers.mockResolvedValue([
+      makeCustomer({ id: 'cus_legit_A', email: 'shared@x.com', name: 'Shared Co' }),
+      makeCustomer({ id: 'cus_legit_B', email: 'shared@x.com', name: 'Shared Co' }),
+    ]);
+    mockListLiveSubCustomerIds.mockResolvedValue(
+      new Set(['cus_legit_A', 'cus_legit_B']),
+    );
+    mockPoolQuery.mockResolvedValue({
+      rows: [
+        { workos_organization_id: 'org_A', name: 'Shared Co A', stripe_customer_id: 'cus_legit_A' },
+        { workos_organization_id: 'org_B', name: 'Shared Co B', stripe_customer_id: 'cus_legit_B' },
+      ],
+    });
+
+    const result = await db.findStripeCustomerMismatches();
+
+    expect(result).toEqual([]);
+  });
+
+  it('flags a deleted orphan with stale metadata (admins still want to see and clean these)', async () => {
+    // The metadata pass intentionally does not skip deleted candidates —
+    // a deleted customer with stale metadata pointing at an org is still
+    // useful to surface so admins can confirm the cleanup is complete.
+    mockListAllStripeCustomers.mockResolvedValue([
+      makeCustomer({ id: 'cus_linked', email: 'a@x.com', name: 'Org A' }),
+      makeCustomer({
+        id: 'cus_deleted_orphan',
+        email: 'a@x.com',
+        name: 'Org A',
+        metadataWorkosOrgId: 'org_A',
+        deleted: true,
+      }),
+    ]);
+    mockListLiveSubCustomerIds.mockResolvedValue(new Set());
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ workos_organization_id: 'org_A', name: 'Org A', stripe_customer_id: 'cus_linked' }],
+    });
+
+    const result = await db.findStripeCustomerMismatches();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      stripe_metadata_customer_id: 'cus_deleted_orphan',
+      match_reason: 'metadata',
+    });
+  });
+
   it('returns multiple orphans when one org has several duplicates', async () => {
     mockListAllStripeCustomers.mockResolvedValue([
       makeCustomer({ id: 'cus_linked', email: 'a@x.com', name: 'Org A' }),
