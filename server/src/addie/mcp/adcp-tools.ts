@@ -679,7 +679,7 @@ export function createAdcpToolHandlers(
 
     try {
       const { AdCPClient } = await import('@adcp/client');
-      const { getGcpKmsSigningProvider } = await import('../../security/gcp-kms-signer.js');
+      const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
 
       // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
       // when configured. Verifiers fetch the public key from
@@ -693,7 +693,7 @@ export function createAdcpToolHandlers(
       // result rendered to the end user.
       let signingProvider;
       try {
-        signingProvider = await getGcpKmsSigningProvider();
+        signingProvider = await getRequestSigningProvider();
       } catch (kmsErr) {
         logger.error({ err: kmsErr, agentUrl, task }, 'GCP KMS signing provider init failed');
         return '**Error:** Outbound AdCP signing is misconfigured. Operator: check structured logs for KMS init failure (gcp-kms-signer module).';
