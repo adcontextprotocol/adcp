@@ -3751,6 +3751,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         args: handlerArgs,
         response: cachableResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+        principal: idempotencyPrincipal,
       });
     }
 
