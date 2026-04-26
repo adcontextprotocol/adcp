@@ -38,29 +38,35 @@ describe('checkCostCap', () => {
   });
 
   it('blocks the call that crosses the daily budget', async () => {
-    // Burn the anonymous budget ($1 = 1,000,000 micros) by recording
-    // one big charge, then check.
-    await recordCost('u-cap', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
-    // 66_667 × 15 = 1_000_005 micros — just over the $1 cap.
+    // Burn just over the anonymous budget ($3 in current config) with one
+    // big Opus charge. Opus input is $15/M-token, so to push past $3 we
+    // need >200,000 input tokens (200_000 × 15 = 3,000,000 micros = $3.00).
+    // Use 200,001 to land just above the cap.
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('u-cap', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
     const result = await checkCostCap('u-cap', 'anonymous');
     expect(result.ok).toBe(false);
     expect(result.remainingUsd).toBe(0);
-    expect(result.spentCents).toBeGreaterThanOrEqual(100);
+    expect(result.spentCents).toBeGreaterThanOrEqual(DAILY_BUDGET_USD.anonymous * 100);
     expect(result.retryAfterMs).toBeGreaterThan(0);
     expect(result.tier).toBe('anonymous');
   });
 
   it('tracks users independently', async () => {
-    await recordCost('u-heavy', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('u-heavy', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
     expect((await checkCostCap('u-heavy', 'anonymous')).ok).toBe(false);
     expect((await checkCostCap('u-light', 'anonymous')).ok).toBe(true);
   });
 
   it('applies different budgets per tier — paying members get more headroom', async () => {
-    // Burn ~$3 (well over anonymous/free caps, under member_paid's $25).
-    await recordCost('u-tier', 'claude-sonnet-4-6', { input_tokens: 1_000_000, output_tokens: 0 });
+    // Burn an amount that exceeds anonymous + member_free but stays under
+    // member_paid. member_free is $5, anonymous is $3, member_paid is $25.
+    // Sonnet input is $3/M-token; 2_000_000 tokens = $6 — over both lower
+    // tiers, well under member_paid.
+    await recordCost('u-tier', 'claude-sonnet-4-6', { input_tokens: 2_000_000, output_tokens: 0 });
     expect((await checkCostCap('u-tier', 'anonymous')).ok).toBe(false);
-    expect((await checkCostCap('u-tier', 'member_free')).ok).toBe(true);
+    expect((await checkCostCap('u-tier', 'member_free')).ok).toBe(false);
     expect((await checkCostCap('u-tier', 'member_paid')).ok).toBe(true);
   });
 
@@ -156,7 +162,9 @@ describe('rolling 24h window semantics', () => {
 
   it('expires charges older than 24h so the cap resets on their anniversary', async () => {
     // Record a big charge that exhausts the anonymous cap at T0.
-    await recordCost('u-roll', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+    // Opus is $15/M-token input, so 200_001 tokens = just over $3.
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('u-roll', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
     expect((await checkCostCap('u-roll', 'anonymous')).ok).toBe(false);
 
     // At T+23h the charge is still in-window — still blocked.
@@ -175,11 +183,14 @@ describe('rolling 24h window semantics', () => {
     // Three separate charges 30 min apart. When the cap trips on
     // the third, `retryAfterMs` reflects the OLDEST charge's
     // remaining time — not a fixed midnight or similar boundary.
-    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: 22_223, output_tokens: 0 });
+    // Each charge ~$1 (a third of the anonymous cap), so all three
+    // together push past $3.
+    const perChargeTokens = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15 / 3) + 1;
+    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: perChargeTokens, output_tokens: 0 });
     vi.advanceTimersByTime(30 * 60 * 1000);
-    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: 22_223, output_tokens: 0 });
+    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: perChargeTokens, output_tokens: 0 });
     vi.advanceTimersByTime(30 * 60 * 1000);
-    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: 22_223, output_tokens: 0 });
+    await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: perChargeTokens, output_tokens: 0 });
 
     const result = await checkCostCap('u-slide', 'anonymous');
     expect(result.ok).toBe(false);
@@ -197,8 +208,10 @@ describe('scope-key shape independence', () => {
   beforeEach(() => __setCostTrackerStore(__createInMemoryCostStore()));
 
   it('keys Slack, WorkOS, and anonymous scopes as distinct users', async () => {
-    // Burn a WorkOS-style user's budget.
-    await recordCost('user_01H9ABCDEFG', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+    // Burn a WorkOS-style user's budget. Need >cap × $1M-tokens / $15-per-M
+    // to exceed the anonymous cap with one Opus charge.
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('user_01H9ABCDEFG', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
     expect((await checkCostCap('user_01H9ABCDEFG', 'anonymous')).ok).toBe(false);
 
     // A Slack-namespaced caller on the same underlying Slack user
@@ -213,7 +226,8 @@ describe('scope-key shape independence', () => {
     // A would-be spoofer that happens to have a `system:` prefix
     // but isn't on the literal allowlist gets limited like anyone
     // else (matches the tool-rate-limiter's literal-allowlist rule).
-    await recordCost('system:fake', 'claude-opus-4-7', { input_tokens: 66_667, output_tokens: 0 });
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('system:fake', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
     expect((await checkCostCap('system:fake', 'anonymous')).ok).toBe(false);
 
     // The real system user is still exempt and runs uncapped.

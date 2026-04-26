@@ -1,0 +1,4 @@
+---
+---
+
+Closes most of the Addie redteam baseline failures with two changes: (1) anonymous chat now defaults to Sonnet rather than Haiku — the daily-cap and per-IP rate limit already bound total spend, and Sonnet substantially better follows the response-style.md negative instructions ("don't say 'great question'") and avoids the fabrication patterns we saw in flagged threads; override via `ADDIE_ANONYMOUS_MODEL` if cost forces a downgrade. (2) A deterministic post-processor strips banned ritual phrases ("the honest answer is", "great question", "to be clear,", etc.) from assistant text before it reaches the user, so even Haiku-mode anonymous responses (and any future regressions) can't leak the phrases. Strip is applied outside fenced code blocks, re-capitalizes following sentences, and is idempotent.

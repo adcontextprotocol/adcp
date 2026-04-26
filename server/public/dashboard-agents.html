@@ -1250,6 +1250,8 @@
           ? timeAgo(new Date(cs.last_checked_at))
           : 'never';
 
+        const isPublic = cs.status !== 'opted_out';
+
         return `
           <div class="agent-compliance-card" id="${cardId}">
             <div class="agent-compliance-header">
@@ -1258,6 +1260,12 @@
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
                 <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
                 ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
+                <label class="agent-toggle" title="Show compliance on public registry">
+                  <input type="checkbox" class="registry-visibility-toggle" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">
+                  <span class="agent-toggle-label">Show on registry</span>
+                </label>
               </div>
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
@@ -1319,6 +1327,33 @@
     // flight, cleared when the re-render completes. Prevents a stale
     // click from racing the countdown auto-trigger (#2938).
     const retryInFlight = new Set();
+
+    document.addEventListener('change', async function(e) {
+      const checkbox = e.target.closest('.registry-visibility-toggle');
+      if (!checkbox) return;
+
+      const agentUrl = checkbox.dataset.agentUrl;
+      checkbox.disabled = true;
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/opt-out`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ opt_out: !checkbox.checked }),
+        });
+        if (!res.ok) {
+          checkbox.checked = !checkbox.checked;
+          return;
+        }
+        const state = await fetchAgentState({ url: agentUrl });
+        pageState.complianceMap.set(agentUrl, state);
+        swapAgentCard(agentUrl);
+      } catch {
+        checkbox.checked = !checkbox.checked;
+      } finally {
+        checkbox.disabled = false;
+      }
+    });
 
     // Swap a single agent's card in the DOM with freshly-rendered HTML
     // from renderAgentsSection. Used by both retry paths and the

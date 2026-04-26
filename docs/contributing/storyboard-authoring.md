@@ -277,6 +277,29 @@ The parallel-optional-phases + `assert_contribution` shape is only appropriate w
 
 If you find yourself reaching for the split-phase pattern to get past a failing vector, first verify the spec actually permits the branch you want to accept. If it doesn't, the fix is in the agent (or in the spec), not in the vector.
 
+## Adding a catalog-substitution-safety phase to a new specialism
+
+If you are adding a specialism that renders catalog-item macros into URLs
+(catalog-driven sales, generative sellers, retail-media, etc.), your storyboard
+SHOULD include a substitution-safety phase covering the rule set at
+[`docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros`](../creative/universal-macros.mdx#substitution-safety-catalog-item-macros).
+
+**Start from the template, don't copy-paste from a sibling specialism.** The
+canonical three-step phase (`sync_*_probe_catalog` → `build_*_probe_creative`
+→ `expect_substitution_safe`) lives as a `phase_template:` comment block in
+[`static/compliance/source/test-kits/substitution-observer-runner.yaml`](../../static/compliance/source/test-kits/substitution-observer-runner.yaml).
+The block uses `<<PLACEHOLDER>>` tokens for the specialism-specific bits
+(brand domain, catalog_id prefix, idempotency prefix) so you can materialize a
+new phase by doing a simple text substitution against those tokens.
+
+Copying a near-clone from `sales-catalog-driven` or `creative-generative`
+works in principle, but the DX reviewer on [#2654](https://github.com/adcontextprotocol/adcp/issues/2654)
+flagged that three consumers is the inflection point where trivial drift
+starts (misspelled `item_id`, missing `require_every_binding_observed: true`).
+The template is the drift-avoidance surface; the `lint:substitution-vector-names`
+script ([#2655](https://github.com/adcontextprotocol/adcp/issues/2655))
+catches typos in the vector_name references.
+
 ## Running the lint locally
 
 ```bash
