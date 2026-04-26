@@ -1006,9 +1006,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (channel === 'web') {
       lines.push('**Status**: Anonymous user (not signed in)');
       lines.push('');
-      lines.push('This user is browsing the web chat without signing in.');
-      lines.push('You have access to directory tools (list_members, get_member, list_agents, get_agent, validate_agent, lookup_domain, list_publishers) to answer questions about members, agents, and publishers.');
-      lines.push('You do NOT have documentation search or protocol research tools. For questions about AdCP protocol details, schemas, or technical documentation, suggest the user sign in for free at https://agenticadvertising.org for a better experience.');
+      lines.push('This user is browsing the web chat without signing in. You still have a real toolkit — use it before deflecting to sign-in.');
+      lines.push('Anonymous-safe tools you DO have: `search_docs`, `get_doc`, `search_repos`, `search_resources`, `get_recent_news` (documentation and research over public content); `list_members`, `get_member`, `list_agents`, `get_agent`, `validate_agent`, `lookup_domain`, `list_publishers` (public directory); plus everything in ALWAYS_AVAILABLE (escalation, account-linking, content submission).');
+      lines.push('Tools that genuinely require sign-in: anything that touches a member profile, billing, working-group membership, certification progression, or admin actions. Those are reasonable sign-in nudges.');
+      lines.push('Do NOT tell the user you lack documentation search — you have it. Run the tool before claiming it is unavailable.');
       lines.push('');
       return lines.join('\n');
     }

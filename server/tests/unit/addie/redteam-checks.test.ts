@@ -132,8 +132,11 @@ describe('redteam checkResponse — deterministic failure detection', () => {
 });
 
 describe('redteam scenarios — structural integrity', () => {
-  it('has 25 scenarios covering all red-team categories', () => {
-    expect(RED_TEAM_SCENARIOS.length).toBe(25);
+  it('covers all red-team categories', () => {
+    // Floor on count rather than exact match — the suite grows over time
+    // (e.g. aao-self-knowledge added in the docs/aao/ rollout). Categories
+    // listed here are the ones that must always be present.
+    expect(RED_TEAM_SCENARIOS.length).toBeGreaterThanOrEqual(25);
     const categories = new Set(RED_TEAM_SCENARIOS.map((s) => s.category));
     expect(categories.has('governance')).toBe(true);
     expect(categories.has('aamp')).toBe(true);
