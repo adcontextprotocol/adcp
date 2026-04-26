@@ -40,6 +40,9 @@ export interface DedupArgs {
  * Outcome of the dedup decision. Caller (http.ts) uses `kind` to wire the
  * downstream behavior:
  *   - `no_duplicate`        → normal flow (handleSubscriptionCreated + org UPDATE)
+ *   - `retry_skip`          → skip UPDATE and activation hooks. Fires on
+ *                              webhook retries where the sub arg is already
+ *                              non-live (we canceled it on a prior invocation).
  *   - `canceled_new`        → skip UPDATE so the surviving sub's row state stays
  *   - `canceled_existing`   → let UPDATE run (the new sub becomes the tracked
  *                              one), but don't fire fresh-activation hooks —
@@ -49,6 +52,7 @@ export interface DedupArgs {
  */
 export type DedupOutcome =
   | { kind: 'no_duplicate' }
+  | { kind: 'retry_skip' }
   | { kind: 'canceled_new'; existingLiveSubIds: string[] }
   | { kind: 'canceled_existing'; canceledSubId: string; survivingNewSubId: string }
   | { kind: 'manual_review'; allLiveSubIds: string[]; reason: string };
@@ -75,8 +79,10 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
   // Stripe retries `customer.subscription.created` on 5xx / slow handlers.
   // On retry the new sub will already be canceled by the prior invocation;
   // skip cleanly so we don't try to cancel-again (returns 400) and re-alert.
+  // Caller must ALSO skip the org-row UPDATE — running it would overwrite
+  // the surviving sub's state with the canceled retry's `status: 'canceled'`.
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
-    return { kind: 'no_duplicate' };
+    return { kind: 'retry_skip' };
   }
 
   let liveSubs: Stripe.Subscription[];
@@ -196,6 +202,15 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
   };
 }
 
+/**
+ * Strict "money actually moved" check. Returns true only for `status: 'paid'`.
+ * Stripe's other invoice statuses are intentionally treated as unpaid:
+ *   - `null`               → no invoice yet (timing of webhook event)
+ *   - `'draft'` / `'open'` → not collected yet
+ *   - `'uncollectible'`    → Stripe wrote it off after retries
+ *   - `'void'`             → invoice was canceled
+ *   - unexpanded string id → can't tell; safer to treat as unpaid
+ */
 function isLatestInvoicePaid(
   latestInvoice: Stripe.Subscription['latest_invoice'],
 ): boolean {

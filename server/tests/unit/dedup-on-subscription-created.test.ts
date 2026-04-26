@@ -128,7 +128,10 @@ describe('dedupOnSubscriptionCreated', () => {
       expect(stripe.subscriptions.cancel).not.toHaveBeenCalled();
     });
 
-    it('returns no_duplicate without listing when the new sub is already canceled (webhook retry)', async () => {
+    it('returns retry_skip without listing when the new sub is already canceled (webhook retry)', async () => {
+      // Critical: must not return no_duplicate here — that would let the
+      // webhook handler run UPDATE on the canceled sub and overwrite the
+      // surviving sub's row state with `status: 'canceled'`.
       const newSub = makeSub('sub_new', 'canceled');
       const list = vi.fn().mockResolvedValue({ data: [] });
       const cancel = vi.fn();
@@ -143,10 +146,28 @@ describe('dedupOnSubscriptionCreated', () => {
         notifySystemError,
       });
 
-      expect(result.kind).toBe('no_duplicate');
+      expect(result.kind).toBe('retry_skip');
       expect(list).not.toHaveBeenCalled();
       expect(cancel).not.toHaveBeenCalled();
       expect(notifySystemError).not.toHaveBeenCalled();
+    });
+
+    it('returns retry_skip when the new sub is incomplete_expired (treats as already-handled)', async () => {
+      const newSub = makeSub('sub_new', 'incomplete_expired');
+      const list = vi.fn().mockResolvedValue({ data: [] });
+      const stripe = makeStripe({ list });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('retry_skip');
+      expect(list).not.toHaveBeenCalled();
     });
 
     it('falls through to no_duplicate when subscriptions.list throws (transient Stripe blip)', async () => {
@@ -391,6 +412,105 @@ describe('dedupOnSubscriptionCreated', () => {
       const msg = notifySystemError.mock.calls[0][0].errorMessage;
       expect(msg).toContain('paid=(none)');
       expect(msg).toContain('unpaid=sub_new,sub_other');
+    });
+
+    it('returns manual_review when 3+ live subs are all paid', async () => {
+      // Three concurrent paid subs is rare but possible; auto-canceling
+      // any of them risks discarding real revenue.
+      const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'paid' });
+      const a = makeSub('sub_a', 'active', { latest_invoice_status: 'paid' });
+      const b = makeSub('sub_b', 'active', { latest_invoice_status: 'paid' });
+      const cancel = vi.fn();
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, a, b] }),
+        cancel,
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('manual_review');
+      if (result.kind === 'manual_review') {
+        expect(result.allLiveSubIds).toEqual(['sub_new', 'sub_a', 'sub_b']);
+        expect(result.reason).toContain('all paid');
+      }
+      expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it('returns manual_review when 3+ live subs are all unpaid', async () => {
+      const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'open' });
+      const a = makeSub('sub_a', 'active', { latest_invoice_status: 'open' });
+      const b = makeSub('sub_b', 'active', { latest_invoice_status: 'draft' });
+      const cancel = vi.fn();
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, a, b] }),
+        cancel,
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('manual_review');
+      if (result.kind === 'manual_review') {
+        expect(result.reason).toContain('all unpaid');
+      }
+      expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it('treats latest_invoice = uncollectible as unpaid (Stripe wrote it off after retries)', async () => {
+      const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'uncollectible' });
+      const existing = makeSub('sub_existing', 'active', { latest_invoice_status: 'paid' });
+      const cancel = vi.fn().mockResolvedValue({} as Stripe.Subscription);
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
+        cancel,
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_new');
+      expect(cancel).toHaveBeenCalledWith('sub_new', { prorate: true });
+    });
+
+    it('treats latest_invoice = void as unpaid (Stripe canceled the invoice)', async () => {
+      const newSub = makeSub('sub_new', 'active', { latest_invoice_status: 'void' });
+      const existing = makeSub('sub_existing', 'active', { latest_invoice_status: 'paid' });
+      const cancel = vi.fn().mockResolvedValue({} as Stripe.Subscription);
+      const stripe = makeStripe({
+        list: vi.fn().mockResolvedValue({ data: [newSub, existing] }),
+        cancel,
+      });
+
+      const result = await dedupOnSubscriptionCreated({
+        subscription: newSub,
+        customerId: 'cus_test',
+        orgId: 'org_test',
+        stripe,
+        logger,
+        notifySystemError,
+      });
+
+      expect(result.kind).toBe('canceled_new');
+      expect(cancel).toHaveBeenCalledWith('sub_new', { prorate: true });
     });
 
     it('returns manual_review when 3+ live subs and ambiguous payment state', async () => {

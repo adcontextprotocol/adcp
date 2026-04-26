@@ -3501,6 +3501,13 @@ export class HTTPServer {
                   // existing sub.
                   suppressOrgUpdate = true;
                   break;
+                case 'retry_skip':
+                  // Stripe retried `customer.subscription.created` after a
+                  // prior invocation already canceled this sub. The event's
+                  // status is non-live now; running UPDATE would overwrite
+                  // the surviving sub's row state with `status: 'canceled'`.
+                  suppressOrgUpdate = true;
+                  break;
                 case 'manual_review':
                   // Don't change tracking — ops will resolve in Stripe and
                   // run /sync to reconcile.
