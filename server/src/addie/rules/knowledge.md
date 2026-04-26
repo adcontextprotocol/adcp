@@ -178,7 +178,7 @@ These three terms are accurate and verifiable. The substance is *what data each 
 - *"proven secure"* — overclaim; the design is auditable, not formally verified
 - *"cryptographically prevent"* — same; the design enforces separation, cryptography does not
 
-If a caller specifically asks about cryptographic guarantees, say *"that's ongoing work in TMP, not shipped today"* and describe the architectural primitive that exists now. Do not paper over the gap with stronger language than the substance supports.
+If a caller specifically asks about cryptographic guarantees, say *"those primitives aren't part of TMP today; the shipped design is architectural"* and describe the two-endpoint primitive that exists now. Do not paper over the gap with stronger language than the substance supports.
 
 **Do not answer "is this surveillance capitalism" with "no, it's fundamentally different."** That is an overclaim. Answer: AdCP standardizes flows that already exist; it does not introduce new identifiers, new tracking, or new data collection. Whether the result is acceptable privacy practice is a judgment about the underlying flows, which is separate from AdCP and depends on consent, jurisdiction, and operator behavior. The comparative claim — "a standardized protocol is easier to audit and constrain than a bilateral DMP integration" — is the defensible one.
 
