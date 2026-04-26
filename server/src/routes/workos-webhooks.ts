@@ -122,10 +122,14 @@ async function upsertMembership(
 
   const role = membership.role?.slug || 'member';
 
-  // Consume any pending seat_type assignment from the invitation
-  const consumedSeatType = await consumeInvitationSeatType(membership.organization_id, userData.email);
-  const hasExplicitSeatType = consumedSeatType !== null;
-  const seatType = consumedSeatType || 'community_only';
+  // Consume any pending seat_type + provisioning_source staged by the
+  // endpoint that triggered this membership creation. Falls back to defaults
+  // when no row was staged (e.g. someone added the membership directly in
+  // WorkOS rather than through one of our endpoints).
+  const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
+  const hasExplicitSeatType = consumed !== null;
+  const seatType = consumed?.seat_type || 'community_only';
+  const provisioningSource = consumed?.source || 'webhook';
 
   const { assigned_role } = await upsertOrganizationMembership({
     user_id: membership.user_id,
@@ -137,6 +141,7 @@ async function upsertMembership(
     role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
+    provisioning_source: provisioningSource,
   });
 
   // If the DB promoted this member to owner, sync the change to WorkOS
