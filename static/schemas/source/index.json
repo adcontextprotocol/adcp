@@ -194,6 +194,10 @@
           "$ref": "/schemas/core/offering-asset-group.json",
           "description": "A structured group of creative assets within an offering, identified by group ID and asset type"
         },
+        "asset-group-vocabulary": {
+          "$ref": "/schemas/core/asset-group-vocabulary.json",
+          "description": "Canonical registry of asset_group_id values with descriptions and v1 alias mapping (e.g., landing_page_url replaces 6 v1 alias names)"
+        },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
           "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"
@@ -1106,6 +1110,12 @@
       "asset_types": {
         "$ref": "/schemas/creative/asset-types/index.json",
         "description": "Asset type definitions for creative manifests"
+      },
+      "build_inputs": {
+        "scenes": {
+          "$ref": "/schemas/creative/scenes.json",
+          "description": "Typed scene-by-scene structure for build_creative input on generative video platforms"
+        }
       }
     },
     "signals": {
