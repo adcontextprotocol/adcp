@@ -699,11 +699,12 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 }
 
 /**
- * Look up member context from a WorkOS user ID (for web chat)
- *
-/**
  * Resolve organization, profile, subscription, engagement, and other context
  * from the local database. Used by both dev-mode and production paths.
+ *
+ * `orgMemberUserIds` is used to compute team_wg_coverage. The dev-mode caller
+ * passes [] (no WorkOS lookup), so coverage is 0 in dev — fine for testing
+ * since the team-WG rule also requires member_count >= 3.
  */
 async function resolveContextFromLocalDb(
   context: MemberContext,

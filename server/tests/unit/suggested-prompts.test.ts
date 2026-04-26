@@ -250,23 +250,39 @@ describe('buildSuggestedPrompts', () => {
       expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Invite your team');
     });
 
-    it('shows Set up your company listing for non-personal owners without a public listing', () => {
+    it('shows List my company in the directory for non-personal owners without a public listing', () => {
       const ctx = makeMember({
         org_membership: { role: 'owner', member_count: 3, joined_at: DAYS_AGO(60) },
-        adoption: { has_company_listing: false, team_wg_coverage: 0.5 },
+        adoption: { has_company_listing: false, team_wg_coverage: 0.6 },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Set up your company listing');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('List my company in the directory');
     });
 
-    it('does not show Set up your company listing when listing already public', () => {
+    it('also shows the listing prompt for org admins (not just owners)', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'admin', member_count: 3, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: false, team_wg_coverage: 0.6 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('List my company in the directory');
+    });
+
+    it('does not show the listing prompt for plain members', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'member', member_count: 3, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: false, team_wg_coverage: 0.6 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('List my company in the directory');
+    });
+
+    it('does not show listing prompt when listing already public', () => {
       const ctx = makeMember({
         org_membership: { role: 'owner', member_count: 3, joined_at: DAYS_AGO(60) },
-        adoption: { has_company_listing: true, team_wg_coverage: 0.5 },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.6 },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Set up your company listing');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('List my company in the directory');
     });
 
-    it('does not show Set up your company listing for personal orgs', () => {
+    it('does not show listing prompt for personal orgs', () => {
       const ctx = makeMember({
         organization: {
           workos_organization_id: 'org_123',
@@ -278,31 +294,31 @@ describe('buildSuggestedPrompts', () => {
         org_membership: { role: 'owner', member_count: 1, joined_at: DAYS_AGO(60) },
         adoption: { has_company_listing: false, team_wg_coverage: 0 },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Set up your company listing');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('List my company in the directory');
     });
 
-    it('shows Get your team into working groups when coverage is low and team > 5', () => {
-      const ctx = makeMember({
-        org_membership: { role: 'owner', member_count: 8, joined_at: DAYS_AGO(60) },
-        adoption: { has_company_listing: true, team_wg_coverage: 0.1 },
-      });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Get your team into working groups');
-    });
-
-    it('does not show team WG prompt when coverage is healthy', () => {
-      const ctx = makeMember({
-        org_membership: { role: 'owner', member_count: 8, joined_at: DAYS_AGO(60) },
-        adoption: { has_company_listing: true, team_wg_coverage: 0.5 },
-      });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Get your team into working groups');
-    });
-
-    it('does not show team WG prompt for small teams (≤5)', () => {
+    it('shows Find working groups for my team when coverage is below 50% and team >= 3', () => {
       const ctx = makeMember({
         org_membership: { role: 'owner', member_count: 4, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.2 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Find working groups for my team');
+    });
+
+    it('does not show team WG prompt when coverage is healthy (≥ 50%)', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 8, joined_at: DAYS_AGO(60) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.6 },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Find working groups for my team');
+    });
+
+    it('does not show team WG prompt for tiny teams (< 3)', () => {
+      const ctx = makeMember({
+        org_membership: { role: 'owner', member_count: 2, joined_at: DAYS_AGO(60) },
         adoption: { has_company_listing: true, team_wg_coverage: 0 },
       });
-      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Get your team into working groups');
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Find working groups for my team');
     });
   });
 

@@ -11,6 +11,16 @@ function isMember(ctx: MemberContext | null): boolean {
   return !!ctx?.is_member;
 }
 
+/**
+ * True for users who can act on org-level setup (owner or admin in WorkOS).
+ * Day-to-day org operations at most companies are run by admins, not the
+ * original owner — gating only on 'owner' would miss them.
+ */
+function isOrgOperator(ctx: MemberContext | null): boolean {
+  const role = ctx?.org_membership?.role;
+  return role === 'owner' || role === 'admin';
+}
+
 function isLinkedNonMember(ctx: MemberContext | null): boolean {
   return isMapped(ctx) && !isMember(ctx);
 }
@@ -198,24 +208,26 @@ export const MEMBER_RULES: PromptRule[] = [
     priority: 76,
     when: ({ memberContext }) =>
       isMember(memberContext) &&
-      memberContext?.org_membership?.role === 'owner' &&
+      isOrgOperator(memberContext) &&
       memberContext?.organization?.is_personal === false &&
       memberContext?.adoption?.has_company_listing === false,
-    label: 'Set up your company listing',
-    prompt: "Help me set up my organization's public listing in the directory.",
+    label: 'List my company in the directory',
+    prompt: 'Help me add my company to the directory.',
   },
   {
     id: 'org.owner_team_wg_coverage_low',
     priority: 73,
     when: ({ memberContext }) => {
       if (!isMember(memberContext)) return false;
-      if (memberContext?.org_membership?.role !== 'owner') return false;
-      if ((memberContext?.org_membership?.member_count ?? 0) <= 5) return false;
+      if (!isOrgOperator(memberContext)) return false;
+      // Fire for any team of 3+ where less than half are in working groups.
+      // Below 3 people, coverage math is too noisy to act on.
+      if ((memberContext?.org_membership?.member_count ?? 0) < 3) return false;
       const coverage = memberContext?.adoption?.team_wg_coverage;
-      return coverage !== undefined && coverage < 0.3;
+      return (coverage ?? 1) < 0.5;
     },
-    label: 'Get your team into working groups',
-    prompt: 'Help me get my team active in working groups.',
+    label: 'Find working groups for my team',
+    prompt: 'Which working groups should my team join?',
   },
   {
     id: 'wg.find_groups',
