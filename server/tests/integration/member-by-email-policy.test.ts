@@ -192,7 +192,7 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
