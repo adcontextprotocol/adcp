@@ -155,7 +155,26 @@ A few load-bearing column choices, since reviewers flagged each one:
 
 - **Partial indexes excluding `deleted_at IS NOT NULL`** mirror the override layer's `WHERE superseded_at IS NULL` pattern. The sync index (`idx_caa_seq`) deliberately is *not* partial because delta consumers need to see tombstones.
 
-- **Tombstone TTL.** Soft-deleted rows live for `max(consumer_offline_tolerance) + safety_margin` — proposed default 90 days. After that, hard-delete via the catalog cleanup job. Consumers whose `seq_no` cursor is older than the oldest live tombstone get HTTP 410 from the delta endpoint with a hint to re-snapshot. Without this, the table grows unbounded; without the 410 path, a long-offline consumer silently desyncs once cleanup catches up.
+- **`seq_no` must rotate on soft-delete.** A row that's tombstoned without a fresh `seq_no` is invisible to delta consumers (their cursor moved past the row's original `seq_no` when it was created), so revocations silently never propagate. This is a security-relevant failure: a revoked authorization continues to live in DSPs' local caches forever. Enforce via a trigger, not writer discipline:
+
+```sql
+CREATE FUNCTION caa_rotate_seq_no_on_tombstone() RETURNS trigger AS $$
+BEGIN
+  IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+    NEW.seq_no := nextval('catalog_agent_authorizations_seq_no_seq');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_caa_rotate_seq_no
+  BEFORE UPDATE ON catalog_agent_authorizations
+  FOR EACH ROW EXECUTE FUNCTION caa_rotate_seq_no_on_tombstone();
+```
+
+The trigger ships in PR 4b-prereq alongside the table DDL.
+
+- **Tombstone TTL = 90 days**, matching the change-feed retention window (`registry-change-feed.md`). After that, hard-delete via the catalog cleanup job. A consumer whose `cursor` is older than the feed retention gets HTTP 410 from the feed and must re-snapshot. Pinning the same number means there's exactly one offline-tolerance contract for the whole registry, not separate ones per entity type.
 
 **Writer-side**: `cacheAdagentsManifest` extracts each `authorized_agents[]` entry from the manifest body. For each property-side variant covered above, the writer inserts one row per resolved `property_rid` (per-property scope) or one row with `property_rid IS NULL` (publisher-wide scope). Same security guards as the existing `projectPropertyToCatalog` (cross-publisher refusal, anchor rule) — the hijack risk on agent claims is symmetric to the property-identifier case.
 
@@ -171,8 +190,13 @@ WITH base AS (
   SELECT
     caa.id, caa.agent_url, caa.agent_url_canonical,
     caa.property_rid, caa.property_id_slug,
+    -- For per-property rows, derive publisher from the property's source pipeline.
+    -- The strip generalizes across pipeline prefixes ('adagents_json:foo.example',
+    -- 'community:foo.example', etc.) so adding a new pipeline doesn't break the
+    -- view. The right long-term fix is a dedicated publisher_domain column on
+    -- catalog_properties; tracked separately.
     COALESCE(caa.publisher_domain,
-             regexp_replace(cp.created_by, '^adagents_json:', '')) AS publisher_domain,
+             regexp_replace(cp.created_by, '^[^:]+:', '')) AS publisher_domain,
     caa.authorized_for, caa.evidence, caa.confidence,
     caa.disputed, caa.created_by, caa.created_at, caa.updated_at,
     caa.seq_no
@@ -218,7 +242,11 @@ Walk-through of the three cases the reviewers asked about:
 
 The view also exposes `override_applied` (boolean) and `override_reason` (override_reason from the override layer, or NULL). Snapshot consumers querying `?include=raw` get base rows directly without applying the view; consumers querying the default endpoint get the effective set with provenance.
 
-**Backfill**: one-time migration copies legacy rows into the new table. Both `agent_property_authorizations` (per-property) and `agent_publisher_authorizations` (per-publisher) flatten into the same shape. Legacy `source` field maps to `evidence`.
+**Property metadata for `add`-override rows**: the override layer keys on `property_id` (manifest slug), not on `property_rid`. So `add`-override rows in the view emit `property_rid IS NULL` even when the override's slug resolves to a real `catalog_properties` row. Consumers that need property metadata (name, type, identifiers) for an `add`-override row should JOIN through `(publisher_domain, property_id_slug)` against `catalog_properties.created_by` and the catalog_identifiers index — not via `property_rid`. The catalog API will surface this JOIN as a helper rather than asking every consumer to write it.
+
+**UNIQUE-key intent on `agent_claim` rows**: the active-set unique index keys on `(agent_url_canonical, property_rid_or_publisher_domain, evidence)` — *not* on `created_by`. Design intent is "any one claim per (agent, scope) regardless of which agent is asserting it." If two distinct buying agents both claim authorization for the same (agent, publisher), the second writer wins (replaces the first). This matches the legacy behavior of `agent_publisher_authorizations.UNIQUE(agent_url, publisher_domain, source)`. If we ever need per-claimant rows (e.g. "agent A claims this; agent B disputes it"), add `created_by` to the unique key in a follow-up — but doing so today would require resolving "which claimant wins for snapshot purposes," which doesn't have a clean answer.
+
+**Backfill**: one-time migration copies legacy rows into the new table. Both `agent_property_authorizations` (per-property) and `agent_publisher_authorizations` (per-publisher) flatten into the same shape. Legacy `source` field maps to `evidence`. Note that `agent_publisher_authorizations.property_ids` is an array — when non-NULL, the backfill `CROSS JOIN LATERAL unnest(property_ids)` to produce one row per resolved property, plus a separate insert for NULL `property_ids` (the publisher-wide case). Not a one-line statement; the schema PR includes both branches.
 
 **Pros**
 - Indexed lookups on every dominant query pattern. `getDomainsForAgent` is `WHERE agent_url = $1` — index hit.
@@ -323,10 +351,10 @@ Per-row footprint of `catalog_agent_authorizations`:
 | property_rid (uuid, nullable) | 8 B (50% null) | 16 B |
 | publisher_domain (text) | ~30 B | ~80 B |
 | authorized_for (text) | ~150 B | ~500 B |
-| property_ids (text[]) | ~50 B if present | ~200 B |
 | evidence + confidence (text) | ~30 B | ~30 B |
-| disputed + created_at + updated_at + deleted_at | ~30 B | ~30 B |
-| **row total** | **~400 B** | **~1.1 KB** |
+| property_id_slug (text) | ~20 B if present | ~80 B |
+| seq_no + disputed + 4× timestamp | ~40 B | ~40 B |
+| **row total** | **~370 B** | **~1.0 KB** |
 
 Cardinality:
 
@@ -339,7 +367,7 @@ Compression ratio is high because `agent_url` and `publisher_domain` repeat heav
 
 ### Sync endpoints (Option A)
 
-The narrow-pull endpoint is the default. Snapshot + delta is the high-QPS path — and it reuses the existing `/registry/change-feed` infrastructure (`specs/registry-change-feed.md`) for delta delivery rather than inventing a parallel mechanism.
+The narrow-pull endpoint is the default. Snapshot + delta is the high-QPS path — and it reuses the existing `/api/registry/feed` infrastructure (`specs/registry-change-feed.md`) for delta delivery rather than inventing a parallel mechanism.
 
 ```
 GET /api/registry/authorizations?agent_url=<canonical>&include=<raw|effective>
@@ -352,45 +380,45 @@ GET /api/registry/authorizations?agent_url=<canonical>&include=<raw|effective>
 GET /api/registry/authorizations/snapshot?evidence=<csv>&include=<raw|effective>
   → bootstrap for inline verifiers
   → gz JSONL of v_effective_agent_authorizations
-  → ETag + X-Sync-Cursor: max(seq_no) at snapshot time
+  → ETag + X-Sync-Cursor: <event_id> at snapshot time (UUIDv7, matching feed)
   → ~150 MB on the wire at long-run scale (effective set, evidence='adagents_json')
   → DEFAULT excludes evidence='agent_claim' to prevent buy-side trust footgun
 
-GET /api/registry/change-feed?entity_type=authorization&since=<seq_no>
+GET /api/registry/feed?entity_type=authorization&cursor=<event_id>
   → REUSES the existing UUIDv7-cursor change feed (registry-change-feed.md)
   → emits authorization.granted / authorization.revoked / authorization.modified events
-  → consumer applies events in seq_no order, advances cursor
+  → consumer applies events in event_id order, advances cursor
 ```
 
-The change feed is the canonical delta mechanism for the registry — the property-side cutover already uses it for `property.created` / `property.removed`. Authorization events are a new `entity_type` filter on the same feed; no new endpoint, no parallel cursor format. The snapshot endpoint exists only to bootstrap a consumer that's never synced before; once bootstrapped, the change feed is the live source.
+The change feed is the canonical delta mechanism for the registry — the property-side cutover already uses it for `property.created` / `property.removed`. Authorization events are a new `entity_type` filter on the same feed; same UUIDv7 `cursor` parameter, same retention window, same recovery semantics. The snapshot endpoint exists only to bootstrap a consumer that's never synced before; once bootstrapped, the change feed is the live source. **`seq_no` on the table is internal — it orders rows for the change-feed emitter and for view-layer pagination, but it never crosses the wire.** Consumers see only `event_id`.
 
 `agent_claim` rows are excluded from the snapshot by default. Consumers that want unverified self-asserted authorizations (e.g. a registry-internal admin tool, or a DSP that has its own trust-by-vendor policy) opt in with `?evidence=adagents_json,agent_claim`. Mixing them by default would let a buy-side platform that doesn't filter treat self-claims as authoritative — exactly the failure mode the override layer was designed to prevent.
 
 Delta consumer pseudocode (using the change feed):
 
 ```
-local_cursor = persisted("last_change_feed_cursor") or 'snapshot'
+local_cursor = persisted("last_feed_cursor") or 'snapshot'
 if local_cursor == 'snapshot':
   snapshot = GET /api/registry/authorizations/snapshot
   for row in snapshot.rows:
     local.upsert(row)
-  local_cursor = snapshot.headers['X-Sync-Cursor']
-  persist("last_change_feed_cursor", local_cursor)
+  local_cursor = snapshot.headers['X-Sync-Cursor']  -- a UUIDv7 event_id
+  persist("last_feed_cursor", local_cursor)
 while true:
-  events = GET /api/registry/change-feed?entity_type=authorization&since=local_cursor
+  events = GET /api/registry/feed?entity_type=authorization&cursor=local_cursor
   for ev in events:
     if ev.type == 'authorization.revoked':
       local.delete(ev.entity_id)
     else:
       local.upsert(ev.payload)
   local_cursor = events.next_cursor
-  persist("last_change_feed_cursor", local_cursor)
+  persist("last_feed_cursor", local_cursor)
   sleep(poll_interval)
-  -- if server returns 410 Gone, cursor is older than tombstone TTL;
+  -- if server returns 410 Gone, cursor is older than feed retention;
   -- consumer must re-snapshot
 ```
 
-In-process lookup against the local copy is sub-microsecond. Daily change-feed pull is minutes of work for a desktop agent, KB on the wire.
+In-process lookup against the local copy is sub-microsecond. Daily feed pull is minutes of work for a desktop agent, KB on the wire.
 
 ### Trust model
 
