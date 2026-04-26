@@ -3,7 +3,6 @@
  */
 
 import type { SuggestedPrompt } from './types.js';
-import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
 import { SLACK_INVITE_URL } from '../notifications/email.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
@@ -449,96 +448,6 @@ export const STATUS_MESSAGES = {
   searching: 'Searching documentation...',
   generating: 'Generating response...',
 };
-
-/**
- * Build dynamic suggested prompts based on user context, role, and active goals
- *
- * @param memberContext - User's member context (or null if lookup failed)
- * @param isAAOAdmin - Whether the user is an AAO platform admin
- * @returns Array of suggested prompts tailored to the user
- */
-export async function buildDynamicSuggestedPrompts(
-  memberContext: MemberContext | null,
-  isAAOAdmin: boolean
-): Promise<SuggestedPrompt[]> {
-  const isMapped = !!memberContext?.workos_user?.workos_user_id;
-
-  // Not linked - prioritize casual discovery
-  if (!isMapped) {
-    const prompts: SuggestedPrompt[] = [
-      {
-        title: 'What brings you here?',
-        message: "Hey! I'm curious what brought you to AgenticAdvertising.org",
-      },
-      {
-        title: 'Help me get set up',
-        message: 'I want to link my account and get started',
-      },
-    ];
-
-    prompts.push({
-      title: 'What is this anyway?',
-      message: "I keep hearing about agentic advertising but I'm not sure what it actually is",
-    });
-
-    return prompts.slice(0, 4); // Slack limits to 4 prompts
-  }
-
-  // Admin users get admin-specific suggestions
-  if (isAAOAdmin) {
-    return [
-      {
-        title: 'Pending invoices',
-        message: 'Show me all organizations with pending invoices',
-      },
-      {
-        title: 'Look up a company',
-        message: 'What is the membership status for [company name]?',
-      },
-      {
-        title: 'Prospect pipeline',
-        message: 'Show me the current prospect pipeline',
-      },
-      {
-        title: 'My working groups',
-        message: "What's happening in my working groups?",
-      },
-    ];
-  }
-
-  // Linked non-admin users - personalized prompts
-  const prompts: SuggestedPrompt[] = [];
-
-  // Show working groups if they have some, otherwise suggest finding one
-  if (memberContext.working_groups && memberContext.working_groups.length > 0) {
-    prompts.push({
-      title: 'My working groups',
-      message: "What's been happening in my working groups?",
-    });
-  } else {
-    prompts.push({
-      title: 'Find my people',
-      message: 'What working groups would be a good fit for me?',
-    });
-  }
-
-  prompts.push({
-    title: 'Test my agent',
-    message: 'Can you check if my agent is set up correctly?',
-  });
-
-  prompts.push({
-    title: 'What can you do?',
-    message: 'What kinds of things can you help me with?',
-  });
-
-  prompts.push({
-    title: 'Help me post something',
-    message: 'Anything I should be posting about this week?',
-  });
-
-  return prompts.slice(0, 4); // Slack limits to 4 prompts
-}
 
 /**
  * Build context with thread history (legacy - flattens to single string)
