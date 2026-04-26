@@ -709,7 +709,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'request_brand_domain_challenge',
     description:
-      "Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record.",
+      "Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.",
     usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check.',
     input_schema: {
       type: 'object',
@@ -725,7 +725,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'verify_brand_domain_challenge',
     description:
-      "Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry.",
+      "Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '<!-- STATUS: <code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.",
     usage_hints: 'Use only after the user confirms publication. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
     input_schema: {
       type: 'object',
@@ -2267,41 +2267,43 @@ export function createMemberToolHandlers(
 
   handlers.set('request_brand_domain_challenge', async (input) => {
     if (!memberContext?.workos_user?.workos_user_id) {
-      return 'You need to be logged in to claim a brand domain. Please sign in at https://agenticadvertising.org and try again.';
+      return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to claim a brand domain. Please sign in at https://agenticadvertising.org and try again.';
     }
     const orgId = memberContext.organization?.workos_organization_id;
     if (!orgId) {
-      return 'Your account isn\'t linked to an organization yet. Set up your company on https://agenticadvertising.org/member-profile first.';
+      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet. Set up your company on https://agenticadvertising.org/member-profile first.';
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
-      return 'Only your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
+      return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
     }
 
     const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return 'Tell me the brand domain you want to claim (e.g., "acme.com").';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nTell me the brand domain you want to claim (e.g., "acme.com").';
 
     const result = await issueDomainChallenge({ workos: getWorkos(), brandDb, orgId, rawDomain });
 
     if (!result.ok) {
       if (result.code === 'collision') {
-        return `${rawDomain} is already registered by another organization. If that's wrong (an acquisition or naming overlap), let me file a brand-ownership escalation for the team to review.`;
+        return `<!-- STATUS: collision -->\n\n${rawDomain} is already registered by another organization. If that's wrong (an acquisition or naming overlap), let me file a brand-ownership escalation for the team to review.`;
       }
       if (result.code === 'invalid_domain') {
-        return `I can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
+        return `<!-- STATUS: invalid_domain -->\n\nI can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
       }
-      return `Couldn't issue the domain challenge: ${result.message}`;
+      return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
 
     if (result.already_verified) {
-      return `${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
+      return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
     if (!result.verification_token || !result.verification_prefix) {
-      return `Issued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
     const lines = [
+      `<!-- STATUS: dns_record_issued -->`,
+      ``,
       `OK — I asked WorkOS to issue a domain ownership challenge for **${result.domain}**.`,
       ``,
       `**Publish this DNS TXT record:**`,
@@ -2324,18 +2326,18 @@ export function createMemberToolHandlers(
 
   handlers.set('verify_brand_domain_challenge', async (input) => {
     if (!memberContext?.workos_user?.workos_user_id) {
-      return 'You need to be logged in to verify a brand domain claim.';
+      return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to verify a brand domain claim.';
     }
     const orgId = memberContext.organization?.workos_organization_id;
     if (!orgId) {
-      return 'Your account isn\'t linked to an organization yet.';
+      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet.';
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
-      return 'Only your organization\'s admin or owner can verify a brand domain claim.';
+      return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can verify a brand domain claim.';
     }
 
     const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return 'Which domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nWhich domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
     const adoptPriorManifest = input.adopt_prior_manifest === true;
 
     const result = await verifyDomainChallenge({
@@ -2348,21 +2350,21 @@ export function createMemberToolHandlers(
 
     if (!result.ok) {
       if (result.code === 'no_challenge') {
-        return `I don't see an outstanding domain challenge for ${rawDomain}. Run \`request_brand_domain_challenge\` first to get the DNS TXT record to publish.`;
+        return `<!-- STATUS: no_challenge -->\n\nI don't see an outstanding domain challenge for ${rawDomain}. Run \`request_brand_domain_challenge\` first to get the DNS TXT record to publish.`;
       }
       if (result.code === 'still_pending') {
         // Anti-loop: tell the model to STOP, not to retry. The user should
         // confirm the record is live before another attempt.
-        return `WorkOS hasn't found the DNS TXT record yet. ${result.message}\n\n**Stop here. Do NOT call verify_brand_domain_challenge again.** Ask the user to confirm the record is published and resolves correctly (a \`dig TXT <record-name>\` from their machine should show the verification value), then wait for them to ask before retrying.`;
+        return `<!-- STATUS: still_pending -->\n\nWorkOS hasn't found the DNS TXT record yet. ${result.message}\n\n**Stop here. Do NOT call verify_brand_domain_challenge again.** Ask the user to confirm the record is published and resolves correctly (a \`dig TXT <record-name>\` from their machine should show the verification value), then wait for them to ask before retrying.`;
       }
-      return `Verification failed: ${result.message}`;
+      return `<!-- STATUS: workos_error -->\n\nVerification failed: ${result.message}`;
     }
 
     const inherited = result.adopted_prior_manifest ? ' and inherited the prior brand identity' : '';
     if (result.newly_verified) {
-      return `Verified — ${result.domain} is now owned by your organization${inherited}. The brand registry has been updated and the change should propagate within a few seconds.`;
+      return `<!-- STATUS: verified -->\n\nVerified — ${result.domain} is now owned by your organization${inherited}. The brand registry has been updated and the change should propagate within a few seconds.`;
     }
-    return `${result.domain} was already verified${inherited}. Brand registry resynced just to be sure.`;
+    return `<!-- STATUS: verified -->\n\n${result.domain} was already verified${inherited}. Brand registry resynced just to be sure.`;
   });
 
   // ============================================
