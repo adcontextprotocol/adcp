@@ -736,7 +736,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
         adopt_prior_manifest: {
           type: 'boolean',
-          description: 'Set true ONLY when the issue response had prior_manifest_exists=true and the user explicitly asked to inherit the prior brand identity (logos, colors, agents). Default false starts fresh. Do not set true on a clean claim or hostile takeover.',
+          description: 'Set true ONLY when the issue response had prior_manifest_exists=true AND the user explicitly asked to keep the existing brand record (logos, colors, agents). Default false starts fresh — this is the right choice for most claims, including reclaiming a domain from a squatter or first-time registration.',
         },
       },
       required: ['domain'],
@@ -2316,7 +2316,7 @@ export function createMemberToolHandlers(
     if (result.prior_manifest_exists) {
       lines.push(
         ``,
-        `Note: a previous organization had this domain registered and left a brand identity (logos / colors / agents) in place. After verification you can either inherit that prior identity (typical for acquisitions or rebrands) or start fresh. If you want to inherit, mention "adopt prior identity" before I run verify; otherwise I'll start fresh.`,
+        `Note: a previous organization had this domain registered and left brand assets (logos / colors / agents) in place. After verification you can either keep the existing brand record (typical for acquisitions or rebrands) or start fresh. **Most claims should start fresh** — only mention "keep the existing brand record" if you specifically want the prior assets (e.g., this is an acquisition where you actually inherited the brand).`,
       );
     }
     return lines.join('\n');

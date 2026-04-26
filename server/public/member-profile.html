@@ -1009,9 +1009,9 @@
                     <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Self-contained text block to paste into a ticket.</span>
                   </div>
 
-                  <label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                  <label id="domain-claim-adopt-prior-label" style="display: none; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
                     <input type="checkbox" id="domain-claim-adopt-prior" style="margin: 0;">
-                    Inherit prior brand identity (only check if a previous owner relinquished this domain and you want their logos / colors / agents as a starting point — typical for acquisitions).
+                    Start from the existing brand record (only check if you want to keep the prior org's logos and colors — most reclaims should leave this unchecked).
                   </label>
 
                   <div style="display: flex; gap: var(--space-3); align-items: center;">
@@ -1842,6 +1842,17 @@
       var toggle = document.getElementById('domain-claim-toggle');
       panel.style.display = _domainClaimOpen ? 'block' : 'none';
       toggle.textContent = _domainClaimOpen ? 'Cancel' : 'Start';
+      // Reset adopt-prior state on every open. Without this, a stale tick
+      // from a prior session (when prior_manifest_exists was true) could
+      // persist across panel close/reopen even though the next issue may
+      // not return prior_manifest_exists. requestDomainChallenge will
+      // re-show the label if the next issue actually has a prior manifest.
+      if (_domainClaimOpen) {
+        var adoptLabel = document.getElementById('domain-claim-adopt-prior-label');
+        var adoptCheckbox = document.getElementById('domain-claim-adopt-prior');
+        if (adoptLabel) adoptLabel.style.display = 'none';
+        if (adoptCheckbox) adoptCheckbox.checked = false;
+      }
     }
 
     function setDomainClaimError(msg) {
@@ -1887,6 +1898,18 @@
         document.getElementById('domain-claim-record-value').textContent = token;
         document.getElementById('domain-claim-instructions').style.display = 'block';
         document.getElementById('domain-claim-status').textContent = '';
+        // Only surface the adopt-prior checkbox when a relinquished prior
+        // manifest actually exists. Showing it for every claim primes
+        // hostile-takeover users (e.g. brand reclaiming from a squatter)
+        // toward inheriting assets they don't want.
+        var adoptLabel = document.getElementById('domain-claim-adopt-prior-label');
+        var adoptCheckbox = document.getElementById('domain-claim-adopt-prior');
+        if (data.prior_manifest_exists) {
+          if (adoptLabel) adoptLabel.style.display = 'flex';
+        } else {
+          if (adoptLabel) adoptLabel.style.display = 'none';
+          if (adoptCheckbox) adoptCheckbox.checked = false;
+        }
       } catch (err) {
         setDomainClaimError(err.message || 'Failed to issue challenge.');
       } finally {
