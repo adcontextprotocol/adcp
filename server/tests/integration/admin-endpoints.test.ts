@@ -360,28 +360,18 @@ describe('Admin Endpoints Integration Tests', () => {
       expect(afterResult.rows.length).toBe(0);
     });
 
-    // Skipped: see #3289 — handler now reads subscription state from OrganizationDatabase.getSubscriptionInfo
-    // (DB-backed) instead of the stripe-client import the test mocks. Test needs to seed
-    // subscription_status='active' on the org row, not vi.mock the stripe call.
-    it.skip('should prevent deletion of organization with active subscription', async () => {
-      // Create org with active subscription
+    // OrganizationDatabase.getSubscriptionInfo reads subscription_status from the DB row;
+    // mocking the stripe-client import has no effect. Seed the column directly.
+    // The active-subscription guard applies to admin-initiated deletes too; force-deletion
+    // of a subscribed org requires a DB-level intervention (clear subscription_status).
+    it('should prevent deletion of organization with active subscription', async () => {
       const SUB_ORG_ID = 'org_delete_test_sub';
       await pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
-         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
-        [SUB_ORG_ID, 'Subscribed Test Org', 'cus_sub_admin_test']
+        `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+         VALUES ($1, $2, 'active', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, subscription_status = 'active'`,
+        [SUB_ORG_ID, 'Subscribed Test Org']
       );
-
-      // Mock getSubscriptionInfo to return active subscription
-      const { getSubscriptionInfo } = await import('../../src/billing/stripe-client.js');
-      vi.mocked(getSubscriptionInfo).mockResolvedValueOnce({
-        status: 'active',
-        product_id: 'prod_test',
-        product_name: 'Test Product',
-        current_period_end: Math.floor(Date.now() / 1000) + 86400,
-        cancel_at_period_end: false,
-      });
 
       const response = await request(app)
         .delete(`/api/admin/accounts/${SUB_ORG_ID}`)
@@ -399,7 +389,7 @@ describe('Admin Endpoints Integration Tests', () => {
       );
       expect(checkResult.rows.length).toBe(1);
 
-      // Clean up
+      // SUB_ORG_ID is not covered by the inner afterEach; clean up inline.
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_ORG_ID]);
     });
   });
