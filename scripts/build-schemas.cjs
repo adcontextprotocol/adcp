@@ -1112,7 +1112,11 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-main().catch(err => {
-  console.error('❌ Build failed:', err.message);
-  process.exit(1);
-});
+module.exports = { hoistDuplicateInlineEnums };
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ Build failed:', err.message);
+    process.exit(1);
+  });
+}
