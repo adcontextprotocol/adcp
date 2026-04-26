@@ -118,7 +118,7 @@ import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
-import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -212,6 +212,53 @@ interface CacheEntry<T> {
 const workosOrgCache = new Map<string, CacheEntry<{ name: string }>>();
 const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fire-and-forget customer notification when the webhook dedup helper
+ * canceled a duplicate subscription on this org. We always send to the
+ * full set of org admins (typically a single founder/owner). All failures
+ * are logged but never thrown — the dedup itself is the primary action.
+ */
+function fireDedupNotice(args: {
+  org: { workos_organization_id: string; name: string | null };
+  workos: WorkOS;
+  logger: import('pino').Logger;
+  scenario: 'canceled_new' | 'canceled_existing';
+  survivingTierLabel: string | null;
+}): void {
+  const { org, workos: workosClient, logger: log, scenario, survivingTierLabel } = args;
+  void (async () => {
+    try {
+      const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+      const adminEmails = await getOrgAdminEmails(workosClient, org.workos_organization_id);
+      if (adminEmails.length === 0) {
+        log.warn(
+          { orgId: org.workos_organization_id, scenario },
+          'No admin emails found for org — skipping duplicate-subscription notice',
+        );
+        return;
+      }
+      await Promise.all(
+        adminEmails.map((to) =>
+          sendDuplicateSubscriptionNotice({
+            to,
+            organizationName: org.name ?? 'your organization',
+            scenario,
+            survivingTierLabel,
+            workosOrganizationId: org.workos_organization_id,
+          }).catch((err) =>
+            log.error({ err, to, orgId: org.workos_organization_id }, 'Failed to send dedup notice'),
+          ),
+        ),
+      );
+    } catch (err) {
+      log.error(
+        { err, orgId: org.workos_organization_id, scenario },
+        'Error dispatching duplicate-subscription notice',
+      );
+    }
+  })();
+}
 
 function getCachedOrg(orgId: string): { name: string } | null {
   const entry = workosOrgCache.get(orgId);
@@ -3500,6 +3547,15 @@ export class HTTPServer {
                   // duplicate). Keep the org row pointing at the surviving
                   // existing sub.
                   suppressOrgUpdate = true;
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_new',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
                   break;
                 case 'retry_skip':
                   // Stripe retried `customer.subscription.created` after a
@@ -3517,6 +3573,15 @@ export class HTTPServer {
                   // The new sub becomes the org's tracked sub. Let the
                   // UPDATE block below run, but skip handleSubscriptionCreated
                   // — this is a tier swap, not a fresh activation.
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_existing',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
                   break;
                 case 'no_duplicate':
                   if (org) {

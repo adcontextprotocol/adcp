@@ -110,7 +110,8 @@ export type EmailType =
   | 'email_link_verification'
   | 'escalation_resolution'
   | 'newsletter_subscribe_confirmation'
-  | 'membership_invite';
+  | 'membership_invite'
+  | 'duplicate_subscription_notice';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -1826,6 +1827,153 @@ ${footerText}
     return true;
   } catch (error) {
     logger.error({ error, to: data.to }, 'Error sending membership invite email');
+    return false;
+  }
+}
+
+/**
+ * Notify the customer when our webhook-side dedup helper canceled a duplicate
+ * subscription on their account. Two scenarios:
+ *
+ *   - canceled_new: customer's just-completed intake was the duplicate; their
+ *     existing membership continues. Most common — this is the Triton-shape.
+ *   - canceled_existing: customer paid for a new sub; we voided an unpaid old
+ *     sub from a prior intake (e.g., an admin invite they ignored). Their new
+ *     sub is now active.
+ *
+ * The dedup helper only auto-cancels UNPAID subs (cancel-unpaid policy), so
+ * we don't talk about refunds here — there's nothing to refund. If the
+ * policy ever expands to cancel paid subs, this email should be revised
+ * with refund copy at the same time.
+ */
+export async function sendDuplicateSubscriptionNotice(data: {
+  to: string;
+  organizationName: string;
+  /** 'canceled_new' = duplicate intake voided; 'canceled_existing' = old sub voided in favor of new. */
+  scenario: 'canceled_new' | 'canceled_existing';
+  /** Tier label of the surviving sub (the one the customer keeps), if known. */
+  survivingTierLabel: string | null;
+  workosUserId?: string;
+  workosOrganizationId?: string;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping duplicate-subscription notice');
+    return false;
+  }
+
+  const emailType: EmailType = 'duplicate_subscription_notice';
+  const subject = 'We resolved a duplicate subscription on your account';
+
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const safeOrgName = escapeHtml(data.organizationName);
+  const safeTier = data.survivingTierLabel ? escapeHtml(data.survivingTierLabel) : null;
+
+  const explanation =
+    data.scenario === 'canceled_new'
+      ? `We noticed your account at <strong>${safeOrgName}</strong> already had an active membership when a new subscription was created — likely a duplicate intake. We've canceled the duplicate so you're not on two subscriptions at once.`
+      : `Your new membership at <strong>${safeOrgName}</strong> is now active. We've also voided an older subscription on your account from a prior intake that hadn't been paid, so you're cleanly on the new one.`;
+
+  const survivingLine = safeTier
+    ? `<p>Your active membership: <strong>${safeTier}</strong>.</p>`
+    : '';
+
+  // The dedup helper only cancels UNPAID subs, so no refund is needed —
+  // we just confirm to the customer that no charge occurred.
+  const noChargeLine = `<p>No charges occurred on the canceled subscription.</p>`;
+
+  const explanationText =
+    data.scenario === 'canceled_new'
+      ? `We noticed your account at ${data.organizationName} already had an active membership when a new subscription was created — likely a duplicate intake. We've canceled the duplicate so you're not on two subscriptions at once.`
+      : `Your new membership at ${data.organizationName} is now active. We've also voided an older subscription on your account from a prior intake that hadn't been paid, so you're cleanly on the new one.`;
+
+  const survivingTextLine = data.survivingTierLabel
+    ? `\nYour active membership: ${data.survivingTierLabel}.\n`
+    : '';
+
+  const noChargeTextLine = '\nNo charges occurred on the canceled subscription.\n';
+
+  try {
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      workos_user_id: data.workosUserId,
+      workos_organization_id: data.workosOrganizationId,
+      metadata: {
+        scenario: data.scenario,
+        survivingTierLabel: data.survivingTierLabel,
+      },
+    });
+
+    const trackingId = emailEvent.tracking_id;
+    const footerHtml = generateFooterHtml(trackingId, null);
+    const footerText = generateFooterText(null);
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL_ADDIE,
+      to: data.to,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 22px; margin: 0;">A quick heads-up about your subscription</h1>
+  </div>
+
+  <p>Hi,</p>
+
+  <p>${explanation}</p>
+
+  ${survivingLine}
+
+  ${noChargeLine}
+
+  <p>If this looks wrong — for example, you intended to upgrade or change tiers — just reply to this email or write to <a href="mailto:finance@agenticadvertising.org">finance@agenticadvertising.org</a> and we'll sort it out.</p>
+
+  <p>— The AgenticAdvertising.org Team</p>
+
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+A quick heads-up about your subscription — AgenticAdvertising.org
+
+Hi,
+
+${explanationText}
+${survivingTextLine}${noChargeTextLine}
+If this looks wrong — for example, you intended to upgrade or change tiers — just reply to this email or write to finance@agenticadvertising.org and we'll sort it out.
+
+— The AgenticAdvertising.org Team
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to }, 'Failed to send duplicate-subscription notice');
+      return false;
+    }
+
+    if (sendData?.id) {
+      await emailDb.markEmailSent(trackingId, sendData.id);
+    }
+
+    logger.info(
+      { to: data.to, scenario: data.scenario, trackingId },
+      'Duplicate-subscription notice sent',
+    );
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending duplicate-subscription notice');
     return false;
   }
 }
