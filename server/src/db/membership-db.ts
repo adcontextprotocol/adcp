@@ -339,3 +339,114 @@ export async function autoLinkByVerifiedDomain(
     return null;
   }
 }
+
+// ── Auto-provision digest queries ───────────────────────────────────
+
+/**
+ * Row in the auto-provision digest payload — one per newly-auto-joined member
+ * since the org's last digest watermark.
+ */
+export interface NewAutoProvisionedMember {
+  workos_user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string;
+  seat_type: string;
+  joined_at: Date;
+}
+
+/**
+ * Find orgs that have at least one auto-provisioned member since their last
+ * digest watermark. Returns one row per org (with the org's owner emails and
+ * the count of new members) so the caller can iterate.
+ *
+ * Skip personal workspaces and orgs with auto_provision_verified_domain=false
+ * (the latter shouldn't have any verified-domain members anyway, but the join
+ * makes the intent explicit).
+ */
+export async function findOrgsWithNewAutoProvisionedMembers(): Promise<
+  Array<{
+    workos_organization_id: string;
+    org_name: string;
+    last_sent_at: Date | null;
+    new_member_count: number;
+  }>
+> {
+  const pool = getPool();
+  const result = await pool.query<{
+    workos_organization_id: string;
+    org_name: string;
+    last_sent_at: Date | null;
+    new_member_count: string; // pg COUNT comes back as string
+  }>(`
+    SELECT
+      o.workos_organization_id,
+      o.name AS org_name,
+      o.last_auto_provision_digest_sent_at AS last_sent_at,
+      COUNT(om.workos_user_id) AS new_member_count
+    FROM organizations o
+    JOIN organization_memberships om
+      ON om.workos_organization_id = o.workos_organization_id
+    WHERE om.provisioning_source = 'verified_domain'
+      AND om.created_at > COALESCE(o.last_auto_provision_digest_sent_at, 'epoch'::timestamptz)
+      AND COALESCE(o.is_personal, false) = false
+      AND COALESCE(o.auto_provision_verified_domain, true) = true
+    GROUP BY o.workos_organization_id, o.name, o.last_auto_provision_digest_sent_at
+    HAVING COUNT(om.workos_user_id) > 0
+  `);
+
+  return result.rows.map(r => ({
+    workos_organization_id: r.workos_organization_id,
+    org_name: r.org_name,
+    last_sent_at: r.last_sent_at,
+    new_member_count: parseInt(r.new_member_count, 10),
+  }));
+}
+
+/**
+ * List the auto-provisioned members added to a given org since the watermark.
+ * Used to build the digest body once findOrgsWithNewAutoProvisionedMembers has
+ * filtered to orgs with non-zero counts.
+ */
+export async function listNewAutoProvisionedMembers(
+  organizationId: string,
+  since: Date | null,
+): Promise<NewAutoProvisionedMember[]> {
+  const pool = getPool();
+  const sinceTs = since ?? new Date(0);
+  const result = await pool.query<NewAutoProvisionedMember>(`
+    SELECT
+      workos_user_id,
+      email,
+      first_name,
+      last_name,
+      role,
+      seat_type,
+      created_at AS joined_at
+    FROM organization_memberships
+    WHERE workos_organization_id = $1
+      AND provisioning_source = 'verified_domain'
+      AND created_at > $2
+    ORDER BY created_at ASC
+  `, [organizationId, sinceTs]);
+
+  return result.rows;
+}
+
+/**
+ * Mark the digest as sent for an organization. Called after successful delivery
+ * so the next run skips the same members.
+ */
+export async function markAutoProvisionDigestSent(
+  organizationId: string,
+  sentAt: Date = new Date(),
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE organizations
+     SET last_auto_provision_digest_sent_at = $2, updated_at = NOW()
+     WHERE workos_organization_id = $1`,
+    [organizationId, sentAt],
+  );
+}

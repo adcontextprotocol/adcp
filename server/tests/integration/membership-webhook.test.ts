@@ -16,6 +16,9 @@ import {
   findSuccessorForPromotion,
   setMembershipRole,
   autoLinkByVerifiedDomain,
+  findOrgsWithNewAutoProvisionedMembers,
+  listNewAutoProvisionedMembers,
+  markAutoProvisionDigestSent,
 } from '../../src/db/membership-db.js';
 import type { WorkOS } from '@workos-inc/node';
 import type { Pool } from 'pg';
@@ -602,6 +605,143 @@ describe('Membership webhook DB operations', () => {
       expect(staged.rows[0]).toBeDefined();
       expect(staged.rows[0].seat_type).toBe('community_only');
       expect(staged.rows[0].source).toBe('verified_domain');
+    });
+  });
+
+  describe('Auto-provision digest queries', () => {
+    const DIGEST_ORG_ID = 'org_digest_test';
+    const DIGEST_USER_NEW = 'user_digest_new';
+    const DIGEST_USER_OLD = 'user_digest_old';
+    const DIGEST_USER_INVITED = 'user_digest_invited';
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, subscription_status, auto_provision_verified_domain, last_auto_provision_digest_sent_at, created_at, updated_at)
+         VALUES ($1, 'Digest Test Org', false, 'active', true, $2, NOW(), NOW())`,
+        [DIGEST_ORG_ID, new Date('2026-04-01T00:00:00Z')],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [DIGEST_ORG_ID]);
+    });
+
+    async function seedMember(opts: {
+      userId: string;
+      email: string;
+      source: 'verified_domain' | 'invited' | 'admin_added';
+      createdAt: Date;
+    }) {
+      await pool.query(
+        `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, email, role, seat_type, provisioning_source, created_at, updated_at, synced_at)
+         VALUES ($1, $2, $3, 'member', 'community_only', $4, $5, $5, $5)`,
+        [opts.userId, DIGEST_ORG_ID, opts.email, opts.source, opts.createdAt],
+      );
+    }
+
+    it('finds orgs with new verified_domain members since the watermark', async () => {
+      // Member joined BEFORE watermark — excluded.
+      await seedMember({
+        userId: DIGEST_USER_OLD,
+        email: 'old@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-03-15T00:00:00Z'),
+      });
+      // Member joined AFTER watermark — included.
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+      // Invited member — wrong source, excluded.
+      await seedMember({
+        userId: DIGEST_USER_INVITED,
+        email: 'invited@digest.com',
+        source: 'invited',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      const target = rows.find(r => r.workos_organization_id === DIGEST_ORG_ID);
+      expect(target).toBeDefined();
+      expect(target!.new_member_count).toBe(1);
+      expect(target!.org_name).toBe('Digest Test Org');
+    });
+
+    it('skips orgs with auto_provision_verified_domain disabled', async () => {
+      await pool.query(
+        'UPDATE organizations SET auto_provision_verified_domain = false WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-04-15T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      expect(rows.find(r => r.workos_organization_id === DIGEST_ORG_ID)).toBeUndefined();
+    });
+
+    it('skips orgs with no new members since watermark', async () => {
+      await seedMember({
+        userId: DIGEST_USER_OLD,
+        email: 'old@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-03-15T00:00:00Z'), // before watermark
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      expect(rows.find(r => r.workos_organization_id === DIGEST_ORG_ID)).toBeUndefined();
+    });
+
+    it('treats NULL watermark as the beginning of time', async () => {
+      await pool.query(
+        'UPDATE organizations SET last_auto_provision_digest_sent_at = NULL WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      await seedMember({
+        userId: DIGEST_USER_NEW,
+        email: 'new@digest.com',
+        source: 'verified_domain',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const rows = await findOrgsWithNewAutoProvisionedMembers();
+      const target = rows.find(r => r.workos_organization_id === DIGEST_ORG_ID);
+      expect(target).toBeDefined();
+      expect(target!.new_member_count).toBe(1);
+      expect(target!.last_sent_at).toBeNull();
+    });
+
+    it('lists members chronologically, excluding non-verified-domain sources', async () => {
+      const t1 = new Date('2026-04-10T00:00:00Z');
+      const t2 = new Date('2026-04-12T00:00:00Z');
+      const t3 = new Date('2026-04-14T00:00:00Z');
+
+      await seedMember({ userId: 'u_b', email: 'b@digest.com', source: 'verified_domain', createdAt: t2 });
+      await seedMember({ userId: 'u_a', email: 'a@digest.com', source: 'verified_domain', createdAt: t1 });
+      await seedMember({ userId: 'u_c', email: 'c@digest.com', source: 'verified_domain', createdAt: t3 });
+      await seedMember({ userId: 'u_inv', email: 'inv@digest.com', source: 'invited', createdAt: t2 });
+
+      const members = await listNewAutoProvisionedMembers(DIGEST_ORG_ID, new Date('2026-04-01T00:00:00Z'));
+      expect(members.map(m => m.email)).toEqual(['a@digest.com', 'b@digest.com', 'c@digest.com']);
+    });
+
+    it('markAutoProvisionDigestSent updates the watermark', async () => {
+      const sent = new Date('2026-04-26T12:00:00Z');
+      await markAutoProvisionDigestSent(DIGEST_ORG_ID, sent);
+      const row = await pool.query<{ last_auto_provision_digest_sent_at: Date }>(
+        'SELECT last_auto_provision_digest_sent_at FROM organizations WHERE workos_organization_id = $1',
+        [DIGEST_ORG_ID],
+      );
+      expect(row.rows[0].last_auto_provision_digest_sent_at.toISOString()).toBe(sent.toISOString());
     });
   });
 

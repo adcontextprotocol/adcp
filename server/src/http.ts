@@ -8638,6 +8638,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
             startSeatRequestReminders(workos!);
           }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+
+          // Daily auto-provision new-member digest for org admins/owners.
+          // Consent receipt for the auto_provision_verified_domain default.
+          import('./scheduled/auto-provision-digest.js').then(({ startAutoProvisionDigest }) => {
+            startAutoProvisionDigest(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start auto-provision digest'));
         }
 
         // Start Luma calendar sync (catches events missed by webhooks)
@@ -8690,6 +8696,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
         stopSeatRequestReminders();
+      }).catch(() => {});
+
+      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+        stopAutoProvisionDigest();
       }).catch(() => {});
 
       import('./luma/sync.js').then(({ stopLumaSync }) => {
