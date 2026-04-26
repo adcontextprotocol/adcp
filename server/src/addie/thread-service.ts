@@ -632,6 +632,13 @@ export class ThreadService {
     // Determine if we need to join with messages table for search/tool filtering
     const needsMessageJoin = !!(filters.search_text || filters.tool_name);
 
+    // user_search matches across all identifiers an admin might describe a
+    // person by — full name, Slack handle, real name, WorkOS first/last
+    // name, or any of the email addresses we know about. Without these
+    // joins, harmonizing thread.user_display_name to "Brian O'Kelley"
+    // would orphan admins searching by Slack handle "bokelley".
+    const needsUserSearchJoins = !!filters.user_search;
+
     if (filters.channel) {
       conditions.push(`s.channel = $${paramIndex++}`);
       params.push(filters.channel);
@@ -668,9 +675,25 @@ export class ThreadService {
       params.push(filters.since);
     }
 
-    // User display name search (ILIKE for partial matching)
+    // Cross-identifier user search: match the term against every name and
+    // email we have for the thread's owner — thread display name, raw
+    // user_id (which carries the email for email threads), Slack mapping
+    // fields (handle/real name/Slack email), and WorkOS profile fields
+    // (email/first/last). The `sm.*` and `u.*` aliases below are valid
+    // only because `needsUserSearchJoins` adds the matching LEFT JOINs
+    // when this filter is set — keep the two in lockstep.
     if (filters.user_search) {
-      conditions.push(`s.user_display_name ILIKE $${paramIndex++}`);
+      const idx = paramIndex++;
+      conditions.push(`(
+        s.user_display_name ILIKE $${idx} OR
+        s.user_id ILIKE $${idx} OR
+        sm.slack_display_name ILIKE $${idx} OR
+        sm.slack_real_name ILIKE $${idx} OR
+        sm.slack_email ILIKE $${idx} OR
+        u.email ILIKE $${idx} OR
+        u.first_name ILIKE $${idx} OR
+        u.last_name ILIKE $${idx}
+      )`);
       params.push(`%${filters.user_search}%`);
     }
 
@@ -692,11 +715,25 @@ export class ThreadService {
 
     params.push(limit, offset);
 
+    // User-search joins: slack_user_mappings keys off the Slack thread's
+    // user_id; users keys off the WorkOS id (either the thread's own
+    // user_id when user_type='workos', or the WorkOS id resolved through
+    // the Slack mapping). Both are LEFT JOINs so threads without a
+    // matching row simply contribute NULLs and fall out of the OR match.
+    const userSearchJoins = needsUserSearchJoins
+      ? `LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = s.user_id
+         LEFT JOIN users u ON u.workos_user_id = COALESCE(
+           sm.workos_user_id,
+           CASE WHEN s.user_type = 'workos' THEN s.user_id END
+         )`
+      : '';
+
     let sql: string;
     if (needsMessageJoin) {
       // Join with messages table for text/tool search, use DISTINCT to avoid duplicates
       sql = `SELECT DISTINCT ON (s.last_message_at, s.thread_id) s.*
              FROM addie_threads_summary s
+             ${userSearchJoins}
              JOIN addie_thread_messages m ON s.thread_id = m.thread_id
              ${whereClause}
              ORDER BY s.last_message_at DESC, s.thread_id
@@ -705,6 +742,7 @@ export class ThreadService {
       // Simple query without join
       sql = `SELECT s.*
              FROM addie_threads_summary s
+             ${userSearchJoins}
              ${whereClause}
              ORDER BY s.last_message_at DESC
              LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
