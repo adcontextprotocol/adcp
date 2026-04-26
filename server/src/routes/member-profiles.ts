@@ -118,15 +118,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         userId: user.id,
       });
 
-      // Auto-link: if no memberships, check for verified domain match
-      if (memberships.data.length === 0) {
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          // Re-fetch memberships after auto-link
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
+      // Auto-link any verified-domain orgs the user isn't yet in.
+      // Helper short-circuits when the user is already a cached member.
+      const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+      if (linked) {
+        memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
       }
 
       if (memberships.data.length === 0) {
@@ -250,14 +248,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {
@@ -465,14 +462,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {

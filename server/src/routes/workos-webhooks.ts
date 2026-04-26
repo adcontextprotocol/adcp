@@ -36,6 +36,7 @@ import {
   consumeInvitationSeatType,
   findSuccessorForPromotion,
   setMembershipRole,
+  autoLinkByVerifiedDomain,
 } from '../db/membership-db.js';
 
 const logger = createLogger('workos-webhooks');
@@ -800,6 +801,23 @@ export function createWorkOSWebhooksRouter(): Router {
                 { userId: user.id, email: user.email, slackUserId: linkResult.slack_user_id },
                 'Auto-linked new website user to Slack account'
               );
+            }
+            // Auto-provision into a verified-domain org if one matches.
+            // Verified email is the trust gate: skip when WorkOS hasn't confirmed it yet
+            // (the /api/me/* paths will retry after the user signs in and the email verifies).
+            if (user.email_verified) {
+              try {
+                const linked = await autoLinkByVerifiedDomain(getWorkos(), user.id, user.email);
+                if (linked) {
+                  logger.info(
+                    { userId: user.id, email: user.email, orgId: linked.organizationId, role: linked.role },
+                    'Auto-provisioned new user into verified-domain organization'
+                  );
+                }
+              } catch (linkErr) {
+                logger.warn({ err: linkErr, userId: user.id, email: user.email },
+                  'Failed to auto-provision new user into verified-domain organization');
+              }
             }
             // Fire-and-forget prospect triage + brand research for business emails.
             if (user.email) {
