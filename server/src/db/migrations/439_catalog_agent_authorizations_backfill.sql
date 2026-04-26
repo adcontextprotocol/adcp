@@ -1,5 +1,5 @@
 -- Backfill catalog_agent_authorizations from the two legacy tables.
--- Runs after migration 436 creates the empty schema.
+-- Runs after migration 438 creates the empty schema.
 --
 -- Legacy → catalog mapping:
 --   agent_property_authorizations           → per-property rows
