@@ -369,6 +369,22 @@ describe('442_authorization_feed_emitter triggers', () => {
       const revokedEvents = await eventsForFixtures('authorization.revoked');
       expect(revokedEvents).toHaveLength(1);
       expect(revokedEvents[0].entity_id).toBe(overrideId);
+      // Symmetry with the suppress-supersede case: override_applied is FALSE
+      // because the override is no longer active.
+      expect(revokedEvents[0].payload.override_applied).toBe(false);
+    });
+
+    it('suppress override with zero matching base rows fires NO override-driven event', async () => {
+      // Insert a suppress override targeting an agent that has no active CAA
+      // rows for this publisher. Trigger should iterate the LOOP zero times
+      // and emit nothing — the override sits in the table waiting to fire
+      // via the CAA trigger if a matching base row appears later.
+      await insertSuppressOverride({ slug: null });
+
+      const overrideEvents = (await eventsForFixtures()).filter(
+        (e) => e.actor === 'trigger:aao_emit_event'
+      );
+      expect(overrideEvents).toHaveLength(0);
     });
 
     it('supersede an active "suppress" override → fan-out N authorization.granted events', async () => {

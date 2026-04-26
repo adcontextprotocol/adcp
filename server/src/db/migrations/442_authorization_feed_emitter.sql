@@ -24,18 +24,24 @@
 -- the new events flow through with no API-level work.
 
 -- =============================================================================
--- 1. uuidv7() — PL/pgSQL implementation matching server/src/db/uuid.ts
+-- 1. uuidv7() — PL/pgSQL implementation, shape-compatible with server/src/db/uuid.ts
 -- =============================================================================
 -- catalog_events.event_id is the change-feed cursor. Migration 348
 -- assumes UUIDv7 (time-ordered) so cursor pagination is monotonic.
 -- The application generates them via crypto.randomBytes; the trigger
--- needs the same shape produced from the database side. Bit layout
--- exactly matches uuid.ts:
+-- needs the same shape produced from the database side. Bit layout:
 --   48 bits unix ms timestamp
 --    4 bits version (0b0111 = 7)
---   12 bits random
+--   12 bits — top 10 carry us_in_ms (microsecond-within-ms) for same-ms
+--            monotonicity inside fan-out loops; bottom 2 random
 --    2 bits variant (0b10)
 --   62 bits random
+--
+-- The TS version (uuid.ts) does NOT pack microseconds — it relies on
+-- ms-precision and accepts random tie-breaking, because TS callers don't
+-- emit fan-out events from a single statement. The SQL version adds
+-- microsecond packing to keep within-statement INSERT order monotonic
+-- for the trigger fan-out case (see aao_emit_event).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -87,7 +93,23 @@ $$ LANGUAGE plpgsql VOLATILE;
 -- shape on the snapshot endpoint and on the change feed. publisher_domain
 -- derivation for per-property rows uses the same regex strip as the view
 -- (handles 'adagents_json:foo.example', 'community:foo.example', etc.).
+--
+-- Trust posture — these payload fields are publisher-controlled (originate
+-- in adagents.json or moderator-submitted overrides) and surface on the
+-- public /api/registry/feed endpoint:
+--   * agent_url, agent_url_canonical
+--   * property_id_slug
+--   * authorized_for
+--   * publisher_domain
+-- Downstream consumers that template these into LLM prompts or HTML must
+-- treat them as untrusted strings (fence as code, escape, or strip). The
+-- override row's approved_by_user_id is exposed as `created_by` on 'add'
+-- phantom rows in hashed form (see aao_override_payload). Override fields
+-- approved_by_email, justification, evidence_url are NOT included.
 
+-- Optional precomputed publisher_domain (passed from the AAO fan-out LOOP
+-- so the helper skips its own catalog_properties SELECT in the hot path).
+-- When NULL, the helper falls back to its own lookup.
 CREATE OR REPLACE FUNCTION caa_event_payload(
   caa_id uuid,
   agent_url text,
@@ -102,7 +124,8 @@ CREATE OR REPLACE FUNCTION caa_event_payload(
   expires_at timestamptz,
   created_at timestamptz,
   updated_at timestamptz,
-  seq_no bigint
+  seq_no bigint,
+  precomputed_publisher text DEFAULT NULL
 ) RETURNS jsonb AS $$
 DECLARE
   derived_publisher text;
@@ -110,13 +133,15 @@ BEGIN
   -- For per-property rows, derive publisher from catalog_properties.created_by
   -- (the writer encodes 'adagents_json:foo.example' / 'community:foo.example').
   -- Strip any pipeline prefix, matching v_effective_agent_authorizations.
-  IF publisher_domain IS NULL AND property_rid IS NOT NULL THEN
+  IF publisher_domain IS NOT NULL THEN
+    derived_publisher := publisher_domain;
+  ELSIF precomputed_publisher IS NOT NULL THEN
+    derived_publisher := precomputed_publisher;
+  ELSIF property_rid IS NOT NULL THEN
     SELECT regexp_replace(cp.created_by, '^[^:]+:', '')
       INTO derived_publisher
       FROM catalog_properties cp
      WHERE cp.property_rid = caa_event_payload.property_rid;
-  ELSE
-    derived_publisher := publisher_domain;
   END IF;
 
   RETURN jsonb_build_object(
@@ -253,12 +278,21 @@ CREATE OR REPLACE FUNCTION aao_override_payload(
   effective_payload jsonb,
   applied boolean
 ) RETURNS jsonb AS $$
+DECLARE
+  hashed_actor text;
 BEGIN
   -- Apply the override flags onto the base row's effective payload so a
   -- consumer subscribed to authorization.* events sees the same
   -- override_applied / override_reason fields as on the snapshot view.
   IF effective_payload IS NULL THEN
     -- Phantom event for an 'add' override with no base row to anchor.
+    -- Hash the moderator user_id rather than expose the raw WorkOS id on
+    -- the public feed. Stable per-moderator (consumers can group events
+    -- by actor) but not enumerable as a member directory.
+    hashed_actor := 'moderator:' || substr(
+      encode(digest(coalesce(ov_row.approved_by_user_id, ''), 'sha256'), 'hex'),
+      1, 16
+    );
     RETURN jsonb_build_object(
       'id',                 ov_row.id,
       'agent_url',          ov_row.agent_url,
@@ -269,7 +303,7 @@ BEGIN
       'authorized_for',     ov_row.authorized_for,
       'evidence',           'override',
       'disputed',           FALSE,
-      'created_by',         ov_row.approved_by_user_id,
+      'created_by',         hashed_actor,
       'expires_at',         NULL,
       'created_at',         ov_row.created_at,
       'updated_at',         ov_row.created_at,
@@ -287,7 +321,7 @@ $$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION aao_emit_event() RETURNS trigger AS $$
 DECLARE
-  base_row catalog_agent_authorizations%ROWTYPE;
+  loop_rec record;
   ev_id uuid;
   ev_type text;
   ev_payload jsonb;
@@ -335,14 +369,26 @@ BEGIN
 
   -- 'suppress' overrides fan out: one event per affected base row.
   -- Active insert hides matching rows → revoked; supersede unhides → granted.
+  --
+  -- All events emitted from a single fan-out are the SAME ev_type (all
+  -- revoked or all granted). Within-microsecond ordering ties between
+  -- two events from the same fan-out therefore don't carry semantic
+  -- dependencies for a consumer applying events in cursor order — the
+  -- per-(agent, base_row) state machine is independent across base rows.
+  -- uuidv7's microsecond packing handles the ms-ordering case; the 2
+  -- random tiebreaker bits cover the rare same-µs collision.
   IF is_active_insert THEN
     ev_type := 'authorization.revoked';
   ELSE
     ev_type := 'authorization.granted';
   END IF;
 
-  FOR base_row IN
-    SELECT caa.*
+  -- Hot-path: pull cp.created_by into the LOOP's SELECT so caa_event_payload
+  -- doesn't re-issue a per-iteration catalog_properties lookup. A 10k-row
+  -- fan-out drops 10k point lookups by passing the derived publisher in.
+  FOR loop_rec IN
+    SELECT caa.*,
+           regexp_replace(cp.created_by, '^[^:]+:', '') AS derived_publisher
       FROM catalog_agent_authorizations caa
       LEFT JOIN catalog_properties cp ON cp.property_rid = caa.property_rid
      WHERE caa.deleted_at IS NULL
@@ -354,20 +400,21 @@ BEGIN
        AND (ov_row.property_id IS NULL OR ov_row.property_id = caa.property_id_slug)
   LOOP
     base_payload := caa_event_payload(
-      base_row.id, base_row.agent_url, base_row.agent_url_canonical,
-      base_row.property_rid, base_row.property_id_slug, base_row.publisher_domain,
-      base_row.authorized_for, base_row.evidence, base_row.disputed,
-      base_row.created_by, base_row.expires_at,
-      base_row.created_at, base_row.updated_at, base_row.seq_no
+      loop_rec.id, loop_rec.agent_url, loop_rec.agent_url_canonical,
+      loop_rec.property_rid, loop_rec.property_id_slug, loop_rec.publisher_domain,
+      loop_rec.authorized_for, loop_rec.evidence, loop_rec.disputed,
+      loop_rec.created_by, loop_rec.expires_at,
+      loop_rec.created_at, loop_rec.updated_at, loop_rec.seq_no,
+      loop_rec.derived_publisher
     );
     -- 'override_applied' is TRUE on revoked (suppress is active),
     -- FALSE on granted (suppress was lifted, base is now visible again).
-    ev_payload := aao_override_payload(ov_row, base_row.id::text, base_payload, is_active_insert);
+    ev_payload := aao_override_payload(ov_row, loop_rec.id::text, base_payload, is_active_insert);
     ev_id := uuidv7();
     INSERT INTO catalog_events (event_id, event_type, entity_type, entity_id, payload, actor)
     VALUES (
       ev_id, ev_type, 'authorization',
-      base_row.id::text, ev_payload, 'trigger:aao_emit_event'
+      loop_rec.id::text, ev_payload, 'trigger:aao_emit_event'
     );
     matched_count := matched_count + 1;
   END LOOP;
