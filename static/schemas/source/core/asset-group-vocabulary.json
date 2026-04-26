@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/asset-group-vocabulary.json",
+  "title": "AdCP Asset Group Vocabulary Registry",
+  "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-26",
+  "vocabulary": {
+    "headlines": {
+      "description": "Pool of headline text variants for the surface to choose from.",
+      "asset_type": "text",
+      "typical_use": "Multiple short headline copy variants (Google PMax/RDA, Meta promoted_offerings, etc.)"
+    },
+    "descriptions": {
+      "description": "Pool of body description text variants.",
+      "asset_type": "text",
+      "typical_use": "Body-copy variants for surfaces that pick the best combination."
+    },
+    "images_landscape": {
+      "description": "Pool of landscape-orientation images (1.91:1 or 16:9 typical).",
+      "asset_type": "image",
+      "typical_use": "Hero images for landscape-format placements (Meta feed, LinkedIn feed, Google display)."
+    },
+    "images_vertical": {
+      "description": "Pool of vertical-orientation images (9:16 typical).",
+      "asset_type": "image",
+      "typical_use": "Hero images for stories, reels, and other vertical placements (Snap, TikTok, Meta Stories, Pinterest)."
+    },
+    "images_square": {
+      "description": "Pool of square-orientation images (1:1).",
+      "asset_type": "image",
+      "typical_use": "Feed-context images, profile-style placements, square carousel cards."
+    },
+    "logo": {
+      "description": "Brand logo asset (typically 1:1 or 2:1).",
+      "asset_type": "image",
+      "typical_use": "Brand attribution overlay (Google PMax/RDA, Snap Story Ad, Amazon SB)."
+    },
+    "video": {
+      "description": "Pool of video assets.",
+      "asset_type": "video",
+      "typical_use": "Video creative for video placements; orientation determined by platform constraints."
+    },
+    "video_vertical": {
+      "description": "Pool of vertical-orientation video (9:16).",
+      "asset_type": "video",
+      "typical_use": "Reels, Stories, TikTok In-Feed, Snap Spotlight, vertical short-form video."
+    },
+    "video_horizontal": {
+      "description": "Pool of horizontal-orientation video (16:9).",
+      "asset_type": "video",
+      "typical_use": "Pre-roll, mid-roll, instream, CTV, in-feed horizontal video."
+    },
+    "audio": {
+      "description": "Audio asset.",
+      "asset_type": "audio",
+      "typical_use": "Audio ads for streaming, podcasts, broadcast radio."
+    },
+    "companion_image": {
+      "description": "Image displayed alongside an audio asset.",
+      "asset_type": "image",
+      "typical_use": "Brand-attribution image paired with audio (Spotify standard 640x640, Amazon DSP audio 300x300)."
+    },
+    "companion_banner": {
+      "description": "Banner image displayed alongside a video asset.",
+      "asset_type": "image",
+      "typical_use": "Companion banner for instream video (Google video 300x60, Amazon DSP 1.91:1)."
+    },
+    "brand_name": {
+      "description": "Short brand attribution text (distinct from headline).",
+      "asset_type": "text",
+      "typical_use": "Brand name overlay on Snap, TikTok, Spotify, Pinterest creative."
+    },
+    "body_text": {
+      "description": "Longer free-text body content.",
+      "asset_type": "text",
+      "typical_use": "Body copy on Reddit, Amazon DSP, LinkedIn formats — distinct from short headlines."
+    },
+    "cards": {
+      "description": "Per-item carousel card array.",
+      "asset_type": "object",
+      "typical_use": "Carousel slides on Meta, TikTok, Pinterest, LinkedIn, Reddit. Each card carries its own image/video, headline, and link."
+    },
+    "landing_page_url": {
+      "description": "Click-through destination URL for the ad.",
+      "asset_type": "url",
+      "typical_use": "Primary destination for ad click-through across all canonical formats.",
+      "aliases": [
+        "click_url",
+        "link",
+        "final_url",
+        "link_url",
+        "click_through_url",
+        "landing_url"
+      ],
+      "note": "Canonical name for the destination URL slot. Six different field names exist across platform format definitions today; adopters should standardize on `landing_page_url` for v2."
+    },
+    "privacy_policy_url": {
+      "description": "Privacy policy URL required for lead-form variants.",
+      "asset_type": "url",
+      "typical_use": "LinkedIn lead gen, Snap lead gen — required for any format that collects user data."
+    },
+    "youtube_video_id": {
+      "description": "Externally-hosted YouTube video reference.",
+      "asset_type": "text",
+      "typical_use": "Reference an existing YouTube video for Google instream/bumper/non-skippable, PMax."
+    },
+    "pin_id": {
+      "description": "Externally-hosted Pinterest creative reference.",
+      "asset_type": "text",
+      "typical_use": "Reference an existing Pin (parallel to youtube_video_id)."
+    }
+  },
+  "governance": {
+    "extension_policy": "Non-canonical asset_group_id values remain valid for platform-specific extensions. Validators may emit soft warnings to encourage adoption of canonical values where applicable. New canonical entries are added via PR with rationale, at least one reference adopter, and AAO maintainer review.",
+    "alias_policy": "Aliases listed for canonical entries (e.g., `landing_page_url` aliases) are recognized as v1-era variants. v2 adopters should standardize on the canonical name; v1 aliases continue to work for backwards compatibility.",
+    "versioning": "This registry is versioned independently of the AdCP spec. Bump `version` on any addition or alias change; preserve existing canonical entries to avoid breaking adopters that have standardized on them."
+  }
+}
