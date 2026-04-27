@@ -962,6 +962,12 @@
             ]
           },
           {
+            "group": "Using AAO",
+            "pages": [
+              "docs/aao/connect-addie"
+            ]
+          },
+          {
             "group": "FAQ",
             "pages": [
               "docs/faq",
