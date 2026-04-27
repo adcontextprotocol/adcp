@@ -23,11 +23,10 @@ import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import {
   StaticJwksResolver,
-  InMemoryReplayStore,
   InMemoryRevocationStore,
   RequestSignatureError,
 } from '@adcp/client/signing';
-import type { AdcpJsonWebKey, VerifierCapability } from '@adcp/client/signing';
+import type { AdcpJsonWebKey, ReplayStore, VerifierCapability } from '@adcp/client/signing';
 import {
   verifySignatureAsAuthenticator,
   AuthError,
@@ -35,9 +34,11 @@ import {
   tagAuthenticatorPresenceGated,
   isAuthenticatorPresenceGated,
 } from '@adcp/client/server';
+import { PostgresReplayStore, sweepExpiredReplays } from '@adcp/client/signing/server';
 import type { Authenticator } from '@adcp/client/server';
 import { getComplianceCacheDir } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
+import { getPool } from '../db/client.js';
 import { MUTATING_TOOLS } from './idempotency.js';
 
 const logger = createLogger('training-agent-request-signing');
@@ -157,10 +158,55 @@ export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'e
   return getStrictRequestSigningCapability();
 }
 
+/**
+ * Replay store backed by Postgres so all training-agent instances share
+ * one cache. Per-process `InMemoryReplayStore` can't catch cross-instance
+ * replays — Fly's load balancer routes consecutive probes to different
+ * machines, and the second machine has no record of the first nonce
+ * (#3338, grader vector neg/016).
+ *
+ * Singleton across all per-route authenticators so they all hit the same
+ * `adcp_replay_cache` table; the (keyid, scope, nonce) primary key
+ * partitions by route automatically via the `@target-uri`-derived scope.
+ */
+let _replayStore: ReplayStore | null = null;
+function getReplayStore(): ReplayStore {
+  if (_replayStore) return _replayStore;
+  const store = new PostgresReplayStore(getPool());
+  _replayStore = store;
+  return store;
+}
+
+/**
+ * Schedule periodic deletion of expired rows from `adcp_replay_cache`.
+ * Postgres has no native TTL — without this, the table grows unboundedly.
+ * Called from the server boot path (index.ts).
+ */
+let _sweepInterval: NodeJS.Timeout | null = null;
+export function startReplayCacheSweeper(): void {
+  if (_sweepInterval) return;
+  _sweepInterval = setInterval(() => {
+    sweepExpiredReplays(getPool())
+      .then((result: { deleted: number }) => {
+        if (result.deleted > 0) logger.info({ deleted: result.deleted }, 'Swept expired replay-cache rows');
+      })
+      .catch((err: unknown) => logger.warn({ err }, 'Replay-cache sweep failed'));
+  }, 60_000);
+  // Don't keep the event loop alive for the sweeper alone.
+  _sweepInterval.unref?.();
+}
+
+export function stopReplayCacheSweeper(): void {
+  if (_sweepInterval) {
+    clearInterval(_sweepInterval);
+    _sweepInterval = null;
+  }
+}
+
 function buildAuthenticatorWithCapability(capability: VerifierCapability): Authenticator {
   const keys = loadTestJwks();
   const jwks = new StaticJwksResolver(keys);
-  const replayStore = new InMemoryReplayStore();
+  const replayStore = getReplayStore();
 
   // Pre-revoke the test-kit's revocation vector key so vector 017 fires
   // the expected `request_signature_revoked` error instead of passing.
