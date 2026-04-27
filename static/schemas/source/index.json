@@ -1555,7 +1555,8 @@
             "description": "Per-package eligibility — boolean eligible plus optional intent score"
           }
         }
-      }
+      },
+      "buyer-internal-valkey-schema": "Buyer-internal records (audience, exposure, package, fcap_policy) are documented in specs/identitymatch-fcap-architecture.md as a valkey schema (Redis key patterns + primitive types). Not a wire artifact and not on the JSON Schema registry."
     },
     "brand-protocol": {
       "description": "Brand protocol for identity retrieval, rights discovery, acquisition, and lifecycle management",

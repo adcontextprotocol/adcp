@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-response.json",
   "title": "Identity Match Response",
-  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "x-status": "experimental",
   "type": "object",
   "properties": {
@@ -22,9 +22,16 @@
         "type": "string"
       }
     },
+    "serve_window_sec": {
+      "type": "integer",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by buyer-side exposure records and policies, updated out-of-band via TMPX impression callbacks. Default 60. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
+      "minimum": 1,
+      "maximum": 300,
+      "default": 60
+    },
     "ttl_sec": {
       "type": "integer",
-      "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
+      "description": "DEPRECATED — use serve_window_sec. Originally documented as a router response cache TTL but operationally functioned as a per-package serve throttle, conflating two distinct concerns (response caching vs frequency capping). Senders during the deprecation window SHOULD populate ttl_sec and serve_window_sec with the same value; receivers SHOULD prefer serve_window_sec when both are present. Removed in a future 3.0.x release per the experimental-status contract — see CHANGELOG and specs/identitymatch-fcap-architecture.md.",
       "minimum": 0,
       "maximum": 86400
     },
