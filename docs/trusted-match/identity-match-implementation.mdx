@@ -1,0 +1,347 @@
+---
+title: Identity Match Implementation Guide
+sidebarTitle: IdentityMatch Implementation
+description: "Implementation guidance for the buyer-side IdentityMatch service — fcap_keys label model, reference valkey data model, merge rules, SDK primitives, and conformance scenarios."
+"og:title": "AdCP TMP IdentityMatch Implementation Guide"
+---
+
+# Identity Match Implementation Guide
+
+This page covers how to implement the buyer side of TMP's Identity Match operation. The wire spec lives in the [specification](specification.mdx); the conformance invariants the service must satisfy are also normative there. What lives on this page is **implementation guidance** — the data model, the SDK primitives, and the operational shape of a working IdentityMatch service. Storage backend is an implementer choice; the SDK exposes pluggable interfaces.
+
+The reference data model on this page is **valkey-backed** and reflects what Scope3 ships. Other buyers may use Aerospike, DynamoDB, PostgreSQL, in-memory state, or anything else — as long as the conformance invariants hold, the service is valid.
+
+## Three layers
+
+| Layer | Status | What it covers |
+|---|---|---|
+| Wire spec | Normative | The HTTP JSON request/response on `POST /identity`, the `serve_window_sec` semantic, the TMPX binary format. See [specification.mdx](specification.mdx). |
+| Conformance invariants | Normative | The eligibility logic an IdentityMatch service MUST compute (audience intersection, fcap merge across identities, active state, audience freshness). Also in [specification.mdx](specification.mdx#conformance-invariants-for-identitymatch-eligibility). |
+| Reference data model | Non-normative | Scope3's valkey-backed implementation choice — Redis primitives, key patterns, field names. The rest of this page. |
+
+## fcap_keys label model
+
+A frequency cap is identified by a tag of the form `tenant:dimension:value`:
+
+```
+buyer-acme:campaign:42
+buyer-acme:campaign_group:7
+buyer-acme:advertiser:13
+buyer-acme:creative:8
+```
+
+Packages declare which `fcap_keys` they belong to; exposure records are written per-key; policies (window, max count, merge rule) are attached per-key.
+
+```
+package 2342:                           fcap_keys ["buyer-acme:campaign:42",
+                                                   "buyer-acme:campaign_group:7",
+                                                   "buyer-acme:advertiser:13"]
+policy "buyer-acme:campaign:42":        {window_sec: 60, max_count: 5, merge_rule: MAX}
+policy "buyer-acme:advertiser:13":      {window_sec: 86400, max_count: 20, merge_rule: MAX}
+```
+
+**Tenant prefix is required.** Multi-tenant buyer-agent fleets host multiple advertiser orgs. Without a tenant prefix, `campaign:42` collides on shared counters between tenants and tenant A learns B's reach by watching the counter move. SDKs MUST refuse keys without a tenant prefix.
+
+**Charset constraint.** Each segment matches `[a-zA-Z0-9_-]+` so the `:` delimiter is unambiguous. URL-bearing or otherwise colon-bearing values must be hashed or shortened before use as a value segment.
+
+**Why labels not hierarchy.** Cap dimensions are heterogeneous across customers — some want creative-level caps, some line-item, some flight, some advertiser-roll-up. A fixed schema either over-prescribes or under-serves. Labels also make cross-seller fcap automatic: any policy whose key is shared across sellers (e.g., `buyer-acme:advertiser:13`) enforces across all of them with no extra mode.
+
+**Cross-cutting policies are explicit, not implied.** A campaign that needs both a per-campaign and a per-advertiser cap declares both keys and gets two policy lookups at check time. There is no implicit roll-up.
+
+## Identity handling
+
+The protocol does not dictate a canonical user ID. Buyers will use multiple identity providers (RampID, ID5, MAID, UID2, publisher-issued tokens) in parallel — Scope3's identity graph is canonical only for Scope3-hosted IdentityMatch instances. Other operators run their own graph or none at all.
+
+Records are keyed by `(uid_type, user_token)`. A user with three resolved identities produces three records on each write, and reads merge across the user's identities at check time:
+
+```
+exposure:buyer-acme:campaign:42:rampid:abc → {count: 3, …}
+exposure:buyer-acme:campaign:42:id5:def    → {count: 2, …}
+exposure:buyer-acme:campaign:42:maid:ghi   → {count: 1, …}
+```
+
+### Merge rules
+
+The `merge_rule` on each fcap policy is **required** — there is no implicit default, because the right rule depends on whether the buyer canonicalizes upstream.
+
+| Rule | Behavior | When to use |
+|---|---|---|
+| `MAX` | Take the largest count across identities. | **Recommended.** Buyers running an identity graph that canonicalizes upstream. Matches how Xandr/DV360/TTD model multi-identity fcap. Avoids over-counting when one impression resolves to two tokens. |
+| `OR` | Treat any count > 0 as one exposure per identity, sum the booleans. | Defensible only for graphless operators where identity tokens are known not to alias. Over-counts when the same impression carries multiple identities. |
+| `SUM` | Add all counts. | Almost always wrong — assumes identities never co-occur for the same person. |
+
+Buyers who **want** canonicalization run their identity graph behind their own door — pre-canonicalizing tokens before write/read on both the `sync_audiences` path and the TMPX-decrypt path, then setting `MERGE_RULE_MAX` since the merge becomes a no-op. The protocol does not know this happened.
+
+## Reference data model (valkey-backed)
+
+Four record types, each modeled directly on a Redis primitive. Cross-language interop is at the operation level (`HINCRBY`, `SADD`, `SMEMBERS`), not via a serialization layer. Valkey/Redis does not validate writes against a schema definition — the contract is enforced by the SDK on the write side and by the IdentityMatch reader on the read side. Library discipline (not database constraints) is what makes this work.
+
+### Audience record
+
+```
+type: SET                                    (or ZSET if strength scores are used)
+key:  audience:{uid_type}:{user_token}
+members: audience IDs the user belongs to
+```
+
+Optional companion HASH at `audience_meta:{uid_type}:{user_token}` for diagnostics:
+
+```
+type: HASH
+fields:
+  updated_at:  unix seconds last written
+  expires_at:  unix seconds after which the SET MUST be ignored (0 = no deadline)
+  source:      origin pipeline (typically "sync_audiences")
+```
+
+Written by the buyer's `sync_audiences` pipeline. Read at IdentityMatch eligibility time. Real-world `sync_audiences` cadences vary widely (prospecting segments are often hourly-to-daily batched; retargeting via streaming CDP can be near-real-time) — `expires_at` lets the pipeline publish freshness contracts directly on the record.
+
+If using ZSET, the score carries audience strength (0.0–1.0); IdentityMatch can apply a strength floor at eligibility time.
+
+### Exposure record
+
+```
+type: HASH
+key:  exposure:{fcap_key}:{uid_type}:{user_token}
+fields:
+  count:         uint, exposures inside the current policy window
+  first_seen:    unix seconds (sliding-window policies)
+  last_seen:     unix seconds, most recent exposure
+  window_start:  unix seconds when the current fixed window opened (0 = sliding)
+```
+
+Incremented on TMPX decrypt with `HINCRBY exposure:... count 1` plus `HSET ... last_seen <ts>`. Atomic by Redis primitive; no serialization. Window semantics (sliding vs fixed) are policy-attached, not record-attached.
+
+### Package record
+
+```
+type: HASH
+key:  package:{seller_agent.agent_url}:{package_id}
+fields:
+  media_buy_id:  string (optional, for diagnostics)
+  active:        "1" | "0"
+  updated_at:    unix seconds
+```
+
+Companion SETs for the multi-valued lookups:
+
+```
+type: SET
+key:  package_fcap_keys:{seller_agent.agent_url}:{package_id}
+members: e.g. "buyer-acme:campaign:42", "buyer-acme:advertiser:13"
+```
+
+```
+type: SET
+key:  package_audiences:{seller_agent.agent_url}:{package_id}
+members: e.g. "seg_123", "seg_456"
+```
+
+Written by the buyer's package-CRUD writethrough. Set membership lets eligibility checks compute audience intersection via native `SINTER` rather than client-side iteration.
+
+### Fcap policy record
+
+```
+type: HASH
+key:  fcap_policy:{fcap_key}
+fields:
+  window_sec:   uint
+  window_kind:  "FIXED" | "SLIDING"
+  max_count:    uint
+  merge_rule:   "MAX" | "OR" | "SUM"   (required, no implicit default)
+  active:       "1" | "0"
+  updated_at:   unix seconds
+```
+
+Written by the buyer's policy-CRUD writethrough.
+
+## SDK primitives
+
+The SDK ships impression handling as **two composable functions**, not a single bundled call. Production tracking endpoints typically decode at intake, publish to pub/sub for buffering, and let a downstream worker write the store at its own pace. Bundling decode+write into a single call would force a synchronous topology and prevent that buffering pattern.
+
+```
+decodeTmpx(raw_tmpx) -> ExposureLog
+  Decrypts HPKE ciphertext, parses the published TMPX binary format
+  (specification.mdx#binary-format), returns the resolved identity entries
+  in a structured form ready for serialization onto a topic or for direct write.
+
+writeExposure(log, store_context) -> { ok, count }
+  Writes the exposure increment(s) per the resolved identities and declared
+  fcap_keys. store_context wires the FrequencyStore implementation
+  (valkey, Aerospike, DynamoDB, etc.).
+```
+
+Plus the buyer-side management plane:
+
+```
+upsertAudience(audience_id, members, opts)           // wraps sync_audiences add/remove deltas
+upsertPackage(seller_agent_url, package_id, fcap_keys, audience_ids, opts)
+upsertFcapPolicy(fcap_key, {window_sec, window_kind, max_count, merge_rule})
+inspectExposure(fcap_key, uid_type, user_token)      // test helper; returns {count, last_seen, ...}
+```
+
+Plus HPKE encrypt/decrypt as net-new SDK primitives (X25519 KEM, ChaCha20-Poly1305, HKDF-SHA256 per RFC 9180 `mode_base`). The encrypt path is needed by the IdentityMatch service emitting TMPX; decrypt by the impression handler invoking `decodeTmpx`.
+
+The same primitive surface ships in `@adcp/client` (TS), `adcp-go`, and `adcp` (Python). Implementer chooses the language; spec/SDK does not dictate where the logic runs.
+
+## Pluggable store interfaces
+
+The SDK exposes store interfaces — `FrequencyStore`, `AudienceStore`, `PackageStore`, `FcapPolicyStore` — that an IdentityMatch service implementation calls to satisfy the conformance invariants. Buyers running their own backend (Aerospike, DynamoDB, proprietary KV) implement these interfaces against their store; the SDK ships a reference valkey-backed connector. The interfaces, not the storage layout, are what the SDK contracts on.
+
+```
+interface FrequencyStore {
+  increment(fcap_key, uid_type, user_token, by) -> count
+  read(fcap_key, uid_type, user_token) -> { count, first_seen, last_seen, window_start }
+  reset_window(fcap_key, uid_type, user_token, new_window_start)
+}
+// Equivalent shapes for AudienceStore, PackageStore, FcapPolicyStore.
+```
+
+Specific interface signatures are tracked under `adcp-client#1005`. The point at protocol level: the SDK is store-agnostic by design.
+
+## Production topology pattern
+
+A typical Scope3-style impression pipeline:
+
+```
+publisher pixel fires {TMPX} → tracking endpoint
+                                      │
+                          decodeTmpx (synchronous, at intake)
+                                      │
+                                      ▼
+                              pub/sub topic
+                                      │
+                          frequency_writer worker
+                                      │
+                          writeExposure (asynchronous)
+                                      │
+                                      ▼
+                                   valkey
+```
+
+Decode at intake; emit to pub/sub for buffering; downstream worker writes the store at its own pace. Buffering, retries, dedup, observability, and abuse protection live at the queue layer — none of that is the SDK's job. The SDK ships the two functions; deployment topology composes them.
+
+A simpler synchronous pipeline (decode + write in the same handler) is also valid for low-volume deployments. The SDK supports both because the primitives are composable.
+
+## Conformance scenarios
+
+The five scenarios that map to the conformance invariants. Each shows initial state, wire calls, buyer-internal operations, and expected outcomes. SDK-driven integration tests can run these against a live valkey + IdentityMatch service.
+
+All scenarios assume `serve_window_sec = 60` (default), `tenant = "buyer-acme"`, `package = "pkg-42"`, `seller_agent_url = "https://seller-a.example"`.
+
+### 1. Per-key cap trips after N exposures
+
+**Setup:**
+```
+SADD package_fcap_keys:https://seller-a.example:pkg-42 buyer-acme:campaign:42
+SADD package_audiences:https://seller-a.example:pkg-42 seg_test
+HSET fcap_policy:buyer-acme:campaign:42 window_sec 86400 window_kind FIXED \
+                                        max_count 5 merge_rule MAX active 1
+HSET package:https://seller-a.example:pkg-42 active 1
+SADD audience:rampid:abc seg_test
+```
+
+**Step 1** — wire call: `identity_match_request {identities: [{rampid, abc}], package_ids: [pkg-42]}` → expect `eligible_package_ids: [pkg-42]`, `serve_window_sec: 60`, `tmpx: <opaque>`.
+
+**Step 2** — buyer-internal, repeat 5×: decode TMPX, then for each (uid_type, user_token):
+```
+HINCRBY exposure:buyer-acme:campaign:42:rampid:abc count 1
+HSET    exposure:buyer-acme:campaign:42:rampid:abc last_seen <ts>
+```
+After 5 iterations: `HGET exposure:buyer-acme:campaign:42:rampid:abc count` returns `5`.
+
+**Step 3** — wire call: same `identity_match_request` → expect `eligible_package_ids: []` (cap tripped, package dropped).
+
+### 2. Multi-identity merge (MAX rule)
+
+Same setup as Scenario 1. User has two resolved identities (`rampid:abc` and `id5:def`).
+
+**Step 1** — buyer-internal, simulate prior exposures across identities:
+```
+HSET exposure:buyer-acme:campaign:42:rampid:abc count 3
+HSET exposure:buyer-acme:campaign:42:id5:def    count 2
+```
+
+**Step 2** — wire call: `identity_match_request {identities: [{rampid, abc}, {id5, def}], package_ids: [pkg-42]}`.
+
+Eligibility check inside the buyer agent reads both records and applies `MERGE_RULE_MAX`:
+```
+counts = [HGET exposure:...rampid:abc count, HGET exposure:...id5:def count]
+       = [3, 2]
+merged = MAX(3, 2) = 3
+```
+3 < max_count of 5 → `eligible_package_ids: [pkg-42]`.
+
+**Step 3** — buyer-internal, simulate 2 more impressions on rampid:
+```
+HINCRBY exposure:buyer-acme:campaign:42:rampid:abc count 2  → count = 5
+```
+
+**Step 4** — wire call: same request → `MAX(5, 2) = 5 ≥ max_count` → `eligible_package_ids: []`.
+
+If the policy were `MERGE_RULE_OR` (count distinct identities exposed), step 2 would have merged to `count_nonzero(3,2) = 2`, and step 4 to `2`. OR-merge would not trip until five distinct identities had been exposed — the over-counting concern that motivates MAX as the recommended default.
+
+### 3. Audience drift via sync_audiences
+
+Setup as Scenario 1, with the user initially in `seg_test`.
+
+**Step 1** — wire call: `identity_match_request` → `eligible_package_ids: [pkg-42]`.
+
+**Step 2** — buyer-internal, simulate `sync_audiences` removing the user from the segment:
+```
+SREM audience:rampid:abc seg_test
+HSET audience_meta:rampid:abc updated_at <ts>
+```
+
+**Step 3** — wait `serve_window_sec` seconds (60) so the publisher re-queries.
+
+**Step 4** — wire call: same `identity_match_request`. Buyer agent computes audience intersection:
+```
+user_audiences = SMEMBERS audience:rampid:abc           → []
+package_audiences = SMEMBERS package_audiences:...:pkg-42 → [seg_test]
+intersection = ∅ → package dropped
+```
+Expect `eligible_package_ids: []`.
+
+### 4. Cross-seller advertiser cap
+
+Setup: two packages on different sellers, both mapped to the same `advertiser:13` cap:
+```
+SADD package_fcap_keys:https://seller-a.example:pkg-A buyer-acme:advertiser:13
+SADD package_fcap_keys:https://seller-b.example:pkg-B buyer-acme:advertiser:13
+HSET fcap_policy:buyer-acme:advertiser:13 window_sec 86400 max_count 10 \
+                                          merge_rule MAX active 1
+```
+
+**Step 1** — wire call from Seller A: `package_ids: [pkg-A]` → eligible.
+
+**Step 2** — buyer-internal, simulate 10 impressions on Seller A's package:
+```
+HSET exposure:buyer-acme:advertiser:13:rampid:abc count 10
+```
+
+**Step 3** — wire call from Seller B: `package_ids: [pkg-B]`. Buyer agent reads `exposure:buyer-acme:advertiser:13:rampid:abc.count = 10 ≥ max_count` → `eligible_package_ids: []`.
+
+The advertiser-level cap enforces across sellers because the `fcap_key` is shared. No cross-seller coordination needed; the buyer agent is the single source of truth.
+
+### 5. Serve-window throttle
+
+Setup as Scenario 1.
+
+**Step 1** — wire call at `t=0`: `identity_match_request` → `eligible_package_ids: [pkg-42]`, `serve_window_sec: 60`.
+
+**Step 2** — publisher serves one impression on pkg-42 within the 60s window.
+
+**Step 3** — at `t=30s`, publisher receives another ad opportunity for the same user. Per `serve_window_sec` semantic, the publisher MUST NOT re-serve pkg-42 from the cached eligibility — pkg-42 is exhausted in this window.
+
+**Step 4** — at `t=61s`, publisher re-queries: `identity_match_request` → fresh eligibility. The buyer agent does not need to track per-publisher window state; it just answers freshly when re-queried.
+
+This is the semantic the `serve_window_sec` field encodes. The buyer agent's job is correctness on each query; the publisher's job is honoring the one-impression-per-package contract within the window.
+
+## See also
+
+- [TMP Specification](specification.mdx) — wire spec, TMPX format, conformance invariants
+- [Buyer Guide](buyer-guide.mdx) — buyer agent integration, Context Match + Identity Match flows
+- [Migration from AXE](migration-from-axe.mdx) — for buyers transitioning from AXE-shaped pipelines, including the OpenRTB User.eids cross-walk
+- [Privacy architecture](privacy-architecture.mdx) — what each party learns
+- [Router architecture](router-architecture.mdx) — provider registration, fan-out, latency

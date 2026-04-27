@@ -2,18 +2,35 @@
 "adcontextprotocol": patch
 ---
 
-IdentityMatch & frequency capping architecture spec, plus a wire-side fix to the response throttle field. Adds:
+IdentityMatch & frequency capping architecture, with both the wire-spec change and the implementation guidance landing as authoritative protocol docs.
 
-- `specs/identitymatch-fcap-architecture.md` — design spec consolidating the buyer-internal valkey schema, `fcap_keys[]` label model with required tenant-prefixing, identity-handling rules (no required canonicalization), and storyboard conformance scenarios behind TMP IdentityMatch.
-- `identity-match-response.json` — adds `serve_window_sec` (integer, 1–300, default 60) and deprecates `ttl_sec`. The original `ttl_sec` field was documented as a router response cache TTL but operationally functioned as a per-package single-shot fcap, conflating two distinct concerns. `serve_window_sec` carries the corrected semantic: at most one impression per eligible package per user during this window. Multi-impression fcap is handled separately by buyer-side exposure records and policies.
-- `CHANGELOG.md` — 6-week deprecation notice for `ttl_sec` removal per the experimental-status contract. Earliest landing: 2026-06-07.
+**Wire spec changes** (`identity-match-response.json`):
+- Adds `serve_window_sec` (integer, 1–300, default 60) — per-package single-shot fcap window. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Not a router response cache TTL.
+- Deprecates `ttl_sec`. Originally documented as a router cache TTL but operationally functioned as a per-package serve throttle. Senders during the deprecation window populate both fields; receivers prefer `serve_window_sec`. Removed in a 3.0.x release ≥ 6 weeks after the 2026-04-26 notice (earliest 2026-06-07).
 
-The buyer-internal records (audience, exposure, package, fcap_policy) are documented as a **valkey schema** — Redis key patterns + primitive types (HASH / SET / ZSET) + field names within each. Cross-language interop between JS impression-trackers and Go IdentityMatch services is handled by Redis client libraries; agreement is at the operation level (`HINCRBY exposure:... count 1`, `SMEMBERS audience:...`), not via a binary serialization layer. No proto, no JSON Schema for these records — they aren't wire envelopes and they aren't binary blobs.
+**Doc updates** (authoritative implementation guidance):
+- `docs/trusted-match/specification.mdx` — adds `serve_window_sec` field, marks `ttl_sec` deprecated, adds normative conformance invariants for IdentityMatch eligibility (audience intersection, fcap merge across identities, active state, audience freshness). Updates the caching section for the new contract.
+- `docs/trusted-match/identity-match-implementation.mdx` (new page) — implementation guide covering the `fcap_keys` label model with tenant prefix and charset, reference valkey-backed data model (audience SET, exposure HASH, package HASH, fcap_policy HASH), merge rules with MAX recommended, SDK primitives (`decodeTmpx`, `writeExposure`, `upsertAudience`, `upsertPackage`, `upsertFcapPolicy`, `inspectExposure`), pluggable store interfaces (FrequencyStore / AudienceStore / PackageStore / FcapPolicyStore), production topology pattern (pub/sub buffering between tracking endpoint and store writer), and Redis-command walkthroughs for the five conformance scenarios.
+- `docs/trusted-match/buyer-guide.mdx` — updates frequency-cap management and the serve-window contract sections; cross-links to the implementation page.
+- `docs/trusted-match/migration-from-axe.mdx` — adds OpenRTB 2.6 `User.eids[]` cross-walk for buyers bridging from OpenRTB-shaped pipelines.
 
-The TMPX wire format itself is **unchanged** — already specified in `docs/trusted-match/specification.mdx` as a compact binary layout with version/timestamp/country/8-byte nonce/typed identity entries, with replay defense via master-side nonce dedup.
+**Three-layer model:**
+- Wire spec (normative) — what crosses an agent boundary.
+- Conformance invariants (normative) — backend-agnostic eligibility logic.
+- Reference data model (non-normative) — Scope3's valkey-backed implementation choice. Buyers may use Aerospike, DynamoDB, or anything else; the SDK exposes pluggable store interfaces. The protocol describes WHAT the service must compute, not HOW it stores the data.
 
-JSON Schema continues to govern wire/RPC surfaces. Buyer-internal valkey records live in the spec doc as a Redis schema. Each contract uses the right tool for its job.
+**SDK primitives** ship across `@adcp/client` (TS), `adcp-go`, and `adcp` (Python). Same primitive surface in all three languages. Impression handling is two composable functions (`decodeTmpx` + `writeExposure`), not one bundled call — production tracking endpoints decode at intake and write downstream behind a pub/sub buffer; bundling would force synchronous topology.
 
-All TMP surfaces remain `x-status: experimental`. Wire change in this release is purely additive (`serve_window_sec`); the `ttl_sec` removal lands in a later 3.0.x release ≥ 6 weeks after notice. Storyboard YAML deferred until TMP graduates from `experimental_features` into `supported_protocols` — buyer SDKs implement the five conformance scenarios as integration tests now.
+**Architecture history** preserved at `specs/identitymatch-fcap-architecture.md` (slimmed from 485 to 136 lines) — captures the design decisions, the deferred security/privacy follow-ups, the rollout plan, and consolidated Slack/PR-review threads. Implementation details now live in `docs/`.
 
-Several deferred security and privacy follow-ups are documented in the spec: TMPX harvest → competitor-suppression attack, eligibility-as-audience-membership oracle, consent revocation between IdentityMatch and impression, side-channel via eligibility deltas, hashed_email leak surface, and DoS amplification via large `package_ids[]`. None block this PR; each warrants a focused follow-up.
+All TMP surfaces remain `x-status: experimental`. Wire change is purely additive (`serve_window_sec`); the `ttl_sec` removal lands in a later 3.0.x.
+
+**Tracked deferred follow-ups** (not in this PR):
+- TMPX harvest → competitor-suppression attack
+- Eligibility-as-audience-membership oracle (honeypot package_ids)
+- Consent revocation between IdentityMatch and impression
+- Side-channel via eligibility deltas
+- `hashed_email` in TMPX leak surface
+- DoS amplification via large `package_ids[]`
+- Where do fcap policies live on the wire (currently SDK-only)
+- Identity-graph plug-point interface for SDK
