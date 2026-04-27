@@ -319,6 +319,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
         expect_error: true
+        negative_path: payload_well_formed
         stateful: false
         expected: |
           Reject the request with:
@@ -332,6 +333,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          idempotency_key: "schema-validation-reversed-dates-v1"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
           packages:
@@ -383,6 +385,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
         expect_error: true
+        negative_path: payload_well_formed
         stateful: false
         contributes: true
         expected: |

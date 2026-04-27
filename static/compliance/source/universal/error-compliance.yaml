@@ -102,6 +102,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_handling
         expect_error: true
+        negative_path: schema_invalid
         stateful: false
         expected: |
           Reject the request with an error containing:
@@ -146,6 +147,7 @@ phases:
           — any of these signals "this product is not sellable."
         task: create_media_buy
         expect_error: true
+        negative_path: payload_well_formed
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -232,6 +234,7 @@ phases:
           coherent. The canonical code is VALIDATION_ERROR; INVALID_REQUEST is accepted.
         task: create_media_buy
         expect_error: true
+        negative_path: payload_well_formed
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -290,6 +293,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_codes
         expect_error: true
+        negative_path: schema_invalid
         stateful: false
         expected: |
           Error response with:
@@ -347,6 +351,7 @@ phases:
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: error_handling
         expect_error: true
+        negative_path: payload_well_formed
         stateful: false
         expected: |
           Reject with:
@@ -433,6 +438,7 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: error_transport
         expect_error: true
+        negative_path: schema_invalid
         stateful: false
         expected: |
           MCP response with:

@@ -153,6 +153,7 @@ phases:
             correlation_id: "brand_baseline--get_brand_identity_unknown"
 
         expect_error: true
+        negative_path: payload_well_formed
         validations:
           - check: error_code
             allowed_values:

@@ -327,6 +327,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: terminal_state_enforcement
         expect_error: true
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Reject with INVALID_STATE — cannot pause a canceled buy.
@@ -338,6 +339,7 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           paused: true
+          idempotency_key: "$generate:uuid_v4#pause_canceled_buy"
 
           context:
             correlation_id: "media_buy_state_machine--pause_canceled_buy"
@@ -364,6 +366,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: terminal_state_enforcement
         expect_error: true
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Reject with INVALID_STATE — cannot resume a canceled buy.
@@ -375,6 +378,7 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           paused: false
+          idempotency_key: "$generate:uuid_v4#resume_canceled_buy"
 
           context:
             correlation_id: "media_buy_state_machine--resume_canceled_buy"
@@ -406,6 +410,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: terminal_state_enforcement
         expect_error: true
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Reject with:

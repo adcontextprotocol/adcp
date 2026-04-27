@@ -167,6 +167,7 @@ phases:
         doc_ref: "/signals/task-reference/activate_signal"
         comply_scenario: signal_activation
         expect_error: true
+        negative_path: payload_well_formed
         stateful: true
         expected: |
           Signal agent rejects with:
@@ -176,7 +177,8 @@ phases:
         sample_request:
           signal_agent_segment_id: "$context.signal_agent_segment_id"
           destinations:
-            - platform: "the-trade-desk"
+            - type: "platform"
+              platform: "the-trade-desk"
               account: "acmeoutdoor-ttd-seat"
           account:
             brand:
@@ -186,6 +188,16 @@ phases:
 
           context:
             correlation_id: "signal_marketplace--governance_denied--activate"
+        sample_response:
+          errors:
+            - code: "GOVERNANCE_DENIED"
+              message: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."
+              details:
+                findings:
+                  - category_id: "budget_authority"
+                    severity: "critical"
+                    explanation: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."
+                plan_id: "comply-signal-gov-denied"
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
