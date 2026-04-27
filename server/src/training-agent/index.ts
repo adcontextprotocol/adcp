@@ -33,6 +33,7 @@ import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
 import {
   buildRequestSigningAuthenticator,
+  buildStrictRequestSigningAuthenticator,
   buildStrictRequiredRequestSigningAuthenticator,
   buildStrictForbiddenRequestSigningAuthenticator,
   enforceSigningWhenWebhookAuthPresent,
@@ -118,14 +119,23 @@ function buildBearerAuthenticator(): Authenticator | null {
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
-// Wrapped so the signing authenticator is lazily built on first auth call —
-// avoids reading the compliance test JWKS at module import time, which would
-// break test setups that mock the compliance cache.
+// Per-route lazy signing authenticators. Each route MUST own its own
+// `InMemoryReplayStore` — sharing one store lets a nonce consumed on
+// one route falsely fire `request_signature_replayed` on another (#3338).
+// Lazy so the compliance test JWKS isn't read at module import time.
 let _signingAuth: Authenticator | null = null;
 function lazySigningAuth(): Authenticator {
   return (req) => {
     if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
     return _signingAuth(req);
+  };
+}
+
+let _strictSigningAuth: Authenticator | null = null;
+function lazyStrictSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictSigningAuth) _strictSigningAuth = buildStrictRequestSigningAuthenticator();
+    return _strictSigningAuth(req);
   };
 }
 
@@ -206,7 +216,7 @@ function buildStrictModeAuthenticator(lazyAuth: () => Authenticator): Authentica
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
-const strictAuthenticator = buildStrictModeAuthenticator(lazySigningAuth);
+const strictAuthenticator = buildStrictModeAuthenticator(lazyStrictSigningAuth);
 const strictRequiredAuthenticator = buildStrictModeAuthenticator(lazyStrictRequiredSigningAuth);
 const strictForbiddenAuthenticator = buildStrictModeAuthenticator(lazyStrictForbiddenSigningAuth);
 

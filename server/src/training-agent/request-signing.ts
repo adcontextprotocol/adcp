@@ -223,6 +223,15 @@ export function buildRequestSigningAuthenticator(): Authenticator {
   return buildAuthenticatorWithCapability(getRequestSigningCapability());
 }
 
+/** Authenticator for `/mcp-strict`: presence-gated signing with
+ *  `required_for: ['create_media_buy']` and `'either'` content-digest mode.
+ *  Distinct from the default authenticator so each route owns an isolated
+ *  `InMemoryReplayStore` — sharing one store lets a nonce consumed on `/mcp`
+ *  falsely fire `request_signature_replayed` on `/mcp-strict` (#3338). */
+export function buildStrictRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictRequestSigningCapability());
+}
+
 /** Authenticator for `/mcp-strict-required`: enforces `covers_content_digest='required'`. */
 export function buildStrictRequiredRequestSigningAuthenticator(): Authenticator {
   return buildAuthenticatorWithCapability(getStrictRequiredRequestSigningCapability());
