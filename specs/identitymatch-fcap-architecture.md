@@ -268,9 +268,36 @@ Where the existing plumbing helps: `kid` prefix conventions, the 5-minute JWKS-s
 
 | SDK | Signing today | HPKE needed | Priority |
 |---|---|---|---|
-| `@adcp/client` (JS) | ✅ | encrypt + decrypt | First — unblocks impression tracker |
-| `adcp-go` | ✅ | decrypt (server) | Reference IdentityMatch impl |
-| `adcp` (Python) | partial | encrypt + decrypt | Follows JS |
+| `@adcp/client` (TS/JS) | ✅ | encrypt + decrypt | Same surface as below |
+| `adcp-go` | ✅ | encrypt + decrypt | Same surface; current Scope3 impression tracker is in Go |
+| `adcp` (Python) | partial | encrypt + decrypt | Same surface |
+
+All three SDKs ship the same primitive surface. Implementer chooses the language; spec/SDK does not dictate.
+
+### Impression-handling primitives (composable, two-step)
+
+Per design alignment with Scope3's existing impression tracker, SDKs ship the impression-handling logic as **two composable functions**, not a single bundled call. Real deployments separate decode (synchronous, at intake) from exposure write (often asynchronous, behind a queue) — bundling the two forces a synchronous topology.
+
+```
+decodeTmpx(raw_tmpx) -> ExposureLog
+  // Decrypts HPKE ciphertext, parses the published TMPX binary format
+  // (specification.mdx:534-597), returns the resolved identity entries
+  // in a structured form ready for serialization onto a topic or for
+  // direct write.
+
+writeExposure(log, store_context) -> { ok, count }
+  // Writes the exposure increment(s) per the resolved identities and
+  // declared fcap_keys. store_context wires the FrequencyStore
+  // implementation (valkey, Aerospike, DynamoDB, etc.).
+```
+
+Why two functions:
+
+- **Topology-neutral.** A high-volume tracking endpoint typically decodes at intake and emits to pub/sub; a downstream `frequency_writer` consumes and writes Valkey at its own pace. Buffering, retries, dedup, observability live at the queue layer. Two functions let any topology compose them; one bundled call doesn't.
+- **Re-usable building blocks.** Decode without write supports diagnostic tools, replay analysis, and test harnesses that need the structured form without committing state.
+- **Cleaner boundary for open-source reuse.** Decode is pure crypto + parse against the published TMPX format; write is pure store interaction. Each is independently testable.
+
+The same two primitives ship in adcp-go, adcp-ts, adcp-py. Pub/sub buffering, retry, and observability are deployment concerns, not protocol concerns.
 
 ### Pluggable store interfaces
 
@@ -296,9 +323,9 @@ Specific interface signatures are an SDK-design concern, tracked under `adcp-cli
 | SDK + valkey reference connector | `@adcp/client/identitymatch` | JS/TS | Default store implementation behind the SDK interfaces |
 | SDK + Aerospike/Dynamo/etc. connectors | community / buyer-implemented | any | Optional alternate stores satisfying the same interfaces |
 
-### Why JS for the management plane and Go for the reader
+### Language is an implementer choice, not a protocol choice
 
-The impression tracker and CRUD writethrough run in the buyer's existing infra, which is overwhelmingly JS today. Wrapping in Go adds a process boundary for no benefit. The IdentityMatch service is hot-path request handling and benefits from Go's concurrency model + Prebid Server integration. Both consume the same store interfaces; they don't share storage assumptions, only the interface contract.
+Spec/SDK does not dictate where the impression-handling logic runs. Scope3's tracking endpoint is currently in Go; another buyer might run a Node service or a Python worker. The same `decodeTmpx` + `writeExposure` primitives ship in adcp-go, adcp-ts, adcp-py — the implementer picks the language that fits their infra. The IdentityMatch service (`POST /identity` reader) has the same property: any language that can read the FrequencyStore / AudienceStore / PackageStore interfaces and serve TMP responses is conformant.
 
 ## Storyboard conformance scenarios
 
@@ -540,19 +567,29 @@ Selected sections of this spec move to authoritative protocol docs:
 
 The split: authoritative implementation guidance moves to `docs/`; design history stays in `specs/`. SDK teams build against `docs/`.
 
-### 2. JS SDK: `@adcp/client` V6 (tracked: adcp-client#1005)
+### 2. SDK primitives across `@adcp/client` (TS), `adcp-go`, `adcp` (Python) — tracked: adcp-client#1005
 
-New namespace `client.identityMatch.*` with five methods that constitute the buyer-side management plane and the test harness driver:
+Same primitive surface in all three SDKs. Implementer chooses the language; spec/SDK does not dictate where the logic runs.
+
+**Impression handling (composable, two-step):**
 
 ```
-client.identityMatch.upsertAudience(audience_id, members, opts)   // wraps sync_audiences add/remove deltas
-client.identityMatch.upsertPackage(seller_agent_url, package_id, fcap_keys, audience_ids, opts)
-client.identityMatch.upsertFcapPolicy(fcap_key, {window_sec, window_kind, max_count, merge_rule})
-client.identityMatch.recordImpression(tmpx, opts)                 // decodes TMPX, HINCRBY exposure
-client.identityMatch.inspectExposure(fcap_key, uid_type, user_token)  // test-only assertion helper
+decodeTmpx(raw_tmpx) -> ExposureLog                  // pure crypto + parse against published TMPX format
+writeExposure(log, store_context) -> { ok, count }   // pure store interaction; FrequencyStore impl pluggable
 ```
 
-Plus HPKE encrypt/decrypt as net-new SDK primitives (X25519 KEM, ChaCha20-Poly1305, HKDF-SHA256 per RFC 9180 `mode_base`). The encrypt path is needed by the buyer agent emitting TMPX; decrypt by the impression handler.
+**Buyer-side management plane:**
+
+```
+upsertAudience(audience_id, members, opts)           // wraps sync_audiences add/remove deltas
+upsertPackage(seller_agent_url, package_id, fcap_keys, audience_ids, opts)
+upsertFcapPolicy(fcap_key, {window_sec, window_kind, max_count, merge_rule})
+inspectExposure(fcap_key, uid_type, user_token)      // test-only assertion helper
+```
+
+Plus HPKE encrypt/decrypt as net-new SDK primitives (X25519 KEM, ChaCha20-Poly1305, HKDF-SHA256 per RFC 9180 `mode_base`). The encrypt path is needed by the IdentityMatch service emitting TMPX; decrypt by the impression handler invoking `decodeTmpx`.
+
+The two-step impression surface is deliberate. Production tracking endpoints typically decode at intake, publish to pub/sub for buffering, and let a downstream worker write the store at its own pace. Bundling decode+write into a single call would force a synchronous topology and prevent that buffering pattern. See § Impression-handling primitives.
 
 ### 3. Reference TMP server: `adcp-go/identitymatch` (open-source) + Scope3 hosted (public)
 
