@@ -32,7 +32,7 @@ interface CatalogEvent {
   created_at: Date;
 }
 
-describe('442_authorization_feed_emitter triggers', () => {
+describe('443_authorization_feed_emitter triggers', () => {
   let pool: Pool;
 
   beforeAll(async () => {

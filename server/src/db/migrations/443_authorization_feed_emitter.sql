@@ -94,18 +94,23 @@ $$ LANGUAGE plpgsql VOLATILE;
 -- derivation for per-property rows uses the same regex strip as the view
 -- (handles 'adagents_json:foo.example', 'community:foo.example', etc.).
 --
--- Trust posture — these payload fields are publisher-controlled (originate
--- in adagents.json or moderator-submitted overrides) and surface on the
--- public /api/registry/feed endpoint:
+-- Trust posture — these payload fields are adversary-controlled (originate
+-- in adagents.json, agent_claim manifests, or moderator-submitted overrides)
+-- and surface on the public /api/registry/feed endpoint:
 --   * agent_url, agent_url_canonical
 --   * property_id_slug
 --   * authorized_for
 --   * publisher_domain
+--   * created_by — for evidence='agent_claim' rows this is the asserting
+--     agent URL (adversary-controlled). Hashing applies ONLY to
+--     override-phantom rows (see aao_override_payload).
+--   * override_reason — enum-constrained at the schema level (migration
+--     432: 'bad_actor' | 'correction' | 'file_broken'), so it cannot
+--     carry attacker bytes; listed here for completeness.
 -- Downstream consumers that template these into LLM prompts or HTML must
--- treat them as untrusted strings (fence as code, escape, or strip). The
--- override row's approved_by_user_id is exposed as `created_by` on 'add'
--- phantom rows in hashed form (see aao_override_payload). Override fields
--- approved_by_email, justification, evidence_url are NOT included.
+-- treat them as untrusted strings (fence as code, escape, or strip).
+-- Override fields approved_by_email, justification, evidence_url are NOT
+-- included in any payload.
 
 -- Optional precomputed publisher_domain (passed from the AAO fan-out LOOP
 -- so the helper skips its own catalog_properties SELECT in the hot path).
@@ -289,6 +294,11 @@ BEGIN
     -- Hash the moderator user_id rather than expose the raw WorkOS id on
     -- the public feed. Stable per-moderator (consumers can group events
     -- by actor) but not enumerable as a member directory.
+    --
+    -- The COALESCE is defensive — schema (mig 432) declares
+    -- approved_by_user_id NOT NULL, so the empty-string branch is
+    -- unreachable today. Kept so a future schema relaxation doesn't
+    -- silently produce SQL NULL → NULL hash.
     hashed_actor := 'moderator:' || substr(
       encode(digest(coalesce(ov_row.approved_by_user_id, ''), 'sha256'), 'hex'),
       1, 16
