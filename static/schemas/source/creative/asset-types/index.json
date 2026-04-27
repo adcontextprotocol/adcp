@@ -66,6 +66,11 @@
       "schema": "/schemas/core/assets/javascript-asset.json",
       "typical_use": "Third-party tags, custom interaction logic, analytics"
     },
+    "zip": {
+      "description": "Bundled creative archive (zip) containing index.html and supporting assets",
+      "schema": "/schemas/core/assets/zip-asset.json",
+      "typical_use": "HTML5 banner bundles with index.html + CSS + JS + images, MRAID-compatible interactive ads"
+    },
     "brief": {
       "description": "Campaign-level creative context (creative brief)",
       "schema": "/schemas/core/assets/brief-asset.json",

@@ -2,13 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/html-asset.json",
   "title": "HTML Asset",
-  "description": "HTML content asset, deliverable inline (HTML markup as a string) or by URL (zip bundle URL, third-party display tag URL). The optional `delivery_type` follows the VAST/DAAST naming convention; absence implies inline for backwards compatibility with v1 producers.",
+  "description": "Inline HTML content asset. For URL-delivered HTML5 banner bundles, use the zip asset type instead. For single-URL iframe-rendered tag references, use the url asset type with an appropriate url_type.",
   "type": "object",
   "properties": {
     "asset_type": {
       "type": "string",
       "const": "html",
       "description": "Discriminator identifying this as an HTML asset. See /schemas/creative/asset-types for the registry."
+    },
+    "content": {
+      "type": "string",
+      "description": "HTML content"
     },
     "version": {
       "type": "string",
@@ -43,47 +47,8 @@
     }
   },
   "required": [
-    "asset_type"
-  ],
-  "oneOf": [
-    {
-      "title": "Inline HTML content",
-      "description": "HTML markup delivered as a string. Default when `delivery_type` is absent (v1-compatible).",
-      "properties": {
-        "delivery_type": {
-          "type": "string",
-          "enum": ["inline"],
-          "description": "Optional discriminator. Absence is treated as inline."
-        },
-        "content": {
-          "type": "string",
-          "description": "Inline HTML content"
-        }
-      },
-      "required": [
-        "content"
-      ]
-    },
-    {
-      "title": "URL-delivered HTML",
-      "description": "HTML content served at a URL endpoint (e.g., HTML5 banner zip, third-party display tag).",
-      "properties": {
-        "delivery_type": {
-          "type": "string",
-          "const": "url",
-          "description": "Discriminator indicating HTML is delivered via URL endpoint."
-        },
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL endpoint that serves the HTML content (zip bundle, third-party tag URL, etc.)."
-        }
-      },
-      "required": [
-        "delivery_type",
-        "url"
-      ]
-    }
+    "asset_type",
+    "content"
   ],
   "additionalProperties": true
 }

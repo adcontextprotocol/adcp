@@ -279,6 +279,15 @@
             }
           },
           {
+            "title": "IndividualZipAsset",
+            "description": "Zip-bundled asset (HTML5 banner bundles, etc.)",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "zip" }
+            }
+          },
+          {
             "title": "IndividualVastAsset",
             "description": "VAST asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
@@ -449,6 +458,14 @@
                       "properties": {
                         "asset_type": { "const": "javascript" },
                         "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "title": "GroupZipAsset",
+                      "description": "Zip-bundled asset in group (HTML5 banner bundles, etc.)",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "zip" }
                       }
                     },
                     {

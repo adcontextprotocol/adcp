@@ -32,6 +32,7 @@
             { "$ref": "/schemas/core/assets/url-asset.json" },
             { "$ref": "/schemas/core/assets/html-asset.json" },
             { "$ref": "/schemas/core/assets/javascript-asset.json" },
+            { "$ref": "/schemas/core/assets/zip-asset.json" },
             { "$ref": "/schemas/core/assets/webhook-asset.json" },
             { "$ref": "/schemas/core/assets/css-asset.json" },
             { "$ref": "/schemas/core/assets/daast-asset.json" },
