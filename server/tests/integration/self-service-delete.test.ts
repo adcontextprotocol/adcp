@@ -142,17 +142,15 @@ describe('Self-Service Delete Workspace', () => {
   });
 
   describe('DELETE /api/organizations/:orgId', () => {
-    // Skipped: see #3289 — handler now returns 403 Access denied (rather
-    // than 404) when the user has no membership in the requested org. That's
-    // probably the right security behavior — don't enumerate orgs to outsiders —
-    // but the test was written against the older 404 surface.
-    it.skip('should return 404 for non-existent organization', async () => {
+    // Handler returns 403 Access denied for non-existent orgs: membership check runs
+    // before existence check, so callers cannot enumerate org IDs by probing deletions.
+    it('should return 403 when the requesting user has no membership in the org', async () => {
       const response = await request(app)
         .delete('/api/organizations/org_nonexistent')
         .send({ confirmation: 'Some Name' })
-        .expect(404);
+        .expect(403);
 
-      expect(response.body.error).toBe('Organization not found');
+      expect(response.body.error).toBe('Access denied');
     });
 
     it('should require confirmation to delete', async () => {
@@ -289,20 +287,19 @@ describe('Self-Service Delete Workspace', () => {
       expect(response.body.error).toBe('Insufficient permissions');
     });
 
-    // Skipped: see #3289 — handler returns 500 on this path; either the
-    // active-subscription branch needs a fuller stripe-client mock or the
-    // route reads subscription status from somewhere this test doesn't seed.
-    it.skip('should prevent deletion of organization with active subscription', async () => {
-      // Create org with stripe customer
+    // OrganizationDatabase.getSubscriptionInfo reads subscription_status from the DB row;
+    // mocking the stripe-client import has no effect. Seed the column directly.
+    // No stripe_customer_id needed: without it, getSubscriptionInfo returns localInfo
+    // (built from subscription_status) without ever consulting Stripe.
+    it('should prevent deletion of organization with active subscription', async () => {
       const SUB_ORG_ID = 'org_self_delete_sub';
       await pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
-         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
-        [SUB_ORG_ID, 'Subscribed Org', 'cus_sub_test']
+        `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+         VALUES ($1, $2, 'active', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, subscription_status = 'active'`,
+        [SUB_ORG_ID, 'Subscribed Org']
       );
 
-      // Override the WorkOS membership mock so this test's user owns SUB_ORG_ID.
       workosMocks.listOrganizationMemberships.mockImplementation(({ organizationId }: { organizationId: string }) => {
         if (organizationId === SUB_ORG_ID) {
           return Promise.resolve({
@@ -316,16 +313,6 @@ describe('Self-Service Delete Workspace', () => {
           });
         }
         return Promise.resolve({ data: [] });
-      });
-
-      // Mock getSubscriptionInfo to return active subscription
-      const { getSubscriptionInfo } = await import('../../src/billing/stripe-client.js');
-      vi.mocked(getSubscriptionInfo).mockResolvedValueOnce({
-        status: 'active',
-        product_id: 'prod_test',
-        product_name: 'Test Product',
-        current_period_end: Math.floor(Date.now() / 1000) + 86400,
-        cancel_at_period_end: false,
       });
 
       const response = await request(app)

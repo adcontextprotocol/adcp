@@ -1,31 +1,52 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 
-// vi.hoisted ensures all of these are available inside vi.mock factories
+// vi.hoisted ensures all of these are available inside vi.mock factories.
+// Env vars must be set here so AUTH_ENABLED resolves true before organizations.ts loads
+// and calls new WorkOS() — without them workos is null and every workos!. call throws.
 const {
   TEST_ADMIN_USER_ID,
   TEST_REQUESTER_USER_ID,
   TEST_ORG_ID,
   mockCreateOrganizationMembership,
   mockSendInvitation,
-} = vi.hoisted(() => ({
-  TEST_ADMIN_USER_ID: 'user_join_req_admin',
-  TEST_REQUESTER_USER_ID: 'user_join_req_requester',
-  TEST_ORG_ID: 'org_join_req_test',
-  mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
-  mockSendInvitation: vi.fn(),
+  listOrganizationMemberships,
+} = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
+  process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
+  process.env.WORKOS_COOKIE_PASSWORD ||= 'test-cookie-password-32chars-min-len-1234';
+  return {
+    TEST_ADMIN_USER_ID: 'user_join_req_admin',
+    TEST_REQUESTER_USER_ID: 'user_join_req_requester',
+    TEST_ORG_ID: 'org_join_req_test',
+    mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
+    mockSendInvitation: vi.fn(),
+    listOrganizationMemberships: vi.fn(),
+  };
+});
+
+// organizations.ts calls new WorkOS() directly; mocking @workos-inc/node intercepts that
+// constructor so every new WorkOS() returns the same shared mock methods.
+vi.mock('@workos-inc/node', () => ({
+  WorkOS: class {
+    userManagement = {
+      listOrganizationMemberships,
+      createOrganizationMembership: mockCreateOrganizationMembership,
+      sendInvitation: mockSendInvitation,
+      getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
+    };
+    organizations = {
+      getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
+    };
+    adminPortal = {
+      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
+    };
+  },
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
   workos: {
     userManagement: {
-      listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }) => {
-        if (userId === TEST_ADMIN_USER_ID && organizationId === TEST_ORG_ID) {
-          return Promise.resolve({
-            data: [{ id: 'om_admin', userId: TEST_ADMIN_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
+      listOrganizationMemberships,
       createOrganizationMembership: mockCreateOrganizationMembership,
       sendInvitation: mockSendInvitation,
       getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
@@ -105,6 +126,16 @@ describe('Join Request Approval', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockCreateOrganizationMembership.mockResolvedValue({ id: 'om_test_new' });
+    // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
+    // via the new WorkOS() instance; the mock must return admin membership for test user.
+    listOrganizationMemberships.mockImplementation(({ userId, organizationId }: { userId: string; organizationId: string }) => {
+      if (userId === TEST_ADMIN_USER_ID && organizationId === TEST_ORG_ID) {
+        return Promise.resolve({
+          data: [{ id: 'om_admin', userId: TEST_ADMIN_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
 
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
@@ -126,12 +157,7 @@ describe('Join Request Approval', () => {
     await pool.query('DELETE FROM organization_join_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
   });
 
-  // Skipped: see #3289 — handler calls WorkOS userManagement.listOrganizationMemberships
-  // directly (organizations.ts:301) and the test isn't mocking @workos-inc/node, so the
-  // request hits WorkOS API with the test key and 401s → 500. Either add a per-file
-  // @workos-inc/node mock (member-by-email-policy.test.ts has the pattern) or refactor
-  // the route to push the membership check into a mockable helper.
-  it.skip('approves a join request by creating direct org membership, not sending an invitation', async () => {
+  it('approves a join request by creating direct org membership, not sending an invitation', async () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
       .send({ role: 'member' })
@@ -148,7 +174,7 @@ describe('Join Request Approval', () => {
     expect(mockSendInvitation).not.toHaveBeenCalled();
   });
 
-  it.skip('marks the join request as approved after membership is created', async () => {
+  it('marks the join request as approved after membership is created', async () => {
     await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
       .send({ role: 'member' })
@@ -161,7 +187,7 @@ describe('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it.skip('returns 400 and clears stale pending row when user is already a member', async () => {
+  it('returns 400 and clears stale pending row when user is already a member', async () => {
     const alreadyMemberError: any = new Error('Already a member');
     alreadyMemberError.code = 'organization_membership_already_exists';
     mockCreateOrganizationMembership.mockRejectedValueOnce(alreadyMemberError);
@@ -181,7 +207,7 @@ describe('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it.skip('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
+  it('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
     // cannot_reactivate means a pending WorkOS invitation exists — the user is NOT yet
     // a member. The join request must stay pending for admin resolution.
     const reactivateError: any = new Error('Cannot reactivate');
@@ -203,7 +229,7 @@ describe('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('pending');
   });
 
-  it.skip('returns 404 for a non-existent join request', async () => {
+  it('returns 404 for a non-existent join request', async () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/00000000-0000-0000-0000-000000000000/approve`)
       .send({ role: 'member' })
