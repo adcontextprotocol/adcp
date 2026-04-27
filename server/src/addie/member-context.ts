@@ -1180,8 +1180,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         first_name: workosUser.firstName ?? undefined,
         last_name: workosUser.lastName ?? undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get WorkOS user');
+      // Only mark unmapped when the user genuinely doesn't exist (WorkOS 404).
+      // Transient errors leave is_mapped: true so authenticated sessions degrade
+      // gracefully rather than being treated as anonymous.
+      const isNotFound = error?.status === 404 || error?.code === 'entity_not_found';
+      if (isNotFound) context.is_mapped = false;
       return context;
     }
 
