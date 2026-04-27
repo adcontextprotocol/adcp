@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadRules, invalidateRulesCache } from '../../src/addie/rules/index.js';
+import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
 
 describe('Rules Loader', () => {
   beforeEach(() => {
@@ -79,5 +80,24 @@ describe('Rules Loader', () => {
 
     // Content should be the same but it's a fresh read
     expect(first).toEqual(second);
+  });
+});
+
+describe('Addie tool reference', () => {
+  it('appends the auto-generated authoritative catalog', () => {
+    expect(ADDIE_TOOL_REFERENCE).toContain('## Authoritative tool catalog (auto-generated)');
+    // Catalog must list capability sets and a representative tool from each;
+    // any of these going missing means the generator output drifted from
+    // tool-sets.ts and the doc page is no longer the source of truth.
+    expect(ADDIE_TOOL_REFERENCE).toContain('**knowledge**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_testing**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
+    expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
+  });
+
+  it('includes the honest-search-report rule', () => {
+    const rules = loadRules();
+    expect(rules).toContain('## Honest Reporting After Search');
+    expect(rules).toContain("aren't loaded in this conversation");
   });
 });
