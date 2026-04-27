@@ -341,20 +341,26 @@ describe('Revenue Tracking Integration Tests', () => {
         .get('/api/admin/stats')
         .expect(200);
 
-      expect(response.body.total_revenue).toBe('$109.98'); // 2999 + 2999 + 5000 = 10998 cents = $109.98
-      expect(response.body.recurring_revenue).toBe('$29.99');
-      expect(response.body.one_time_revenue).toBe('$79.99'); // 2999 + 5000 = 7999 cents = $79.99
+      // formatCurrency rounds to whole dollars for the admin dashboard.
+      // 2999 + 2999 + 5000 = 10998 cents → $110 (rounded from $109.98).
+      expect(response.body.total_revenue).toBe('$110');
+      expect(response.body.recurring_revenue).toBe('$30'); // $29.99 → $30
+      expect(response.body.one_time_revenue).toBe('$80'); // $79.99 → $80
     });
 
     it('should calculate MRR correctly from active subscriptions', async () => {
-      // Set up organization with monthly subscription
+      // MRR is computed from revenue_events with future period_end and a non-null
+      // subscription id, not from columns on the organizations table.
       await pool.query(
-        `UPDATE organizations
-         SET subscription_amount = 2999,
-             subscription_interval = 'month',
-             subscription_current_period_end = NOW() + INTERVAL '30 days',
-             subscription_canceled_at = NULL
-         WHERE workos_organization_id = $1`,
+        `INSERT INTO revenue_events (
+          workos_organization_id, stripe_invoice_id, stripe_subscription_id,
+          amount_paid, currency, revenue_type, billing_interval,
+          period_end, paid_at
+        ) VALUES (
+          $1, 'inv_mrr', 'sub_mrr_active',
+          2999, 'usd', 'subscription_initial', 'month',
+          NOW() + INTERVAL '30 days', NOW()
+        )`,
         [TEST_ORG_ID]
       );
 
@@ -362,8 +368,9 @@ describe('Revenue Tracking Integration Tests', () => {
         .get('/api/admin/stats')
         .expect(200);
 
-      expect(response.body.mrr).toBe('$29.99');
-      expect(response.body.arr).toBe('$359.88'); // MRR * 12
+      // formatCurrency rounds to whole dollars: 2999¢ → $30, ARR = MRR*12 → $360.
+      expect(response.body.mrr).toBe('$30');
+      expect(response.body.arr).toBe('$360');
     });
 
     it('should handle refunds in total revenue calculation', async () => {
@@ -382,8 +389,9 @@ describe('Revenue Tracking Integration Tests', () => {
         .get('/api/admin/stats')
         .expect(200);
 
-      expect(response.body.total_revenue).toBe('$0.00');
-      expect(response.body.total_refunds).toBe('$29.99');
+      // formatCurrency rounds to whole dollars; net = 0¢ → $0, refund = 2999¢ → $30.
+      expect(response.body.total_revenue).toBe('$0');
+      expect(response.body.total_refunds).toBe('$30');
     });
 
     it('should show product breakdown', async () => {
@@ -406,7 +414,8 @@ describe('Revenue Tracking Integration Tests', () => {
       expect(response.body.product_breakdown).toHaveLength(2);
       const basicPlan = response.body.product_breakdown.find((p: any) => p.product_name === 'Basic Plan');
       expect(basicPlan.count).toBe('2');
-      expect(basicPlan.revenue).toBe('$59.98');
+      // formatCurrency rounds: 5998¢ → $60.
+      expect(basicPlan.revenue).toBe('$60');
     });
   });
 });
