@@ -31,7 +31,7 @@ import { z } from 'zod';
 import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
 import { getIdempotencyStore, scopedPrincipal } from './idempotency.js';
 import { getWebhookSigningMaterial, maybeEmitCompletionWebhook } from './webhooks.js';
-import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+import { selectSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
 import { getSession, runWithSessionContext, flushDirtySessions, sessionKeyFromArgs } from './state.js';
 import { createLogger } from '../logger.js';
@@ -309,7 +309,7 @@ function scopedWebhookPrincipal(ctx: HandlerContext, params: Record<string, unkn
  * escape our module boundary.
  */
 export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpServer {
-  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
+  const signingCap = selectSigningCapability(ctx);
 
   // ── Custom tools outside AdcpToolMap ─────────────────────────
   // Registered through the framework's `customTools` config (5.4).
