@@ -281,7 +281,7 @@ phases:
             correlation_id: "error_compliance_signals--unsupported_major_version"
         validations:
           - check: error_code
-            value: "VERSION_UNSUPPORTED"
+            allowed_values: ["VERSION_UNSUPPORTED"]
             description: "Error code is VERSION_UNSUPPORTED"
           - check: field_present
             path: "context"
