@@ -1,10 +1,10 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 feat(creative): v2 Phase 1 — asset_group_id vocabulary registry, `scenes` schema, `delivery_type` on html/javascript assets, video.mdx asset_type fix
 
-First PR implementing the v2 creative formats RFC (#3305). Backwards-compatible additions only — no v1 producers are affected.
+First PR implementing the v2 creative formats RFC (#3305). Backwards-compatible additions only — no v1 producers are affected. Minor bump because this introduces new schemas (`asset-group-vocabulary.json`, `scenes.json`) and a new optional field (`delivery_type` on html/javascript assets), which are additive features rather than bug fixes.
 
 **New schemas:**
 - `static/schemas/source/core/asset-group-vocabulary.json` — canonical registry of `asset_group_id` values (the seven existing catalog vocab entries plus 12 audit-driven additions: `video_vertical`, `video_horizontal`, `audio`, `companion_image`, `companion_banner`, `brand_name`, `body_text`, `cards`, `landing_page_url`, `privacy_policy_url`, `youtube_video_id`, `pin_id`). Includes the `landing_page_url` aliases canonicalizing six different field names today (`click_url`, `link`, `final_url`, `link_url`, `click_through_url`, `landing_url`). Non-canonical IDs remain valid for platform-specific extensions; validators MAY soft-warn on non-canonical usage.
@@ -16,6 +16,6 @@ First PR implementing the v2 creative formats RFC (#3305). Backwards-compatible 
 **Doc fix:**
 - `docs/creative/channels/video.mdx:421-450,762-775` — corrected three format-definition examples that used `asset_type: "url"` + `asset_role: "vast_url"` / `"vpaid_url"`, contradicting the schema-correct `asset_type: "vast"` used elsewhere in the same file. Updated VPAID examples to use `asset_type: "vast"` with `vpaid_enabled: true` in requirements.
 
-**Why patch:** schema additions and a doc bugfix; no breaking changes to the published spec.
+**Why minor (not patch):** new schemas and a new optional field are additive features — patch is reserved for bug fixes only. **Why not major:** no breaking changes; v1 producers and consumers continue to work unchanged.
 
 Tracks #3305 (v2 RFC). Subsequent phases: canonical format catalog + `ProductFormatDeclaration` schema (Phase 2), `validate_input` and `preview_creative` updates (Phase 3), SDK codegen (Phase 4).
