@@ -21,18 +21,19 @@ Without these decisions, the open-source IdentityMatch reference impl risks ship
 
 ## Architectural decisions
 
-### 1. The wire spec stays minimal; the buyer-internal model is where the design lives
+### 1. Three layers, with explicit normative status
 
-The existing IdentityMatch request/response is the public protocol surface. Audience, exposure, and fcap-policy records are buyer-internal — defined by AdCP so that cross-language SDKs can interoperate against the same valkey, but **not on the wire**. Sellers, routers, and publishers never see fcap_keys, audience records, or exposure records.
+This spec is layered. Each layer has a different binding strength:
 
-This keeps the privacy boundary clean (publishers do not learn buyer fcap policy) and lets the buyer-internal model evolve faster than the wire spec.
+| Layer | Status | What it covers |
+|---|---|---|
+| **Wire spec** | Normative | The HTTP JSON request/response on `POST /identity`, the `serve_window_sec` semantic, the TMPX binary format. Anything that crosses an agent boundary. |
+| **Conformance invariants** | Normative | The eligibility logic an IdentityMatch service MUST compute, expressed in terms of inputs (identities, packages, audiences, policies, exposures) and outputs (eligible_package_ids), independent of how the service stores its data. |
+| **Reference data model** | Non-normative | Scope3's valkey-backed implementation choice — Redis key patterns, primitive types, field names. A buyer running Aerospike, DynamoDB, PostgreSQL, or anything else is conformant if the service satisfies the invariants. |
 
-**Two contracts, with the right tool for each:**
+A correctness-equivalent IdentityMatch service can use any backing store. The protocol describes **what** the service must compute, not **how** it stores the data.
 
-- **Wire / RPC** (HTTP JSON request/response) → JSON Schema under `static/schemas/source/tmp/`. Already integrated with the repo's docs and codegen pipeline.
-- **Buyer-internal valkey schema** (audience, exposure, package, fcap_policy records) → documented in this spec as Redis key patterns + primitive types (HASH / SET / ZSET) + field names within each. Cross-language interop is handled by Redis client libraries; we don't need our own serialization layer for these records.
-
-The valkey schema is not a binary blob format. JS impression-trackers and Go IdentityMatch services interoperate by agreeing on the **Redis-level operations** (`HINCRBY exposure:... count 1`, `SMEMBERS audience:...`), not by deserializing each other's bytes. That makes proto / JSON Schema / any custom serialization unnecessary at this layer.
+The privacy boundary stays clean across all three layers: publishers and routers never see audience records, exposures, or fcap_keys regardless of backend choice.
 
 ### 2. `fcap_keys[]` as a label model, not hierarchy
 
@@ -106,11 +107,37 @@ New field `serve_window_sec` (integer, 1-300, default 60). Existing `ttl_sec` fi
 
 The TMPX wire format itself is **unchanged** — already specified in `docs/trusted-match/specification.mdx:534-597` (16-byte header with version/timestamp/country/nonce/count plus typed identity entries) with replay defense via an 8-byte AEAD-protected nonce + master-side dedup.
 
-## Buyer-side valkey schema (normative)
+## Conformance invariants (normative)
 
-Four record types, each modeled directly on a Redis primitive. Cross-language interop is handled by Redis client libraries; agreement is at the operation level (`HINCRBY`, `SADD`, `SMEMBERS`), not at a serialization layer.
+Backend-agnostic. A conformant IdentityMatch service MUST compute `eligible_package_ids` such that, for each `package_id ∈ request.package_ids`, the package is included in `eligible_package_ids` if and only if **both** of the following hold:
 
-**This is a convention, not a schema in the database-enforced sense.** Valkey / Redis does not validate writes against a schema definition — the contract documented here is enforced by the SDK on the write side and by the IdentityMatch reader on the read side. A buggy writer can still corrupt the store; the protocol relies on library discipline, not database constraints. SDK conformance tests are how that discipline is verified.
+**1. Audience eligibility.** Either the package has no audience requirement, OR there exists at least one audience identifier `a` such that:
+  - `a` is in the package's required audience set, AND
+  - `a` is in the audience-membership set of at least one identity `i ∈ request.identities` (i.e., the union of audience memberships across the user's resolved identities intersects the package's required audiences).
+
+**2. Frequency cap eligibility.** For every fcap_key `k` declared on the package, the merged exposure count for `request.identities` against `k` is strictly less than the policy's `max_count`. Specifically:
+  - Read each `(k, i.uid_type, i.user_token).count` for each `i ∈ request.identities` within the policy's window.
+  - Apply the policy's `merge_rule`:
+    - **MAX**: merged = max of all per-identity counts.
+    - **OR**: merged = count of identities with count > 0.
+    - **SUM**: merged = sum of all per-identity counts.
+  - If merged ≥ max_count for ANY of the package's fcap_keys, the package is ineligible.
+
+**3. Active state.** Packages and policies marked `active: false` are treated as if they were not present.
+
+**4. Audience-record freshness.** If the audience pipeline publishes an `expires_at` and the current time is past that timestamp, the audience-membership entry MUST NOT contribute to the union in (1).
+
+The TMPX returned with the response must encode the resolved identities so that an out-of-band impression handler can update exposures atomically — see the published TMPX format at `docs/trusted-match/specification.mdx:534-597`.
+
+Storage choice (valkey, Aerospike, DynamoDB, in-memory, anything) is implementation. Two services with different storage backends that satisfy these invariants for the same inputs MUST return the same eligibility output.
+
+## Reference data model (non-normative): valkey-backed buyer-side
+
+This is **Scope3's reference implementation choice** — a recipe for organizing the data the conformance invariants reference, using Redis primitives. Other buyers may use entirely different backends; the protocol does not mandate this layout.
+
+Four record types, each modeled directly on a Redis primitive. Cross-language interop within this reference impl is handled by Redis client libraries; agreement is at the operation level (`HINCRBY`, `SADD`, `SMEMBERS`), not at a serialization layer.
+
+Valkey / Redis does not validate writes against a schema definition. The contract documented here is enforced by the SDK on the write side and by the IdentityMatch reader on the read side. A buggy writer can corrupt the store; library discipline (not database constraints) is what makes this work. SDK integration tests verify the contract.
 
 ### Audience record
 
@@ -245,19 +272,33 @@ Where the existing plumbing helps: `kid` prefix conventions, the 5-minute JWKS-s
 | `adcp-go` | ✅ | decrypt (server) | Reference IdentityMatch impl |
 | `adcp` (Python) | partial | encrypt + decrypt | Follows JS |
 
+### Pluggable store interfaces
+
+The SDK exposes store interfaces — `FrequencyStore`, `AudienceStore`, `PackageStore`, `FcapPolicyStore` — that an IdentityMatch service implementation calls to satisfy the conformance invariants. Buyers running their own backend (Aerospike, DynamoDB, proprietary KV) implement these interfaces against their store; the SDK ships a reference valkey-backed connector. The interfaces, not the storage layout, are what the SDK contracts on.
+
+```
+interface FrequencyStore {
+  increment(fcap_key, uid_type, user_token, by) -> count
+  read(fcap_key, uid_type, user_token) -> { count, first_seen, last_seen, window_start }
+  reset_window(fcap_key, uid_type, user_token, new_window_start)
+}
+// Equivalent shapes for AudienceStore, PackageStore, FcapPolicyStore.
+```
+
+Specific interface signatures are an SDK-design concern, tracked under `adcp-client#1005`. The point at protocol level: the SDK is store-agnostic by design.
+
 ### Reference implementations
 
 | Component | Repo / path | Language | Role |
 |---|---|---|---|
-| IdentityMatch service | `adcp-go/identitymatch` | Go | Open-source reference; processes IdentityMatch requests, applies eligibility, emits TMPX |
-| Impression tracker | `@adcp/client/identitymatch` | JS/TS | Decrypts TMPX, increments exposures in valkey |
-| Package/policy CRUD | `@adcp/client/identitymatch` | JS/TS | Writethrough on buyer's package & policy mutations |
+| IdentityMatch service | `adcp-go/identitymatch` | Go | Open-source reference reader for `POST /identity` |
+| Scope3 hosted IdentityMatch | (Scope3 infra) | — | Public deployment for buyers who don't want to host their own |
+| SDK + valkey reference connector | `@adcp/client/identitymatch` | JS/TS | Default store implementation behind the SDK interfaces |
+| SDK + Aerospike/Dynamo/etc. connectors | community / buyer-implemented | any | Optional alternate stores satisfying the same interfaces |
 
-### Why JS for the writers and Go for the reader
+### Why JS for the management plane and Go for the reader
 
-The impression tracker runs in the buyer's existing impression-tracking infra, which is overwhelmingly JS today (Baiyu's existing tracker). Wrapping in Go adds a process boundary for no benefit — JS appends directly to valkey. Same for package/policy CRUD: Nastassia's control plane is JS already.
-
-The IdentityMatch service is hot-path request handling and benefits from Go's concurrency model and the Prebid Server integration story. It reads from the same valkey schemas the JS writers populate.
+The impression tracker and CRUD writethrough run in the buyer's existing infra, which is overwhelmingly JS today. Wrapping in Go adds a process boundary for no benefit. The IdentityMatch service is hot-path request handling and benefits from Go's concurrency model + Prebid Server integration. Both consume the same store interfaces; they don't share storage assumptions, only the interface contract.
 
 ## Storyboard conformance scenarios
 
@@ -290,7 +331,7 @@ These scenarios are the IdentityMatch conformance suite. Buyer SDK teams SHOULD 
 2. **Audience-record TTL inside valkey.** `sync_audiences` writes are continuous. How long do stale audience records linger? Proposal: `expires_at` field on the audience-meta HASH; SDK ignores SET members whose meta-hash has expired.
 3. **Cap on policies per fcap_key.** Should multiple policies stack on one key (e.g., per-day AND per-hour), or one policy per key? Proposal: one policy per key for v1; stacking is implementable as multiple keys.
 4. **Identity-graph plug-point.** For operators that *do* canonicalize, where does the graph hook in? Proposal: SDK exposes pre-write and pre-read interceptors (`(uid_type, user_token) → (uid_type', user_token')`) that customers wire to their graph. Default: identity passthrough.
-5. **`FrequencyStore` interface for DSP coexistence.** Buyers with existing fcap stores (Aerospike/Redis/proprietary) won't migrate to valkey. SDK should expose a `FrequencyStore` interface; valkey is the reference implementation, customers plug their own. Symmetric to the canonicalization plug-point above.
+5. **Pluggable store interfaces in the SDK.** The SDK exposes `FrequencyStore`, `AudienceStore`, and `PackageStore` interfaces that satisfy the conformance invariants regardless of backend. The valkey-backed connector is the reference; buyers plug their own (Aerospike, DynamoDB, proprietary KV) by implementing the interfaces. Symmetric to the canonicalization plug-point above. Settled in principle; specific interface signatures are an SDK-design item under adcp-client#1005.
 6. **OpenRTB cross-walk.** OpenRTB 2.6 `User.eids[]` matches our `identities[]` shape; should the spec note the mapping for buyer-side codebases that bridge between protocols?
 7. **Audience strength scores.** ZSET allows audiences to carry a strength/score; eligibility can apply a floor at check time. v1 ships SET; ZSET migration is a buyer-internal choice that doesn't affect the protocol.
 
@@ -513,11 +554,14 @@ client.identityMatch.inspectExposure(fcap_key, uid_type, user_token)  // test-on
 
 Plus HPKE encrypt/decrypt as net-new SDK primitives (X25519 KEM, ChaCha20-Poly1305, HKDF-SHA256 per RFC 9180 `mode_base`). The encrypt path is needed by the buyer agent emitting TMPX; decrypt by the impression handler.
 
-### 3. Reference TMP server: `adcp-go/identitymatch`
+### 3. Reference TMP server: `adcp-go/identitymatch` (open-source) + Scope3 hosted (public)
 
-A read-only TMP provider implementing `POST /identity` (and `POST /context` if scope expands). Reads the valkey schema this PR documents; serves `eligible_package_ids` + TMPX. Cites the buyer-fcap docs page once doc promotion lands.
+Two reference paths, neither required:
 
-No new endpoints — TMP stays a downstream read replica. Deploy this binary, point publishers/routers at it, populate state via the SDK.
+- **`adcp-go/identitymatch`**: an open-source TMP provider implementing `POST /identity` against the SDK's pluggable store interfaces. Drop in your own store connector; deploy the binary; point publishers/routers at it.
+- **Scope3 hosted IdentityMatch**: a public deployment buyers can route to without standing up their own service. Useful for buyers with no operational appetite for an extra service.
+
+Buyers who want neither — fine. The wire spec + conformance invariants are sufficient to implement IdentityMatch from scratch in any language against any backend. Both reference paths exist to lower adoption cost, not to gate it.
 
 ### 4. Training agent integration
 
