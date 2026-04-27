@@ -156,6 +156,8 @@ When an fcap rule changes — a window shortens or lengthens, a `max_count` rise
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
+For the implementation details — the fcap_keys label model, the reference valkey data model, merge_rule semantics, audience and exposure record shapes, the SDK primitives, and Redis-command walkthroughs for the conformance scenarios — see [Identity Match implementation](identity-match-implementation.mdx).
+
 ### How Buyers Learn About Exposures
 
 The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your impression tracker decrypts it, applies your fcap policy logic against the resolved identities, and (when a cap fires) writes a cap-fire entry to the Identity Match cap-state store. Most production deployments separate decode (synchronous, at intake) from policy evaluation and cap-state writes (asynchronous, behind a queue) for buffering.
