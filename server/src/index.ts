@@ -38,6 +38,13 @@ async function main() {
   const port = parseInt(process.env.PORT || process.env.CONDUCTOR_PORT || "3000", 10);
   await httpServer.start(port);
 
+  // Periodic sweep of expired RFC 9421 nonce-cache rows. Postgres has no
+  // native TTL, so the replay-store table grows unboundedly without this.
+  // Safe after `httpServer.start` because the underlying pool is initialized
+  // by then; sweep failures log-warn but never crash.
+  const { startReplayCacheSweeper } = await import('./training-agent/request-signing.js');
+  startReplayCacheSweeper();
+
   // Log memory usage every 60s so PostHog/OTEL can chart heap trends.
   // On 1GB Fly machines this is critical for spotting leaks early.
   setInterval(() => {
