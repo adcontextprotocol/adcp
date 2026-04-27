@@ -309,7 +309,7 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'get_account',
-    description: 'Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.',
+    description: 'Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1737,6 +1737,16 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
   };
 }
 
+// Strip backticks and newlines from user-supplied fields (names, emails) before
+// they get interpolated into a markdown response. The response goes back into
+// Addie's LLM context as a tool result, so attacker-controlled bytes from
+// signup forms shouldn't be able to break out of code spans or inject new
+// instructions.
+function sanitizeForMarkdown(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.replace(/[`\r\n]/g, ' ').slice(0, 200).trim();
+}
+
 /**
  * Admin tool handler implementations.
  * Callers must gate access via isSlackUserAAOAdmin/isWebUserAAOAdmin before registering these handlers.
@@ -2005,7 +2015,56 @@ export function createAdminToolHandlers(
       );
 
       if (result.rows.length === 0) {
-        return `No organization found matching "${query}". Try searching by company name or domain.`;
+        // Fall back to the users table — inbound website signups don't create
+        // an org row (the user self-serves during onboarding), so the only
+        // record of "someone from this company signed up" lives in `users`.
+        // Domain anchor: pattern is `%@<query>%` so "diageo" matches @diageo.com
+        // and @diageo.co.uk but NOT @nondiageo.com — query must immediately
+        // follow `@`. LIKE wildcards in `query` are escaped so a literal `%`
+        // doesn't fan out to every signup.
+        const escapedQuery = query.replace(/[\\%_]/g, '\\$&');
+        const usersResult = await pool.query(
+          `SELECT u.workos_user_id, u.email, u.first_name, u.last_name,
+                  u.created_at, u.primary_organization_id, o.name AS primary_org_name
+           FROM users u
+           LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
+           WHERE LOWER(u.email) LIKE LOWER($1) ESCAPE '\\'
+           ORDER BY u.created_at DESC
+           LIMIT 10`,
+          [`%@${escapedQuery}%`]
+        );
+
+        if (usersResult.rows.length === 0) {
+          return `No organization found matching "${query}". Try searching by company name or domain.`;
+        }
+
+        const orphans = usersResult.rows.filter(u => !u.primary_organization_id);
+        const linked = usersResult.rows.filter(u => u.primary_organization_id);
+
+        let response = `No organization found matching "${query}", but ${usersResult.rows.length} user${usersResult.rows.length === 1 ? '' : 's'} signed up with a matching email domain.\n\n`;
+
+        if (orphans.length > 0) {
+          response += `### Signed up but not yet in an org (likely website signup pre-onboarding)\n`;
+          for (const user of orphans) {
+            const name = sanitizeForMarkdown([user.first_name, user.last_name].filter(Boolean).join(' ')) || '(no name)';
+            const email = sanitizeForMarkdown(user.email);
+            const date = new Date(user.created_at).toISOString().split('T')[0];
+            response += `- **${name}** — \`${email}\` (signed up ${date})\n`;
+          }
+          response += `\n_To track these as a prospect, use \`add_prospect\` with the company name and domain._\n`;
+        }
+
+        if (linked.length > 0) {
+          response += orphans.length > 0 ? `\n### Already in another org\n` : `### Users with matching email, in other orgs\n`;
+          for (const user of linked) {
+            const name = sanitizeForMarkdown([user.first_name, user.last_name].filter(Boolean).join(' ')) || '(no name)';
+            const email = sanitizeForMarkdown(user.email);
+            const orgName = sanitizeForMarkdown(user.primary_org_name ?? user.primary_organization_id);
+            response += `- **${name}** — \`${email}\` → ${orgName}\n`;
+          }
+        }
+
+        return response;
       }
 
       // If multiple matches, present options to the user with lifecycle stage
