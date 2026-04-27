@@ -75,6 +75,7 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
+import { recordAgentTestRun } from '../../db/agent-test-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -3584,6 +3585,33 @@ export function createMemberToolHandlers(
 
       output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
+      const workosUserIdForRecord = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForRecord) {
+        const evalOutcome = ((): 'pass' | 'fail' | 'partial' | 'error' => {
+          switch (result.overall_status) {
+            case 'passing': return 'pass';
+            case 'partial': return 'partial';
+            case 'failing': return 'fail';
+            default: return 'error';
+          }
+        })();
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForRecord,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: 'quality_evaluation',
+          outcome: evalOutcome,
+          duration_ms: result.total_duration_ms,
+        }).then(async () => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
+        }).catch(err => logger.warn({ err }, 'Could not record agent test run'));
+      }
+
       return output;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -3890,6 +3918,34 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
 
+      // Record the run in agent_test_history when we have a saved
+      // agent_context for this org+url. Mirrors evaluate_agent_quality's
+      // pattern; powers the "agent not tested in 14d" prompt rule.
+      // Storyboard runs don't carry a structured agent_profile (only
+      // evaluate_agent_quality probes get_adcp_capabilities), so we
+      // omit agent_profile_json — readers tolerate null.
+      if (organizationId) {
+        try {
+          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+          if (context) {
+            await agentContextDb.recordTest({
+              agent_context_id: context.id,
+              scenario: `storyboard:${sb.id}`,
+              overall_passed: result.overall_passed,
+              steps_passed: result.passed_count,
+              steps_failed: result.failed_count,
+              total_duration_ms: result.total_duration_ms,
+              summary: result.storyboard_title,
+              dry_run: dryRun,
+              triggered_by: 'user',
+              user_id: memberContext?.workos_user?.workos_user_id,
+            });
+          }
+        } catch (error) {
+          logger.debug({ error }, 'Could not record storyboard run');
+        }
+      }
+
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
 
@@ -3939,6 +3995,26 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+
+      const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForStoryboard) {
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForStoryboard,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: storyboardId,
+          outcome: result.overall_passed ? 'pass' : 'fail',
+          duration_ms: result.total_duration_ms,
+          storyboard_id: storyboardId,
+        }).then(async () => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
+        }).catch(err => logger.warn({ err }, 'Could not record storyboard run'));
+      }
 
       return output;
     } catch (error) {

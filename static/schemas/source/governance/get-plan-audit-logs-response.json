@@ -251,12 +251,7 @@
                   "description": "The AdCP tool (present for check entries)."
                 },
                 "status": {
-                  "type": "string",
-                  "enum": [
-                    "approved",
-                    "denied",
-                    "conditions"
-                  ],
+                  "$ref": "/schemas/enums/governance-decision.json",
                   "description": "Governance check status (present for check entries)."
                 },
                 "check_type": {

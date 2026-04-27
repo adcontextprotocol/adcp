@@ -6,10 +6,25 @@ on:
     # Intentionally no `paths` filter — a PR that doesn't touch the
     # migrations dir can still collide with one that's been merged since
     # it branched, if main added a number the PR reserved upstream.
+  # `merge_group` runs the check on the actual merge commit when the GitHub
+  # merge queue is enabled. This is the only way to fully close the gap
+  # where two PRs both pass their pull_request check at different times,
+  # both get merged in sequence, and end up with colliding migration numbers
+  # on main (#3235 + #3244 in 2026-04). Without the merge queue, branch
+  # protection should require "Branches must be up to date before merging"
+  # so the second-to-merge PR is forced to rebase and re-run this check.
+  merge_group:
   push:
     branches: [main]
     paths:
       - 'server/src/db/migrations/**'
+  # Daily safety net: scheduled run on main catches collisions that slipped
+  # through (e.g. branch protection misconfiguration, manual merge override).
+  # When this fails on `main`, branch protection blocks subsequent merges
+  # until the duplicate is renumbered.
+  schedule:
+    - cron: '17 13 * * *'  # 13:17 UTC daily
+  workflow_dispatch:  # manual re-run after a renumber fix
 
 jobs:
   check:
@@ -26,20 +41,23 @@ jobs:
           # PR into main as computed at PR-open (or at last conflict). That
           # merge commit can go stale when main moves forward without
           # triggering a re-compute, which is exactly how #2793 and #2800
-          # both passed this check with colliding migration 419s.
+          # both passed this check with colliding migration 419s, and how
+          # #3235 + #3244 both landed with 433s.
           #
           # Guard against the stale-merge case by taking the union of
           # migration filenames on the PR branch AND on origin/main, then
-          # hunting dupes in that union. Same check on push-to-main has no
-          # merge step — it just sees what's already merged.
+          # hunting dupes in that union. The merge_group/push/schedule
+          # triggers cover the case where two PRs slip through in parallel.
           git fetch origin main --depth=1 2>/dev/null || true
 
-          # Files on this ref (PR's speculative merge, or main).
+          # Files on this ref (PR's speculative merge, merge-group commit, or main).
           local_files=$(ls server/src/db/migrations/*.sql 2>/dev/null | xargs -n1 basename || true)
 
-          # Files on main right now (empty if we're already on main).
+          # Also pull main's current files for pull_request and merge_group.
+          # On push/schedule we're already on main, so this is empty.
           main_files=""
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+            || [ "${{ github.event_name }}" = "merge_group" ]; then
             main_files=$(git ls-tree --name-only -r origin/main -- server/src/db/migrations/ \
               | sed 's|.*/||' \
               | grep '\.sql$' || true)
@@ -54,11 +72,17 @@ jobs:
           if [ -n "$dupes" ]; then
             echo "::error::Duplicate migration number prefixes found: $dupes"
             echo ""
-            echo "These migration files share a number prefix (one may be on main,"
-            echo "the other in this PR — rebase + renumber yours if so):"
+            echo "These migration files share a number prefix:"
             for prefix in $dupes; do
               echo "$all_files" | awk -v p="$prefix" '$0 ~ "^"p"_" { print "  " $0 }'
             done
+            echo ""
+            echo "How to fix:"
+            echo "  1. Rebase your branch on the latest main (\`git fetch origin && git rebase origin/main\`)."
+            echo "  2. \`git mv\` your migration file to the next available number."
+            echo "  3. If the migration uses CREATE TABLE / CREATE INDEX, ensure it's IF NOT EXISTS"
+            echo "     so it can re-run safely on systems that already applied it as the old number."
+            echo "  4. Push and let CI re-run."
             exit 1
           fi
           echo "No duplicate migration numbers found (checked PR + current main)."

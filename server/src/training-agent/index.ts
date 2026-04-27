@@ -33,6 +33,9 @@ import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
 import {
   buildRequestSigningAuthenticator,
+  buildStrictRequestSigningAuthenticator,
+  buildStrictRequiredRequestSigningAuthenticator,
+  buildStrictForbiddenRequestSigningAuthenticator,
   enforceSigningWhenWebhookAuthPresent,
   STRICT_REQUIRED_FOR,
 } from './request-signing.js';
@@ -104,7 +107,7 @@ function buildBearerAuthenticator(): Authenticator | null {
     authenticators.push(verifyApiKey({
       verify: async (token) => {
         if (!isWorkOSApiKeyFormat(token)) return null;
-        const result = await workosClient.apiKeys.validateApiKey({ value: token });
+        const result = await workosClient.apiKeys.createValidation({ value: token });
         if (!result.apiKey) return null;
         const orgId = result.apiKey.owner.id;
         logger.info({ orgId }, 'Training agent: authenticated via AAO API key');
@@ -116,14 +119,39 @@ function buildBearerAuthenticator(): Authenticator | null {
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
-// Wrapped so the signing authenticator is lazily built on first auth call —
-// avoids reading the compliance test JWKS at module import time, which would
-// break test setups that mock the compliance cache.
+// Per-route lazy signing authenticators. Each route MUST own its own
+// `InMemoryReplayStore` — sharing one store lets a nonce consumed on
+// one route falsely fire `request_signature_replayed` on another (#3338).
+// Lazy so the compliance test JWKS isn't read at module import time.
 let _signingAuth: Authenticator | null = null;
 function lazySigningAuth(): Authenticator {
   return (req) => {
     if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
     return _signingAuth(req);
+  };
+}
+
+let _strictSigningAuth: Authenticator | null = null;
+function lazyStrictSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictSigningAuth) _strictSigningAuth = buildStrictRequestSigningAuthenticator();
+    return _strictSigningAuth(req);
+  };
+}
+
+let _strictRequiredSigningAuth: Authenticator | null = null;
+function lazyStrictRequiredSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictRequiredSigningAuth) _strictRequiredSigningAuth = buildStrictRequiredRequestSigningAuthenticator();
+    return _strictRequiredSigningAuth(req);
+  };
+}
+
+let _strictForbiddenSigningAuth: Authenticator | null = null;
+function lazyStrictForbiddenSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictForbiddenSigningAuth) _strictForbiddenSigningAuth = buildStrictForbiddenRequestSigningAuthenticator();
+    return _strictForbiddenSigningAuth(req);
   };
 }
 
@@ -150,19 +178,19 @@ function buildDefaultAuthenticator(): Authenticator | null {
 }
 
 /**
- * Strict `/mcp-strict` route (grader target): presence-gated signature
- * with `required_for: ['create_media_buy']`. Delegates to the SDK's
- * `requireAuthenticatedOrSigned` (5.7) — presence-gated signing, bypass
- * on valid bearer, `request_signature_required` thrown as an
- * `AuthError(cause: RequestSignatureError)` when the op requires signing
- * and no other credential verifies. `serve()` / the handler below auto-
- * detect the signature-layer error via `signatureErrorCodeFromCause`.
+ * Presence-gated authenticator for all `/mcp-strict*` routes. Accepts a lazy
+ * signing authenticator so each route uses its own capability instance
+ * (covers_content_digest varies per route and is baked at init time).
+ *
+ * Delegates to `requireAuthenticatedOrSigned` (5.7): bypass on valid bearer,
+ * `request_signature_required` on unsigned required-op, `signatureErrorCodeFromCause`
+ * surfaces RFC 9421 error codes on bad signatures.
  */
-function buildStrictAuthenticator(): Authenticator | null {
+function buildStrictModeAuthenticator(lazyAuth: () => Authenticator): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
   return enforceSigningWhenWebhookAuthPresent(requireAuthenticatedOrSigned({
-    signature: lazySigningAuth(),
+    signature: lazyAuth(),
     fallback: bearerAuth,
     requiredFor: STRICT_REQUIRED_FOR,
     resolveOperation: (req) => {
@@ -188,7 +216,9 @@ function buildStrictAuthenticator(): Authenticator | null {
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
-const strictAuthenticator = buildStrictAuthenticator();
+const strictAuthenticator = buildStrictModeAuthenticator(lazyStrictSigningAuth);
+const strictRequiredAuthenticator = buildStrictModeAuthenticator(lazyStrictRequiredSigningAuth);
+const strictForbiddenAuthenticator = buildStrictModeAuthenticator(lazyStrictForbiddenSigningAuth);
 
 function buildRequireToken(authenticator: Authenticator | null) {
   return async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -240,6 +270,8 @@ function buildRequireToken(authenticator: Authenticator | null) {
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
+const requireTokenStrictRequired = buildRequireToken(strictRequiredAuthenticator);
+const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticator);
 
 /**
  * Capture the response body as it's written by the MCP transport, redact any
@@ -425,12 +457,14 @@ export function createTrainingAgentRouter(): Router {
     },
   });
 
-  // MCP endpoint factory. Two routes share the same body:
-  //   /mcp — sandbox. anyOf(bearers, signing). required_for=[].
-  //   /mcp-strict — grader target. presence-gated signing. required_for=['create_media_buy'].
-  // The `strict` flag flows into TrainingContext so get_adcp_capabilities
+  // MCP endpoint factory. Routes share the same body:
+  //   /mcp                — sandbox. anyOf(bearers, signing). required_for=[].
+  //   /mcp-strict         — grader target. covers_content_digest='either'.
+  //   /mcp-strict-required  — grader target. covers_content_digest='required'. Fires neg/007.
+  //   /mcp-strict-forbidden — grader target. covers_content_digest='forbidden'. Fires neg/018.
+  // The `strict` + `digestMode` flags flow into TrainingContext so get_adcp_capabilities
   // advertises the correct request_signing block per route.
-  function mcpHandler(strict: boolean) {
+  function mcpHandler(strict: boolean, digestMode?: 'either' | 'required' | 'forbidden') {
     return async (req: Request, res: Response) => {
       setCORSHeaders(res);
 
@@ -444,7 +478,7 @@ export function createTrainingAgentRouter(): Router {
         // Principal is set by requireToken; defaults to 'anonymous' in dev mode
         // when no tokens are configured.
         const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-        const ctx: TrainingContext = { mode: 'open', principal, strict };
+        const ctx: TrainingContext = { mode: 'open', principal, strict, digestMode };
 
         server = useFrameworkServer()
           ? createFrameworkTrainingAgentServer(ctx)
@@ -546,6 +580,37 @@ export function createTrainingAgentRouter(): Router {
       error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
     });
   });
+
+  // Grader-only targets for covers_content_digest='required' and 'forbidden' modes.
+  // Enables grader vectors neg/007 (missing-content-digest) and neg/018
+  // (digest-covered-when-forbidden) that can't fire against /mcp-strict because
+  // that route advertises 'either' — correct for the sandbox but untestable for
+  // those specific negative paths. Buyers smoke-testing their signing implementation
+  // can use these to verify their code handles required-mode and forbidden-mode
+  // rejections.
+  function mcpStrictModeGet(_req: Request, res: Response): void {
+    setCORSHeaders(res);
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+    });
+  }
+
+  router.options('/mcp-strict-required', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+  router.post('/mcp-strict-required', mcpRateLimiter, requireTokenStrictRequired, mcpHandler(true, 'required'));
+  router.get('/mcp-strict-required', mcpStrictModeGet);
+
+  router.options('/mcp-strict-forbidden', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+  router.post('/mcp-strict-forbidden', mcpRateLimiter, requireTokenStrictForbidden, mcpHandler(true, 'forbidden'));
+  router.get('/mcp-strict-forbidden', mcpStrictModeGet);
 
   // GET/DELETE not supported in stateless mode
   router.get('/mcp', (_req: Request, res: Response) => {

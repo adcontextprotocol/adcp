@@ -43,6 +43,73 @@ function isLapsed(ctx: MemberContext | null): boolean {
   return sinceLogin > THIRTY_DAYS_MS && sinceLogin < 3 * THIRTY_DAYS_MS;
 }
 
+/**
+ * True when the user has an in-progress certification attempt that's
+ * fresh enough to "continue." Started >45 days ago without completion
+ * usually means the learner has moved on; nudging them about it is
+ * stale-state behaviour, not re-engagement.
+ */
+function hasFreshInProgressCertification(ctx: MemberContext | null): boolean {
+  const cert = ctx?.certification;
+  if (!cert || cert.status !== 'in_progress') return false;
+  const age = Date.now() - new Date(cert.started_at).getTime();
+  return age < 45 * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Most-specific identifier we have for the user's current certification
+ * attempt — module_id when we know it (e.g. 'A1'), else track_id (e.g.
+ * 'A'), else null. Used by the cert continuation rule to personalize
+ * its label and prompt without baking in track-specific copy.
+ */
+function certModuleLabel(ctx: MemberContext | null): string | null {
+  const cert = ctx?.certification;
+  if (!cert) return null;
+  return cert.module_id ?? cert.track_id ?? null;
+}
+
+/**
+ * True for active members who have never published a perspective. Gated
+ * on having logged in at least once in the last 30 days so we don't ask
+ * dormant accounts to write. The rule's audience is engaged members
+ * who have something to share but haven't shipped one yet.
+ */
+function hasZeroPerspectives(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const count = ctx?.perspectives?.published_count;
+  if (count === undefined || count > 0) return false;
+  return (ctx?.engagement?.login_count_30d ?? 0) > 0;
+}
+
+/**
+ * Days from now until the user's next registered event, or null when
+ * there's no upcoming registration. Past-the-start events shouldn't be
+ * here — fetchNextEvent filters on start_time > NOW() — but defensively
+ * return null for negative deltas.
+ */
+function daysToNextEvent(ctx: MemberContext | null): number | null {
+  const start = ctx?.next_event?.starts_at;
+  if (!start) return null;
+  const ms = new Date(start).getTime() - Date.now();
+  if (ms < 0) return null;
+  return ms / (24 * 60 * 60 * 1000);
+}
+
+/**
+ * True for builder personas whose last agent test was either never run
+ * or older than 14 days. Gates the agent-staleness rule so builders
+ * actively iterating (last test < 14d) don't get nagged.
+ */
+function hasStaleAgentTest(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const p = persona(ctx);
+  if (p !== 'molecule_builder' && p !== 'pragmatic_builder') return false;
+  const last = ctx?.agent_testing?.last_test_at;
+  if (!last) return true; // never tested → definitely worth a nudge
+  const age = Date.now() - new Date(last).getTime();
+  return age > 14 * 24 * 60 * 60 * 1000;
+}
+
 function isLowLoginActive(ctx: MemberContext | null): boolean {
   const last = lastLoginMs(ctx);
   if (last === null) return false;
@@ -119,9 +186,13 @@ export const MEMBER_RULES: PromptRule[] = [
     label: 'Join AgenticAdvertising.org',
     prompt: 'How do I join, and what do I get?',
   },
+  // Persona rules use decay: false because they're not nudges — they're
+  // a stable entry point reflecting who the user is. Suppressing them
+  // would leave the user with strictly worse fallbacks for their persona.
   {
     id: 'persona.molecule_builder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'molecule_builder',
     label: 'Build a sales agent',
@@ -130,6 +201,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.pragmatic_builder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'pragmatic_builder',
     label: 'Fastest path to AdCP',
@@ -138,6 +210,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.data_decoder',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) => isMember(memberContext) && persona(memberContext) === 'data_decoder',
     label: 'Prove the outcomes',
     prompt: 'How do I measure agentic vs. traditional and prove AdCP improves outcomes?',
@@ -145,6 +218,7 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.resops_integrator',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'resops_integrator',
     label: 'Fit AdCP into my stack',
@@ -153,16 +227,23 @@ export const MEMBER_RULES: PromptRule[] = [
   {
     id: 'persona.ladder_or_simple_starter',
     priority: 90,
-    when: ({ memberContext }) =>
-      isMember(memberContext) &&
-      (persona(memberContext) === 'ladder_climber' ||
-        persona(memberContext) === 'simple_starter'),
+    decay: false,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const p = persona(memberContext);
+      if (p !== 'ladder_climber' && p !== 'simple_starter') return false;
+      // Once the learner is in a certification, "Continue certification"
+      // (id: cert.continue_in_progress) is more accurate than "Start with
+      // the Academy."
+      return !hasFreshInProgressCertification(memberContext);
+    },
     label: 'Start with the Academy',
     prompt: 'Which Academy module should I start with?',
   },
   {
     id: 'persona.pureblood_protector',
     priority: 90,
+    decay: false,
     when: ({ memberContext }) =>
       isMember(memberContext) && persona(memberContext) === 'pureblood_protector',
     label: 'Brand safety controls',
@@ -183,6 +264,68 @@ export const MEMBER_RULES: PromptRule[] = [
       memberContext?.organization?.membership_tier === 'individual_academic',
     label: 'Upgrade for Slack & working group access',
     prompt: 'What do I get if I upgrade from Explorer?',
+  },
+  {
+    id: 'event.upcoming_registered',
+    priority: 89,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const days = daysToNextEvent(memberContext);
+      if (days === null) return false;
+      return days <= 14;
+    },
+    label: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title ? `Prep for ${title}` : 'Prep for your event';
+    },
+    prompt: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title
+        ? `${title} is coming up. What do I need to know?`
+        : 'My next event is coming up. What do I need to know?';
+    },
+    // Dynamic prompt → matchClick fallback. Match either the
+    // event-titled phrasing or the no-title fallback. Title characters
+    // are not escaped: false positives from a user happening to type a
+    // matching string are fine for telemetry purposes.
+    matchClick: (msg) =>
+      / is coming up\. What do I need to know\?$/.test(msg) ||
+      msg === 'My next event is coming up. What do I need to know?',
+  },
+  {
+    id: 'agent.stale_test',
+    priority: 91,
+    when: ({ memberContext }) => hasStaleAgentTest(memberContext),
+    label: 'Run a fresh agent test',
+    prompt: 'When did I last test my agent, and can we run a fresh evaluation?',
+  },
+  {
+    id: 'cert.continue_in_progress',
+    priority: 93,
+    // Never auto-suppress: re-engaging a stalled learner is exactly the
+    // high-value case. The 45-day freshness guard inside `when` handles
+    // genuinely abandoned attempts.
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && hasFreshInProgressCertification(memberContext),
+    label: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id ? `Continue ${id}` : 'Continue certification';
+    },
+    prompt: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id
+        ? `Let's keep going with ${id}. Where did we leave off?`
+        : 'Pick up where I left off in certification.';
+    },
+    // Dynamic prompt → can't live in the static reverse-index. Match
+    // against either the module-specific or the generic phrasing. The
+    // character class stays in sync with certModuleLabel's output (the
+    // module_id or track_id from the certification schema) — \w lets
+    // future ids like 'A1_intro' still register as a click on this rule.
+    matchClick: (msg) =>
+      /^Let's keep going with [\w-]+\. Where did we leave off\?$/.test(msg) ||
+      msg === 'Pick up where I left off in certification.',
   },
   {
     id: 'profile.incomplete',
@@ -265,9 +408,20 @@ export const MEMBER_RULES: PromptRule[] = [
     prompt: "Give me a quick catch-up on what's happened recently.",
   },
   {
+    id: 'perspectives.share_first_one',
+    priority: 55,
+    when: ({ memberContext }) => hasZeroPerspectives(memberContext),
+    label: "Share what I'm building",
+    prompt: "Help me draft a perspective about what I'm working on.",
+  },
+  {
     id: 'member.test_my_agent',
     priority: 50,
-    when: ({ memberContext }) => isMember(memberContext),
+    // The high-priority agent.stale_test rule (id: 'agent.stale_test')
+    // is more accurate for builder personas with stale agents — duplicating
+    // the generic "Test my agent" filler in the same render is redundant.
+    when: ({ memberContext }) =>
+      isMember(memberContext) && !hasStaleAgentTest(memberContext),
     label: 'Test my agent',
     prompt: 'Can you check if my agent is set up correctly?',
   },
@@ -296,3 +450,43 @@ export const MEMBER_RULES: PromptRule[] = [
 ];
 
 export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];
+
+/**
+ * Reverse index from prompt text → rule id, built once at module load.
+ *
+ * Used by the message-receipt path to detect heuristic clicks: when an
+ * incoming user message exactly matches a known rule's prompt string,
+ * we record a click against that rule. Click telemetry feeds the admin
+ * dashboard's CTR column.
+ *
+ * Exact-string match (after .trim()) is intentionally strict — false
+ * positives (a user paraphrases the same idea) would inflate the CTR
+ * for popular rules. We accept a few false negatives (a user manually
+ * retypes the prompt with a different period) for cleaner data.
+ *
+ * Rules with dynamic (function) `prompt` are not in the static index —
+ * they must provide a `matchClick` callback instead.
+ */
+const PROMPT_TO_RULE_ID = new Map<string, string>(
+  ALL_RULES
+    .filter((r): r is PromptRule & { prompt: string } => typeof r.prompt === 'string')
+    .map((r) => [r.prompt.trim(), r.id]),
+);
+
+const RULES_WITH_MATCH_CLICK = ALL_RULES.filter((r) => typeof r.matchClick === 'function');
+
+/**
+ * Look up the rule_id whose prompt text matches the given user message
+ * verbatim. Falls back to per-rule `matchClick` callbacks for rules
+ * with dynamic prompts. Returns null when there is no match.
+ */
+export function matchRuleIdFromMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  const trimmed = message.trim();
+  const staticHit = PROMPT_TO_RULE_ID.get(trimmed);
+  if (staticHit) return staticHit;
+  for (const rule of RULES_WITH_MATCH_CLICK) {
+    if (rule.matchClick!(trimmed)) return rule.id;
+  }
+  return null;
+}

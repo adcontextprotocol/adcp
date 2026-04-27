@@ -1,31 +1,52 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 
-// vi.hoisted ensures all of these are available inside vi.mock factories
+// vi.hoisted ensures all of these are available inside vi.mock factories.
+// Env vars must be set here so AUTH_ENABLED resolves true before organizations.ts loads
+// and calls new WorkOS() — without them workos is null and every workos!. call throws.
 const {
   TEST_ADMIN_USER_ID,
   TEST_REQUESTER_USER_ID,
   TEST_ORG_ID,
   mockCreateOrganizationMembership,
   mockSendInvitation,
-} = vi.hoisted(() => ({
-  TEST_ADMIN_USER_ID: 'user_join_req_admin',
-  TEST_REQUESTER_USER_ID: 'user_join_req_requester',
-  TEST_ORG_ID: 'org_join_req_test',
-  mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
-  mockSendInvitation: vi.fn(),
+  listOrganizationMemberships,
+} = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
+  process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
+  process.env.WORKOS_COOKIE_PASSWORD ||= 'test-cookie-password-32chars-min-len-1234';
+  return {
+    TEST_ADMIN_USER_ID: 'user_join_req_admin',
+    TEST_REQUESTER_USER_ID: 'user_join_req_requester',
+    TEST_ORG_ID: 'org_join_req_test',
+    mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
+    mockSendInvitation: vi.fn(),
+    listOrganizationMemberships: vi.fn(),
+  };
+});
+
+// organizations.ts calls new WorkOS() directly; mocking @workos-inc/node intercepts that
+// constructor so every new WorkOS() returns the same shared mock methods.
+vi.mock('@workos-inc/node', () => ({
+  WorkOS: class {
+    userManagement = {
+      listOrganizationMemberships,
+      createOrganizationMembership: mockCreateOrganizationMembership,
+      sendInvitation: mockSendInvitation,
+      getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
+    };
+    organizations = {
+      getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
+    };
+    adminPortal = {
+      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
+    };
+  },
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
   workos: {
     userManagement: {
-      listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }) => {
-        if (userId === TEST_ADMIN_USER_ID && organizationId === TEST_ORG_ID) {
-          return Promise.resolve({
-            data: [{ id: 'om_admin', userId: TEST_ADMIN_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
+      listOrganizationMemberships,
       createOrganizationMembership: mockCreateOrganizationMembership,
       sendInvitation: mockSendInvitation,
       getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
@@ -33,7 +54,7 @@ vi.mock('../../src/auth/workos-client.js', () => ({
     organizations: {
       getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
     },
-    portal: {
+    adminPortal: {
       generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
     },
   },
@@ -45,7 +66,8 @@ import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
-vi.mock('../../src/middleware/auth.js', () => ({
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_ADMIN_USER_ID,
@@ -59,6 +81,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
   requireAdmin: (_req: any, res: any) => {
     return res.status(403).json({ error: 'Admin required' });
   },
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
@@ -100,6 +126,16 @@ describe('Join Request Approval', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockCreateOrganizationMembership.mockResolvedValue({ id: 'om_test_new' });
+    // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
+    // via the new WorkOS() instance; the mock must return admin membership for test user.
+    listOrganizationMemberships.mockImplementation(({ userId, organizationId }: { userId: string; organizationId: string }) => {
+      if (userId === TEST_ADMIN_USER_ID && organizationId === TEST_ORG_ID) {
+        return Promise.resolve({
+          data: [{ id: 'om_admin', userId: TEST_ADMIN_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
 
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)

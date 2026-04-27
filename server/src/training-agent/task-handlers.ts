@@ -244,7 +244,7 @@ import {
   getIdempotencyStore,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
-import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -2495,7 +2495,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
-  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
+  const signingCap = selectSigningCapability(ctx);
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -2796,6 +2796,50 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
         code: 'SIGNAL_AGENT_SEGMENT_NOT_FOUND',
         message: `Signal not found: ${segmentId}. Use get_signals to discover available signals.`,
       }],
+    };
+  }
+
+  // Enforce governance: if governance plans or governance agents exist in the session,
+  // the activation requires prior approval via check_governance. Mirrors the
+  // create_media_buy guard — a strict $100 plan (as in the governance_denied storyboard)
+  // should deny activate_signal the same way it denies a media buy.
+  if (governanceContext) {
+    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
+    for (const check of session.governanceChecks.values()) {
+      if (check.governanceContext === governanceContext) latestCheck = check;
+    }
+    if (latestCheck?.status === 'denied') {
+      return {
+        errors: [{
+          code: 'GOVERNANCE_DENIED',
+          message: latestCheck.explanation || 'Governance check denied this signal activation.',
+          details: governanceErrorDetails(latestCheck),
+        }] as TaskError[],
+      };
+    }
+    if (!latestCheck && session.governancePlans.size > 0) {
+      return {
+        errors: [{
+          code: 'GOVERNANCE_DENIED',
+          message: `governance_context "${governanceContext}" does not match any governance check. Call check_governance first.`,
+        }] as TaskError[],
+      };
+    }
+  } else if (session.governancePlans.size > 0) {
+    const msg = `Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account.`;
+    return {
+      errors: [{
+        code: 'GOVERNANCE_DENIED',
+        message: msg,
+        details: {
+          findings: [{
+            category_id: 'budget_authority',
+            severity: 'critical',
+            explanation: msg,
+          }],
+          plan_id: [...session.governancePlans.keys()][0],
+        },
+      }] as TaskError[],
     };
   }
 
@@ -3751,6 +3795,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         args: handlerArgs,
         response: cachableResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+        principal: idempotencyPrincipal,
       });
     }
 

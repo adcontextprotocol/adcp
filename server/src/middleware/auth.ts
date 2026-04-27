@@ -229,7 +229,7 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
   if (!isWorkOSApiKeyFormat(token)) return null;
 
   try {
-    const result = await workos.apiKeys.validateApiKey({ value: token });
+    const result = await workos.apiKeys.createValidation({ value: token });
     if (!result.apiKey) return null;
 
     return {

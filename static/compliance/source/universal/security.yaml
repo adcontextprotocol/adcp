@@ -114,6 +114,7 @@ phases:
         stateful: false
         auth: none
         expect_error: true
+        negative_path: schema_invalid
         expected: |
           The agent rejects the request with:
           - http_status: 401 (preferred) or 403
@@ -210,6 +211,7 @@ phases:
         contributes: true
         contributes_if: "prior_step.probe_api_key.passed"
         expect_error: true
+        negative_path: schema_invalid
         expected: |
           The agent rejects the random-invalid key with:
           - http_status: 400 (if the agent enforces a key format the random token
@@ -381,6 +383,7 @@ phases:
         contributes: true
         contributes_if: "prior_step.probe_protected_resource.passed"
         expect_error: true
+        negative_path: schema_invalid
         expected: |
           The agent rejects the bogus Bearer with:
           - http_status: 400 (syntactic parse-time rejection), 401 (preferred —

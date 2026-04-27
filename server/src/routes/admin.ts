@@ -37,6 +37,7 @@ import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 import { setupIllustrationRoutes } from "./admin/illustrations.js";
 import { setupAddieCostRoutes } from "./admin/addie-costs.js";
+import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
@@ -179,6 +180,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Addie cost-cap observability (per-user Anthropic spend)
   setupAddieCostRoutes(apiRouter);
+  setupPromptMetricsRoutes(apiRouter);
 
   // Cross-system integrity invariants (WorkOS ↔ Stripe ↔ AAO Postgres)
   setupIntegrityRoutes(apiRouter, { workos });
@@ -437,7 +439,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const token = await workos.widgets.getToken({
+        const token = await workos.widgets.createToken({
           organizationId,
           userId: req.user.id,
           scopes: [requestedScope],

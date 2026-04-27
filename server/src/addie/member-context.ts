@@ -13,6 +13,9 @@ import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
+import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
+import { getLatestAttempt } from '../db/certification-db.js';
+import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -22,6 +25,7 @@ import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
+import { getAgentTestingContext } from '../db/agent-test-db.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -43,6 +47,7 @@ const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
+const agentContextDb = new AgentContextDatabase();
 
 /**
  * Get pending content count for a user
@@ -100,6 +105,93 @@ async function getPendingContentForUser(
   }
 
   return { total, by_committee: byCommittee };
+}
+
+/**
+ * Fetch the most recent certification attempt for the user — prefer a
+ * still-in-progress attempt so the "Continue certification" prompt
+ * always points at unfinished work; fall back to the most recent
+ * completed attempt for context.
+ *
+ * `last_activity_at` here means "started_at, or completed_at if completed."
+ * It's not a true last-touch timestamp (the schema doesn't track that),
+ * which is why the cert prompt rule uses a 45-day freshness guard against
+ * `started_at` rather than trying to infer engagement from this field.
+ */
+/**
+ * Count of perspectives this user has published, with the most recent
+ * publish timestamp. Drives the "share what you're building" prompt.
+ *
+ * Counts only published rows authored by this user — drafts, pending
+ * review, archived, and rejected are excluded so the rule fires for
+ * users who genuinely haven't shipped a perspective yet.
+ */
+async function fetchPerspectives(
+  workosUserId: string,
+): Promise<MemberContext['perspectives']> {
+  const result = await query<{ count: string; last_at: Date | null }>(
+    `SELECT COUNT(*)::text as count, MAX(published_at) as last_at
+       FROM perspectives
+       WHERE proposer_user_id = $1
+         AND status = 'published'`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  return {
+    published_count: parseInt(row?.count || '0', 10),
+    last_published_at: row?.last_at ? new Date(row.last_at) : null,
+  };
+}
+
+/**
+ * The user's next upcoming registered event (start_time > now), if any.
+ * Drives the pre-event prep prompt that fires inside the ~14-day window.
+ *
+ * Joins event_registrations on workos_user_id (not email) — anonymous
+ * email-only registrations don't get prompts. The rule's audience is
+ * authenticated members whose home is being personalized.
+ */
+async function fetchNextEvent(
+  workosUserId: string,
+): Promise<MemberContext['next_event']> {
+  // Only count registrations the user is actually attending —
+  // 'cancelled' and 'no_show' should never produce a prep prompt.
+  // 'waitlisted' counts because the user has expressed intent and may
+  // get a seat as the event approaches.
+  const result = await query<{ title: string; slug: string; start_time: Date }>(
+    `SELECT e.title, e.slug, e.start_time
+       FROM event_registrations r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.workos_user_id = $1
+         AND r.registration_status IN ('registered', 'waitlisted')
+         AND e.start_time > NOW()
+         AND e.status = 'published'
+       ORDER BY e.start_time ASC
+       LIMIT 1`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    title: row.title,
+    slug: row.slug,
+    starts_at: new Date(row.start_time),
+  };
+}
+
+async function fetchCertification(
+  workosUserId: string,
+): Promise<MemberContext['certification']> {
+  const latest = await getLatestAttempt(workosUserId);
+  if (!latest) return undefined;
+  const lastActivityIso = latest.completed_at ?? latest.started_at;
+  return {
+    track_id: latest.track_id,
+    module_id: latest.module_id,
+    status: latest.status,
+    started_at: new Date(latest.started_at),
+    last_activity_at: new Date(lastActivityIso),
+  };
 }
 
 /**
@@ -342,6 +434,62 @@ export interface MemberContext {
     /** Fraction (0–1) of org members who belong to at least one working group. */
     team_wg_coverage: number;
   };
+
+  /**
+   * Most recent certification attempt for this user, if any. Used by the
+   * "Continue certification" suggested-prompt rule and by Addie's tools
+   * to anchor learner conversations on the right module.
+   */
+  certification?: {
+    /** Track id (e.g. 'A', 'B') of the latest attempt. */
+    track_id: string;
+    /** Module id of the latest attempt (may be null for old rows). */
+    module_id: string | null;
+    /** Status of that attempt. */
+    status: 'in_progress' | 'passed' | 'failed';
+    /** When that attempt was started. */
+    started_at: Date;
+    /** When the user last touched the attempt — last completed_at if any, else started_at. */
+    last_activity_at: Date;
+  };
+
+  /**
+   * The user's published-perspectives footprint. Powers the "share
+   * what you're building" prompt for active members who haven't
+   * written one yet.
+   */
+  perspectives?: {
+    published_count: number;
+    last_published_at: Date | null;
+  };
+
+  /**
+   * The user's next upcoming registered event (if any). Powers the
+   * pre-event prep prompt within ~14 days of the start.
+   */
+  next_event?: {
+    title: string;
+    slug: string;
+    starts_at: Date;
+  };
+
+  /**
+   * Per-rule telemetry for the suggested-prompts evaluator. Lets rules
+   * suppress themselves after being shown without action. Map is keyed
+   * by rule_id; absent keys mean the rule has never been shown.
+   */
+  prompt_telemetry?: Map<string, {
+    shown_count: number;
+    last_shown_at: Date | null;
+    suppressed_until: Date | null;
+  }>;
+
+  /** Agent testing history — used for staleness-aware suggested prompts (#2299 Stage 2) */
+  agent_testing?: {
+    last_test_at: Date | null;
+    total_tests_30d: number;
+    last_outcome: 'pass' | 'fail' | 'partial' | 'error' | null;
+  };
 }
 
 /**
@@ -557,6 +705,34 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, organizationId }, 'Addie: Failed to compute adoption signals');
     }
 
+    // Per-rule telemetry for the prompt evaluator's suppression layer.
+    try {
+      context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load prompt telemetry');
+    }
+
+    // Latest certification attempt — drives the "Continue certification" prompt.
+    try {
+      context.certification = await fetchCertification(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load certification context');
+    }
+
+    // Published-perspectives footprint — drives the "share what you're building" prompt.
+    try {
+      context.perspectives = await fetchPerspectives(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load perspectives context');
+    }
+
+    // Next upcoming registered event — drives pre-event prep prompts.
+    try {
+      context.next_event = await fetchNextEvent(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to load next event');
+    }
+
     // Process subscription info
     if (subscriptionInfo && subscriptionInfo.status !== 'none') {
       context.subscription = {
@@ -675,6 +851,15 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
+    try {
+      const agentTesting = await getAgentTestingContext(workosUserId);
+      if (agentTesting) {
+        context.agent_testing = agentTesting;
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to get agent testing context');
+    }
+
     logger.debug(
       {
         slackUserId,
@@ -753,6 +938,30 @@ async function resolveContextFromLocalDb(
     };
   } catch (error) {
     logger.warn({ error, organizationId }, 'Addie Web: Failed to compute adoption signals');
+  }
+
+  try {
+    context.prompt_telemetry = await getTelemetryForUser(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load prompt telemetry');
+  }
+
+  try {
+    context.certification = await fetchCertification(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load certification context');
+  }
+
+  try {
+    context.perspectives = await fetchPerspectives(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load perspectives context');
+  }
+
+  try {
+    context.next_event = await fetchNextEvent(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load next event');
   }
 
   try {
@@ -902,6 +1111,15 @@ async function resolveContextFromLocalDb(
     }
   }
 
+  try {
+    const agentTesting = await getAgentTestingContext(workosUserId);
+    if (agentTesting) {
+      context.agent_testing = agentTesting;
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get agent testing context');
+  }
+
   logger.debug(
     {
       workosUserId,
@@ -962,8 +1180,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         first_name: workosUser.firstName ?? undefined,
         last_name: workosUser.lastName ?? undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get WorkOS user');
+      // Only mark unmapped when the user genuinely doesn't exist (WorkOS 404).
+      // Transient errors leave is_mapped: true so authenticated sessions degrade
+      // gracefully rather than being treated as anonymous.
+      const isNotFound = error?.status === 404 || error?.code === 'entity_not_found';
+      if (isNotFound) context.is_mapped = false;
       return context;
     }
 
@@ -1258,6 +1481,19 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     } else {
       lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/account to make it visible on their community profile.');
     }
+  }
+
+  // Agent testing history
+  if (context.agent_testing) {
+    const outcomeLabels: Record<string, string> = { pass: 'passed', fail: 'failed', partial: 'partial', error: 'error' };
+    const outcomeLabel = context.agent_testing.last_outcome
+      ? outcomeLabels[context.agent_testing.last_outcome] ?? context.agent_testing.last_outcome
+      : 'unknown';
+    const lastRunLabel = context.agent_testing.last_test_at
+      ? context.agent_testing.last_test_at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'never';
+    lines.push('');
+    lines.push(`Agent testing: last run ${lastRunLabel}, outcome ${outcomeLabel}, ${context.agent_testing.total_tests_30d} test(s) in last 30 days.`);
   }
 
   // Slack linking status (only relevant for Slack-originated conversations)

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildSuggestedPrompts } from '../../src/addie/home/builders/suggested-prompts.js';
+import { buildSuggestedPrompts, pickPrompts } from '../../src/addie/home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage, ALL_RULES } from '../../src/addie/home/builders/rules/prompt-rules.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 const NOW = new Date('2026-04-23T12:00:00Z');
@@ -322,6 +323,249 @@ describe('buildSuggestedPrompts', () => {
     });
   });
 
+  describe('perspectives share rule', () => {
+    it('fires for an active member with zero published perspectives', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 0, last_published_at: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain("Share what I'm building");
+    });
+
+    it('does not fire when the user has published before', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 2, last_published_at: DAYS_AGO(30) },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+
+    it('does not fire for dormant members (no logins in 30d)', () => {
+      const ctx = makeMember({
+        perspectives: { published_count: 0, last_published_at: null },
+        engagement: { login_count_30d: 0, last_login: DAYS_AGO(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+
+    it('does not fire for non-members', () => {
+      const ctx = makeMember({
+        is_member: false,
+        perspectives: { published_count: 0, last_published_at: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain("Share what I'm building");
+    });
+  });
+
+  describe('upcoming event prep rule', () => {
+    const event = (daysFromNow: number) => ({
+      title: 'Cannes Lions',
+      slug: 'cannes-2026',
+      starts_at: new Date(NOW.getTime() + daysFromNow * 24 * 60 * 60 * 1000),
+    });
+
+    it('renders an event-specific label when within 14 days', () => {
+      const ctx = makeMember({ next_event: event(7) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Prep for Cannes Lions');
+    });
+
+    it('renders the matching prompt body alongside', () => {
+      const ctx = makeMember({ next_event: event(3) });
+      const prep = buildSuggestedPrompts(ctx, false).find((p) => p.label === 'Prep for Cannes Lions');
+      expect(prep?.prompt).toBe('Cannes Lions is coming up. What do I need to know?');
+    });
+
+    it('does not fire when the event is more than 14 days out', () => {
+      const ctx = makeMember({ next_event: event(30) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
+
+    it('does not fire when no upcoming event', () => {
+      const ctx = makeMember({ next_event: undefined });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
+
+    it('matchClick recognizes the dynamic event prompt', () => {
+      expect(matchRuleIdFromMessage('Cannes Lions is coming up. What do I need to know?'))
+        .toBe('event.upcoming_registered');
+      expect(matchRuleIdFromMessage('My next event is coming up. What do I need to know?'))
+        .toBe('event.upcoming_registered');
+    });
+
+    it('does not fire for non-members even with an upcoming event', () => {
+      const ctx = makeMember({ is_member: false, next_event: event(7) });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label).join(' ')).not.toContain('Prep for');
+    });
+  });
+
+  describe('agent stale-test rule', () => {
+    const builderPersona = { persona: 'molecule_builder', aspiration_persona: null, source: 'assessment', journey_stage: null };
+
+    it('fires for a molecule_builder who has never tested an agent', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Run a fresh agent test');
+    });
+
+    it('fires for a pragmatic_builder whose last test is older than 14 days', () => {
+      const ctx = makeMember({
+        persona: { persona: 'pragmatic_builder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        agent_testing: { last_test_at: DAYS_AGO(20), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Run a fresh agent test');
+    });
+
+    it('does not fire for a builder who tested recently', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: DAYS_AGO(5), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
+    it('does not fire for unlinked / non-member users with builder persona on context', () => {
+      const ctx = makeMember({
+        is_member: false,
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
+    it('does not fire for non-builder personas even when stale', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        agent_testing: { last_test_at: DAYS_AGO(60), last_outcome: 'passed' },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Run a fresh agent test');
+    });
+
+    it('outranks the persona prompt for the same builder', () => {
+      const ctx = makeMember({
+        persona: builderPersona,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const staleIdx = labels.indexOf('Run a fresh agent test');
+      const personaIdx = labels.indexOf('Build a sales agent');
+      expect(staleIdx).toBeGreaterThanOrEqual(0);
+      expect(personaIdx).toBeGreaterThanOrEqual(0);
+      expect(staleIdx).toBeLessThan(personaIdx);
+    });
+  });
+
+  describe('certification continuation', () => {
+    it('shows Continue certification when a fresh attempt is in_progress', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: DAYS_AGO(7),
+          last_activity_at: DAYS_AGO(2),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Continue A1');
+    });
+
+    it('does not show the cert prompt when the latest attempt is passed', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'passed',
+          started_at: DAYS_AGO(30),
+          last_activity_at: DAYS_AGO(20),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
+    });
+
+    it('does not show the cert prompt when the latest attempt is failed', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'failed',
+          started_at: DAYS_AGO(30),
+          last_activity_at: DAYS_AGO(20),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
+    });
+
+    it('does not show the cert prompt when there is no attempt', () => {
+      const ctx = makeMember({ certification: undefined });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
+    });
+
+    it('does not show the cert prompt when the attempt is older than 45 days (stale)', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: DAYS_AGO(60),
+          last_activity_at: DAYS_AGO(60),
+        },
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Continue A1');
+    });
+
+    it('cert continuation outranks profile completeness', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const certIdx = labels.indexOf('Continue A1');
+      const profileIdx = labels.indexOf('Complete my profile');
+      expect(certIdx).toBeGreaterThanOrEqual(0);
+      expect(profileIdx).toBeGreaterThanOrEqual(0);
+      expect(certIdx).toBeLessThan(profileIdx);
+    });
+
+    it('cert continuation outranks lapsed re-engagement (concrete unfinished thing wins)', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+        engagement: { login_count_30d: 0, last_login: DAYS_AGO(60), working_group_count: 0, email_click_count_30d: 0, interest_level: null },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      const certIdx = labels.indexOf('Continue A1');
+      const lapsedIdx = labels.indexOf("What's new since you were last here?");
+      expect(certIdx).toBeGreaterThanOrEqual(0);
+      expect(lapsedIdx).toBeGreaterThanOrEqual(0);
+      expect(certIdx).toBeLessThan(lapsedIdx);
+    });
+
+    it('suppresses Start with the Academy persona prompt when learner is mid-cert', () => {
+      const ctx = makeMember({
+        persona: { persona: 'ladder_climber', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(7), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue A1');
+      expect(labels).not.toContain('Start with the Academy');
+    });
+
+    it('still shows Start with the Academy when ladder_climber has no in-progress cert', () => {
+      const ctx = makeMember({
+        persona: { persona: 'ladder_climber', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        certification: undefined,
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Start with the Academy');
+    });
+  });
+
   describe('profile and working groups', () => {
     it('shows Complete my profile when completeness < 80', () => {
       const ctx = makeMember({
@@ -384,6 +628,191 @@ describe('buildSuggestedPrompts', () => {
       });
       const prompts = buildSuggestedPrompts(ctx, false);
       expect(prompts.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('suppression via prompt_telemetry', () => {
+    it('suppresses a rule whose suppressed_until is in the future', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).not.toContain('Complete my profile');
+    });
+
+    it('does not suppress a rule whose suppressed_until is in the past', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(60),
+            suppressed_until: DAYS_AGO(1),
+          }],
+        ]),
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Complete my profile');
+    });
+
+    it('does not suppress when telemetry is missing', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        prompt_telemetry: undefined,
+      });
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Complete my profile');
+    });
+
+    it('does not suppress persona prompts even with high shown_count', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+        prompt_telemetry: new Map([
+          ['persona.data_decoder', {
+            shown_count: 100,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 365 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      // Persona rules have decay: false, so suppressed_until is ignored.
+      expect(buildSuggestedPrompts(ctx, false).map((p) => p.label)).toContain('Prove the outcomes');
+    });
+
+    it('persona ruleIds are excluded from telemetry recording', () => {
+      const ctx = makeMember({
+        persona: { persona: 'data_decoder', aspiration_persona: null, source: 'assessment', journey_stage: null },
+      });
+      const { ruleIds } = pickPrompts(ctx, false);
+      expect(ruleIds.every((id) => !id.startsWith('persona.'))).toBe(true);
+    });
+
+    it('suppression of a high-priority rule lets the next-priority rule fire', () => {
+      const ctx = makeMember({
+        community_profile: { is_public: false, slug: null, completeness: 30, github_username: null },
+        working_groups: [],
+        prompt_telemetry: new Map([
+          ['profile.incomplete', {
+            shown_count: 5,
+            last_shown_at: DAYS_AGO(1),
+            suppressed_until: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
+          }],
+        ]),
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).not.toContain('Complete my profile');
+      // Find a working group fires once profile is suppressed.
+      expect(labels).toContain('Find a working group');
+    });
+  });
+
+  describe('pickPrompts', () => {
+    it('returns parallel prompts and ruleIds arrays', () => {
+      const { prompts, ruleIds } = pickPrompts(makeMember(), false);
+      expect(prompts).toHaveLength(ruleIds.length);
+      ruleIds.forEach((id) => expect(typeof id).toBe('string'));
+    });
+
+    it('admin path returns admin rule IDs', () => {
+      const { ruleIds } = pickPrompts(makeMember(), true);
+      expect(ruleIds.every((id) => id.startsWith('admin.'))).toBe(true);
+    });
+  });
+
+  describe('matchRuleIdFromMessage (heuristic click detection)', () => {
+    it('matches a known static prompt verbatim', () => {
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      expect(typeof fallback.prompt).toBe('string');
+      expect(matchRuleIdFromMessage(fallback.prompt as string)).toBe('fallback.whats_new');
+    });
+
+    it('matches with surrounding whitespace trimmed', () => {
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      expect(matchRuleIdFromMessage('  ' + fallback.prompt + '  \n')).toBe('fallback.whats_new');
+    });
+
+    it('returns null for an unrelated message', () => {
+      expect(matchRuleIdFromMessage('hi can you help me with my agent')).toBeNull();
+    });
+
+    it('returns null for empty / null / undefined input', () => {
+      expect(matchRuleIdFromMessage(null)).toBeNull();
+      expect(matchRuleIdFromMessage(undefined)).toBeNull();
+      expect(matchRuleIdFromMessage('')).toBeNull();
+    });
+
+    it('does not match a paraphrase (intentional false-negative)', () => {
+      const fallback = ALL_RULES.find((r) => r.id === 'fallback.whats_new')!;
+      const paraphrased = (fallback.prompt as string).replace(/\?$/, '!');
+      expect(matchRuleIdFromMessage(paraphrased)).toBeNull();
+    });
+
+    it('matches the cert continuation rule via its module-specific phrasing', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with A1. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+      expect(matchRuleIdFromMessage("Let's keep going with B2. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('matches cert clicks via track-only phrasing when no module_id', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with C. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('matches cert clicks for ids with underscores (future-proof)', () => {
+      expect(matchRuleIdFromMessage("Let's keep going with A1_intro. Where did we leave off?"))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('matches the cert continuation rule via the generic fallback phrasing', () => {
+      expect(matchRuleIdFromMessage('Pick up where I left off in certification.'))
+        .toBe('cert.continue_in_progress');
+    });
+
+    it('every rule with a static prompt has a unique prompt string', () => {
+      const staticPrompts = ALL_RULES
+        .filter((r) => typeof r.prompt === 'string')
+        .map((r) => r.prompt as string);
+      expect(new Set(staticPrompts).size).toBe(staticPrompts.length);
+    });
+  });
+
+  describe('dynamic prompt rendering', () => {
+    it('renders module-specific label when module_id is present', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue A1');
+    });
+
+    it('falls back to track_id when module_id is null', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'C', module_id: null, status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const labels = buildSuggestedPrompts(ctx, false).map((p) => p.label);
+      expect(labels).toContain('Continue C');
+    });
+
+    it('renders the module-specific prompt body alongside the label', () => {
+      const ctx = makeMember({
+        certification: {
+          track_id: 'A', module_id: 'A1', status: 'in_progress',
+          started_at: DAYS_AGO(2), last_activity_at: DAYS_AGO(2),
+        },
+      });
+      const cert = buildSuggestedPrompts(ctx, false).find((p) => p.label === 'Continue A1');
+      expect(cert?.prompt).toBe("Let's keep going with A1. Where did we leave off?");
     });
   });
 });

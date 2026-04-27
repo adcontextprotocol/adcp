@@ -20,8 +20,37 @@ export interface AdagentsProperty {
   tags?: string[];
 }
 
+/**
+ * An authorized_agents[] entry from a publisher's adagents.json. Six
+ * authorization_type variants exist per the spec; v1 of the catalog
+ * projection covers the property-side cases (property_ids,
+ * inline_properties, lexically-anchored publisher_properties).
+ * property_tags / signal_ids / signal_tags are deferred — the legacy
+ * agent_publisher_authorizations table continues to serve them via the
+ * UNION reader during the dual-read window.
+ */
+export interface AdagentsAuthorizedAgent {
+  url?: string;
+  authorized_for?: string;
+  authorization_type?:
+    | 'property_ids'
+    | 'property_tags'
+    | 'inline_properties'
+    | 'publisher_properties'
+    | 'signal_ids'
+    | 'signal_tags';
+  property_ids?: string[];
+  properties?: AdagentsProperty[];           // for inline_properties variant
+  publisher_properties?: Array<{
+    publisher_domain?: string;
+    selection_type?: 'all' | 'by_id' | 'by_tag';
+    property_ids?: string[];
+    property_tags?: string[];
+  }>;
+}
+
 export interface AdagentsManifest {
-  authorized_agents?: unknown;
+  authorized_agents?: AdagentsAuthorizedAgent[];
   properties?: AdagentsProperty[];
   [key: string]: unknown;
 }
@@ -51,6 +80,31 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
   if (type !== 'domain' && type !== 'subdomain') return false;
   if (value === publisherDomain) return true;
   return value.endsWith(`.${publisherDomain}`);
+}
+
+/**
+ * Canonicalize an agent_url to match the schema's invariant
+ * (lowercase, no trailing slash, wildcard '*' is the sentinel).
+ * Returns null when the input is not a usable URL — callers skip those
+ * rows rather than fail the whole projection.
+ */
+function canonicalizeAgentUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed === '*') return '*';
+  // Reject embedded wildcards — the schema CHECK in migration 440 only
+  // accepts '*' as exact-match. Anything else (e.g. *foo*) would fail
+  // the CHECK and abort the whole transaction.
+  if (trimmed.includes('*')) return null;
+  // Reject internal whitespace and control chars. A URL with embedded
+  // newlines or tabs would land in the canonical form and become
+  // unmatchable by lookup callers. URL.parse() at the validator level
+  // doesn't enforce this hard.
+  if (/[\s\x00-\x1f]/.test(trimmed)) return null;
+  let canonical = trimmed.toLowerCase();
+  while (canonical.endsWith('/')) canonical = canonical.slice(0, -1);
+  if (canonical.length === 0) return null;
+  return canonical;
 }
 
 /**
@@ -119,6 +173,34 @@ export class PublisherDatabase {
               err: err instanceof Error ? err.message : err,
             },
             'Catalog projection failed for property; skipping'
+          );
+        }
+      }
+
+      // Project authorized_agents → catalog_agent_authorizations. Each
+      // entry runs in its own savepoint so a malformed entry doesn't
+      // lose the rest of the manifest. Identity-side projection (above)
+      // ran first so property_ids slugs can be resolved against
+      // catalog_properties rows the writer just created.
+      const authEntries = Array.isArray(safeManifest.authorized_agents)
+        ? safeManifest.authorized_agents
+        : [];
+      for (let i = 0; i < authEntries.length; i += 1) {
+        const savepoint = `auth_${i}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
+        try {
+          await this.projectAuthorizationToCatalog(client, domain, authEntries[i]);
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        } catch (err) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          log.warn(
+            {
+              domain,
+              agentUrl: authEntries[i]?.url,
+              authIndex: i,
+              err: err instanceof Error ? err.message : err,
+            },
+            'Catalog auth projection failed for entry; skipping'
           );
         }
       }
@@ -312,6 +394,209 @@ export class PublisherDatabase {
          VALUES ($1, $2, $3, $4, 'adagents_json', 'authoritative')
          ON CONFLICT (identifier_type, identifier_value) DO NOTHING`,
         [uuidv7(), propertyRid, ident.type, ident.value]
+      );
+    }
+  }
+
+  /**
+   * Project a single authorized_agents[] entry into
+   * catalog_agent_authorizations.
+   *
+   * v1 covers three of the six authorization_type variants the spec
+   * enumerates:
+   *   - property_ids        — one row per resolved property_rid
+   *   - inline_properties   — same shape using the entry's inline
+   *                           properties[] (the writer projects those
+   *                           to catalog first, then references them)
+   *   - publisher_properties — only the lexical-anchor case lands
+   *                            (entry.publisher_domain == publisherDomain)
+   *                            with selection_type='all' or 'by_id'.
+   *                            Cross-publisher claims and 'by_tag' are
+   *                            refused per spec.
+   *   - no authorization_type (publisher-wide) — one row with
+   *                            property_rid IS NULL, publisher_domain set
+   *
+   * Variants explicitly skipped:
+   *   - property_tags, signal_ids, signal_tags — deferred per spec.
+   *     The legacy agent_publisher_authorizations table continues to
+   *     serve these via the UNION reader during dual-read.
+   *
+   * Security:
+   *   - agent_url canonicalization at the writer matches the schema
+   *     CHECK (lowercase + no trailing slash; embedded '*' rejected).
+   *   - publisher_properties cross-publisher refusal via the anchor rule.
+   *   - property_ids slugs that don't resolve to a catalog_properties
+   *     row owned by this publisher are skipped (legacy-only data
+   *     served by UNION reader).
+   *
+   * evidence='adagents_json', created_by='system' for all writer-sourced
+   * rows. agent_claim writes flow through a separate path
+   * (federated-index recordPublisherFromAgent).
+   */
+  private async projectAuthorizationToCatalog(
+    client: PoolClient,
+    publisherDomain: string,
+    entry: AdagentsAuthorizedAgent,
+  ): Promise<void> {
+    if (!entry?.url || typeof entry.url !== 'string') return;
+    const agentCanonical = canonicalizeAgentUrl(entry.url);
+    if (agentCanonical === null) {
+      log.warn(
+        { publisherDomain, agentUrl: entry.url },
+        'Skipping auth projection: agent_url failed canonicalization'
+      );
+      return;
+    }
+    const agentRaw = entry.url.trim();
+    const authorizedFor = typeof entry.authorized_for === 'string'
+      ? entry.authorized_for.slice(0, 500)
+      : null;
+
+    const variant = entry.authorization_type;
+
+    if (variant === 'property_tags' || variant === 'signal_ids' || variant === 'signal_tags') {
+      // Deferred per spec. Legacy table serves these.
+      log.debug(
+        { publisherDomain, agentUrl: agentCanonical, variant },
+        'Skipping auth projection: variant not supported in v1'
+      );
+      return;
+    }
+
+    // Resolve the set of (property_rid OR publisher-wide) targets for this entry.
+    const targets: Array<{ propertyRid: string | null; slug: string | null }> = [];
+
+    if (variant === 'property_ids') {
+      const slugs = Array.isArray(entry.property_ids)
+        ? entry.property_ids.filter((s): s is string => typeof s === 'string' && s.length > 0)
+        : [];
+      if (slugs.length === 0) return;
+      const rows = await client.query<{ property_rid: string; property_id: string }>(
+        `SELECT property_rid, property_id
+           FROM catalog_properties
+          WHERE created_by = $1 AND property_id = ANY($2)`,
+        [adagentsCreatedBy(publisherDomain), slugs]
+      );
+      for (const row of rows.rows) {
+        targets.push({ propertyRid: row.property_rid, slug: row.property_id });
+      }
+    } else if (variant === 'inline_properties') {
+      // Inline properties were just projected (they ride in entry.properties[]
+      // and get the same security guards as top-level properties via the
+      // existing project loop). Resolve their rids the same way as
+      // property_ids, keyed on the publisher's manifest slug.
+      const inline = Array.isArray(entry.properties) ? entry.properties : [];
+      // First, project each inline property — the entry's own properties[]
+      // wasn't visited by the top-level loop because they live inside this
+      // auth entry, not the manifest's top-level properties[]. A failure
+      // in any inline projection aborts the postgres transaction; the
+      // outer per-entry SAVEPOINT (auth_${i} in upsertAdagentsCache) owns
+      // the rollback boundary, so a single bad inline property drops the
+      // whole entry — all-or-nothing per entry.
+      for (const prop of inline) {
+        await this.projectPropertyToCatalog(client, publisherDomain, prop);
+      }
+      const slugs = inline
+        .map((p) => p?.property_id)
+        .filter((s): s is string => typeof s === 'string' && s.length > 0);
+      if (slugs.length > 0) {
+        const rows = await client.query<{ property_rid: string; property_id: string }>(
+          `SELECT property_rid, property_id
+             FROM catalog_properties
+            WHERE created_by = $1 AND property_id = ANY($2)`,
+          [adagentsCreatedBy(publisherDomain), slugs]
+        );
+        for (const row of rows.rows) {
+          targets.push({ propertyRid: row.property_rid, slug: row.property_id });
+        }
+      }
+    } else if (variant === 'publisher_properties') {
+      const sels = Array.isArray(entry.publisher_properties) ? entry.publisher_properties : [];
+      for (const sel of sels) {
+        const selPub = typeof sel?.publisher_domain === 'string' ? sel.publisher_domain.toLowerCase() : null;
+        if (selPub !== publisherDomain) {
+          // Cross-publisher third-party-sales claim. Refused per spec — the
+          // writer cannot land an authoritative row for another publisher's
+          // properties without out-of-band corroboration.
+          log.warn(
+            { publisherDomain, agentUrl: agentCanonical, selPub },
+            'Skipping auth projection: publisher_properties claims a different publisher (cross-publisher refused)'
+          );
+          continue;
+        }
+        const selectionType = sel?.selection_type;
+        if (selectionType === 'all') {
+          const rows = await client.query<{ property_rid: string; property_id: string | null }>(
+            `SELECT property_rid, property_id
+               FROM catalog_properties
+              WHERE created_by = $1`,
+            [adagentsCreatedBy(publisherDomain)]
+          );
+          for (const row of rows.rows) {
+            targets.push({ propertyRid: row.property_rid, slug: row.property_id });
+          }
+        } else if (selectionType === 'by_id') {
+          const slugs = Array.isArray(sel.property_ids)
+            ? sel.property_ids.filter((s): s is string => typeof s === 'string' && s.length > 0)
+            : [];
+          if (slugs.length === 0) continue;
+          const rows = await client.query<{ property_rid: string; property_id: string }>(
+            `SELECT property_rid, property_id
+               FROM catalog_properties
+              WHERE created_by = $1 AND property_id = ANY($2)`,
+            [adagentsCreatedBy(publisherDomain), slugs]
+          );
+          for (const row of rows.rows) {
+            targets.push({ propertyRid: row.property_rid, slug: row.property_id });
+          }
+        } else {
+          // selection_type='by_tag' is deferred per spec.
+          log.debug(
+            { publisherDomain, agentUrl: agentCanonical, selectionType },
+            'Skipping auth projection: publisher_properties.selection_type not supported in v1'
+          );
+        }
+      }
+    } else {
+      // No authorization_type → publisher-wide auth (legacy
+      // agent_publisher_authorizations shape). One row with
+      // property_rid IS NULL, publisher_domain set.
+      targets.push({ propertyRid: null, slug: null });
+    }
+
+    if (targets.length === 0) {
+      log.debug(
+        { publisherDomain, agentUrl: agentCanonical, variant },
+        'Auth projection produced no rows (no resolved targets)'
+      );
+      return;
+    }
+
+    // Insert one CAA row per resolved target. Partial unique index
+    // (active-set) handles re-crawls — second writer wins on collision.
+    for (const target of targets) {
+      const isPropertyScope = target.propertyRid !== null;
+      await client.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug,
+            publisher_domain, authorized_for, evidence, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'adagents_json', 'system')
+         ON CONFLICT (agent_url_canonical,
+                      (COALESCE(property_rid::text, '')),
+                      (COALESCE(publisher_domain, '')),
+                      evidence)
+                WHERE deleted_at IS NULL
+         DO UPDATE SET
+           authorized_for = EXCLUDED.authorized_for,
+           updated_at = NOW()`,
+        [
+          agentRaw,
+          agentCanonical,
+          target.propertyRid,
+          target.slug,
+          isPropertyScope ? null : publisherDomain,
+          authorizedFor,
+        ]
       );
     }
   }

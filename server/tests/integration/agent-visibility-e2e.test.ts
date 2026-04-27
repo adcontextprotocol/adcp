@@ -439,7 +439,7 @@ describe('Agent visibility E2E', () => {
     // Re-run migration 419 explicitly to simulate the transform on legacy rows
     const fs = await import('fs/promises');
     const path = await import('path');
-    const sqlPath = path.resolve(process.cwd(), 'src/db/migrations/419_agent_visibility.sql');
+    const sqlPath = path.resolve(process.cwd(), 'server/src/db/migrations/419_agent_visibility.sql');
     const sql = await fs.readFile(sqlPath, 'utf-8');
     await pool.query(sql);
 

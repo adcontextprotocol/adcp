@@ -389,10 +389,9 @@ When teaching a certification module, use a conversational Socratic approach —
 export const HISTORY_UNAVAILABLE_NOTE = 'Note: Conversation history could not be loaded. If the user\'s message is short or seems like a confirmation/reply, ask them to clarify what they\'re referring to.';
 
 /**
- * Minimal fallback prompt - used only when database is unavailable.
- *
- * The main system prompt comes from database rules (addie_rules table).
- * This fallback ensures Addie can still function if the database is down.
+ * Minimal fallback prompt - used only when the server cannot load rule files
+ * (e.g., deploy layout mismatch). The main system prompt is assembled by
+ * loadRules() in rules/index.ts from markdown files in server/src/addie/rules/.
  * Tool reference is always appended separately.
  */
 export const ADDIE_FALLBACK_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org.

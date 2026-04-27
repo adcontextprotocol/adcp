@@ -5,7 +5,8 @@ import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
-vi.mock('../../src/middleware/auth.js', () => ({
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: any, _res: any, next: any) => {
     req.user = { id: 'user_test_admin', email: 'admin@test.com', is_admin: true };
     next();
@@ -13,72 +14,83 @@ vi.mock('../../src/middleware/auth.js', () => ({
   requireAdmin: (_req: any, _res: any, next: any) => next(),
 }));
 
-async function* fakeInvoiceIterator(items: unknown[]) {
-  for (const item of items) yield item;
-}
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
+}));
 
-function makeStripeInvoiceList(items: unknown[]) {
-  return fakeInvoiceIterator(items);
-}
+// vi.mock factories are hoisted above all top-level statements, so any vars
+// referenced inside have to be declared in vi.hoisted (which is also hoisted)
+// to be live at factory-evaluation time. Bare `const x = ...` at top-level
+// still hits "Cannot access 'x' before initialization".
+const mocks = vi.hoisted(() => {
+  const FAKE_INVOICE = {
+    id: 'in_backfill_test_001',
+    amount_paid: 250000,
+    currency: 'usd',
+    billing_reason: 'subscription_create',
+    subscription: 'sub_backfill_test_001',
+    payment_intent: 'pi_backfill_test_001',
+    charge: { id: 'ch_backfill_test_001' },
+    status_transitions: { paid_at: Math.floor(Date.now() / 1000) - 86400 },
+    created: Math.floor(Date.now() / 1000) - 86400,
+    period_start: Math.floor(Date.now() / 1000) - 86400,
+    period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
+    description: null,
+    lines: {
+      data: [{
+        id: 'il_backfill_test_001',
+        price: {
+          id: 'price_backfill_test_001',
+          recurring: { interval: 'year' },
+          product: 'prod_backfill_test_001',
+        },
+        description: 'AgenticAdvertising.org Membership',
+      }],
+    },
+  };
 
-const FAKE_INVOICE = {
-  id: 'in_backfill_test_001',
-  amount_paid: 250000,
-  currency: 'usd',
-  billing_reason: 'subscription_create',
-  subscription: 'sub_backfill_test_001',
-  payment_intent: 'pi_backfill_test_001',
-  charge: { id: 'ch_backfill_test_001' },
-  status_transitions: { paid_at: Math.floor(Date.now() / 1000) - 86400 },
-  created: Math.floor(Date.now() / 1000) - 86400,
-  period_start: Math.floor(Date.now() / 1000) - 86400,
-  period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
-  description: null,
-  lines: {
-    data: [{
-      id: 'il_backfill_test_001',
-      price: {
-        id: 'price_backfill_test_001',
-        recurring: { interval: 'year' },
-        product: 'prod_backfill_test_001',
-      },
-      description: 'AgenticAdvertising.org Membership',
-    }],
-  },
-};
+  async function* fakeInvoiceIterator(items: unknown[]) {
+    for (const item of items) yield item;
+  }
 
-const mockInvoicesList = vi.fn().mockImplementation(() => makeStripeInvoiceList([FAKE_INVOICE]));
-const mockCustomersRetrieve = vi.fn().mockResolvedValue({
-  id: 'cus_test_backfill',
-  deleted: false,
-  subscriptions: {
-    data: [{
-      id: 'sub_backfill_test_001',
-      status: 'active',
-      current_period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
-      canceled_at: null,
-      items: {
+  return {
+    FAKE_INVOICE,
+    mockInvoicesList: vi.fn().mockImplementation(() => fakeInvoiceIterator([FAKE_INVOICE])),
+    mockCustomersRetrieve: vi.fn().mockResolvedValue({
+      id: 'cus_test_backfill',
+      deleted: false,
+      subscriptions: {
         data: [{
-          price: {
-            unit_amount: 250000,
-            currency: 'usd',
-            recurring: { interval: 'year' },
+          id: 'sub_backfill_test_001',
+          status: 'active',
+          current_period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
+          canceled_at: null,
+          items: {
+            data: [{
+              price: {
+                unit_amount: 250000,
+                currency: 'usd',
+                recurring: { interval: 'year' },
+              },
+            }],
           },
         }],
       },
-    }],
-  },
+    }),
+    mockProductsRetrieve: vi.fn().mockResolvedValue({
+      id: 'prod_backfill_test_001',
+      name: 'Pinnacle Media Annual Plan',
+    }),
+  };
 });
-const mockProductsRetrieve = vi.fn().mockResolvedValue({
-  id: 'prod_backfill_test_001',
-  name: 'Pinnacle Media Annual Plan',
-});
+
+const { FAKE_INVOICE, mockInvoicesList, mockCustomersRetrieve, mockProductsRetrieve } = mocks;
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: {
-    customers: { retrieve: mockCustomersRetrieve },
-    invoices: { list: mockInvoicesList },
-    products: { retrieve: mockProductsRetrieve },
+    customers: { retrieve: mocks.mockCustomersRetrieve },
+    invoices: { list: mocks.mockInvoicesList },
+    products: { retrieve: mocks.mockProductsRetrieve },
     webhooks: {
       constructEvent: vi.fn().mockImplementation((body: any) => {
         return typeof body === 'string' ? JSON.parse(body) : JSON.parse(body.toString());
@@ -131,7 +143,7 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
 
   beforeEach(async () => {
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    mockInvoicesList.mockImplementation(() => makeStripeInvoiceList([FAKE_INVOICE]));
+    mockInvoicesList.mockImplementation(async function* () { yield FAKE_INVOICE; });
   });
 
   it('inserts a revenue_events row for a missed invoice and returns revenue_events_synced: 1', async () => {
@@ -158,7 +170,7 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
     expect(first.body.revenue_events_synced).toBe(1);
 
     // Reset mock to return same invoice again
-    mockInvoicesList.mockImplementation(() => makeStripeInvoiceList([FAKE_INVOICE]));
+    mockInvoicesList.mockImplementation(async function* () { yield FAKE_INVOICE; });
 
     const second = await request(app)
       .post(`/api/admin/accounts/${TEST_ORG_ID}/sync`)
@@ -193,7 +205,7 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
   });
 
   it('returns 0 when the customer has no paid invoices', async () => {
-    mockInvoicesList.mockImplementation(() => makeStripeInvoiceList([]));
+    mockInvoicesList.mockImplementation(async function* () { /* no invoices */ });
 
     const response = await request(app)
       .post(`/api/admin/accounts/${TEST_ORG_ID}/sync`)

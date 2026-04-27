@@ -79,7 +79,9 @@ import {
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
 import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
-import { buildSuggestedPrompts } from './home/builders/suggested-prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
+import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -777,7 +779,12 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildSuggestedPrompts(memberContext, userIsAdmin).map((p) => ({
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
       title: p.label,
       message: p.prompt,
     }));
@@ -1459,6 +1466,15 @@ async function handleUserMessage({
     memberContext = await getMemberContext(userId);
   } catch (error) {
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for thread creation');
+  }
+
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  // Reuses the memberContext lookup above to avoid a second DB round-trip.
+  const matchedRuleId = matchRuleIdFromMessage(messageText);
+  const clickWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && clickWorkosUserId) {
+    void recordPromptClicked(clickWorkosUserId, matchedRuleId);
   }
 
   // Get or create unified thread (including user_display_name for admin UI)

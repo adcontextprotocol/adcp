@@ -16,6 +16,7 @@ import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
@@ -648,6 +649,14 @@ export class HTTPServer {
     this.app.get('/.well-known/openapi.yaml', (_req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.redirect(302, '/openapi/registry.yaml');
+    });
+
+    // RFC 7517 JWKS publishing Addie's request-signing public key. Verifiers
+    // (sellers receiving signed AdCP requests from Addie) fetch this to
+    // resolve the `kid` carried in `Signature-Input`.
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(getPublicSigningJwks());
     });
 
     // RFC 9728 protected-resource metadata for the REST API. Points at the same
@@ -5681,6 +5690,11 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-addie-costs.html');
     });
 
+    // Suggested-prompts metrics dashboard.
+    this.app.get('/admin/prompt-metrics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-prompt-metrics.html');
+    });
+
     // Note: /admin/billing is now served from billing.ts router
 
     // Admin content management — now lives in dashboard
@@ -8638,6 +8652,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
             startSeatRequestReminders(workos!);
           }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+
+          // Daily auto-provision new-member digest for org admins/owners.
+          // Consent receipt for the auto_provision_verified_domain default.
+          import('./scheduled/auto-provision-digest.js').then(({ startAutoProvisionDigest }) => {
+            startAutoProvisionDigest(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start auto-provision digest'));
         }
 
         // Start Luma calendar sync (catches events missed by webhooks)
@@ -8690,6 +8710,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
         stopSeatRequestReminders();
+      }).catch(() => {});
+
+      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+        stopAutoProvisionDigest();
       }).catch(() => {});
 
       import('./luma/sync.js').then(({ stopLumaSync }) => {

@@ -23,11 +23,10 @@ import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import {
   StaticJwksResolver,
-  InMemoryReplayStore,
   InMemoryRevocationStore,
   RequestSignatureError,
 } from '@adcp/client/signing';
-import type { AdcpJsonWebKey, VerifierCapability } from '@adcp/client/signing';
+import type { AdcpJsonWebKey, ReplayStore, VerifierCapability } from '@adcp/client/signing';
 import {
   verifySignatureAsAuthenticator,
   AuthError,
@@ -35,9 +34,11 @@ import {
   tagAuthenticatorPresenceGated,
   isAuthenticatorPresenceGated,
 } from '@adcp/client/server';
+import { PostgresReplayStore, sweepExpiredReplays } from '@adcp/client/signing/server';
 import type { Authenticator } from '@adcp/client/server';
 import { getComplianceCacheDir } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
+import { getPool } from '../db/client.js';
 import { MUTATING_TOOLS } from './idempotency.js';
 
 const logger = createLogger('training-agent-request-signing');
@@ -51,6 +52,8 @@ export const STRICT_REQUIRED_FOR: readonly string[] = ['create_media_buy'];
 
 let defaultCapability: VerifierCapability | null = null;
 let strictCapability: VerifierCapability | null = null;
+let strictRequiredCapability: VerifierCapability | null = null;
+let strictForbiddenCapability: VerifierCapability | null = null;
 
 function loadTestJwks(): AdcpJsonWebKey[] {
   const path = join(getComplianceCacheDir(), 'test-vectors', 'request-signing', 'keys.json');
@@ -110,18 +113,100 @@ export function getStrictRequestSigningCapability(): VerifierCapability {
 }
 
 /**
- * Build the Authenticator that verifies RFC 9421 signatures. Composed
- * into the main auth chain via `anyOf(verifyApiKey(...), this)` so the
- * endpoint accepts either bearer OR a valid signature.
- *
- * Returns `null` (fall-through) on unsigned requests. Throws `AuthError`
- * on signature-present-but-invalid. Returns a principal
- * `signing:<keyid>` on success.
+ * Capability for `/mcp-strict-required`: verifier rejects signatures that
+ * omit `content-digest` coverage. Enables grader vectors neg/007
+ * (`missing-content-digest`) and any other vector requiring `'required'` mode.
  */
-export function buildRequestSigningAuthenticator(): Authenticator {
+export function getStrictRequiredRequestSigningCapability(): VerifierCapability {
+  if (!strictRequiredCapability) {
+    strictRequiredCapability = {
+      supported: true,
+      covers_content_digest: 'required',
+      required_for: [...STRICT_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS],
+    };
+  }
+  return strictRequiredCapability;
+}
+
+/**
+ * Capability for `/mcp-strict-forbidden`: verifier rejects signatures that
+ * include `content-digest` coverage. Enables grader vector neg/018
+ * (`digest-covered-when-forbidden`) and any other vector requiring `'forbidden'` mode.
+ */
+export function getStrictForbiddenRequestSigningCapability(): VerifierCapability {
+  if (!strictForbiddenCapability) {
+    strictForbiddenCapability = {
+      supported: true,
+      covers_content_digest: 'forbidden',
+      required_for: [...STRICT_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS],
+    };
+  }
+  return strictForbiddenCapability;
+}
+
+/**
+ * Select the right `VerifierCapability` for a training-agent context. The
+ * default (`!ctx.strict`) is the sandbox capability. Strict routes use
+ * `digestMode` to pick among `'either'` / `'required'` / `'forbidden'`.
+ */
+export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'either' | 'required' | 'forbidden' }): VerifierCapability {
+  if (!ctx.strict) return getRequestSigningCapability();
+  if (ctx.digestMode === 'required') return getStrictRequiredRequestSigningCapability();
+  if (ctx.digestMode === 'forbidden') return getStrictForbiddenRequestSigningCapability();
+  return getStrictRequestSigningCapability();
+}
+
+/**
+ * Replay store backed by Postgres so all training-agent instances share
+ * one cache. Per-process `InMemoryReplayStore` can't catch cross-instance
+ * replays — Fly's load balancer routes consecutive probes to different
+ * machines, and the second machine has no record of the first nonce
+ * (#3338, grader vector neg/016).
+ *
+ * Singleton across all per-route authenticators so they all hit the same
+ * `adcp_replay_cache` table; the (keyid, scope, nonce) primary key
+ * partitions by route automatically via the `@target-uri`-derived scope.
+ */
+let _replayStore: ReplayStore | null = null;
+function getReplayStore(): ReplayStore {
+  if (_replayStore) return _replayStore;
+  const store = new PostgresReplayStore(getPool());
+  _replayStore = store;
+  return store;
+}
+
+/**
+ * Schedule periodic deletion of expired rows from `adcp_replay_cache`.
+ * Postgres has no native TTL — without this, the table grows unboundedly.
+ * Called from the server boot path (index.ts).
+ */
+let _sweepInterval: NodeJS.Timeout | null = null;
+export function startReplayCacheSweeper(): void {
+  if (_sweepInterval) return;
+  _sweepInterval = setInterval(() => {
+    sweepExpiredReplays(getPool())
+      .then((result: { deleted: number }) => {
+        if (result.deleted > 0) logger.info({ deleted: result.deleted }, 'Swept expired replay-cache rows');
+      })
+      .catch((err: unknown) => logger.warn({ err }, 'Replay-cache sweep failed'));
+  }, 60_000);
+  // Don't keep the event loop alive for the sweeper alone.
+  _sweepInterval.unref?.();
+}
+
+export function stopReplayCacheSweeper(): void {
+  if (_sweepInterval) {
+    clearInterval(_sweepInterval);
+    _sweepInterval = null;
+  }
+}
+
+function buildAuthenticatorWithCapability(capability: VerifierCapability): Authenticator {
   const keys = loadTestJwks();
   const jwks = new StaticJwksResolver(keys);
-  const replayStore = new InMemoryReplayStore();
+  const replayStore = getReplayStore();
 
   // Pre-revoke the test-kit's revocation vector key so vector 017 fires
   // the expected `request_signature_revoked` error instead of passing.
@@ -133,13 +218,8 @@ export function buildRequestSigningAuthenticator(): Authenticator {
     revoked_jtis: [],
   });
 
-  logger.info(
-    { kids: keys.map(k => k.kid), required_for_count: getRequestSigningCapability().required_for.length },
-    'Request-signing authenticator initialised from compliance test JWKS',
-  );
-
   return verifySignatureAsAuthenticator({
-    capability: getRequestSigningCapability(),
+    capability,
     jwks,
     replayStore,
     revocationStore,
@@ -170,6 +250,42 @@ export function buildRequestSigningAuthenticator(): Authenticator {
       return undefined;
     },
   });
+}
+
+/**
+ * Build the Authenticator that verifies RFC 9421 signatures. Composed
+ * into the main auth chain via `anyOf(verifyApiKey(...), this)` so the
+ * endpoint accepts either bearer OR a valid signature.
+ *
+ * Returns `null` (fall-through) on unsigned requests. Throws `AuthError`
+ * on signature-present-but-invalid. Returns a principal
+ * `signing:<keyid>` on success.
+ */
+export function buildRequestSigningAuthenticator(): Authenticator {
+  logger.info(
+    { required_for_count: getRequestSigningCapability().required_for.length },
+    'Request-signing authenticator initialised from compliance test JWKS',
+  );
+  return buildAuthenticatorWithCapability(getRequestSigningCapability());
+}
+
+/** Authenticator for `/mcp-strict`: presence-gated signing with
+ *  `required_for: ['create_media_buy']` and `'either'` content-digest mode.
+ *  Distinct from the default authenticator so each route owns an isolated
+ *  `InMemoryReplayStore` — sharing one store lets a nonce consumed on `/mcp`
+ *  falsely fire `request_signature_replayed` on `/mcp-strict` (#3338). */
+export function buildStrictRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictRequestSigningCapability());
+}
+
+/** Authenticator for `/mcp-strict-required`: enforces `covers_content_digest='required'`. */
+export function buildStrictRequiredRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictRequiredRequestSigningCapability());
+}
+
+/** Authenticator for `/mcp-strict-forbidden`: enforces `covers_content_digest='forbidden'`. */
+export function buildStrictForbiddenRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictForbiddenRequestSigningCapability());
 }
 
 function headerFirst(value: string | string[] | undefined): string | undefined {
@@ -288,4 +404,6 @@ export function enforceSigningWhenWebhookAuthPresent(inner: Authenticator): Auth
 export function resetRequestSigning(): void {
   defaultCapability = null;
   strictCapability = null;
+  strictRequiredCapability = null;
+  strictForbiddenCapability = null;
 }

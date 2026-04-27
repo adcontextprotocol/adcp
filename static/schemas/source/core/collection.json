@@ -14,9 +14,8 @@
       "description": "Human-readable collection name"
     },
     "kind": {
-      "type": "string",
-      "enum": ["series", "publication", "event_series", "rotation"],
-      "description": "What kind of content program this is. Helps agents interpret installments correctly: 'series' installments are TV/podcast episodes, 'publication' installments are print issues, 'event_series' installments are live event airings, 'rotation' installments are DOOH scheduling periods. Defaults to 'series' when absent."
+      "$ref": "/schemas/enums/collection-kind.json",
+      "description": "What kind of content program this is. Helps agents interpret installments correctly. Defaults to 'series' when absent."
     },
     "description": {
       "type": "string",

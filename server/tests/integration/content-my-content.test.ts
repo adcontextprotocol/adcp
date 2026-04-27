@@ -331,6 +331,10 @@ describe('My Content — body, admin scope, status, delete', () => {
         })
         .expect(201);
 
+      // Server demotes non-lead `published` requests to `pending_review`.
+      // The my-content.html UI compares the requested vs returned status to
+      // surface this with a toast (see #2719); keep `status` in the response
+      // body so the client can detect the demotion.
       expect(response.body.status).toBe('pending_review');
     });
 
