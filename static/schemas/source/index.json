@@ -206,14 +206,6 @@
           "$ref": "/schemas/core/platform-extension-ref.json",
           "description": "Reference to a platform extension definition (URI + content digest)."
         },
-        "build-capability-ref": {
-          "$ref": "/schemas/core/build-capability-ref.json",
-          "description": "Reference to a creative agent's build_creative capability. Used on products that require agent-produced creative."
-        },
-        "build-capability": {
-          "$ref": "/schemas/core/build-capability.json",
-          "description": "Declaration by a creative agent of which canonical format it can build with what parameter narrowing and required inputs."
-        },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
           "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"

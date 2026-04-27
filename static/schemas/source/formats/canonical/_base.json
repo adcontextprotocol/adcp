@@ -23,6 +23,33 @@
       "type": "array",
       "description": "Platform-specific tracking extensions (e.g., Meta pixel, TikTok pixel) referenced when the canonical's baseline tracking is insufficient. Each entry references the tracking-extension definition.",
       "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "What the format requires from the buyer. When the format accepts only buyer-uploaded creative (e.g., a static image format), `inputs` is typically absent and the buyer simply uploads assets. When the format requires agent production (e.g., host-read where the publisher records the audio), `inputs` declares the script, brief, voice selection, brand context, etc. Inputs MAY be fulfilled either by the buyer pre-producing through a creative agent's `build_creative` and submitting the rendered manifest, or by the buyer submitting inputs directly via `sync_creatives` for the seller to produce internally — the format's `audio_source`/`buyer_audio_acceptance`-style parameters tell the buyer which flows are accepted.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "required": { "type": "boolean" },
+          "description": { "type": "string" },
+          "max_chars": { "type": "integer", "minimum": 1 },
+          "max_size_kb": { "type": "integer", "minimum": 1 },
+          "allowed_values": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      },
+      "examples": [
+        {
+          "script": { "required": true, "max_chars": 800, "description": "Verbatim script the host will read." },
+          "brand": { "required": true },
+          "offering_ref": { "required": false }
+        }
+      ]
+    },
+    "production_window_business_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Typical production turnaround in business days when the format requires agent production. 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
     }
   },
   "additionalProperties": true

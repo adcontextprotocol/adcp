@@ -29,6 +29,10 @@
           "type": "array",
           "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds.",
           "items": { "$ref": "/schemas/core/overlay.json" }
+        },
+        "asset_group_id": {
+          "type": "string",
+          "description": "Optional canonical asset_group_id this slot fills, drawn from /schemas/core/asset-group-vocabulary.json. Lets buyers and migration tools resolve v1 author-invented slot names (e.g., `click_url`) to canonical names (e.g., `landing_page_url`). Validators MAY soft-warn when a v1 slot's asset_id is a known alias but no asset_group_id is declared."
         }
       },
       "required": ["item_type", "asset_id", "asset_type", "required"]
@@ -43,6 +47,10 @@
         "asset_role": {
           "type": "string",
           "description": "Descriptive label for this asset's purpose. For documentation and UI display only — manifests key assets by asset_id, not asset_role."
+        },
+        "asset_group_id": {
+          "type": "string",
+          "description": "Optional canonical asset_group_id this slot fills, drawn from /schemas/core/asset-group-vocabulary.json. Same semantics as on baseIndividualAsset — lets buyers and migration tools resolve v1 author-invented slot names to canonical names."
         },
         "required": {
           "type": "boolean",

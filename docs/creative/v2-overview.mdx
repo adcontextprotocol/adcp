@@ -19,7 +19,7 @@ v2 collapses today's separate format registry into product-bound declarations. A
 | Format authoring | Each platform authors its own named format files | Platforms narrow AdCP-defined canonicals; canonical IS the contract buyers validate against |
 | Generative formats | Each platform publishes `*_generated_*` formats | `build_creative` capability targeting a canonical; ~30 duplicate format files dissolve |
 | Discovery (sales) | `list_creative_formats` | `get_products` (each product carries its `format` declaration) |
-| Discovery (creative agents) | `list_creative_formats` (overloaded) | `creative_build_capabilities` field on `get_adcp_capabilities` |
+| Discovery (creative agents) | `list_creative_formats` (overloaded) | `creative.supported_formats` field on `get_adcp_capabilities` (same `ProductFormatDeclaration` shape as products' inline `format`) |
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
 | Brand identity | Sometimes redeclared as format slots | Implicit via `brand: { domain }` resolving brand.json; explicit override via `brand_kit_override` on the manifest |
 
@@ -160,7 +160,7 @@ Different canonical (`html5`, not `image`) because the tracking model is fundame
 
 ## Worked example — Podcast 30s host-read
 
-Host-reads are the host-recorded-from-buyer-script pattern. The product declares `audio_hosted` narrowed to publisher-host-recorded mode AND a `build_capability_ref` pointing to the publisher's creative agent that produces the audio:
+Host-reads are the host-recorded-from-buyer-script pattern. The product declares `audio_hosted` narrowed to publisher-host-recorded mode with `inputs` describing what the buyer must provide:
 
 ```json test=false
 {
@@ -179,13 +179,18 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
       "loudness_lufs": -16,
       "audio_source": "publisher_host_recorded",
       "buyer_audio_acceptance": "rejected",
-      "composition_model": "deterministic"
+      "composition_model": "deterministic",
+      "inputs": {
+        "script": {
+          "required": true,
+          "max_chars": 800,
+          "description": "Verbatim script the host will read. Exact wording — no improvisation; legal pre-cleared."
+        },
+        "brand": { "required": true },
+        "offering_ref": { "required": false }
+      },
+      "production_window_business_days": 7
     }
-  },
-  "build_capability_ref": {
-    "agent_url": "https://creative.thedailypod.example/adcp",
-    "capability_id": "the_daily_host_read_production",
-    "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "pricing_options": [
     { "pricing_option_id": "cpm_host_read", "pricing_model": "cpm", "currency": "USD", "fixed_price": 35.00 }
@@ -193,46 +198,29 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
 }
 ```
 
-The buyer's flow:
+The format declaration tells the buyer everything they need to know — no extra capability lookup. `inputs` lives directly on the format. The buyer has two flows depending on whether the seller doubles as a creative agent and whether the buyer wants to pre-produce externally.
 
-1. `get_products` on The Daily's sales agent → finds the host-read product.
-2. Reads `build_capability_ref` → calls `get_adcp_capabilities` on the creative agent at `https://creative.thedailypod.example/adcp`.
-3. The capability's response declares its inputs:
+### Flow 1 — buyer pre-produces (upstream creative agent)
 
-   ```json test=false
-   {
-     "creative": {
-       "creative_build_capabilities": [
-         {
-           "capability_id": "the_daily_host_read_production",
-           "target_format": "audio_hosted",
-           "narrowing": {
-             "audio_hosted": {
-               "duration_ms_exact": 30000,
-               "loudness_lufs": -16,
-               "audio_source": "publisher_host_recorded"
-             }
-           },
-           "inputs": {
-             "script": {
-               "required": true,
-               "max_chars": 800,
-               "description": "Verbatim script the host will read. Exact wording — no improvisation; legal pre-cleared."
-             },
-             "brand": { "required": true },
-             "offering_ref": { "required": false }
-           },
-           "production_window_business_days": 7
-         }
-       ]
-     }
-   }
-   ```
+The buyer calls a creative agent's `build_creative` independently, gets back a rendered manifest, and submits that to the seller. Useful when the buyer has a preferred production partner (their in-house studio, AudioStack-style services) or the seller exposes itself as a creative agent.
 
-4. Buyer calls `build_creative({ format_id: "audio_hosted", inputs: { script, brand, offering_ref } })` → host records → returns manifest with audio asset.
-5. Buyer submits the resulting creative for the media buy.
+1. Buyer reads The Daily's product format → sees `inputs: { script, brand }` declared
+2. Buyer calls `build_creative({ format: <The Daily's audio_hosted narrowing>, inputs: { script, brand } })` on a creative agent — this could be The Daily's own creative-agent surface (if they expose one), or any other agent that declares it can produce this format via its `creative.supported_formats` on `get_adcp_capabilities`
+3. Receives a rendered manifest with audio asset
+4. Submits the rendered manifest via `sync_creatives` to The Daily's sales agent
 
-For brief-driven (talking-points-style) host-reads, the same product would point at a different capability that takes `creative_brief` instead of `script`. Same target format (`audio_hosted`); different input contract.
+### Flow 2 — seller produces internally
+
+The buyer submits inputs directly to the seller; the seller produces internally (calls its own creative team or an upstream creative agent under the hood) and returns a registered creative.
+
+1. Buyer reads the same product format
+2. Buyer submits via `sync_creatives` with the inputs in the manifest
+3. Seller produces internally; how is invisible to the buyer
+4. Returns async status; buyer polls or waits for completion
+
+The format's `audio_source: "publisher_host_recorded"` + `buyer_audio_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
+
+For brief-driven (talking-points-style) host-reads, the same shape applies with `creative_brief` in place of `script` in the inputs declaration. Same target format (`audio_hosted`); different input contract.
 
 ## Validation flow — `validate_input`
 
@@ -348,7 +336,8 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 - **Universal macros as a new schema** — already documented at [`/docs/creative/universal-macros`](/docs/creative/universal-macros). Canonical formats reference them by name.
 - **`destination_kinds` as a new schema** — `url-asset.json` already has `url_type` covering URL kind disambiguation. Platform-specific destinations (Meta `messenger_thread`, etc.) are platform extensions.
 - **`cta_vocabulary` as a canonical pattern** — CTAs vary meaningfully across surfaces; we let products declare `cta_values` arrays inline until cross-platform demand emerges.
-- **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.creative_build_capabilities`.
+- **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
+- **`build_capability` and `build_capability_ref` as separate concepts** — collapsed into `inputs` directly on the format declaration. The format itself tells the buyer what it requires; how production happens (buyer pre-producing through a creative agent's `build_creative`, or seller producing internally) is the buyer's flow choice, not a separate protocol concept.
 
 ## Migration
 

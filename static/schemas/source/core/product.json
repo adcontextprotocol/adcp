@@ -43,11 +43,7 @@
     },
     "format": {
       "$ref": "/schemas/core/product-format-declaration.json",
-      "description": "v2 path: inline format declaration keyed by canonical format name. Products narrow exactly one canonical format with platform-specific parameters and extensions. Mutually exclusive with `format_ids` — a product is either v1 (references named formats) or v2 (carries inline declaration), not both."
-    },
-    "build_capability_ref": {
-      "$ref": "/schemas/core/build-capability-ref.json",
-      "description": "Reference to a creative agent's build_creative capability. Used when this product requires creative produced by a specific creative agent (e.g., podcast host-read products where the publisher's host records audio from a buyer-supplied script). Buyers resolve via get_adcp_capabilities on the agent."
+      "description": "v2 path: inline format declaration keyed by canonical format name. Products narrow exactly one canonical format with platform-specific parameters, optional `inputs` describing what the format requires from the buyer, and optional platform extensions. Mutually exclusive with `format_ids` — a product is either v1 (references named formats) or v2 (carries inline declaration), not both."
     },
     "placements": {
       "type": "array",

@@ -9,37 +9,44 @@
     "headlines": {
       "description": "Pool of headline text variants for the surface to choose from.",
       "asset_type": "text",
-      "typical_use": "Multiple short headline copy variants (Google PMax/RDA, Meta promoted_offerings, etc.)"
+      "typical_use": "Multiple short headline copy variants (Google PMax/RDA, Meta promoted_offerings, etc.)",
+      "aliases": ["headline", "title", "tagline", "headline_text"]
     },
     "descriptions": {
       "description": "Pool of body description text variants.",
       "asset_type": "text",
-      "typical_use": "Body-copy variants for surfaces that pick the best combination."
+      "typical_use": "Body-copy variants for surfaces that pick the best combination.",
+      "aliases": ["description", "body", "body_text", "text", "content"]
     },
     "images_landscape": {
       "description": "Pool of landscape-orientation images (1.91:1 or 16:9 typical).",
       "asset_type": "image",
-      "typical_use": "Hero images for landscape-format placements (Meta feed, LinkedIn feed, Google display)."
+      "typical_use": "Hero images for landscape-format placements (Meta feed, LinkedIn feed, Google display).",
+      "aliases": ["image", "hero_image", "landscape_image", "banner_image"]
     },
     "images_vertical": {
       "description": "Pool of vertical-orientation images (9:16 typical).",
       "asset_type": "image",
-      "typical_use": "Hero images for stories, reels, and other vertical placements (Snap, TikTok, Meta Stories, Pinterest)."
+      "typical_use": "Hero images for stories, reels, and other vertical placements (Snap, TikTok, Meta Stories, Pinterest).",
+      "aliases": ["vertical_image", "story_image", "portrait_image"]
     },
     "images_square": {
       "description": "Pool of square-orientation images (1:1).",
       "asset_type": "image",
-      "typical_use": "Feed-context images, profile-style placements, square carousel cards."
+      "typical_use": "Feed-context images, profile-style placements, square carousel cards.",
+      "aliases": ["square_image", "feed_image"]
     },
     "logo": {
       "description": "Brand logo asset (typically 1:1 or 2:1).",
       "asset_type": "image",
-      "typical_use": "Brand attribution overlay (Google PMax/RDA, Snap Story Ad, Amazon SB)."
+      "typical_use": "Brand attribution overlay (Google PMax/RDA, Snap Story Ad, Amazon SB).",
+      "aliases": ["brand_logo", "logo_image"]
     },
     "video": {
       "description": "Pool of video assets.",
       "asset_type": "video",
-      "typical_use": "Video creative for video placements; orientation determined by platform constraints."
+      "typical_use": "Video creative for video placements; orientation determined by platform constraints.",
+      "aliases": ["video_file", "hero_video", "video_asset", "video_main"]
     },
     "video_vertical": {
       "description": "Pool of vertical-orientation video (9:16).",
@@ -54,7 +61,8 @@
     "audio": {
       "description": "Audio asset.",
       "asset_type": "audio",
-      "typical_use": "Audio ads for streaming, podcasts, broadcast radio."
+      "typical_use": "Audio ads for streaming, podcasts, broadcast radio.",
+      "aliases": ["audio_file", "hero_audio", "audio_asset", "audio_main"]
     },
     "companion_image": {
       "description": "Image displayed alongside an audio asset.",
