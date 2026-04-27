@@ -828,6 +828,37 @@ Two implementation notes for adapter authors:
 
 Reference implementations: `@adcp/client` (TypeScript) ships a `SigningProvider` interface with sync/async parity, an in-memory provider for tests, and a GCP KMS reference adapter at [`examples/gcp-kms-signing-provider.ts`](https://github.com/adcontextprotocol/adcp-client/blob/main/examples/gcp-kms-signing-provider.ts). See the [SDK signing guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/SIGNING-GUIDE.md#step-35-production-key-storage--kms--hsm--vault) for the full walkthrough.
 
+**Tripwire pattern — assert public key at init.** Managed key stores can silently rotate (IAM policy swap, version disable, hostile substitution). If rotation happens without updating the published JWKS, verifiers fetching the unchanged `kid` will reject every signature with no clear error signal — the operator sees counterparty failures, not a KMS mismatch. The defense: commit the expected public key (SPKI bytes, base64-encoded) alongside the code, and at signer init byte-compare it against the key the store returns (`getPublicKey()` or equivalent). A mismatch fails loudly at startup rather than silently on every signed call. Rotation then becomes a deliberate two-step: update the pinned constant, set the new key version path, deploy.
+
+**Lifecycle: lazy init, not eager.** Calling `getPublicKey` (or any KMS warm-up call) before the process binds its listener looks clean in review but has a dangerous failure mode: if KMS auth is misconfigured, gRPC / TLS retries inside the KMS client can block indefinitely, the process never opens its port, and the infrastructure health-check times out — surfacing a "service unreachable" alarm rather than the underlying KMS error. The correct lifecycle is lazy init on first sign: call the store the first time a request needs signing, cache the result only on success (never cache errors), and deduplicate concurrent first-call requests with an in-flight promise. Fail-fast misconfig detection belongs in a CI/CD pre-deploy probe that exercises the KMS path with the deployment target's credentials before cutover — not at process startup.
+
+**One JWK per `adcp_use` — publication shape.** The single-purpose rule applies to key material **and** to JWKS publication. An operator signing both AdCP requests and webhooks needs distinct key material and must publish two entries with the same JWK shape, distinct `x`, distinct `kid`, and distinct `adcp_use`. The value is a **string**, not an array — publishing `"adcp_use": ["request-signing","webhook-signing"]` on a single entry is a schema error that receivers will reject:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "OKP", "crv": "Ed25519",
+      "x": "SRYr8eSvjkZF6dAUquI1sKuU4YGZkoGH-2jwkz4dRJg",
+      "kid": "acme-signing-2026-04",
+      "alg": "EdDSA", "use": "sig",
+      "adcp_use": "request-signing",
+      "key_ops": ["verify"]
+    },
+    {
+      "kty": "OKP", "crv": "Ed25519",
+      "x": "lHJI-IvBwCE36heDNOyBmCk5UMKRIs4b4BAWJRgao-M",
+      "kid": "acme-webhook-2026-04",
+      "alg": "EdDSA", "use": "sig",
+      "adcp_use": "webhook-signing",
+      "key_ops": ["verify"]
+    }
+  ]
+}
+```
+
+Distinct `kid` values also mean counterparties can cache and rotate the two keys independently.
+
 #### AdCP RFC 9421 profile
 
 This profile constrains RFC 9421 to a single canonical shape so cross-implementation interop is tractable.
