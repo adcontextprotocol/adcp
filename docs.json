@@ -103,6 +103,7 @@
                   "docs/protocol/architecture",
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
+                  "docs/protocol/format-references",
                   {
                     "group": "Understanding AdCP",
                     "pages": [
@@ -609,6 +610,7 @@
               "docs/protocol/architecture",
               "docs/protocol/required-tasks",
               "docs/protocol/calling-an-agent",
+              "docs/protocol/format-references",
               {
                 "group": "Understanding AdCP",
                 "pages": [
