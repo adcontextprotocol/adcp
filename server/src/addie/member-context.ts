@@ -25,6 +25,7 @@ import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
+import { getAgentTestingContext } from '../db/agent-test-db.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -117,22 +118,6 @@ async function getPendingContentForUser(
  * which is why the cert prompt rule uses a 45-day freshness guard against
  * `started_at` rather than trying to infer engagement from this field.
  */
-/**
- * Fetch the most recent agent_test_history row for the user. Powers
- * the builder-persona "test your agent" prompt rule for builders whose
- * last test run is stale.
- */
-async function fetchAgentTesting(
-  workosUserId: string,
-): Promise<MemberContext['agent_testing']> {
-  const latest = await agentContextDb.getLatestTestForUser(workosUserId);
-  if (!latest) return { last_test_at: null, last_outcome: null };
-  return {
-    last_test_at: new Date(latest.started_at),
-    last_outcome: latest.overall_passed ? 'passed' : 'failed',
-  };
-}
-
 /**
  * Count of perspectives this user has published, with the most recent
  * publish timestamp. Drives the "share what you're building" prompt.
@@ -469,20 +454,6 @@ export interface MemberContext {
   };
 
   /**
-   * Most recent agent test the user has run against any of their saved
-   * agents. Powers the builder-persona "test your agent" prompt for
-   * builders whose last test is stale.
-   *
-   * Tests against the public test agent or unsaved URLs are not
-   * recorded — they don't count here either, which matches the rule's
-   * audience (builders who have already saved their seller agent).
-   */
-  agent_testing?: {
-    last_test_at: Date | null;
-    last_outcome: 'passed' | 'failed' | null;
-  };
-
-  /**
    * The user's published-perspectives footprint. Powers the "share
    * what you're building" prompt for active members who haven't
    * written one yet.
@@ -512,6 +483,13 @@ export interface MemberContext {
     last_shown_at: Date | null;
     suppressed_until: Date | null;
   }>;
+
+  /** Agent testing history — used for staleness-aware suggested prompts (#2299 Stage 2) */
+  agent_testing?: {
+    last_test_at: Date | null;
+    total_tests_30d: number;
+    last_outcome: 'pass' | 'fail' | 'partial' | 'error' | null;
+  };
 }
 
 /**
@@ -741,13 +719,6 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       logger.warn({ error, workosUserId }, 'Addie: Failed to load certification context');
     }
 
-    // Latest agent test — drives the "test your agent" prompt for builders.
-    try {
-      context.agent_testing = await fetchAgentTesting(workosUserId);
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie: Failed to load agent testing context');
-    }
-
     // Published-perspectives footprint — drives the "share what you're building" prompt.
     try {
       context.perspectives = await fetchPerspectives(workosUserId);
@@ -880,6 +851,15 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
+    try {
+      const agentTesting = await getAgentTestingContext(workosUserId);
+      if (agentTesting) {
+        context.agent_testing = agentTesting;
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie: Failed to get agent testing context');
+    }
+
     logger.debug(
       {
         slackUserId,
@@ -970,12 +950,6 @@ async function resolveContextFromLocalDb(
     context.certification = await fetchCertification(workosUserId);
   } catch (error) {
     logger.warn({ error, workosUserId }, 'Addie Web: Failed to load certification context');
-  }
-
-  try {
-    context.agent_testing = await fetchAgentTesting(workosUserId);
-  } catch (error) {
-    logger.warn({ error, workosUserId }, 'Addie Web: Failed to load agent testing context');
   }
 
   try {
@@ -1135,6 +1109,15 @@ async function resolveContextFromLocalDb(
     } catch (error) {
       logger.warn({ error, organizationId }, 'Addie Web: Failed to get pending join requests count');
     }
+  }
+
+  try {
+    const agentTesting = await getAgentTestingContext(workosUserId);
+    if (agentTesting) {
+      context.agent_testing = agentTesting;
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get agent testing context');
   }
 
   logger.debug(
@@ -1493,6 +1476,19 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     } else {
       lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/account to make it visible on their community profile.');
     }
+  }
+
+  // Agent testing history
+  if (context.agent_testing) {
+    const outcomeLabels: Record<string, string> = { pass: 'passed', fail: 'failed', partial: 'partial', error: 'error' };
+    const outcomeLabel = context.agent_testing.last_outcome
+      ? outcomeLabels[context.agent_testing.last_outcome] ?? context.agent_testing.last_outcome
+      : 'unknown';
+    const lastRunLabel = context.agent_testing.last_test_at
+      ? context.agent_testing.last_test_at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'never';
+    lines.push('');
+    lines.push(`Agent testing: last run ${lastRunLabel}, outcome ${outcomeLabel}, ${context.agent_testing.total_tests_30d} test(s) in last 30 days.`);
   }
 
   // Slack linking status (only relevant for Slack-originated conversations)
