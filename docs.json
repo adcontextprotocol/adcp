@@ -490,6 +490,7 @@
               },
               "docs/faq",
               "docs/ai-disclosure",
+              "docs/trust",
               {
                 "group": "Reference",
                 "expanded": false,
@@ -965,7 +966,8 @@
             "group": "FAQ",
             "pages": [
               "docs/faq",
-              "docs/ai-disclosure"
+              "docs/ai-disclosure",
+              "docs/trust"
             ]
           },
           {
