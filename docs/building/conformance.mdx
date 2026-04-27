@@ -54,8 +54,10 @@ Every agent MUST pass every storyboard below.
 |------------|------------------|
 | [`capability_discovery`](https://adcontextprotocol.org/compliance/latest/universal/capability-discovery) | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
 | [`schema_validation`](https://adcontextprotocol.org/compliance/latest/universal/schema-validation) | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| [`schema_validation_signals`](https://adcontextprotocol.org/compliance/latest/universal/schema-validation-signals) | Response schema compliance for signals — required fields on every signal; gated on `get_signals` |
 | [`v3_envelope_integrity`](https://adcontextprotocol.org/compliance/latest/universal/v3-envelope-integrity) | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3 |
 | [`error_compliance`](https://adcontextprotocol.org/compliance/latest/universal/error-compliance) | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
+| [`error_compliance_signals`](https://adcontextprotocol.org/compliance/latest/universal/error-compliance-signals) | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; gated on `get_signals` + `activate_signal` |
 | [`idempotency`](https://adcontextprotocol.org/compliance/latest/universal/idempotency) | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | [`security_baseline`](https://adcontextprotocol.org/compliance/latest/universal/security) | Unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding |
 | [`webhook_emission`](https://adcontextprotocol.org/compliance/latest/universal/webhook-emission) | Outbound webhook conformance — stable `idempotency_key` across retries, RFC 9421 webhook signing (or opt-in HMAC fallback) on every delivery. Runs for any agent accepting `push_notification_config`. |
