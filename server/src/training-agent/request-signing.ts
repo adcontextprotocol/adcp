@@ -51,6 +51,8 @@ export const STRICT_REQUIRED_FOR: readonly string[] = ['create_media_buy'];
 
 let defaultCapability: VerifierCapability | null = null;
 let strictCapability: VerifierCapability | null = null;
+let strictRequiredCapability: VerifierCapability | null = null;
+let strictForbiddenCapability: VerifierCapability | null = null;
 
 function loadTestJwks(): AdcpJsonWebKey[] {
   const path = join(getComplianceCacheDir(), 'test-vectors', 'request-signing', 'keys.json');
@@ -110,15 +112,52 @@ export function getStrictRequestSigningCapability(): VerifierCapability {
 }
 
 /**
- * Build the Authenticator that verifies RFC 9421 signatures. Composed
- * into the main auth chain via `anyOf(verifyApiKey(...), this)` so the
- * endpoint accepts either bearer OR a valid signature.
- *
- * Returns `null` (fall-through) on unsigned requests. Throws `AuthError`
- * on signature-present-but-invalid. Returns a principal
- * `signing:<keyid>` on success.
+ * Capability for `/mcp-strict-required`: verifier rejects signatures that
+ * omit `content-digest` coverage. Enables grader vectors neg/007
+ * (`missing-content-digest`) and any other vector requiring `'required'` mode.
  */
-export function buildRequestSigningAuthenticator(): Authenticator {
+export function getStrictRequiredRequestSigningCapability(): VerifierCapability {
+  if (!strictRequiredCapability) {
+    strictRequiredCapability = {
+      supported: true,
+      covers_content_digest: 'required',
+      required_for: [...STRICT_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS],
+    };
+  }
+  return strictRequiredCapability;
+}
+
+/**
+ * Capability for `/mcp-strict-forbidden`: verifier rejects signatures that
+ * include `content-digest` coverage. Enables grader vector neg/018
+ * (`digest-covered-when-forbidden`) and any other vector requiring `'forbidden'` mode.
+ */
+export function getStrictForbiddenRequestSigningCapability(): VerifierCapability {
+  if (!strictForbiddenCapability) {
+    strictForbiddenCapability = {
+      supported: true,
+      covers_content_digest: 'forbidden',
+      required_for: [...STRICT_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS],
+    };
+  }
+  return strictForbiddenCapability;
+}
+
+/**
+ * Select the right `VerifierCapability` for a training-agent context. The
+ * default (`!ctx.strict`) is the sandbox capability. Strict routes use
+ * `digestMode` to pick among `'either'` / `'required'` / `'forbidden'`.
+ */
+export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'either' | 'required' | 'forbidden' }): VerifierCapability {
+  if (!ctx.strict) return getRequestSigningCapability();
+  if (ctx.digestMode === 'required') return getStrictRequiredRequestSigningCapability();
+  if (ctx.digestMode === 'forbidden') return getStrictForbiddenRequestSigningCapability();
+  return getStrictRequestSigningCapability();
+}
+
+function buildAuthenticatorWithCapability(capability: VerifierCapability): Authenticator {
   const keys = loadTestJwks();
   const jwks = new StaticJwksResolver(keys);
   const replayStore = new InMemoryReplayStore();
@@ -133,13 +172,8 @@ export function buildRequestSigningAuthenticator(): Authenticator {
     revoked_jtis: [],
   });
 
-  logger.info(
-    { kids: keys.map(k => k.kid), required_for_count: getRequestSigningCapability().required_for.length },
-    'Request-signing authenticator initialised from compliance test JWKS',
-  );
-
   return verifySignatureAsAuthenticator({
-    capability: getRequestSigningCapability(),
+    capability,
     jwks,
     replayStore,
     revocationStore,
@@ -170,6 +204,33 @@ export function buildRequestSigningAuthenticator(): Authenticator {
       return undefined;
     },
   });
+}
+
+/**
+ * Build the Authenticator that verifies RFC 9421 signatures. Composed
+ * into the main auth chain via `anyOf(verifyApiKey(...), this)` so the
+ * endpoint accepts either bearer OR a valid signature.
+ *
+ * Returns `null` (fall-through) on unsigned requests. Throws `AuthError`
+ * on signature-present-but-invalid. Returns a principal
+ * `signing:<keyid>` on success.
+ */
+export function buildRequestSigningAuthenticator(): Authenticator {
+  logger.info(
+    { required_for_count: getRequestSigningCapability().required_for.length },
+    'Request-signing authenticator initialised from compliance test JWKS',
+  );
+  return buildAuthenticatorWithCapability(getRequestSigningCapability());
+}
+
+/** Authenticator for `/mcp-strict-required`: enforces `covers_content_digest='required'`. */
+export function buildStrictRequiredRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictRequiredRequestSigningCapability());
+}
+
+/** Authenticator for `/mcp-strict-forbidden`: enforces `covers_content_digest='forbidden'`. */
+export function buildStrictForbiddenRequestSigningAuthenticator(): Authenticator {
+  return buildAuthenticatorWithCapability(getStrictForbiddenRequestSigningCapability());
 }
 
 function headerFirst(value: string | string[] | undefined): string | undefined {
@@ -288,4 +349,6 @@ export function enforceSigningWhenWebhookAuthPresent(inner: Authenticator): Auth
 export function resetRequestSigning(): void {
   defaultCapability = null;
   strictCapability = null;
+  strictRequiredCapability = null;
+  strictForbiddenCapability = null;
 }

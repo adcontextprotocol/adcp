@@ -26,13 +26,14 @@ vi.mock('../../src/logger.js', () => ({
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { resetRequestSigning } = await import('../../src/training-agent/request-signing.js');
 
 const AUTH = 'Bearer test-token-for-strict';
 
 /** Call a tool via MCP JSON-RPC and return the parsed inner response. */
 async function callTool(
   app: express.Application,
-  route: '/mcp' | '/mcp-strict',
+  route: '/mcp' | '/mcp-strict' | '/mcp-strict-required' | '/mcp-strict-forbidden',
   tool: string,
   args: Record<string, unknown>,
   opts: { auth?: boolean } = { auth: true },
@@ -190,6 +191,80 @@ describe('Training Agent /mcp-strict route', () => {
 
     it('POST /mcp-strict without auth returns 401', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {}, { auth: false });
+      expect(res.status).toBe(401);
+    });
+  });
+});
+
+describe('Training Agent /mcp-strict-required and /mcp-strict-forbidden routes', () => {
+  let app: express.Application;
+
+  beforeAll(() => {
+    resetRequestSigning();
+    app = express();
+    app.use(express.json({
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }));
+    app.use('/api/training-agent', createTrainingAgentRouter());
+  });
+
+  afterAll(() => {
+    stopSessionCleanup();
+  });
+
+  describe('capability declaration — covers_content_digest mode', () => {
+    it('/mcp-strict-required advertises covers_content_digest: required', async () => {
+      const res = await callTool(app, '/mcp-strict-required', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; covers_content_digest: string; required_for: string[] };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('required');
+      expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
+    });
+
+    it('/mcp-strict-forbidden advertises covers_content_digest: forbidden', async () => {
+      const res = await callTool(app, '/mcp-strict-forbidden', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; covers_content_digest: string; required_for: string[] };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('forbidden');
+      expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
+    });
+
+    it('/mcp-strict still advertises covers_content_digest: either (unchanged)', async () => {
+      const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { covers_content_digest: string };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('either');
+    });
+  });
+
+  describe('route contract', () => {
+    it('GET /mcp-strict-required returns 405', async () => {
+      const res = await request(app).get('/api/training-agent/mcp-strict-required');
+      expect(res.status).toBe(405);
+      expect(res.headers['allow']).toMatch(/POST/);
+    });
+
+    it('GET /mcp-strict-forbidden returns 405', async () => {
+      const res = await request(app).get('/api/training-agent/mcp-strict-forbidden');
+      expect(res.status).toBe(405);
+      expect(res.headers['allow']).toMatch(/POST/);
+    });
+
+    it('POST /mcp-strict-required without auth returns 401', async () => {
+      const res = await callTool(app, '/mcp-strict-required', 'get_adcp_capabilities', {}, { auth: false });
+      expect(res.status).toBe(401);
+    });
+
+    it('POST /mcp-strict-forbidden without auth returns 401', async () => {
+      const res = await callTool(app, '/mcp-strict-forbidden', 'get_adcp_capabilities', {}, { auth: false });
       expect(res.status).toBe(401);
     });
   });

@@ -244,7 +244,7 @@ import {
   getIdempotencyStore,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
-import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const MAX_PACKAGES_PER_BUY = 50;
@@ -2495,7 +2495,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
-  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
+  const signingCap = selectSigningCapability(ctx);
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
