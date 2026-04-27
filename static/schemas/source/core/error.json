@@ -17,7 +17,37 @@
     },
     "field": {
       "type": "string",
-      "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+      "description": "Legacy single-path summary associated with the first error found, retained for compatibility while clients transition to top-level issues. Uses the existing field-path notation (e.g., 'packages[0].targeting'), not RFC 6901 JSON Pointer."
+    },
+    "issues": {
+      "type": "array",
+      "description": "Structured list of error issues. May be empty when structured issue details do not apply to a particular error.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "RFC 6901 JSON Pointer to the offending field or object."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Optional validator keyword describing the failed rule when the implementation can provide one."
+          },
+          "schemaPath": {
+            "type": "string",
+            "description": "Optional path inside the schema that rejected the payload. Sellers SHOULD normally omit this in production responses."
+          }
+        },
+        "required": [
+          "pointer",
+          "message"
+        ],
+        "additionalProperties": true
+      }
     },
     "suggestion": {
       "type": "string",

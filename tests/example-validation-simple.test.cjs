@@ -151,6 +151,58 @@ async function runTests() {
     await validateExample(example.data, example.schema, example.description);
   }
 
+  await validateExample(
+    {
+      "code": "ACCOUNT_SUSPENDED",
+      "message": "Account requires manual review",
+      "field": "account.status",
+      "issues": []
+    },
+    '/schemas/core/error.json',
+    'Error example with empty issues[] and legacy field summary'
+  );
+
+  await validateExample(
+    {
+      "code": "VALIDATION_ERROR",
+      "message": "Request validation failed",
+      "field": "brand.domain",
+      "recovery": "correctable",
+      "issues": [
+        {
+          "pointer": "/brand/domain",
+          "message": "must have required property 'domain'"
+        }
+      ]
+    },
+    '/schemas/core/error.json',
+    'Error example with minimal issue item and optional keyword omitted'
+  );
+
+  await validateExample(
+    {
+      "code": "VALIDATION_ERROR",
+      "message": "Request validation failed",
+      "field": "account",
+      "recovery": "correctable",
+      "issues": [
+        {
+          "pointer": "/account",
+          "keyword": "oneOf",
+          "message": "must match exactly one schema in oneOf",
+          "schemaPath": "#/properties/account/oneOf",
+          "variants": [
+            { "index": 0, "required": ["account_id"] },
+            { "index": 1, "required": ["brand", "operator"] }
+          ],
+          "vendor_hint": "choose one account identity shape"
+        }
+      ]
+    },
+    '/schemas/core/error.json',
+    'Error example allows non-normative issue extensions including variants[]'
+  );
+
   // Test request/response examples
   await validateExample(
     {

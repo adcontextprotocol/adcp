@@ -171,6 +171,36 @@ async function runTests() {
     return true;
   });
 
+  await test('Error issues accept implementation-specific extension fields', async () => {
+    const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'core/error.json'));
+
+    const errorEnvelope = {
+      code: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      field: 'account',
+      issues: [
+        {
+          pointer: '/account',
+          message: 'must match exactly one schema in oneOf',
+          keyword: 'oneOf',
+          variants: [
+            { index: 0, required: ['account_id'] },
+            { index: 1, required: ['brand', 'operator'] }
+          ],
+          seller_debug: {
+            attempted_variant_count: 2
+          }
+        }
+      ]
+    };
+
+    const valid = validate(errorEnvelope);
+    if (!valid) {
+      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
+    }
+    return true;
+  });
+
   // Test 3: Validate objects with extension fields
   await test('Product validates with string extension field', async () => {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'core/product.json'));
