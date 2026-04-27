@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/_base.json",
+  "title": "Canonical Format Base",
+  "description": "Shared parameter fields that apply across canonical formats. Each canonical format extends this base with format-specific parameters (dimensions, durations, codecs, slot constraints).",
+  "type": "object",
+  "properties": {
+    "composition_model": {
+      "type": "string",
+      "enum": ["deterministic", "algorithmic"],
+      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — asset_pool_composed, brand_mention)."
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "When true, the product rejects unsigned synthesized assets. Builders calling build_creative MUST attach a C2PA-compatible provenance manifest attributing synthesis to the creative agent."
+    },
+    "platform_extensions": {
+      "type": "array",
+      "description": "Platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). Each extension is a URI+digest reference resolved against the bundled `extensions` map in get_products responses or fetched directly.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "tracking_extensions": {
+      "type": "array",
+      "description": "Platform-specific tracking extensions (e.g., Meta pixel, TikTok pixel) referenced when the canonical's baseline tracking is insufficient. Each entry references the tracking-extension definition.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    }
+  },
+  "additionalProperties": true
+}

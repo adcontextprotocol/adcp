@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/brand_mention.json",
+  "title": "Canonical Format: Brand Mention (AI-surface composition)",
+  "description": "Text/audio AI-surface mention. Buyer supplies brand context (via `brand: { domain }` resolving brand.json) and optional offering reference; surface composes natural-language mention or sponsored snippet. **Composition is algorithmic** — LLM/search-ranker chooses phrasing and presentation. Covers ChatGPT-style brand mentions, Perplexity sponsored answers, voice-assistant sponsored mentions, sponsored search snippets. Output asset_type varies by surface: `text` for chat UIs and search snippets; `audio` (synthesized) for voice assistants. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "output_modality": {
+      "type": "string",
+      "enum": ["text", "audio", "card"],
+      "description": "How the surface presents the mention. `text` = inline text (chat, search snippet). `audio` = TTS-synthesized voice. `card` = structured card with optional image + text."
+    },
+    "max_mention_length_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "For text output: maximum length of the surface-composed mention text."
+    },
+    "max_mention_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "For audio output: maximum duration of the spoken mention in milliseconds."
+    },
+    "supports_offering_reference": {
+      "type": "boolean",
+      "description": "Whether the product accepts an offering reference (specific product/service to promote within the mention) in addition to brand context."
+    },
+    "supports_landing_page_url": {
+      "type": "boolean",
+      "description": "Whether the surface attaches a landing page URL to the mention (citation, learn-more link)."
+    },
+    "tone_constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional brand-voice constraints the surface must honor (e.g., ['formal', 'no_superlatives'])."
+    },
+    "disclosure_required": {
+      "type": "boolean",
+      "description": "Whether the surface must include an explicit sponsorship disclosure label."
+    }
+  },
+  "additionalProperties": true
+}

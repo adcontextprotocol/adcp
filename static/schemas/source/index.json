@@ -198,6 +198,22 @@
           "$ref": "/schemas/core/asset-group-vocabulary.json",
           "description": "Canonical registry of asset_group_id values with descriptions and v1 alias mapping (e.g., landing_page_url replaces 6 v1 alias names)"
         },
+        "product-format-declaration": {
+          "$ref": "/schemas/core/product-format-declaration.json",
+          "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
+        },
+        "platform-extension-ref": {
+          "$ref": "/schemas/core/platform-extension-ref.json",
+          "description": "Reference to a platform extension definition (URI + content digest)."
+        },
+        "build-capability-ref": {
+          "$ref": "/schemas/core/build-capability-ref.json",
+          "description": "Reference to a creative agent's build_creative capability. Used on products that require agent-produced creative."
+        },
+        "build-capability": {
+          "$ref": "/schemas/core/build-capability.json",
+          "description": "Declaration by a creative agent of which canonical format it can build with what parameter narrowing and required inputs."
+        },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
           "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"
@@ -1104,6 +1120,16 @@
           "response": {
             "$ref": "/schemas/creative/sync-creatives-response.json",
             "description": "Response payload for sync_creatives task"
+          }
+        },
+        "validate-input": {
+          "request": {
+            "$ref": "/schemas/creative/validate-input-request.json",
+            "description": "Request parameters for validating a creative manifest against canonical formats and/or specific products without committing to a render"
+          },
+          "response": {
+            "$ref": "/schemas/creative/validate-input-response.json",
+            "description": "Response payload for validate_input task with per-target validation results"
           }
         }
       },

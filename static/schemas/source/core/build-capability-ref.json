@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/build-capability-ref.json",
+  "title": "Build Capability Reference",
+  "description": "Reference to a creative agent's build_creative capability. Used on products where the creative must be produced via a specific creative agent (e.g., podcast host-read products where the publisher's host records the audio from a script). Buyers resolve the capability by calling `get_adcp_capabilities` on the agent and reading its `creative_build_capabilities` array, then call `build_creative` against the matching capability.",
+  "type": "object",
+  "required": ["agent_url", "capability_id"],
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the creative agent that exposes the capability."
+    },
+    "capability_id": {
+      "type": "string",
+      "description": "Identifier of the specific build capability within the agent (e.g., 'the_daily_host_read_production')."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Optional SHA-256 content digest of the capability definition. Lets buyers detect when the capability has changed."
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "agent_url": "https://creative.thedailypod.example/adcp",
+      "capability_id": "the_daily_host_read_production",
+      "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

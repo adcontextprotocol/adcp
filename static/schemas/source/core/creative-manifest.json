@@ -38,6 +38,47 @@
       },
       "additionalProperties": true
     },
+    "brand": {
+      "type": "object",
+      "description": "Brand identity reference. When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context.",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "format": "hostname",
+          "description": "Brand domain. Seller fetches https://<domain>/.well-known/brand.json for brand identity context."
+        }
+      },
+      "required": ["domain"],
+      "additionalProperties": true
+    },
+    "brand_kit_override": {
+      "type": "object",
+      "description": "Explicit brand-kit override for the case where brand.json is missing, stale, or inappropriate for this specific creative. When present, takes precedence over brand.json lookups for the supplied fields. Sellers use brand.json as the default and the override as the per-creative authoritative source.",
+      "properties": {
+        "logo": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Override logo asset for this creative."
+        },
+        "colors": {
+          "type": "object",
+          "description": "Override brand colors (hex strings).",
+          "properties": {
+            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+          },
+          "additionalProperties": true
+        },
+        "voice": {
+          "type": "string",
+          "description": "Override brand-voice description for surface-composed text/audio output."
+        },
+        "tagline": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
     "rights": {
       "type": "array",
       "description": "Rights constraints attached to this creative. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",

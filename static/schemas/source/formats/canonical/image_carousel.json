@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/image_carousel.json",
+  "title": "Canonical Format: Image Carousel",
+  "description": "Multi-card swipeable carousel. Slot: `cards[]` (per-card polymorphic — image OR video asset, plus per-card headline and link). Tracking model: per-card impression and engagement pixels + carousel-level engagement (swipe, view-time). Card aspect ratio is uniform across the carousel; mixed orientations not allowed within a single carousel. Allowed asset types per card: `image` and `video` (Meta-style mixed-media); platforms can narrow to image-only or video-only via parameters.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "card_aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Aspect ratio shared across all cards (e.g., '1:1', '1.91:1', '4:5')."
+    },
+    "min_cards": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "Minimum card count (typical: 2 or 3)."
+    },
+    "max_cards": {
+      "type": "integer",
+      "description": "Maximum card count (typical: 6, 10, or 35 depending on platform)."
+    },
+    "allowed_card_asset_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["image", "video"]
+      },
+      "description": "Asset types each card may carry. Default: ['image']. Polymorphic carousels (Meta) allow ['image', 'video']."
+    },
+    "card_image_max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "card_video_max_duration_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "primary_text_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum length of the carousel-level primary text."
+    },
+    "card_headline_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ssl_required": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

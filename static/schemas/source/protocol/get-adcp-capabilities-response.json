@@ -822,6 +822,13 @@
           "type": "boolean",
           "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
+        },
+        "creative_build_capabilities": {
+          "type": "array",
+          "description": "v2 path: declarations of which canonical formats this creative agent can build via build_creative, with what parameter narrowing and required inputs. Replaces the v1 list_creative_formats discovery surface for creative agents. Buyers locate a capability by canonical format and inputs, then call build_creative against the matching capability_id. Products on sales agents reference these capabilities via build_capability_ref when their creative must be agent-produced (e.g., podcast host-read products).",
+          "items": {
+            "$ref": "/schemas/core/build-capability.json"
+          }
         }
       },
       "additionalProperties": true

@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/build-capability.json",
+  "title": "Build Capability",
+  "description": "Declaration by a creative agent that it can produce manifests conforming to a canonical format with specific parameter narrowing and required inputs. Buyers discover capabilities via the `creative_build_capabilities` field on `get_adcp_capabilities` responses, then call `build_creative` against the matching capability_id with the declared inputs. Structurally a ProductFormatDeclaration narrowing minus the sales-agent-product wrapping — the schemas converge.",
+  "type": "object",
+  "required": ["capability_id", "target_format", "inputs"],
+  "properties": {
+    "capability_id": {
+      "type": "string",
+      "description": "Identifier for this specific build capability within the creative agent (e.g., 'audiostack_audio_30s', 'the_daily_host_read_production', 'midjourney_image_landscape')."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable capability name."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this capability produces and how."
+    },
+    "target_format": {
+      "type": "string",
+      "description": "Canonical format the capability produces (e.g., 'audio_hosted', 'image', 'video_vertical')."
+    },
+    "narrowing": {
+      "$ref": "/schemas/core/product-format-declaration.json",
+      "description": "Parameter narrowing of the target canonical (dimensions, duration, codec ranges). Use the same shape as ProductFormatDeclaration; the canonical key MUST match `target_format`."
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Typed input vocabulary the capability consumes. Each key is a build_creative input name (creative_brief, scenes, voice_id, style_reference, script, starter_assets, product_feed, brand, offering_ref). Values describe whether each input is required and any constraints (max_chars, allowed_voices, etc.).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "required": { "type": "boolean" },
+          "description": { "type": "string" },
+          "max_chars": { "type": "integer", "minimum": 1 },
+          "allowed_values": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "production_window_business_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Typical production turnaround in business days. 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read)."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 content digest of this capability definition. Drives BuildCapabilityRef caching."
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "capability_id": "audiostack_audio_30s",
+      "name": "AudioStack 30s Audio Synthesis",
+      "target_format": "audio_hosted",
+      "narrowing": {
+        "audio_hosted": {
+          "duration_ms_exact": 30000,
+          "audio_codecs": ["mp3"],
+          "audio_channels": ["stereo"],
+          "loudness_lufs": -16
+        }
+      },
+      "inputs": {
+        "creative_brief": {
+          "required": true,
+          "max_chars": 1000,
+          "description": "Talking points and brand context for the synthesized audio."
+        },
+        "voice_id": {
+          "required": false,
+          "description": "Voice selection from AudioStack's voice library. Defaults to brand voice if absent."
+        },
+        "brand": { "required": true }
+      },
+      "production_window_business_days": 0
+    },
+    {
+      "capability_id": "the_daily_host_read_production",
+      "name": "The Daily — 30s Host-Read Production",
+      "target_format": "audio_hosted",
+      "narrowing": {
+        "audio_hosted": {
+          "duration_ms_exact": 30000,
+          "loudness_lufs": -16,
+          "audio_source": "publisher_host_recorded"
+        }
+      },
+      "inputs": {
+        "script": {
+          "required": true,
+          "max_chars": 800,
+          "description": "Verbatim script the host will read. Exact wording — no improvisation; legal pre-cleared."
+        },
+        "brand": { "required": true },
+        "offering_ref": { "required": false }
+      },
+      "production_window_business_days": 7
+    }
+  ]
+}

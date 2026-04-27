@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/audio_hosted.json",
+  "title": "Canonical Format: Hosted Audio",
+  "description": "Direct audio file (mp3/aac/wav) hosted by the buyer (or produced by a creative agent — see build_capability_ref for podcast host-read flows). Slot: `audio` (audio asset), optional `companion_image` (image), `brand_name`, `landing_page_url`. Tracking model: standard impression + completion + companion-image-click pixels via universal_macros. Distinct from `audio_daast` (DAAST tag, inherent DAAST event tracking). For podcast host-reads, the audio is typically produced via a creative agent's build_creative capability with a `script` or `creative_brief` input; the product declares `audio_source: 'publisher_host_recorded'` and references the production capability via `build_capability_ref`.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "audio_codecs": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mp3", "aac", "wav", "opus", "flac"] }
+    },
+    "audio_sample_rates": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "audio_channels": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mono", "stereo"] }
+    },
+    "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "max_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "loudness_lufs": {
+      "type": "number",
+      "description": "Required integrated loudness in LUFS (typical: -16 for streaming/podcast, -23 for broadcast). Negative values."
+    },
+    "loudness_tolerance_db": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Permitted deviation from loudness_lufs in dB."
+    },
+    "true_peak_dbfs": {
+      "type": "number",
+      "description": "Maximum true-peak level in dBFS (typical: -2)."
+    },
+    "audio_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "agent_synthesized"],
+      "description": "Where the audio comes from. `publisher_host_recorded` indicates the publisher's host records the audio (typical for podcast host-reads); buyer must use the publisher's build_creative capability."
+    },
+    "buyer_audio_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "description": "Whether the product accepts buyer-uploaded audio. When `rejected`, audio must come from build_creative."
+    },
+    "companion_image_required": {
+      "type": "boolean"
+    },
+    "companion_image_aspect_ratio": {
+      "type": "string"
+    },
+    "companion_image_max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "brand_name_max_chars": { "type": "integer", "minimum": 1 }
+  },
+  "additionalProperties": true
+}

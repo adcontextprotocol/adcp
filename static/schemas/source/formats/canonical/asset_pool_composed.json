@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/asset_pool_composed.json",
+  "title": "Canonical Format: Asset-Pool Composed",
+  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. Slots: `headlines[]`, `descriptions[]`, `images_landscape[]`, `images_square[]`, `images_vertical[]`, `videos[]`, `logo[]`, `landing_page_url`. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Performance Max, Responsive Display Ads, Demand Gen, and Meta Advantage+ creative. Distinct from `sponsored_placement` (catalog-driven, deterministic) and `brand_mention` (text/audio AI composition).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "headlines_min": { "type": "integer", "minimum": 0 },
+    "headlines_max": { "type": "integer", "minimum": 0 },
+    "headline_max_chars": { "type": "integer", "minimum": 1 },
+    "long_headlines_min": { "type": "integer", "minimum": 0 },
+    "long_headlines_max": { "type": "integer", "minimum": 0 },
+    "long_headline_max_chars": { "type": "integer", "minimum": 1 },
+    "descriptions_min": { "type": "integer", "minimum": 0 },
+    "descriptions_max": { "type": "integer", "minimum": 0 },
+    "description_max_chars": { "type": "integer", "minimum": 1 },
+    "images_landscape_min": { "type": "integer", "minimum": 0 },
+    "images_landscape_max": { "type": "integer", "minimum": 0 },
+    "images_landscape_aspect_ratio": { "type": "string" },
+    "images_square_min": { "type": "integer", "minimum": 0 },
+    "images_square_max": { "type": "integer", "minimum": 0 },
+    "images_vertical_min": { "type": "integer", "minimum": 0 },
+    "images_vertical_max": { "type": "integer", "minimum": 0 },
+    "videos_min": { "type": "integer", "minimum": 0 },
+    "videos_max": { "type": "integer", "minimum": 0 },
+    "video_min_duration_ms": { "type": "integer", "minimum": 1 },
+    "video_max_duration_ms": { "type": "integer", "minimum": 1 },
+    "logo_min": { "type": "integer", "minimum": 0 },
+    "logo_max": { "type": "integer", "minimum": 0 },
+    "logo_aspect_ratios": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "business_name_max_chars": { "type": "integer", "minimum": 1 },
+    "asset_image_max_file_size_kb": { "type": "integer", "minimum": 1 },
+    "supports_catalog_input": {
+      "type": "boolean",
+      "description": "Whether the product can additionally consume a catalog reference (e.g., PMax with product feed)."
+    }
+  },
+  "additionalProperties": true
+}
