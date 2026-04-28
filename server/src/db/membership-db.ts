@@ -7,6 +7,7 @@
 
 import type { WorkOS } from '@workos-inc/node';
 import { getPool } from './client.js';
+import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('membership-db');
@@ -233,15 +234,22 @@ export interface DomainLinkResult {
 
 /**
  * Check whether a user's email domain matches a verified domain on an
- * organization with an active subscription. If so, create a WorkOS membership
- * for them.
+ * organization with an active subscription — directly or via the brand
+ * registry hierarchy (e.g. AnalyticsIQ → Alliant). If so, create a WorkOS
+ * membership for them on the resolved paying org.
  *
  * Idempotent: short-circuits when the user is already in the candidate org's
  * local membership cache, and treats `organization_membership_already_exists`
  * from WorkOS as success. Safe to call on every authenticated request.
  *
- * Honors the per-org `auto_provision_verified_domain` opt-out: orgs that
- * prefer explicit invites only set this to false.
+ * Honors the per-org `auto_provision_verified_domain` opt-out at the
+ * resolved (potentially-inherited) org level: orgs that prefer explicit
+ * invites set this to false on the paying org and the gate applies whether
+ * the user matched directly or via hierarchy.
+ *
+ * Hierarchy walk uses the same rules as resolveEffectiveMembership — max 5
+ * hops, high-confidence brand classifications only — so pre-link
+ * auto-provisioning and post-link inheritance answer the same question.
  */
 export async function autoLinkByVerifiedDomain(
   workos: WorkOS,
@@ -252,38 +260,24 @@ export async function autoLinkByVerifiedDomain(
   const emailDomain = email.split('@')[1]?.toLowerCase();
   if (!emailDomain) return null;
 
-  const result = await pool.query<{
-    workos_organization_id: string;
-    org_name: string;
-    user_already_member: boolean;
-  }>(`
-    SELECT
-      od.workos_organization_id,
-      o.name AS org_name,
-      EXISTS (
-        SELECT 1 FROM organization_memberships om
-        WHERE om.workos_organization_id = od.workos_organization_id
-          AND om.workos_user_id = $2
-      ) AS user_already_member
-    FROM organization_domains od
-    JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
-    WHERE LOWER(od.domain) = $1
-      AND od.verified = true
-      AND o.subscription_status = 'active'
-      AND o.subscription_canceled_at IS NULL
-      AND COALESCE(o.auto_provision_verified_domain, true) = true
-    LIMIT 1
-  `, [emailDomain, userId]);
+  const owner = await findPayingOrgForDomain(emailDomain);
+  if (!owner) return null;
+  if (!owner.auto_provision_allowed) return null;
 
-  if (result.rows.length === 0) return null;
+  const orgId = owner.organization_id;
+  const orgName = owner.organization_name;
 
-  const {
-    workos_organization_id: orgId,
-    org_name: orgName,
-    user_already_member: userAlreadyMember,
-  } = result.rows[0];
-
-  if (userAlreadyMember) return null;
+  // Already a member of the resolved org? (Post-link, the membership exists
+  // on the paying org regardless of which child domain the user matched
+  // from.)
+  const existing = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM organization_memberships
+       WHERE workos_organization_id = $1 AND workos_user_id = $2
+     ) AS exists`,
+    [orgId, userId],
+  );
+  if (existing.rows[0]?.exists) return null;
 
   // Stage the provisioning source so the organization_membership.created
   // webhook handler can record 'verified_domain' on the local cache row.
@@ -314,7 +308,20 @@ export async function autoLinkByVerifiedDomain(
       roleSlug: 'member',
     });
 
-    logger.info({ userId, email, orgId, orgName }, 'Auto-linked user to organization via verified domain');
+    logger.info(
+      {
+        userId,
+        email,
+        orgId,
+        orgName,
+        matchedDomain: owner.matched_domain,
+        isInherited: owner.is_inherited,
+        hierarchyChain: owner.hierarchy_chain,
+      },
+      owner.is_inherited
+        ? 'Auto-linked user to organization via inherited brand-hierarchy domain'
+        : 'Auto-linked user to organization via verified domain',
+    );
     return { organizationId: orgId, organizationName: orgName, role: 'member' };
   } catch (err: any) {
     if (err?.code === 'organization_membership_already_exists') {

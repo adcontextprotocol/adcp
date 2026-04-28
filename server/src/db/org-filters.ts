@@ -311,3 +311,125 @@ export function invalidateMembershipCache(orgId?: string): void {
     membershipCache.clear();
   }
 }
+
+// =============================================================================
+// Find paying org for a raw domain (auto-link target resolution)
+// =============================================================================
+
+export interface DomainOwnerOrg {
+  organization_id: string;
+  organization_name: string;
+  /** True when matched_domain != input domain (came via brand-hierarchy ascent). */
+  is_inherited: boolean;
+  /** The verified-domain row that actually matched a paying org. */
+  matched_domain: string;
+  /** Domains walked from input → matched_domain, inclusive. */
+  hierarchy_chain: string[];
+  /** Per-org opt-out: false = the org has disabled verified-domain auto-provisioning. */
+  auto_provision_allowed: boolean;
+}
+
+/**
+ * Find the paying organization that "owns" a raw email domain — directly via a
+ * verified `organization_domains` row or transitively up the brand registry's
+ * `house_domain` chain (max 5 hops, high-confidence classifications only).
+ *
+ * Returns the closest match: a direct verified-domain hit on the input wins
+ * over an inherited one. When two ancestors at different depths both have
+ * paying orgs, the shallower one wins.
+ *
+ * Caller is responsible for honoring `auto_provision_allowed` and any
+ * already-a-member short-circuit. Returns null when no chain step matches a
+ * paying, non-canceled subscription.
+ *
+ * Mirrors the `resolveEffectiveMembership` walk so post-link inheritance
+ * checks and pre-link auto-provision checks answer the same question with the
+ * same rules.
+ */
+export async function findPayingOrgForDomain(domain: string): Promise<DomainOwnerOrg | null> {
+  const normalizedDomain = domain.trim().toLowerCase();
+  if (!normalizedDomain) return null;
+
+  const pool = getPool();
+
+  try {
+    const result = await pool.query<{
+      depth: number;
+      domain: string;
+      workos_organization_id: string;
+      org_name: string;
+      auto_provision: boolean;
+    }>(`
+      WITH RECURSIVE domain_chain AS (
+        -- Start: the user's email domain
+        SELECT $1::text AS domain, 1 AS depth, ARRAY[$1::text]::TEXT[] AS visited
+
+        UNION ALL
+
+        -- Walk up: brands.house_domain points to the parent brand's domain
+        SELECT db.house_domain AS domain, dc.depth + 1, dc.visited || db.house_domain
+        FROM domain_chain dc
+        JOIN brands db ON db.domain = dc.domain
+        WHERE db.house_domain IS NOT NULL
+          AND dc.depth < 5
+          AND db.house_domain != ALL(dc.visited)
+          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
+               OR db.source_type = 'brand_json')
+      ),
+      paying_match AS (
+        SELECT
+          dc.depth,
+          dc.domain,
+          od.workos_organization_id,
+          o.name AS org_name,
+          COALESCE(o.auto_provision_verified_domain, true) AS auto_provision
+        FROM domain_chain dc
+        JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
+        JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+        WHERE od.verified = true
+          AND o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+        ORDER BY dc.depth ASC
+        LIMIT 1
+      )
+      SELECT * FROM paying_match
+    `, [normalizedDomain]);
+
+    if (result.rows.length === 0) return null;
+
+    const match = result.rows[0];
+
+    // Reconstruct the chain from input domain to matched domain.
+    // For a direct match the chain is just [input]; for an inherited match
+    // it's [input, ..., matched_domain] in walk order.
+    const chainResult = await pool.query<{ domain: string; depth: number }>(`
+      WITH RECURSIVE domain_chain AS (
+        SELECT $1::text AS domain, 1 AS depth, ARRAY[$1::text]::TEXT[] AS visited
+
+        UNION ALL
+
+        SELECT db.house_domain AS domain, dc.depth + 1, dc.visited || db.house_domain
+        FROM domain_chain dc
+        JOIN brands db ON db.domain = dc.domain
+        WHERE db.house_domain IS NOT NULL
+          AND dc.depth <= $2
+          AND db.house_domain != ALL(dc.visited)
+          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
+               OR db.source_type = 'brand_json')
+      )
+      SELECT domain, depth FROM domain_chain ORDER BY depth ASC
+    `, [normalizedDomain, match.depth]);
+
+    return {
+      organization_id: match.workos_organization_id,
+      organization_name: match.org_name,
+      is_inherited: match.depth > 1,
+      matched_domain: match.domain,
+      hierarchy_chain: chainResult.rows.map((r) => r.domain),
+      auto_provision_allowed: match.auto_provision,
+    };
+  } catch (error) {
+    logger.error({ err: error, domain: normalizedDomain }, 'Failed to find paying org for domain');
+    return null;
+  }
+}

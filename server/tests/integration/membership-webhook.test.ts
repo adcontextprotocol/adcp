@@ -606,6 +606,134 @@ describe('Membership webhook DB operations', () => {
       expect(staged.rows[0].seat_type).toBe('community_only');
       expect(staged.rows[0].source).toBe('verified_domain');
     });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Brand-hierarchy traversal — auto-link follows brands.house_domain
+    // when the user's email domain is a child of a paying org's verified
+    // domain. Real-world example: AnalyticsIQ employee with @analyticsiq.com
+    // email auto-links to Alliant's paid org if the brand registry knows
+    // about the parent/child relationship.
+    // ─────────────────────────────────────────────────────────────────
+
+    describe('brand hierarchy traversal', () => {
+      const CHILD_DOMAIN = 'analyticsiq.test';
+      const PARENT_DOMAIN = 'alliantdata.test';
+
+      async function seedBrandHierarchy(opts: { confidence?: 'high' | 'low' } = {}) {
+        // Parent: paying org with verified parent domain.
+        await seedOrgWithVerifiedDomain(PARENT_DOMAIN);
+        // Brand registry: child.com points up to parent.com via house_domain.
+        await pool.query(
+          `INSERT INTO brands (domain, brand_name, house_domain, source_type, brand_manifest, created_at, updated_at)
+           VALUES ($1, 'AnalyticsIQ', $2, 'enriched', $3, NOW(), NOW())
+           ON CONFLICT (domain) DO UPDATE
+             SET house_domain = EXCLUDED.house_domain,
+                 brand_manifest = EXCLUDED.brand_manifest`,
+          [
+            CHILD_DOMAIN,
+            PARENT_DOMAIN,
+            JSON.stringify({ classification: { confidence: opts.confidence ?? 'high' } }),
+          ],
+        );
+      }
+
+      async function clearBrandHierarchy() {
+        await pool.query('DELETE FROM brands WHERE domain IN ($1, $2)', [CHILD_DOMAIN, PARENT_DOMAIN]);
+      }
+
+      beforeEach(async () => {
+        await clearBrandHierarchy();
+      });
+
+      afterAll(async () => {
+        await clearBrandHierarchy();
+      });
+
+      it('links @child.com user to parent paying org when brand.house_domain points up', async () => {
+        await seedBrandHierarchy();
+        const workos = makeWorkOSMock();
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).not.toBeNull();
+        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+        expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith({
+          userId: AUTOLINK_USER,
+          organizationId: TEST_AUTOLINK_ORG_ID,
+          roleSlug: 'member',
+        });
+      });
+
+      it('does not traverse low-confidence classifications', async () => {
+        await seedBrandHierarchy({ confidence: 'low' });
+        const workos = makeWorkOSMock();
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+      });
+
+      it('honors auto_provision_verified_domain=false on the resolved parent', async () => {
+        await seedBrandHierarchy();
+        await pool.query(
+          `UPDATE organizations SET auto_provision_verified_domain = false
+             WHERE workos_organization_id = $1`,
+          [TEST_AUTOLINK_ORG_ID],
+        );
+        const workos = makeWorkOSMock();
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+      });
+
+      it('short-circuits when the user is already in the resolved parent org', async () => {
+        await seedBrandHierarchy();
+        await pool.query(
+          `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
+           VALUES ($1, $2, $3, 'member', 'community_only', NOW(), NOW(), NOW())`,
+          [AUTOLINK_USER, TEST_AUTOLINK_ORG_ID, `mike@${CHILD_DOMAIN}`],
+        );
+        const workos = makeWorkOSMock();
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+      });
+
+      it('prefers a direct verified-domain match over a hierarchical one when both exist', async () => {
+        // Direct match wins: even if the brand registry says child→parent,
+        // an explicit organization_domains row on the child takes priority.
+        await seedBrandHierarchy();
+        // Add a SECOND org that owns CHILD_DOMAIN directly.
+        const DIRECT_ORG = 'org_direct_match_test';
+        await pool.query(
+          `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+             VALUES ($1, 'Direct Match Corp', 'active', NOW(), NOW())
+             ON CONFLICT (workos_organization_id) DO UPDATE SET subscription_status = 'active'`,
+          [DIRECT_ORG],
+        );
+        await pool.query(
+          `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+             VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+             ON CONFLICT (domain) DO UPDATE SET verified = true, workos_organization_id = $1`,
+          [DIRECT_ORG, CHILD_DOMAIN],
+        );
+
+        const workos = makeWorkOSMock();
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).not.toBeNull();
+        expect(result!.organizationId).toBe(DIRECT_ORG);
+
+        // Cleanup
+        await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [DIRECT_ORG]);
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [DIRECT_ORG]);
+      });
+    });
   });
 
   describe('Auto-provision digest queries', () => {
