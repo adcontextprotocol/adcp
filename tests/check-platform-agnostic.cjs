@@ -54,14 +54,20 @@ const FIELD_ALLOWLIST = new Set([
 
 // Enum / const values that contain a vendor token but are explicitly allowed.
 // Uses path-qualified entries: each entry must match BOTH value and the schema
-// file path (substring match on the relative path). Flat-value allowlisting is
+// file path (path-suffix or exact match). Flat-value allowlisting is
 // insufficient because the same token may be legitimate in one enum but a
 // violation in another — e.g., "roku" is a valid genre taxonomy identifier in
 // genre-taxonomy.json but would be a violation in a targeting-method enum.
 //
+// pathContains is matched as: relPath === e.pathContains OR
+// relPath.endsWith('/' + e.pathContains). This is a path-separator-aware
+// suffix check — it matches the exact relative path or a path ending with
+// /<pathContains>, preventing substring collisions (e.g., 'subbrand.json'
+// would NOT match a pathContains of 'brand.json').
+//
 // When adding an entry, include:
 //   - value:       the exact enum/const string
-//   - pathContains: a substring of the relative schema path (e.g., 'enums/identifier-types.json')
+//   - pathContains: exact relative path or path suffix (e.g., 'enums/identifier-types.json')
 //   - comment:     one-line justification (inline below)
 const ENUM_VALUE_ALLOWLIST = [
   // brand.json — store property: platform names ARE the canonical app-store
@@ -75,7 +81,7 @@ const ENUM_VALUE_ALLOWLIST = [
   // widely-adopted open interchange formats implemented by many third parties.
   { value: 'google_merchant_center', pathContains: 'brand.json' },
   { value: 'facebook_catalog',       pathContains: 'brand.json' },
-  // openai_product_feed is contested (see #2439): code-reviewer treats it as
+  // openai_product_feed is contested (see #3456): code-reviewer treats it as
   // a violation; protocol expert treats it as a canonical feed schema identifier
   // parallel to google_merchant_center. Allowlisted pending @bokelley decision.
   { value: 'openai_product_feed',    pathContains: 'brand.json' },
@@ -103,7 +109,7 @@ const ENUM_VALUE_ALLOWLIST = [
 
   // enums/genre-taxonomy.json — platform taxonomy system identifiers, comparable
   // to gracenote and eidr. Note: bare 'roku' is inconsistent with the {vendor}_genres
-  // pattern; rename to 'roku_genres' is a breaking change tracked separately.
+  // pattern; rename to 'roku_genres' is a breaking change tracked in #3457.
   { value: 'apple_genres',  pathContains: 'enums/genre-taxonomy.json' },
   { value: 'google_genres', pathContains: 'enums/genre-taxonomy.json' },
   { value: 'amazon_genres', pathContains: 'enums/genre-taxonomy.json' },
@@ -141,7 +147,8 @@ function containsVendorToken(name) {
 
 function isEnumValueAllowed(value, relPath) {
   return ENUM_VALUE_ALLOWLIST.some(
-    e => e.value === value && relPath.includes(e.pathContains)
+    e => e.value === value &&
+      (relPath === e.pathContains || relPath.endsWith('/' + e.pathContains))
   );
 }
 
@@ -183,8 +190,8 @@ function walkSchema(node, ctx) {
       for (const def of Object.values(node[defsKey])) walkSchema(def, ctx);
     }
   }
-  // Intentionally skip node.examples — example payloads are user-data samples,
-  // not normative schema definitions.
+  // Intentionally skip node.examples and node.default — example payloads and
+  // default values are user-data samples, not normative value enumerations.
 }
 
 function lint() {
