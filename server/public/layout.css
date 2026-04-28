@@ -9,7 +9,7 @@
 body {
   font-family: var(--font-sans);
   color: var(--color-text);
-  background: #fff;
+  background: var(--color-surface);
   line-height: var(--leading-relaxed);
   -webkit-font-smoothing: antialiased;
 }
@@ -23,7 +23,7 @@ body {
 .page-header {
   text-align: center;
   padding: var(--space-8) var(--space-6) var(--space-10);
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .page-header h1 {
@@ -85,7 +85,7 @@ body {
 
 .panel-text {
   font-size: var(--text-lg);
-  color: var(--color-gray-700);
+  color: var(--color-text);
   line-height: var(--leading-loose);
 }
 
@@ -136,7 +136,7 @@ body {
    ============================================================================= */
 
 .sub-nav {
-  background: #fff;
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 60px;
@@ -220,7 +220,7 @@ body {
 
 .homepage-hero .subtitle {
   font-size: 1.375rem;
-  color: var(--color-gray-600);
+  color: var(--color-text-secondary);
   line-height: var(--leading-relaxed);
   max-width: 720px;
   margin: 0 auto;
@@ -466,7 +466,7 @@ body {
   border-left: 4px solid var(--color-brand);
   padding: var(--space-4) var(--space-6);
   margin: var(--space-6) 0;
-  background: white;
+  background: var(--color-bg-card);
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
@@ -481,7 +481,7 @@ body {
 
 .proof-quote cite {
   font-size: var(--text-base);
-  color: var(--color-gray-600);
+  color: var(--color-text-secondary);
   font-style: normal;
   font-weight: var(--font-semibold);
 }
@@ -501,7 +501,7 @@ body {
   line-height: var(--leading-relaxed);
   padding: var(--space-4) 0;
   border-bottom: 1px solid var(--color-border);
-  color: var(--color-gray-700);
+  color: var(--color-text);
 }
 
 .principles li:last-child {
@@ -526,7 +526,7 @@ body {
 
 .cta-section .closing-text {
   font-size: var(--text-xl);
-  color: var(--color-gray-700);
+  color: var(--color-text);
   line-height: var(--leading-relaxed);
   margin-bottom: var(--space-10);
   max-width: 600px;
@@ -562,7 +562,7 @@ body {
 
 .cta-card p {
   font-size: var(--text-base);
-  color: var(--color-gray-600);
+  color: var(--color-text-secondary);
   line-height: var(--leading-normal);
   margin-bottom: var(--space-4);
 }
@@ -674,7 +674,7 @@ body {
 .footer-col a {
   display: block;
   font-size: var(--text-sm);
-  color: var(--color-gray-600);
+  color: var(--color-text-secondary);
   text-decoration: none;
   padding: var(--space-1) 0;
 }
