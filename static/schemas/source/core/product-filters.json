@@ -350,6 +350,20 @@
       },
       "minItems": 1
     },
+    "required_metrics": {
+      "type": "array",
+      "description": "Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery responses. Use this for capability-level discovery (e.g., 'I need products that report `completed_views` for a CTV CPCV buy'); guarantee-level requirements with thresholds belong in `required_performance_standards` and `measurement_terms`. Sellers MUST silently exclude products that cannot meet this list (filter-not-fail; do not return an error). Derived ratio metrics (e.g., `completion_rate = completed_views / impressions`) are satisfied when their underlying scalars are supported — buyers should list the underlying scalars rather than the ratio.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [
+        ["completed_views"],
+        ["completed_views", "completion_rate"],
+        ["impressions", "spend", "engagements"]
+      ]
+    },
     "keywords": {
       "type": "array",
       "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",

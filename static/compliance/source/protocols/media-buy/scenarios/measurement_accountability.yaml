@@ -1,0 +1,237 @@
+id: media_buy_seller/measurement_accountability
+version: "1.0.0"
+title: "End-to-end metric accountability through the media buy lifecycle"
+category: media_buy_seller
+summary: "Buyer requires specific reporting metrics at discovery; seller filters products to those that can deliver; delivery report exposes any gaps via missing_metrics."
+track: reporting
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  A buyer that needs `completed_views` for a CTV CPCV buy should be able to
+  enforce that requirement at discovery time, carry it through the lifecycle,
+  and verify in delivery reporting that the metric was actually produced.
+  AdCP supports this contract in three pieces:
+
+    1. `filters.required_metrics` on `get_products` — buyer declares the
+       metric vocabulary they need. Sellers MUST exclude products whose
+       `reporting_capabilities.available_metrics` is not a superset
+       (filter-not-fail; do not return an error). Derived ratio metrics
+       like `completion_rate` are satisfied by their underlying scalars.
+
+    2. The product's declared `available_metrics` carries forward as the
+       reporting contract — no additional field is needed on `create_media_buy`.
+
+    3. `by_package[].missing_metrics` on `get_media_buy_delivery` — seller
+       lists any metrics from the product's `available_metrics` that are
+       NOT populated in this report. Empty (or absent) means clean
+       delivery; non-empty signals an accountability breach.
+
+  This storyboard exercises that contract end to end. It uses
+  comply_test_controller to inject delivery so reporting has data to
+  validate, then asserts the schema-level contract on missing_metrics.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "CTV/streaming sellers with completion-rate reporting"
+    - "Any media buy seller that publishes available_metrics"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller publishes `reporting_capabilities.available_metrics` on its
+    products and supports comply_test_controller's simulate_delivery
+    scenario for delivery reporting tests.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "ctv_premium_completed_views"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "ctv_premium_completed_views"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 25.0
+
+phases:
+  - id: discover_with_required_metrics
+    title: "Discover products that commit to reporting completed_views"
+    narrative: |
+      The buyer needs CTV inventory with `completed_views` reporting for a
+      CPCV-priced campaign. They pass `required_metrics: ["completed_views"]`
+      in filters. The seller MUST silently exclude products whose
+      `available_metrics` doesn't include `completed_views` — this is a
+      capability filter, not a guarantee threshold.
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_required_metrics
+        title: "Discover with required_metrics filter"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return only products whose reporting_capabilities.available_metrics
+          includes "completed_views". Products that don't are silently
+          excluded; the seller does NOT return an error for unmet metrics.
+        sample_request:
+          buying_mode: "brief"
+          brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
+          filters:
+            channels: ["ctv"]
+            required_metrics:
+              - "completed_views"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product matched the required metrics"
+          - check: field_present
+            path: "products[0].reporting_capabilities.available_metrics"
+            description: "Matched product declares its available_metrics — schema validation confirms the superset relationship via the closed enum"
+
+  - id: create_media_buy
+    title: "Commit the media buy"
+    steps:
+      - id: create_media_buy
+        title: "Create media buy on the matched product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds. The product's available_metrics carries forward as
+          the reporting contract — no additional field is required on the buy.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 25000
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_create"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+
+  - id: simulate_and_validate_accountability
+    title: "Simulate delivery and validate missing_metrics contract"
+    narrative: |
+      Inject simulated delivery via the test controller, then call
+      get_media_buy_delivery and check that `by_package[].missing_metrics` is
+      present and shaped correctly. When the seller has populated all metrics
+      it advertised, missing_metrics is empty (or absent). When a metric
+      from the product's available_metrics is not present in this report,
+      it MUST appear in missing_metrics — except for derived ratios
+      (completion_rate, ctr, etc.) which are derivable from scalars and
+      never appear in this list.
+    steps:
+      - id: simulate_delivery
+        title: "Inject simulated delivery metrics"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery data.
+        sample_request:
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 100000
+            completed_views: 72000
+            reported_spend:
+              amount: 2500.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_delivery_clean
+        title: "Get delivery report and assert clean accountability"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics with completed_views populated. The
+          by_package entry includes `missing_metrics: []` (or omits the
+          field entirely) because every metric the product advertised is
+          present in this report.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema (validates missing_metrics shape when present)"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].completed_views"
+            description: "completed_views is populated — the discovery contract was honored"
