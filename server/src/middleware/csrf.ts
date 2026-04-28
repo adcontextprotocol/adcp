@@ -44,11 +44,7 @@ const EXEMPT_PREFIXES = [
 const EXEMPT_EXACT = [
   "/mcp",                // MCP Streamable HTTP (Bearer-token auth)
   // Training agent strict-mode MCP endpoints. Server-to-server, authenticated
-  // by RFC 9421 signature or bearer token (per the route's own auth chain) —
-  // CSRF doesn't apply. Without these exemptions the conformance grader's
-  // signed POSTs bounce at CSRF before the signing verifier runs, producing
-  // 403/no-error-code on every vector instead of the spec-mandated 401 with
-  // signing error codes.
+  // by RFC 9421 signature or bearer token; CSRF doesn't apply.
   "/mcp-strict",
   "/mcp-strict-required",
   "/mcp-strict-forbidden",
