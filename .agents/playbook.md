@@ -81,44 +81,71 @@ Use **sentence case** for all UI labels, headings, and section headers:
 - ❌ "Brand Identity", "Creative Assets", "Contact Information"
 
 ### Addie MemberContext invariant: hydrate once, surface twice
-Adding a field to `MemberContext` (`server/src/addie/member-context.ts`)
-means **you must surface it in two places**, otherwise the data plane
-silently drifts:
+**Mistake this prevents:** adding a new context field for a
+suggested-prompts rule, watching the rule fire correctly, but having
+Addie's conversational responses behave as if the data isn't there.
+Two parallel data planes silently drift.
 
-1. The hydration path (both Slack `getMemberContext` and web
-   `resolveContextFromLocalDb`) — so the field is populated.
-2. `formatMemberContextForPrompt` — so Addie's system prompt
-   actually sees the signal when reasoning about the user.
+Adding a field to `MemberContext` (`server/src/addie/member-context.ts`)
+means **you must surface it in two places**:
+
+1. The hydration path — `getMemberContext` (Slack) and
+   `resolveContextFromLocalDb` (web). Populates the field.
+2. `formatMemberContextForPrompt` — so Addie's system prompt actually
+   sees the signal when reasoning. Canonical example: the
+   `certification` block at lines 1505-1525 of
+   `server/src/addie/member-context.ts`.
 
 If you only do (1), the suggested-prompts engine sees the field but
-Addie's conversational responses don't. We hit this with the
-`certification`, `agent_testing`, `perspectives`, `next_event`, and
-`adoption` blocks — fixed in PR #3377. Don't reintroduce the gap.
+Addie's conversational responses don't. Closed in PR #3377; don't
+reintroduce the gap.
 
 `formatMemberContextForPrompt` should render **facts only**. Response
 policy ("gently suggest X", "encourage retry") belongs in
-`server/src/addie/rules/*.md`, not in the user-context block. Otherwise
-each user gets a slightly different policy depending on hydration and
-the prompt-injection surface widens.
+`server/src/addie/rules/*.md`, not in the user-context block.
+Otherwise each user gets a slightly different policy depending on
+hydration and the prompt-injection surface widens.
 
 ### Addie CTA registry: one catalog, per-surface eligibility
-Cross-cut CTAs that fire on multiple surfaces (suggested-prompts +
-newsletter digest, etc.) are co-located in
-`server/src/addie/home/builders/rules/prompt-rules.ts`. Each rule keeps
-its **own `when` clause per surface** (typed against that surface's
-context shape — `MemberContext`, `DigestEmailRecipient`, etc.) — we
-share the *catalog* of CTAs, not the eligibility logic. That keeps
-each surface's gating honest about its own constraints (e.g., the
-digest WG nudge gates on `has_slack` because joining a WG without
-Slack is harder).
+**Mistake this prevents:** maintaining the same CTA in two places
+(rule registry + a separate picker), drifting on copy, eligibility,
+or priority. We had this with `digest-nudge.ts` until PR #3382.
 
-Surface-specific facets live alongside the rule's `pull` fields. The
-digest facet is on `PromptRule.digest`; surface-specific lists like
-`DIGEST_ONLY_NUDGES` exist for CTAs with no pull-surface analog.
+Cross-cut CTAs (firing on suggested-prompts + newsletter digest, etc.)
+are co-located in
+`server/src/addie/home/builders/rules/prompt-rules.ts`. Each rule
+keeps its **own `when` clause per surface** (typed against that
+surface's native shape — `MemberContext`, `DigestEmailRecipient`,
+etc.). We share the *catalog* of CTAs, not the eligibility logic.
+
+Per-surface gating is honest about each surface's constraints — e.g.,
+the digest WG nudge gates on `has_slack` because joining a WG without
+Slack is harder; the pull-surface WG nudge doesn't, because the user
+is already in a chat surface that supports the join flow. Canonical
+example: `wg.find_groups` rule with both `pull` (the bare `when:
+({memberContext}) => ...`) and `digest: { when: (r) => ... }` clauses.
+
+Surface-specific facets live alongside the rule's pull-surface fields.
+The digest facet is on `PromptRule.digest`. CTAs with no pull-surface
+analog live in `DIGEST_ONLY_NUDGES`
+(`server/src/addie/home/builders/rules/digest-only-nudges.ts`).
 
 When adding a new surface that wants to consume the registry, add a
-new facet type (parallel to `DigestNudgeFacet`) — don't try to reshape
-an existing surface's context to fit yours.
+new facet type (parallel to `DigestNudgeFacet`) and a new
+`*_ONLY_NUDGES` array. Don't try to reshape an existing surface's
+context to fit yours — `DigestEmailRecipient` and `MemberContext` are
+intentionally different and the lossy adapter would be worse than
+two `when` clauses.
+
+### Addie rule registry: function prompts require matchClick
+**Mistake this prevents:** adding a rule with a dynamic `prompt`
+function (e.g., "Continue A1") and silently getting zero click
+attribution because the static reverse-index can't enumerate function
+output. The boot-time assertion in
+`server/src/addie/home/builders/rules/prompt-rules.ts` catches this
+at module load — see the loop right after `ALL_RULES`. If it throws,
+add a `matchClick` callback (see `cert.continue_in_progress` for the
+pattern).
 
 ## JSON Schema Guidelines
 

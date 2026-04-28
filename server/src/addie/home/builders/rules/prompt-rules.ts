@@ -486,6 +486,22 @@ export const MEMBER_RULES: PromptRule[] = [
 export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];
 
 /**
+ * Boot-time invariant: any rule with a function-valued `prompt` must
+ * provide a `matchClick` callback. Without it, click telemetry can
+ * never attribute a click on the dynamic prompt to its rule (the
+ * static reverse-index can only enumerate string prompts). Catching
+ * this at module load is cheaper than discovering it weeks later
+ * when CTR data is silently zero for the new rule.
+ */
+for (const rule of ALL_RULES) {
+  if (typeof rule.prompt === 'function' && typeof rule.matchClick !== 'function') {
+    throw new Error(
+      `Prompt rule "${rule.id}" has a function-valued prompt but no matchClick callback — clicks cannot be detected. Add a matchClick (see cert.continue_in_progress for an example) or use a static prompt string.`
+    );
+  }
+}
+
+/**
  * Reverse index from prompt text → rule id, built once at module load.
  *
  * Used by the message-receipt path to detect heuristic clicks: when an

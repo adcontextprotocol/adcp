@@ -111,6 +111,19 @@ describe('pickNudge (CTA registry-backed)', () => {
       expect(n?.ctaLabel).toBe('Update your profile');
     });
 
+    it('does not surface cert nudge for a non-contributor with zero progress', () => {
+      // Boundary: cert.when is `> 0 && < total`, so completed=0 must not
+      // tie with the contributor-cert facet at priority 5. A non-contributor
+      // with no progress should fall through to other rules.
+      const n = pickNudge(recipient({
+        seat_type: 'community',
+        cert_modules_completed: 0,
+        cert_total_modules: 8,
+      }));
+      expect(n?.ctaLabel).not.toBe('Continue learning');
+      expect(n?.ctaLabel).not.toBe('Start certification');
+    });
+
     it('returns null for a fully-engaged recipient with no actionable gaps', () => {
       const n = pickNudge(recipient({
         is_member: true,

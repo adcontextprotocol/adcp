@@ -22,13 +22,15 @@
 import type { DigestEmailRecipient } from '../../db/digest-db.js';
 import { MEMBER_RULES } from '../home/builders/rules/prompt-rules.js';
 import { DIGEST_ONLY_NUDGES } from '../home/builders/rules/digest-only-nudges.js';
-import type { DigestNudgeFacet } from '../home/builders/rules/types.js';
+import type { DigestNudgeFacet, PromptRule } from '../home/builders/rules/types.js';
 
 export interface DigestNudge {
   text: string;
   ctaLabel: string;
   ctaUrl: string;
 }
+
+type RuleWithDigest = PromptRule & { digest: DigestNudgeFacet };
 
 interface DigestCandidate {
   id: string;
@@ -44,16 +46,17 @@ interface DigestCandidate {
 const ALL_DIGEST_CTAS: DigestCandidate[] = [
   ...DIGEST_ONLY_NUDGES.map((n) => ({ id: n.id, facet: n.digest })),
   ...MEMBER_RULES
-    .filter((r): r is typeof r & { digest: DigestNudgeFacet } => !!r.digest)
+    .filter((r): r is RuleWithDigest => !!r.digest)
     .map((r) => ({ id: r.id, facet: r.digest })),
 ];
 
 export function pickNudge(recipient: DigestEmailRecipient): DigestNudge | null {
-  // Lowest priority number wins (ascending). Ties are broken by
-  // catalog order, which is stable across runs.
+  // Lowest priority number wins. Ties are broken by `id` ascending so
+  // ordering is deterministic across runs without relying on V8's
+  // stable-sort guarantee.
   const matched = ALL_DIGEST_CTAS
     .filter((c) => c.facet.when(recipient))
-    .sort((a, b) => a.facet.priority - b.facet.priority);
+    .sort((a, b) => a.facet.priority - b.facet.priority || a.id.localeCompare(b.id));
 
   const winner = matched[0];
   if (!winner) return null;
