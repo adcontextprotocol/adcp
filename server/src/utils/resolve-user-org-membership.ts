@@ -34,6 +34,14 @@ export interface UserOrgMembership {
   role: MembershipRole;
   /** Membership status from WorkOS or 'active' for dev memberships. */
   status: 'active' | 'pending' | 'inactive';
+  /**
+   * True when the membership was resolved via the dev-mode bypass (local
+   * organization_memberships seed) rather than a live WorkOS lookup. Callers
+   * that write audit-log rows should propagate this so post-incident triage
+   * can distinguish dev-bypass writes from real-user writes — the dev path
+   * uses synthetic user IDs (user_dev_admin_001) that don't resolve in WorkOS.
+   */
+  via_dev_bypass: boolean;
 }
 
 const VALID_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
@@ -63,7 +71,7 @@ export async function resolveUserOrgMembership(
       if (result.rows.length === 0) return null;
       const rawRole = result.rows[0].role || 'member';
       const role = (VALID_ROLES.has(rawRole) ? rawRole : 'member') as MembershipRole;
-      return { role, status: 'active' };
+      return { role, status: 'active', via_dev_bypass: true };
     }
     // Real users in dev mode (e.g. someone running tsx with their actual
     // WorkOS account) fall through to the WorkOS path below.
@@ -89,5 +97,5 @@ export async function resolveUserOrgMembership(
   const activeRow = memberships.data.find((m) => m.status === 'active');
   const status = (activeRow?.status ?? memberships.data[0].status) as 'active' | 'pending' | 'inactive';
 
-  return { role: roleSlug as MembershipRole, status };
+  return { role: roleSlug as MembershipRole, status, via_dev_bypass: false };
 }

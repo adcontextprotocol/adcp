@@ -49,7 +49,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -6066,8 +6066,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         safeReturnTo = return_to;
       }
 
-      // Set dev session cookie
-      res.cookie(getDevSessionCookieName(), user, {
+      // Set dev session cookie. Value is HMAC-signed with a per-process
+      // secret so a cookie minted on someone else's box (or set by an
+      // attacker via XSS / sibling-subdomain) is rejected on read.
+      res.cookie(getDevSessionCookieName(), encodeDevSessionCookie(user), {
         httpOnly: true,
         secure: false, // Dev mode is always HTTP on localhost
         sameSite: 'lax',

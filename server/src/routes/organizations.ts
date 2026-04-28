@@ -1627,14 +1627,18 @@ export function createOrganizationsRouter(): Router {
       // Update in our database
       await orgDb.updateOrganization(orgId, { name: trimmedName });
 
-      // Record audit log
+      // Record audit log. Tag dev-bypass writes so post-incident triage can
+      // distinguish them from real-user writes.
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
         action: 'organization_renamed',
         resource_type: 'organization',
         resource_id: orgId,
-        details: { new_name: trimmedName },
+        details: {
+          new_name: trimmedName,
+          ...(membership.via_dev_bypass ? { auth_method: 'dev-bypass' } : {}),
+        },
       });
 
       logger.info({ orgId, newName: trimmedName, userId: user.id }, 'Organization renamed');
@@ -1787,14 +1791,19 @@ export function createOrganizationsRouter(): Router {
       // Update in our database
       await orgDb.updateOrganization(orgId, updates);
 
-      // Record audit log
+      // Record audit log. Tag dev-bypass writes so post-incident triage can
+      // distinguish them from real-user writes (the synthetic user_dev_*
+      // IDs aren't resolvable via WorkOS).
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
-        details: updates,
+        details: {
+          ...updates,
+          ...(membership.via_dev_bypass ? { auth_method: 'dev-bypass' } : {}),
+        },
       });
 
       logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');
