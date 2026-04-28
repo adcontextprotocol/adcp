@@ -686,6 +686,17 @@ const TOOLS = [
       properties: {
         format_ids: { type: 'array' },
         channels: { type: 'array', items: { type: 'string' } },
+        // Declared so the SDK's request validator (legacy dispatch) doesn't
+        // strip `pagination` before it reaches the handler — without this,
+        // pagination_integrity_creative_formats sees max_results dropped, the
+        // handler defaults to 50, and `has_more` is incorrectly false.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
@@ -800,11 +811,27 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
+        // Declared so legacy-dispatch session keying matches the seeded
+        // creatives. `controller_seeding: true` storyboards seed via
+        // comply_test_controller (which accepts `brand`) and then list with
+        // `brand: {domain: ...}` from the runner's test-kit; without `brand`
+        // declared here, the SDK strips it on list_creatives, sessionKeyFromArgs
+        // falls back to `default`, and the seeded creatives are invisible.
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
         include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
         include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
         filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
+        // See list_creative_formats above — declared so legacy dispatch keeps
+        // `pagination` on the wire.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
@@ -906,6 +933,15 @@ const TOOLS = [
         countries: { type: 'array', items: { type: 'string' } },
         filters: { type: 'object' },
         max_results: { type: 'integer' },
+        // See list_creative_formats above — declared so legacy dispatch keeps
+        // `pagination` on the wire.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
