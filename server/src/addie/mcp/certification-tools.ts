@@ -462,7 +462,7 @@ export async function buildCertificationContext(
   if (inProgressModules.length === 0) return null;
 
   const lines = ['## Active certification modules'];
-  lines.push('**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. Reference specs and schemas directly. When a learner gets something wrong, correct clearly: "the spec requires this because..." not "you might want to consider..."');
+  lines.push('**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. You are a tutor, not a proctor — your job is to help every learner succeed. Reference specs and schemas directly. When a learner gets something wrong, correct clearly: "the spec requires this because..." not "you might want to consider..."');
   lines.push('You ARE currently teaching these modules. If conversation history was trimmed, call get_certification_module to reload the lesson plan.');
   lines.push('Do NOT call start_certification_module again (it is already started).');
   lines.push('');
