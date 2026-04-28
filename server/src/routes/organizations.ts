@@ -584,8 +584,8 @@ export function createOrganizationsRouter(): Router {
            FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         ),
-        pool.query<{ domain: string; brand_name: string | null; last_validated: Date | null }>(
-          `SELECT db.domain, db.brand_name, db.last_validated
+        pool.query<{ domain: string; brand_name: string | null; source: string | null; last_validated: Date | null }>(
+          `SELECT db.domain, db.brand_name, db.source_type AS source, db.last_validated
            FROM brands db
            WHERE db.house_domain IN (
                    SELECT od.domain FROM organization_domains od
@@ -605,27 +605,44 @@ export function createOrganizationsRouter(): Router {
           self_brand_name: string | null;
           self_house_domain: string | null;
           self_confidence: string | null;
+          self_source: string | null;
           self_last_validated: Date | null;
           parent_domain: string | null;
           parent_brand_name: string | null;
+          parent_source: string | null;
           parent_last_validated: Date | null;
         }>(
+          // Tenant-scoped ORDER BY: the is_primary lookup must filter by
+          // workos_organization_id, otherwise an org that shares a verified
+          // domain with another tenant could pick the wrong row's primary
+          // flag. Self-loop guard on the parent join: a malformed brand row
+          // pointing house_domain at its own domain would otherwise render
+          // "you are a child of yourself".
           `SELECT
              db.domain AS self_domain,
              db.brand_name AS self_brand_name,
              db.house_domain AS self_house_domain,
              db.brand_manifest->'classification'->>'confidence' AS self_confidence,
+             db.source_type AS self_source,
              db.last_validated AS self_last_validated,
              parent.domain AS parent_domain,
              parent.brand_name AS parent_brand_name,
+             parent.source_type AS parent_source,
              parent.last_validated AS parent_last_validated
            FROM brands db
-           LEFT JOIN brands parent ON parent.domain = db.house_domain
+           LEFT JOIN brands parent
+             ON parent.domain = db.house_domain
+            AND parent.domain != db.domain
            WHERE db.domain IN (
                    SELECT od.domain FROM organization_domains od
                    WHERE od.workos_organization_id = $1 AND od.verified = true
                  )
-           ORDER BY (SELECT is_primary FROM organization_domains od WHERE od.domain = db.domain LIMIT 1) DESC NULLS LAST
+           ORDER BY (
+             SELECT is_primary FROM organization_domains od
+             WHERE od.domain = db.domain
+               AND od.workos_organization_id = $1
+             LIMIT 1
+           ) DESC NULLS LAST
            LIMIT 1`,
           [orgId]
         ),
@@ -639,12 +656,14 @@ export function createOrganizationsRouter(): Router {
               domain: selfRow.self_domain,
               brand_name: selfRow.self_brand_name,
               confidence: selfRow.self_confidence,
+              source: selfRow.self_source,
               last_validated: selfRow.self_last_validated,
             },
             parent: selfRow.parent_domain
               ? {
                   domain: selfRow.parent_domain,
                   brand_name: selfRow.parent_brand_name,
+                  source: selfRow.parent_source,
                   last_validated: selfRow.parent_last_validated,
                 }
               : null,
@@ -664,6 +683,7 @@ export function createOrganizationsRouter(): Router {
         inferred_subsidiaries: subsidiariesResult.rows.map(r => ({
           domain: r.domain,
           brand_name: r.brand_name,
+          source: r.source,
           last_validated: r.last_validated,
         })),
       });
