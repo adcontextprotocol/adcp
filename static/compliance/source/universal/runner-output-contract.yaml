@@ -70,7 +70,8 @@ validation_result:
     field carries the transport failure).
   required_fields:
     - check                   # Validation kind from storyboard-schema.yaml:
-                              # response_schema | field_present | field_value |
+                              # response_schema | field_present |
+                              # envelope_field_present | field_value |
                               # field_value_or_absent | status_code | http_status |
                               # http_status_in | error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve
@@ -91,6 +92,8 @@ validation_result:
                               #   field_value_or_absent → value or allowed_values array
                               #                          from the storyboard validation
                               #   field_present        → the path that should resolve
+                              #   envelope_field_present → the path that should resolve
+                              #                          in the protocol envelope
                               #   status_code          → expected status
                               #   error_code           → expected error code
                               #   any_of               → array of acceptable forms
@@ -105,6 +108,9 @@ validation_result:
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value
+                              #   envelope_field_present → null (the field was missing)
+                              #                          or the observed non-object
+                              #                          value (scoped to envelope)
     - schema_id               # $id of the response schema applied. Required
                               # when check == response_schema, null otherwise.
     - schema_url              # Resolvable URL the implementor can fetch to

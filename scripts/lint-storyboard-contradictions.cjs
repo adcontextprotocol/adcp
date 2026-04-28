@@ -445,15 +445,16 @@ function classifyOutcome(step) {
     return { kind: 'error', codes };
   }
 
-  // Looks like a success assertion path (field_present, response_schema,
-  // field_value on happy-path fields). Distinguish from "unspecified" —
-  // we need at least one positive assertion to call it success.
+  // Looks like a success assertion path (field_present, envelope_field_present,
+  // response_schema, field_value on happy-path fields). Distinguish from
+  // "unspecified" — we need at least one positive assertion to call it success.
   const hasPositiveAssertion = validations.some((v) => {
     if (!v || typeof v !== 'object') return false;
     const check = v.check;
     return (
       check === 'response_schema' ||
       check === 'field_present' ||
+      check === 'envelope_field_present' ||
       check === 'field_value' ||
       check === 'field_value_or_absent' ||
       check === 'http_status' ||

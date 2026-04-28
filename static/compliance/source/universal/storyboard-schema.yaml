@@ -575,7 +575,10 @@
 #
 # --- Validation ---
 #
-# check: string (what to validate: "response_schema", "field_present", "field_value",
+# check: string (what to validate: "response_schema", "field_present",
+#                "envelope_field_present" (walks protocol-envelope.json instead of
+#                response_schema_ref — use for top-level envelope fields like `status`),
+#                "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact")

@@ -15,7 +15,9 @@ narrative: |
   docs/building/implementation/task-lifecycle.mdx.
 
   This storyboard documents the machine-check assertion and asserts the canonical v3
-  `status` field is present. The explicit envelope-root field-absence checks
+  `status` field is present using the `envelope_field_present` check type (added in
+  adcp-client#1045), which walks the protocol envelope rather than the inner response
+  schema. The explicit envelope-root field-absence checks
   (asserting task_status and response_status are absent) require `field_absent`
   runner support in @adcp/client — those checks are marked TODO below and are not
   executed until the runner ships that check type. The schema-level constraint
@@ -82,7 +84,7 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
-          - check: field_present
+          - check: envelope_field_present
             path: "status"
             description: "Envelope carries the canonical v3 status field"
           # TODO: restore these as field_absent checks once @adcp/client runner ships
