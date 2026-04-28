@@ -134,19 +134,23 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`clicks`**: Click events
 - **`ctr`**: Click-through rate
 - **`views`**: Views at platform-defined threshold
-- **`completed_views`**: 100% video completions
-- **`video_completions`**: Completed video views
-- **`completion_rate`**: Video completion percentage
+- **`completed_views`**: Video/audio completions (or threshold-based completion when an optimization goal sets a custom view duration)
+- **`completion_rate`**: Completion rate (`completed_views` / `impressions`)
 - **`conversions`**: Post-click or post-view conversions
 - **`conversion_value`**: Monetary value of attributed conversions
 - **`roas`**: Return on ad spend
 - **`cost_per_acquisition`**: Cost per conversion
+- **`new_to_brand_rate`**: Fraction of conversions from first-time brand buyers
 - **`leads`**: Leads generated
-- **`reach`**: Unique reach
-- **`frequency`**: Average frequency per individual
+- **`reach`**: Unique reach (paired with `reach_unit`)
+- **`frequency`**: Average frequency per reach unit
 - **`grps`**: Gross Rating Points (for CPP billing)
+- **`engagements`**: Direct ad interactions beyond viewing (reactions, taps, opens)
+- **`engagement_rate`**: Platform-specific engagement rate
+- **`follows`**: New followers/subscribes attributed to delivery
+- **`saves`**: Saves, bookmarks, playlist adds attributed to delivery
+- **`profile_visits`**: Visits to the brand's in-platform page
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard). Separates MRC and GroupM standards.
-- **`engagement_rate`**: Platform-specific engagement metric
 - **`quartile_data`**: Video quartile completion data (q1-q4)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click
