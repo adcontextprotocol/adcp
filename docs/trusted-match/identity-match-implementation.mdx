@@ -314,7 +314,7 @@ user:exposures:<hash(rampid:abc)> += [ imp-004, imp-005, imp-006 ]
 user:exposures:<hash(id5:def)>   unchanged
 ```
 
-**Step 4** — wire call: same request. Eligibility dedups: union of {imp-001, imp-002, imp-003} (in both logs) ∪ {imp-004, imp-005, imp-006} (only in rampid log) = 6 distinct. Cap of 5 tripped → `eligible_package_ids: []`.
+**Step 4** — wire call: same request. Eligibility dedups: union of `{imp-001, imp-002, imp-003}` (in both logs) ∪ `{imp-004, imp-005, imp-006}` (only in rampid log) = 6 distinct. Cap of 5 tripped → `eligible_package_ids: []`.
 
 This is the case where counter approaches with merge rules under-count. The log approach with `impression_id` dedup gets the right answer regardless of identity-resolution stability.
 
