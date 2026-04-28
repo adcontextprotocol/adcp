@@ -16,8 +16,8 @@
     "audio_hosted": { "$ref": "/schemas/formats/canonical/audio_hosted.json" },
     "audio_daast": { "$ref": "/schemas/formats/canonical/audio_daast.json" },
     "sponsored_placement": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" },
-    "asset_pool_composed": { "$ref": "/schemas/formats/canonical/asset_pool_composed.json" },
-    "brand_mention": { "$ref": "/schemas/formats/canonical/brand_mention.json" }
+    "responsive_creative": { "$ref": "/schemas/formats/canonical/responsive_creative.json" },
+    "agent_placement": { "$ref": "/schemas/formats/canonical/agent_placement.json" }
   },
   "additionalProperties": false,
   "examples": [

@@ -39,17 +39,8 @@
       "additionalProperties": true
     },
     "brand": {
-      "type": "object",
-      "description": "Brand identity reference. When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context.",
-      "properties": {
-        "domain": {
-          "type": "string",
-          "format": "hostname",
-          "description": "Brand domain. Seller fetches https://<domain>/.well-known/brand.json for brand identity context."
-        }
-      },
-      "required": ["domain"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
     },
     "brand_kit_override": {
       "type": "object",

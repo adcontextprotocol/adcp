@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/formats/canonical/brand_mention.json",
-  "title": "Canonical Format: Brand Mention (AI-surface composition)",
-  "description": "Text/audio AI-surface mention. Buyer supplies brand context (via `brand: { domain }` resolving brand.json) and optional offering reference; surface composes natural-language mention or sponsored snippet. **Composition is algorithmic** — LLM/search-ranker chooses phrasing and presentation. Covers ChatGPT-style brand mentions, Perplexity sponsored answers, voice-assistant sponsored mentions, sponsored search snippets. Output asset_type varies by surface: `text` for chat UIs and search snippets; `audio` (synthesized) for voice assistants. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering.",
+  "$id": "/schemas/formats/canonical/agent_placement.json",
+  "title": "Canonical Format: Agent Placement (AI-surface sponsored placement)",
+  "description": "Sponsored placement integrated into an AI-surface's response to a user. Buyer supplies a `BrandRef` (resolving brand.json for context) and optional offering reference; the surface (LLM, voice assistant, sponsored-search ranker) composes a natural-language mention, sponsored card, or audio snippet within its response to a user query. **Composition is algorithmic** — the agent chooses phrasing and presentation. Output asset_type varies by surface: `text` for chat UIs and sponsored search snippets; `audio` (synthesized) for voice assistants; `card` for structured AI-surface result cards. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering. Distinct from `si_chat` (which is the user-converses-with-brand's-agent pattern — brand owns the conversational surface) and from `sponsored_placement` (retail-media catalog-driven). Parallels `sponsored_placement` structurally: both are surface-composed placements; agent_placement is for AI/agentic surfaces, sponsored_placement is for retail media.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
     "output_modality": {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/sponsored_placement.json",
   "title": "Canonical Format: Sponsored Placement (retail-media catalog-driven)",
-  "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference), optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products. Distinct from `asset_pool_composed` (algorithmic combinator from buyer pool) and `brand_mention` (text/audio AI-surface composition).",
+  "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference), optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products. Distinct from `responsive_creative` (algorithmic combinator from buyer pool) and `agent_placement` (text/audio AI-surface composition).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
     "supported_catalog_types": {

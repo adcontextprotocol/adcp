@@ -18,10 +18,9 @@ v2 collapses today's separate format registry into product-bound declarations. A
 | Format identity | Compound `{ agent_url, id }` referencing a separately-defined format file | Canonical name (e.g., `image`) keyed under `format` on the product, narrowed inline |
 | Format authoring | Each platform authors its own named format files | Platforms narrow AdCP-defined canonicals; canonical IS the contract buyers validate against |
 | Format input contract | Each platform publishes a parallel set of `*_generated_*` format files for AI-produced creative alongside the asset-upload version (~30 duplicate files in agentic-adapters) | The format declares what it accepts via `inputs` (script, creative_brief, voice_id, starter_assets, etc.) and asset slots (image, video, audio uploads). Some products take only assets; some take only inputs; some take both. **Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is invisible to the buyer.** No "generative" category at the protocol level; the production mechanism is implementation detail. |
-| Discovery (sales) | `list_creative_formats` | `get_products` (each product carries its `format` declaration) |
-| Discovery (creative agents) | `list_creative_formats` (overloaded) | `creative.supported_formats` field on `get_adcp_capabilities` (same `ProductFormatDeclaration` shape as products' inline `format`) |
+| Discovery | `list_creative_formats` (overloaded — used by both sales and creative agents) | `creative.supported_formats` on `get_adcp_capabilities` (uniform replacement, same `ProductFormatDeclaration` shape regardless of agent role); sales agents additionally expose `get_products` for product-level detail with `format` inline |
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
-| Brand identity | Sometimes redeclared as format slots | Implicit via `brand: { domain }` resolving brand.json; explicit override via `brand_kit_override` on the manifest |
+| Brand identity | Sometimes redeclared as format slots | Implicit via `brand` (a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) — `domain` plus optional `brand_id` for house-of-brands) resolving brand.json; explicit override via `brand_kit_override` on the manifest |
 
 ## The 11 canonical formats
 
@@ -38,8 +37,8 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 | `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
 | `audio_daast` | DAAST tag | Inherent DAAST events |
 | `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
-| `asset_pool_composed` | Buyer asset pool, surface composes (Google PMax, RDA, Demand Gen, Meta Advantage+) | Per-asset performance breakdown |
-| `brand_mention` | Text/audio AI-surface composition (ChatGPT, voice assistants, sponsored search snippets) | Mention-level impression + attribution |
+| `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
+| `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
 
 ## Worked example — Meta Reels
 
@@ -284,7 +283,7 @@ The buyer can iterate on inputs and inspect previews before committing to a buy.
 
 ## Brand identity via brand.json (with override)
 
-v2 formats no longer redeclare `brand_logo`, `brand_colors`, `brand_voice`, `brand_tagline` as explicit slots. When a manifest carries `brand: { domain: "acme.example" }`, the seller fetches `https://acme.example/.well-known/brand.json` for brand context.
+v2 formats no longer redeclare `brand_logo`, `brand_colors`, `brand_voice`, `brand_tagline` as explicit slots. When a manifest carries a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) like `brand: { domain: "acme.example" }` (or with `brand_id` for house-of-brands), the seller fetches `https://acme.example/.well-known/brand.json` for brand context.
 
 For the case where brand.json is missing or stale, the manifest includes `brand_kit_override`:
 

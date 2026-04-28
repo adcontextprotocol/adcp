@@ -8,7 +8,7 @@
     "composition_model": {
       "type": "string",
       "enum": ["deterministic", "algorithmic"],
-      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — asset_pool_composed, brand_mention)."
+      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — responsive_creative, agent_placement)."
     },
     "provenance_required": {
       "type": "boolean",
