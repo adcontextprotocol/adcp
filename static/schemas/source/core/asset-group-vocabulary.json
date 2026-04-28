@@ -194,9 +194,10 @@
       "typical_use": "agent_placement products (focus the AI-surface mention on a specific offering); host-read products (specify which offering is being promoted in the read). Value is an offering_id matched against the buyer's catalog."
     },
     "style_reference": {
-      "description": "Reference asset (image, video) providing visual style guidance for generative production.",
+      "description": "Reference asset (image) providing per-creative visual style guidance for generative production. Distinct from brand.json — brand.json carries declarative brand-level style (hex colors, voice descriptions, logo asset, tagline) that's stable across campaigns; `style_reference` carries a per-creative reference image (\"make it look like THIS\") that ships in the manifest. For pure brand-style consistency, the manifest's BrandRef resolving brand.json suffices and `style_reference` isn't needed.",
       "asset_type": "image",
-      "typical_use": "Image-to-image variation, style transfer, brand-consistent generative imagery. Buyer supplies a reference; seller produces output in the same visual style."
+      "typical_use": "Image-to-image variation (MidJourney --sref, Adobe Firefly structure/style reference), style transfer, reusing a hero shot's lighting/composition for new creative. Buyer supplies a reference image; seller's generative pipeline produces output matching the visual style.",
+      "aliases": ["reference_image", "style_image", "inspiration_image", "structure_reference"]
     },
     "starter_assets": {
       "description": "Pool of reference assets the seller uses as a starting point for transformation or variation.",
