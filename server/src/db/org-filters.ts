@@ -325,26 +325,36 @@ export interface DomainOwnerOrg {
   matched_domain: string;
   /** Domains walked from input → matched_domain, inclusive. */
   hierarchy_chain: string[];
-  /** Per-org opt-out: false = the org has disabled verified-domain auto-provisioning. */
-  auto_provision_allowed: boolean;
+  /** Direct (non-inherited) auto-provisioning is allowed on the resolved org. */
+  auto_provision_direct_allowed: boolean;
+  /** Hierarchical (inherited) auto-provisioning is allowed on the resolved org. Default false. */
+  auto_provision_hierarchy_allowed: boolean;
 }
 
 /**
  * Find the paying organization that "owns" a raw email domain — directly via a
  * verified `organization_domains` row or transitively up the brand registry's
- * `house_domain` chain (max 5 hops, high-confidence classifications only).
+ * `house_domain` chain.
  *
  * Returns the closest match: a direct verified-domain hit on the input wins
  * over an inherited one. When two ancestors at different depths both have
  * paying orgs, the shallower one wins.
  *
- * Caller is responsible for honoring `auto_provision_allowed` and any
- * already-a-member short-circuit. Returns null when no chain step matches a
- * paying, non-canceled subscription.
+ * Trust gates on the inheritance walk:
+ *   - max 4 hops up from the input domain
+ *   - cycle protection via visited-domain array
+ *   - only edges classified at confidence='high' by the brand classifier
+ *     (brand-classifier.ts). source_type='brand_json' is NOT a trust signal —
+ *     brand.json schema has no parent/house_domain field today, so brand_json
+ *     rows never carry inheritance data, and the crawler does not authenticate
+ *     domain ownership for brand_json discoveries.
+ *   - 180-day TTL on the brand classification (last_validated, fallback to
+ *     discovered_at) so divestments age out instead of inheriting forever.
  *
- * Mirrors the `resolveEffectiveMembership` walk so post-link inheritance
- * checks and pre-link auto-provision checks answer the same question with the
- * same rules.
+ * Caller is responsible for honoring `auto_provision_*_allowed` flags and any
+ * already-a-member short-circuit. The two flags split direct vs. inherited
+ * auto-provisioning consent — orgs default to direct=true (DNS-verified, low
+ * risk) and inherited=false (LLM-classified, opt-in).
  */
 export async function findPayingOrgForDomain(domain: string): Promise<DomainOwnerOrg | null> {
   const normalizedDomain = domain.trim().toLowerCase();
@@ -358,7 +368,8 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
       domain: string;
       workos_organization_id: string;
       org_name: string;
-      auto_provision: boolean;
+      auto_provision_direct: boolean;
+      auto_provision_hierarchy: boolean;
     }>(`
       WITH RECURSIVE domain_chain AS (
         -- Start: the user's email domain
@@ -366,15 +377,18 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
 
         UNION ALL
 
-        -- Walk up: brands.house_domain points to the parent brand's domain
+        -- Walk up: brands.house_domain points to the parent brand's domain.
+        -- Trust gates: high-confidence classification, last validated within
+        -- 180 days, no cycles, max 4 hops up.
         SELECT db.house_domain AS domain, dc.depth + 1, dc.visited || db.house_domain
         FROM domain_chain dc
         JOIN brands db ON db.domain = dc.domain
         WHERE db.house_domain IS NOT NULL
           AND dc.depth < 5
           AND db.house_domain != ALL(dc.visited)
-          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
-               OR db.source_type = 'brand_json')
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
       ),
       paying_match AS (
         SELECT
@@ -382,14 +396,15 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
           dc.domain,
           od.workos_organization_id,
           o.name AS org_name,
-          COALESCE(o.auto_provision_verified_domain, true) AS auto_provision
+          COALESCE(o.auto_provision_verified_domain, true) AS auto_provision_direct,
+          COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy
         FROM domain_chain dc
         JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
         JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
         WHERE od.verified = true
           AND o.subscription_status = 'active'
           AND o.subscription_canceled_at IS NULL
-        ORDER BY dc.depth ASC
+        ORDER BY dc.depth ASC  -- direct match (depth 1) wins over inherited
         LIMIT 1
       )
       SELECT * FROM paying_match
@@ -399,9 +414,10 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
 
     const match = result.rows[0];
 
-    // Reconstruct the chain from input domain to matched domain.
-    // For a direct match the chain is just [input]; for an inherited match
-    // it's [input, ..., matched_domain] in walk order.
+    // Reconstruct the chain from input domain to matched_domain. For a direct
+    // match this is just [input]; for an inherited match it's [input, ..., matched_domain].
+    // Bound is `< $2` (matching the first CTE's `< 5`) so we don't recurse one
+    // step past the matched depth and pull in non-paying ancestors.
     const chainResult = await pool.query<{ domain: string; depth: number }>(`
       WITH RECURSIVE domain_chain AS (
         SELECT $1::text AS domain, 1 AS depth, ARRAY[$1::text]::TEXT[] AS visited
@@ -412,10 +428,11 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
         FROM domain_chain dc
         JOIN brands db ON db.domain = dc.domain
         WHERE db.house_domain IS NOT NULL
-          AND dc.depth <= $2
+          AND dc.depth < $2
           AND db.house_domain != ALL(dc.visited)
-          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
-               OR db.source_type = 'brand_json')
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
       )
       SELECT domain, depth FROM domain_chain ORDER BY depth ASC
     `, [normalizedDomain, match.depth]);
@@ -426,7 +443,8 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
       is_inherited: match.depth > 1,
       matched_domain: match.domain,
       hierarchy_chain: chainResult.rows.map((r) => r.domain),
-      auto_provision_allowed: match.auto_provision,
+      auto_provision_direct_allowed: match.auto_provision_direct,
+      auto_provision_hierarchy_allowed: match.auto_provision_hierarchy,
     };
   } catch (error) {
     logger.error({ err: error, domain: normalizedDomain }, 'Failed to find paying org for domain');

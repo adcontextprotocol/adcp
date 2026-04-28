@@ -619,16 +619,27 @@ describe('Membership webhook DB operations', () => {
       const CHILD_DOMAIN = 'analyticsiq.test';
       const PARENT_DOMAIN = 'alliantdata.test';
 
-      async function seedBrandHierarchy(opts: { confidence?: 'high' | 'low' } = {}) {
+      async function seedBrandHierarchy(opts: { confidence?: 'high' | 'low'; hierarchyOptIn?: boolean } = {}) {
         // Parent: paying org with verified parent domain.
         await seedOrgWithVerifiedDomain(PARENT_DOMAIN);
+        // Hierarchical inheritance is opt-in (default false). Most tests
+        // here exercise the on-path so they enable it; "opt-in is required"
+        // tests below leave it off.
+        if (opts.hierarchyOptIn !== false) {
+          await pool.query(
+            `UPDATE organizations SET auto_provision_brand_hierarchy_children = true
+               WHERE workos_organization_id = $1`,
+            [TEST_AUTOLINK_ORG_ID],
+          );
+        }
         // Brand registry: child.com points up to parent.com via house_domain.
         await pool.query(
-          `INSERT INTO brands (domain, brand_name, house_domain, source_type, brand_manifest, created_at, updated_at)
-           VALUES ($1, 'AnalyticsIQ', $2, 'enriched', $3, NOW(), NOW())
+          `INSERT INTO brands (domain, brand_name, house_domain, source_type, brand_manifest, last_validated, created_at, updated_at)
+           VALUES ($1, 'AnalyticsIQ', $2, 'enriched', $3, NOW(), NOW(), NOW())
            ON CONFLICT (domain) DO UPDATE
              SET house_domain = EXCLUDED.house_domain,
-                 brand_manifest = EXCLUDED.brand_manifest`,
+                 brand_manifest = EXCLUDED.brand_manifest,
+                 last_validated = EXCLUDED.last_validated`,
           [
             CHILD_DOMAIN,
             PARENT_DOMAIN,
@@ -649,7 +660,7 @@ describe('Membership webhook DB operations', () => {
         await clearBrandHierarchy();
       });
 
-      it('links @child.com user to parent paying org when brand.house_domain points up', async () => {
+      it('links @child.com user to parent when org has opted into hierarchical auto-provisioning', async () => {
         await seedBrandHierarchy();
         const workos = makeWorkOSMock();
 
@@ -664,6 +675,18 @@ describe('Membership webhook DB operations', () => {
         });
       });
 
+      it('does NOT auto-link via hierarchy by default (auto_provision_brand_hierarchy_children = false)', async () => {
+        // Parent has direct auto-provisioning on (default), but no opt-in
+        // for hierarchical children. This is the SaaS-norm default.
+        await seedBrandHierarchy({ hierarchyOptIn: false });
+        const workos = makeWorkOSMock();
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+      });
+
       it('does not traverse low-confidence classifications', async () => {
         await seedBrandHierarchy({ confidence: 'low' });
         const workos = makeWorkOSMock();
@@ -674,10 +697,12 @@ describe('Membership webhook DB operations', () => {
         expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
-      it('honors auto_provision_verified_domain=false on the resolved parent', async () => {
-        await seedBrandHierarchy();
+      it('still requires the hierarchy opt-in even when direct auto-provisioning is enabled', async () => {
+        // Direct=true, hierarchy=false (the default). Hierarchical match
+        // should still be denied — the flags are independent.
+        await seedBrandHierarchy({ hierarchyOptIn: false });
         await pool.query(
-          `UPDATE organizations SET auto_provision_verified_domain = false
+          `UPDATE organizations SET auto_provision_verified_domain = true
              WHERE workos_organization_id = $1`,
           [TEST_AUTOLINK_ORG_ID],
         );
@@ -687,6 +712,22 @@ describe('Membership webhook DB operations', () => {
 
         expect(result).toBeNull();
         expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+      });
+
+      it('honors direct auto-provisioning opt-out independently for direct matches', async () => {
+        // Direct=false (opt-out), hierarchy=true. A user matching the
+        // child via hierarchy still gets in.
+        await seedBrandHierarchy();
+        await pool.query(
+          `UPDATE organizations SET auto_provision_verified_domain = false
+             WHERE workos_organization_id = $1`,
+          [TEST_AUTOLINK_ORG_ID],
+        );
+        const workos = makeWorkOSMock();
+
+        // Hierarchical match still works.
+        const inheritedResult = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+        expect(inheritedResult).not.toBeNull();
       });
 
       it('short-circuits when the user is already in the resolved parent org', async () => {

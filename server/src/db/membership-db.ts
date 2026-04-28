@@ -235,21 +235,27 @@ export interface DomainLinkResult {
 /**
  * Check whether a user's email domain matches a verified domain on an
  * organization with an active subscription — directly or via the brand
- * registry hierarchy (e.g. AnalyticsIQ → Alliant). If so, create a WorkOS
+ * registry hierarchy (e.g. AnalyticsIQ → Alliant). If so, and the org has
+ * consented to the relevant auto-provisioning class, create a WorkOS
  * membership for them on the resolved paying org.
  *
- * Idempotent: short-circuits when the user is already in the candidate org's
+ * Two consent flags on the resolved org, with different defaults:
+ *   - auto_provision_verified_domain (default true) gates DIRECT matches
+ *     where the user's domain is a verified organization_domains row
+ *     (DNS-verified by WorkOS). Low risk, on by default.
+ *   - auto_provision_brand_hierarchy_children (default false) gates
+ *     INHERITED matches where the user's domain reaches the org via
+ *     brands.house_domain ascent. Higher risk because the edge comes from
+ *     LLM classification or admin PATCH, ages on M&A, and the joining user
+ *     gets no domain-level confirmation. Opt-in.
+ *
+ * Idempotent: short-circuits when the user is already in the resolved org's
  * local membership cache, and treats `organization_membership_already_exists`
  * from WorkOS as success. Safe to call on every authenticated request.
  *
- * Honors the per-org `auto_provision_verified_domain` opt-out at the
- * resolved (potentially-inherited) org level: orgs that prefer explicit
- * invites set this to false on the paying org and the gate applies whether
- * the user matched directly or via hierarchy.
- *
- * Hierarchy walk uses the same rules as resolveEffectiveMembership — max 5
- * hops, high-confidence brand classifications only — so pre-link
- * auto-provisioning and post-link inheritance answer the same question.
+ * Hierarchy walk uses the same trust gates as resolveEffectiveMembership
+ * (high-confidence classifications, 180-day TTL, max 4 hops up) so pre-link
+ * auto-provisioning and post-link inheritance stay coherent.
  */
 export async function autoLinkByVerifiedDomain(
   workos: WorkOS,
@@ -262,7 +268,18 @@ export async function autoLinkByVerifiedDomain(
 
   const owner = await findPayingOrgForDomain(emailDomain);
   if (!owner) return null;
-  if (!owner.auto_provision_allowed) return null;
+
+  // Direct verified-domain auto-provisioning is on by default; hierarchical
+  // is opt-in. The two flags are separate because the trust models differ:
+  // direct = WorkOS DNS-verified the user's domain (strong signal); inherited
+  // = LLM classifier (or admin PATCH) decided the input domain is a child of
+  // the matched parent (weaker, ages on M&A, no domain-level confirmation
+  // from the joining user).
+  if (owner.is_inherited) {
+    if (!owner.auto_provision_hierarchy_allowed) return null;
+  } else {
+    if (!owner.auto_provision_direct_allowed) return null;
+  }
 
   const orgId = owner.organization_id;
   const orgName = owner.organization_name;
