@@ -3415,7 +3415,7 @@
               chatInput.value = prompt;
               autoResize();
               updateSendButton();
-              sendMessage();
+              sendMessage('cta_chip');
             }
           });
         });
@@ -3471,7 +3471,7 @@
         chatInput.value = prompt;
         autoResize();
         updateSendButton();
-        sendMessage();
+        sendMessage('cta_chip');
       }
 
       // Check Addie status
@@ -4226,7 +4226,9 @@
       }
 
       // Send message with streaming
-      async function sendMessage() {
+      async function sendMessage(source) {
+        // source may be a MouseEvent when called as a click handler — treat as typed
+        const messageSource = (typeof source === 'string') ? source : 'typed';
         const message = chatInput.value.trim();
         if (!message || isLoading || !isReady) return;
 
@@ -4267,6 +4269,7 @@
             body: JSON.stringify({
               message,
               conversation_id: conversationId,
+              message_source: messageSource,
             }),
           });
 
@@ -4469,7 +4472,7 @@
           chatInput.value = prompt;
           autoResize();
           updateSendButton();
-          sendMessage();
+          sendMessage('cta_chip');
         }
       });
 
@@ -4600,7 +4603,7 @@
               chatInput.value = prompt.trim();
               autoResize();
               updateSendButton();
-              sendMessage();
+              sendMessage('cta_chip');
               // Clean URL without reloading
               window.history.replaceState({}, '', window.location.pathname);
             }

@@ -1561,6 +1561,7 @@ async function handleUserMessage({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleId ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3157,6 +3158,7 @@ async function handleDirectMessage(
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
+  const dmMatchedRuleId = matchRuleIdFromMessage(messageText);
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -3167,6 +3169,7 @@ async function handleDirectMessage(
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: dmMatchedRuleId ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');

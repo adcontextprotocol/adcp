@@ -119,6 +119,7 @@ import {
 import {
   getThreadService,
   type ThreadContext,
+  type MessageSource,
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
@@ -717,11 +718,15 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source } = req.body;
 
       if (!message || typeof message !== "string") {
         return res.status(400).json({ error: "Message is required" });
       }
+
+      // Validate client-supplied message_source; fall back to server-side heuristic
+      const VALID_SOURCES = new Set(['typed', 'cta_chip', 'voice', 'paste', 'unknown']);
+      const clientSource = VALID_SOURCES.has(message_source) ? message_source as string : null;
 
       // Sanitize input
       const inputValidation = sanitizeInput(message);
@@ -807,6 +812,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: (clientSource ?? (matchedRuleId ? 'cta_chip' : 'typed')) as MessageSource,
       });
 
       // Record inbound message in the relationship system
@@ -1004,13 +1010,17 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: streamMessageSource } = req.body;
 
       if (!message || typeof message !== "string") {
         sendEvent("error", { error: "Message is required" });
         res.end();
         return;
       }
+
+      // Validate client-supplied message_source; fall back to server-side heuristic
+      const STREAM_VALID_SOURCES = new Set(['typed', 'cta_chip', 'voice', 'paste', 'unknown']);
+      const streamClientSource = STREAM_VALID_SOURCES.has(streamMessageSource) ? streamMessageSource as string : null;
 
       // Sanitize input
       const inputValidation = sanitizeInput(message);
@@ -1089,6 +1099,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: (streamClientSource ?? (matchedRuleId ? 'cta_chip' : 'typed')) as MessageSource,
       });
 
       // Record inbound message in the relationship system
