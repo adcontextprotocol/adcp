@@ -1,0 +1,108 @@
+---
+title: RFC process
+description: "How to propose and ratify material changes to AdCP — the lifecycle from draft to specification change, including proposal template and decision-record format."
+"og:title": "AdCP — RFC process"
+---
+
+Protocol proposals use a lightweight RFC (Request for Comments) process to ensure material changes are motivated, reviewed, and recorded before they reach the specification. This page describes when the process applies, how to submit a proposal, and what a decision record looks like.
+
+## What requires an RFC
+
+| Change | Requires RFC |
+|---|---|
+| Schema field removed or renamed | Yes |
+| Task added or removed | Yes |
+| Normative language changed (`MUST` / `SHOULD` / `MAY`) | Yes |
+| Compatibility surface altered — default value, field type, required↔optional | Yes |
+| Optional schema field added | No |
+| New enum value appended | No |
+| Doc wording clarified without semantic change | No |
+| Typo fix | No |
+| Internal tooling, CI, or infra | No |
+| Docs navigation changes (`docs.json`) | No |
+
+When in doubt: if the change would force downstream implementations to update code to keep working, it requires an RFC.
+
+## Lifecycle
+
+<Steps>
+  <Step title="Draft">
+    Open a GitHub issue using the [proposal template](#proposal-template) as the body. Title format: `RFC: <short description>`. Add the `rfc` label. The author should solicit early feedback from working group members or affected implementers before requesting formal review.
+  </Step>
+  <Step title="WG review">
+    The issue is queued for the next working group session. At least two [working group members](/docs/community/working-group) must complete the reviewer checklist before the WG votes. The review period is a minimum of seven calendar days after the issue is filed.
+  </Step>
+  <Step title="Decision">
+    The WG records a decision — accepted, rejected, or deferred — by posting a [decision record](#decision-record-format) as a comment on the RFC issue. Dissent must be recorded even when consensus is reached.
+  </Step>
+  <Step title="Specification change">
+    After the decision record exists and its status is **accepted**, any contributor may open the spec PR. The PR must reference the RFC issue with `Refs #N` (not `Closes #N`) and may not merge until the decision record exists. The spec PR reviewer confirms the diff matches the accepted RFC scope. The final spec PR carries `Closes #N` to close the RFC issue on merge.
+  </Step>
+</Steps>
+
+## Proposal template
+
+Copy this into the GitHub issue body when filing an RFC:
+
+```markdown
+## Motivation
+
+<!-- Why does the protocol need this change? What problem does it solve? -->
+
+## Scope
+
+<!-- Exactly what changes — schemas, tasks, normative text. Be specific about field names,
+     enum values, and affected task types. -->
+
+## Alternatives considered
+
+<!-- What other approaches were evaluated? Why were they ruled out?
+     Include at least one non-obvious alternative. -->
+
+## Compatibility impact
+
+<!-- Is this breaking? What must downstream implementers change to keep working?
+     State explicitly: breaking or non-breaking, and why. -->
+
+## Reviewer checklist
+
+- [ ] Motivation is clear and not redundant with existing functionality
+- [ ] Scope is specific enough to implement without further clarification
+- [ ] Alternatives section covers at least one non-obvious alternative
+- [ ] Compatibility impact accurately states breaking vs. non-breaking
+- [ ] Wire-format or schema snippet included (for schema or task changes)
+```
+
+## Decision-record format
+
+Post this as a comment on the RFC issue after the WG vote. The `Dissent` section is required — omitting it signals that all reviewers explicitly confirmed no minority position existed.
+
+```markdown
+## Decision record
+
+**Status:** accepted | rejected | deferred
+**Date:** YYYY-MM-DD
+**Discussion:** <!-- link to WG meeting notes or async discussion thread -->
+**Vote outcome:** N in favor, N opposed, N abstained
+
+## Rationale
+
+<!-- 2–4 sentences on why the WG reached this conclusion. -->
+
+## Dissent
+
+<!-- Record any minority position, even when it did not change the outcome.
+     Example: "Two reviewers preferred adding the field as optional rather than
+     required, citing implementation burden for smaller sellers. The WG agreed
+     that required enforcement is necessary for audit correctness."
+     If the vote was unanimous and all reviewers confirmed no dissent: state that explicitly. -->
+
+## Next steps
+
+<!-- Who is opening the spec PR? Any conditions on the implementation? -->
+```
+
+## See also
+
+- [Governance overview](/docs/governance/overview) — the three-party model and campaign governance domains
+- [Embedded human judgment](/docs/governance/embedded-human-judgment) — the principle behind the governance system that most RFCs serve
