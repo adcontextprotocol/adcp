@@ -927,6 +927,7 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
   A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
+  A2B: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
   A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals', 'trusted-match'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
   B3: ['signals', 'governance', 'delivery', 'creative-delivery', 'trusted-match'],
@@ -956,6 +957,14 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+  ],
+  A2B: [
+    { label: 'A2B: Testing your first agent call', url: `${DOCS_BASE}/docs/learning/foundations/a2b-testing-your-first-agent` },
+    { label: 'Task lifecycle', url: `${DOCS_BASE}/docs/building/implementation/task-lifecycle` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Sync creatives task', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
   ],
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
@@ -1264,7 +1273,7 @@ export function createCertificationToolHandlers(
       }
 
       lines.push('---');
-      lines.push('Modules A1, A2, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
+      lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
       lines.push('To start a specialist deep dive, say "start capstone S1" (or S2/S3/S4/S5).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
