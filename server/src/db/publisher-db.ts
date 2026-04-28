@@ -368,14 +368,34 @@ export class PublisherDatabase {
       }
 
       propertyRid = ownRids[0];
+      // Anchor-adopt promotion: when a publisher's adagents.json claims a rid
+      // previously created by community/enrichment/contributed flows AND
+      // anchors via a domain identifier under their own host, the publisher
+      // is now the source-of-truth pipeline for this property. Promote
+      // source → 'authoritative' and rebind created_by →
+      // 'adagents_json:<publisher>' so downstream queries that filter by
+      // created_by (auth projection in projectAuthorizationToCatalog,
+      // publisher_domain derivation in v_effective_agent_authorizations)
+      // see this row as a publisher-owned authoritative entry. Without
+      // this rebind, the auth projection's
+      // `WHERE created_by = 'adagents_json:<pub>' AND property_id = ANY(...)`
+      // returns 0 rows for properties that were already in the catalog
+      // under a different pipeline — silently dropping the manifest's
+      // authorized_agents[] entries on the floor.
+      //
+      // Own re-crawls (matchedCreatedBy === expectedCreatedBy) re-set
+      // source_updated_at without changing created_by; the SET below is
+      // idempotent for that case.
       await client.query(
         `UPDATE catalog_properties SET
            source_updated_at = NOW(),
            updated_at = NOW(),
            adagents_url = COALESCE(adagents_url, $2),
-           property_id = COALESCE(property_id, $3)
+           property_id = COALESCE(property_id, $3),
+           source = 'authoritative',
+           created_by = $4
          WHERE property_rid = $1`,
-        [propertyRid, adagentsUrl, property.property_id ?? null]
+        [propertyRid, adagentsUrl, property.property_id ?? null, expectedCreatedBy]
       );
     } else {
       propertyRid = uuidv7();
