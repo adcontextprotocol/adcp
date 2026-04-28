@@ -31,6 +31,9 @@ services:
       - ALLOW_INSECURE_COOKIES=true
       - DEV_USER_EMAIL=dev@example.com
       - DEV_USER_ID=dev-user-123
+      # Override the prod-shape boot guard (docker-compose intentionally sets
+      # NODE_ENV=production + DEV_USER_*; auth.ts refuses to boot without this)
+      - ALLOW_DEV_MODE_IN_PROD=true
       - AGENT_TOKEN_ENCRYPTION_SECRET=local-dev-encryption-key-32chars!
       # Override .env.local keys with dummy values (satisfies module guards, dev mode bypasses auth)
       - WORKOS_API_KEY=sk_test_dummy_local_dev_00000000000
