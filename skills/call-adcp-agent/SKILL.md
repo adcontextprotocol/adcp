@@ -225,7 +225,7 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | Symptom | What it means | Fix |
 |---|---|---|
 | `keyword: 'oneOf'` with `variants[]` | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
-| 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants ({account_id, brand, operator, …}) | Drop to one variant. Don't keep "extra" fields "for completeness". |
+| 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants (`{account_id, brand, operator, …}`) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
 | `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
