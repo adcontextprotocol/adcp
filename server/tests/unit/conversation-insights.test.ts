@@ -143,7 +143,7 @@ describe('Conversation Insights Job', () => {
         },
         analysis: {
           executive_summary: 'Active week with strong engagement.',
-          question_themes: [{ theme: 'AdCP setup', count: 8, description: 'Questions about getting started', example_questions: ['How do I set up adagents.json?'] }],
+          question_themes: [{ theme: 'AdCP setup', estimated_count: 8, description: 'Questions about getting started', example_questions: ['How do I set up adagents.json?'] }],
           documentation_gaps: [{ topic: 'adagents.json', evidence: 'Multiple questions about config format', suggested_action: 'Add quickstart guide' }],
           training_gaps: [],
           addie_improvements: [],
@@ -173,7 +173,7 @@ describe('Conversation Insights Job', () => {
         },
         analysis: {
           executive_summary: 'Active week with strong engagement.',
-          question_themes: [{ theme: 'AdCP setup', count: 8, description: 'Getting started questions', example_questions: ['How do I set up adagents.json?'] }],
+          question_themes: [{ theme: 'AdCP setup', estimated_count: 8, description: 'Getting started questions', example_questions: ['How do I set up adagents.json?'] }],
           documentation_gaps: [{ topic: 'adagents.json', evidence: 'Multiple questions', suggested_action: 'Add quickstart guide' }],
           training_gaps: [],
           addie_improvements: [],

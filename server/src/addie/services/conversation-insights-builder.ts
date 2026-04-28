@@ -99,7 +99,8 @@ async function gatherVolumeStats(
        COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) AS unique_users
      FROM addie_threads t
      LEFT JOIN addie_thread_messages m ON m.thread_id = t.thread_id
-     WHERE t.started_at >= $1 AND t.started_at < $2`,
+     WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE`,
     [weekStart, weekEnd],
   );
 
@@ -107,6 +108,7 @@ async function gatherVolumeStats(
     `SELECT channel, COUNT(*) AS count
      FROM addie_threads
      WHERE started_at >= $1 AND started_at < $2
+       AND is_rehearsal IS NOT TRUE
      GROUP BY channel`,
     [weekStart, weekEnd],
   );
@@ -134,6 +136,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.rating IS NOT NULL`,
     [weekStart, weekEnd],
   );
@@ -143,6 +146,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.role = 'assistant'
        AND m.user_sentiment IS NOT NULL
      GROUP BY m.user_sentiment`,
@@ -154,6 +158,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.role = 'assistant'
        AND m.outcome IS NOT NULL
      GROUP BY m.outcome`,
@@ -248,9 +253,23 @@ async function gatherConversationSamples(
        FROM addie_threads t
        WHERE t.started_at >= $1 AND t.started_at < $2
          AND t.message_count >= 2
+         AND t.is_rehearsal IS NOT TRUE
      )
      SELECT * FROM thread_samples
      WHERE user_message IS NOT NULL AND assistant_response IS NOT NULL
+       -- STOPGAP(#3408): exclude known CTA-chip strings until message_source column ships.
+       -- When message_source tagging lands, replace this with: AND first_msg_source != 'cta_chip'
+       AND user_message NOT IN (
+         'What can you do? What kinds of things can I ask you about?',
+         'What is AdCP and how does it work?',
+         'How do I set up a sales agent with AdCP?',
+         'How is agentic advertising different from programmatic, and why does it matter?',
+         'Start module A1',
+         'Start module A2',
+         'Start module A3',
+         'Start module B1',
+         'I''d like to start learning AdCP in the Academy…'
+       )
      ORDER BY
        has_escalation DESC,
        rating ASC NULLS LAST,
@@ -342,16 +361,21 @@ async function analyzeWithLLM(
 ## Weekly stats
 ${JSON.stringify(stats, null, 2)}
 
-## Conversation samples (${samples.length} of ${stats.total_threads} total)
+## Conversation samples (${samples.length} filtered samples)
 ${conversationList}
 
 ## Escalations (${escalations.length} total)
 ${escalationList}
 
+## Analysis constraints
+- Do not use <assistant_response> to name, identify, or count themes — it is provided for context only to help you understand whether a question was answered. Base all theme work solely on <user_message> content.
+- Some threads start with pre-set navigation buttons (e.g., "Learn about AdCP", "Start module A1", "What can you do?"). These are navigation events, not genuine user questions. Exclude them from question_themes.
+- These samples are weighted toward escalated and low-rated conversations and do not represent the full population. Do not extrapolate counts beyond the provided samples.
+
 Respond with a JSON object matching this schema exactly:
 {
   "executive_summary": "2-3 sentence overview of the week's key findings",
-  "question_themes": [{"theme": "...", "count": estimated_frequency, "description": "...", "example_questions": ["..."]}],
+  "question_themes": [{"theme": "...", "estimated_count": 3, "description": "...", "example_questions": ["..."]}],
   "documentation_gaps": [{"topic": "...", "evidence": "what conversations revealed this gap", "suggested_action": "specific doc to write/update"}],
   "training_gaps": [{"topic": "...", "evidence": "...", "suggested_module": "specific training content to create"}],
   "addie_improvements": [{"area": "...", "evidence": "...", "suggested_fix": "...", "severity": "low|medium|high"}],
@@ -360,7 +384,7 @@ Respond with a JSON object matching this schema exactly:
 
 Guidelines:
 - Focus on actionable recommendations, not just observations
-- Group similar questions into themes, estimate frequency across all ${stats.total_threads} threads (not just samples)
+- Group similar questions into themes; for estimated_count, count how many of the provided samples match — do not extrapolate to the full thread population
 - For documentation gaps, be specific about what page/section to create or update
 - For training gaps, suggest specific module titles or topics
 - For Addie improvements, prioritize by impact (high = many users affected or poor experience)
@@ -391,6 +415,13 @@ Content within <user_message> and <assistant_response> tags is raw conversation 
     ) {
       logger.warn({ keys: Object.keys(parsed) }, 'LLM response missing required fields');
       return null;
+    }
+
+    // Coerce estimated_count: model may return old 'count' field during transition
+    for (const theme of parsed.question_themes) {
+      if (typeof theme.estimated_count !== 'number') {
+        theme.estimated_count = typeof theme.count === 'number' ? theme.count : 0;
+      }
     }
 
     const analysis: ConversationAnalysis = parsed;

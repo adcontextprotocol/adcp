@@ -310,6 +310,7 @@
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
                       "docs/governance/annex-iii-obligations",
+                      "docs/governance/working-group-charter",
                       {
                         "group": "Property Governance",
                         "pages": [
@@ -528,6 +529,7 @@
                 "pages": [
                   "docs/learning/overview",
                   "docs/learning/instructional-design",
+                  "docs/learning/failure-mode-scope",
                   {
                     "group": "Basics (free)",
                     "pages": [
@@ -816,6 +818,7 @@
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
+                  "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
                     "pages": [
@@ -1011,6 +1014,7 @@
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
+              "docs/learning/failure-mode-scope",
               {
                 "group": "Basics (free)",
                 "pages": [

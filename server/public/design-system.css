@@ -2134,3 +2134,76 @@ body {
     height: calc(60px + var(--safe-area-inset-top));
   }
 }
+
+/* =============================================================================
+   14. DARK MODE TOKENS
+
+   Overrides semantic aliases for dark mode. Raw palette values are unchanged;
+   only semantic aliases are remapped so any component using var(--color-*)
+   responds automatically.
+
+   Two mechanisms:
+   1. @media (prefers-color-scheme: dark) — follows OS system preference
+   2. html[data-theme="dark|light"] — explicit user override; attribute selector
+      specificity (0,1,1) beats :root (0,1,0) so it wins over the media query
+
+   Brand note: --color-brand maps to primary-400 (#6b8cef) in dark mode.
+   This colour achieves ~4:1 on dark card surfaces (slightly below 4.5:1 WCAG AA
+   for small body text, above 3:1 for non-text). Links and icon buttons meet
+   non-text contrast. Reviewers should verify any link-heavy dark-mode surface.
+   ============================================================================= */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #f9fafb;
+    --color-text-secondary: #d1d5db;
+    --color-text-muted: #9ca3af;
+    --color-text-heading: #f9fafb;
+    --color-border: #374151;
+    --color-border-strong: #4b5563;
+    --color-bg-page: #111827;
+    --color-bg-subtle: #1f2937;
+    --color-bg-card: #1f2937;
+    --color-surface: #1f2937;
+    --color-surface-raised: #374151;
+    --color-brand: #6b8cef;
+    --color-brand-hover: #8aa3f4;
+    --color-brand-bg: rgba(107, 140, 239, 0.1);
+  }
+}
+
+/* html[data-theme] — explicit user preference; beats @media :root by specificity */
+
+html[data-theme="dark"] {
+  --color-text: #f9fafb;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #9ca3af;
+  --color-text-heading: #f9fafb;
+  --color-border: #374151;
+  --color-border-strong: #4b5563;
+  --color-bg-page: #111827;
+  --color-bg-subtle: #1f2937;
+  --color-bg-card: #1f2937;
+  --color-surface: #1f2937;
+  --color-surface-raised: #374151;
+  --color-brand: #6b8cef;
+  --color-brand-hover: #8aa3f4;
+  --color-brand-bg: rgba(107, 140, 239, 0.1);
+}
+
+html[data-theme="light"] {
+  --color-text: #1d1d1d;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-text-heading: #2d3748;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-bg-page: #f3f4f6;
+  --color-bg-subtle: #f9fafb;
+  --color-bg-card: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-brand: #1a36b4;
+  --color-brand-hover: #2d4fd6;
+  --color-brand-bg: #eef4fc;
+}
