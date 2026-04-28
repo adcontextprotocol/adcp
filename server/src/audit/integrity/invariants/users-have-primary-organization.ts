@@ -1,47 +1,54 @@
 /**
- * Invariant: every user with at least one organization_memberships row in a
- * non-personal org has users.primary_organization_id set.
+ * Invariant: users.primary_organization_id is coherent with the user's
+ * organization_memberships. Two failure modes:
  *
- * A NULL pointer silently breaks every read site that queries the column
- * directly without falling back to organization_memberships. This caused
- * paid Founding members to see "no directory listing" / "not a member" on
- * the member-profile page and Addie tools in April 2026.
+ *   1. Missing pointer — user has memberships but column is NULL.
+ *      Caused by user.created vs organization_membership.created webhook-order
+ *      races, fire-and-forget backfill failures, or direct DB inserts.
+ *      Read sites that gate on the column treat the user as having no org.
  *
- * Drift sources:
- *   - user.created vs organization_membership.created webhook-order race
- *     (membership webhook's backfill UPDATE no-ops if the users row doesn't
- *     exist yet)
- *   - fire-and-forget backfill failures in enrichUserWithMembership
- *   - direct DB inserts that bypass the webhook handlers
+ *   2. Stale pointer — column points at an org the user no longer belongs to.
+ *      Caused by missed delete webhooks (or pre-fix delete handlers that
+ *      didn't clear the column). Read sites continue resolving the user into
+ *      an org they were removed from — the same authorization-scope risk in
+ *      reverse.
  *
- * The remediation hint maps to the centralized helper that does the right
- * read-with-fallback in production: users-db.ts:resolvePrimaryOrganization.
+ * Production fix lives in users-db.ts:resolvePrimaryOrganization (read-with-
+ * fallback) and membership-db.ts:deleteOrganizationMembership (clears the
+ * pointer in the same step as the membership delete).
  */
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
 
 const DEFAULT_LIMIT = 1000;
 
-interface MismatchRow {
+interface MissingPointerRow {
   workos_user_id: string;
   email: string;
   inferred_org_id: string;
   inferred_org_name: string;
 }
 
+interface StalePointerRow {
+  workos_user_id: string;
+  email: string;
+  stale_org_id: string;
+}
+
 export const usersHavePrimaryOrganizationInvariant: Invariant = {
   name: 'users-have-primary-organization',
   description:
-    'Every user with at least one organization_memberships row in a non-personal ' +
-    'org has users.primary_organization_id set. Catches webhook-order races and ' +
-    'silent backfill failures that break read sites which do not fall back from ' +
-    'the column to organization_memberships.',
+    'users.primary_organization_id is coherent with organization_memberships. ' +
+    'Catches both missing pointers (column NULL despite memberships) and stale ' +
+    'pointers (column set to an org the user no longer belongs to). Either drift ' +
+    'silently broadens or narrows the read sites that gate on the column.',
   severity: 'warning',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
     const { pool, options } = ctx;
     const limit = Math.min(options?.sampleSize ?? DEFAULT_LIMIT, 5000);
     const violations: Violation[] = [];
 
-    const result = await pool.query<MismatchRow>(`
+    // Failure mode 1: column NULL but memberships exist.
+    const missing = await pool.query<MissingPointerRow>(`
       SELECT DISTINCT ON (u.workos_user_id)
         u.workos_user_id,
         u.email,
@@ -59,7 +66,7 @@ export const usersHavePrimaryOrganizationInvariant: Invariant = {
       LIMIT $1
     `, [limit]);
 
-    for (const row of result.rows) {
+    for (const row of missing.rows) {
       violations.push({
         invariant: 'users-have-primary-organization',
         severity: 'warning',
@@ -71,6 +78,7 @@ export const usersHavePrimaryOrganizationInvariant: Invariant = {
           `(Addie member tools, brand-feeds, referrals, brand-claim, registry-api) ` +
           `silently treat this user as having no organization.`,
         details: {
+          drift: 'missing_pointer',
           workos_user_id: row.workos_user_id,
           email: row.email,
           inferred_org_id: row.inferred_org_id,
@@ -83,6 +91,41 @@ export const usersHavePrimaryOrganizationInvariant: Invariant = {
       });
     }
 
-    return { checked: result.rows.length, violations };
+    // Failure mode 2: column points at an org with no current membership row.
+    const stale = await pool.query<StalePointerRow>(`
+      SELECT u.workos_user_id, u.email, u.primary_organization_id AS stale_org_id
+      FROM users u
+      LEFT JOIN organization_memberships om
+        ON om.workos_user_id = u.workos_user_id
+       AND om.workos_organization_id = u.primary_organization_id
+      WHERE u.primary_organization_id IS NOT NULL
+        AND om.workos_user_id IS NULL
+      LIMIT $1
+    `, [limit]);
+
+    for (const row of stale.rows) {
+      violations.push({
+        invariant: 'users-have-primary-organization',
+        severity: 'warning',
+        subject_type: 'user',
+        subject_id: row.workos_user_id,
+        message:
+          `User ${row.workos_user_id} (${row.email}) has primary_organization_id = ` +
+          `${row.stale_org_id} but no organization_memberships row for that org. ` +
+          `Read sites continue resolving the user into the removed org.`,
+        details: {
+          drift: 'stale_pointer',
+          workos_user_id: row.workos_user_id,
+          email: row.email,
+          stale_org_id: row.stale_org_id,
+        },
+        remediation_hint:
+          'Clear the column (UPDATE users SET primary_organization_id = NULL ...) ' +
+          'and let resolvePrimaryOrganization re-derive from organization_memberships ' +
+          'on the next request.',
+      });
+    }
+
+    return { checked: missing.rows.length + stale.rows.length, violations };
   },
 };

@@ -11,6 +11,11 @@
 -- Ongoing prevention: users-db.ts:resolvePrimaryOrganization (centralized
 -- read-with-fallback), upsertUser webhook backfill, and the
 -- users-have-primary-organization integrity invariant.
+--
+-- Scale: single statement is fine at current users-table size (low thousands
+-- as of this commit). If the table grows past ~100k rows, batch via
+-- WHERE workos_user_id IN (... LIMIT 5000) loops to avoid holding row locks
+-- across the whole table in one transaction.
 
 UPDATE users u
 SET primary_organization_id = pref.org_id,

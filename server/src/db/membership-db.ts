@@ -136,6 +136,11 @@ export async function upsertOrganizationMembership(
 /**
  * Delete an organization membership. Returns the role of the deleted
  * row (or null if the row didn't exist).
+ *
+ * Also clears users.primary_organization_id when it pointed at this org —
+ * a stale pointer would let resolvePrimaryOrganization keep returning a
+ * removed-org id, which read sites use as an authorization scope. Next
+ * read backfills via resolvePreferredOrganization.
  */
 export async function deleteOrganizationMembership(
   userId: string,
@@ -147,6 +152,12 @@ export async function deleteOrganizationMembership(
     `DELETE FROM organization_memberships
      WHERE workos_user_id = $1 AND workos_organization_id = $2
      RETURNING role`,
+    [userId, organizationId],
+  );
+
+  await pool.query(
+    `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
+     WHERE workos_user_id = $1 AND primary_organization_id = $2`,
     [userId, organizationId],
   );
 

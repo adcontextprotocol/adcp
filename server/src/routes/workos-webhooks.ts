@@ -314,9 +314,17 @@ async function upsertUser(user: UserData): Promise<void> {
   // this row didn't exist yet. Set the pointer now from whatever memberships
   // are already on file. No-op when the user has no memberships yet — the
   // membership webhook will handle that case when it fires.
-  const preferredOrg = await resolvePreferredOrganization(user.id);
-  if (preferredOrg) {
-    await backfillPrimaryOrganization(user.id, preferredOrg);
+  //
+  // Failures here don't fail the user upsert — the integrity invariant
+  // surfaces any pointer that doesn't get set, and the next authenticated
+  // request opportunistically backfills via resolvePrimaryOrganization.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(user.id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(user.id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'primary_organization_id backfill failed during user upsert');
   }
 
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');

@@ -202,8 +202,17 @@ export class UsersDatabase {
 
 /**
  * Resolve the preferred organization for a user from their memberships.
- * Prefers paying orgs, then most recently created membership.
  * Returns null if the user has no memberships.
+ *
+ * Tie-breaker: paying orgs first (subscription_status = 'active'), then most
+ * recent membership. Note this matches on the column literal — a sub that's
+ * still 'active' but has subscription_canceled_at set ranks the same as a
+ * fully-paying one. That's looser than the org-filters MEMBER_FILTER but
+ * good enough for the "which org is this user's primary?" question.
+ *
+ * For a user with memberships in multiple paying orgs, the most-recent wins.
+ * Cross-org auth code that relies on a deterministic "primary" should
+ * tolerate the user changing primary across membership additions.
  */
 export async function resolvePreferredOrganization(workosUserId: string): Promise<string | null> {
   const result = await query<{ workos_organization_id: string }>(
