@@ -6,7 +6,7 @@
  */
 
 import type { WorkOS } from '@workos-inc/node';
-import { getPool } from './client.js';
+import { getPool, getClient } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('membership-db');
@@ -146,22 +146,31 @@ export async function deleteOrganizationMembership(
   userId: string,
   organizationId: string,
 ): Promise<string | null> {
-  const pool = getPool();
-
-  const result = await pool.query<{ role: string }>(
-    `DELETE FROM organization_memberships
-     WHERE workos_user_id = $1 AND workos_organization_id = $2
-     RETURNING role`,
-    [userId, organizationId],
-  );
-
-  await pool.query(
-    `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
-     WHERE workos_user_id = $1 AND primary_organization_id = $2`,
-    [userId, organizationId],
-  );
-
-  return result.rows[0]?.role ?? null;
+  // Atomic: DELETE membership and clear the cached pointer in one transaction.
+  // If the DELETE succeeded but the pointer-clear UPDATE failed, we'd recreate
+  // the exact stale-pointer state the integrity invariant exists to catch.
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<{ role: string }>(
+      `DELETE FROM organization_memberships
+       WHERE workos_user_id = $1 AND workos_organization_id = $2
+       RETURNING role`,
+      [userId, organizationId],
+    );
+    await client.query(
+      `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
+       WHERE workos_user_id = $1 AND primary_organization_id = $2`,
+      [userId, organizationId],
+    );
+    await client.query('COMMIT');
+    return result.rows[0]?.role ?? null;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ── Invitation seat type ─────────────────────────────────────────────

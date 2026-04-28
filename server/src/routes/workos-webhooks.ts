@@ -166,10 +166,16 @@ async function upsertMembership(
     }
   }
 
-  // Set primary_organization_id if not already set (prefer paying orgs)
-  const preferredOrg = await resolvePreferredOrganization(membership.user_id);
-  if (preferredOrg) {
-    await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+  // Set primary_organization_id if not already set (prefer paying orgs).
+  // Best-effort — same rationale as upsertUser: a transient backfill failure
+  // shouldn't fail the membership webhook. Integrity invariant catches drift.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(membership.user_id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
 }
 
