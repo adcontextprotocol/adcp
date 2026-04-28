@@ -309,6 +309,7 @@
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
                       "docs/governance/annex-iii-obligations",
+                      "docs/governance/working-group-charter",
                       {
                         "group": "Property Governance",
                         "pages": [
@@ -814,6 +815,7 @@
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
+                  "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
                     "pages": [
