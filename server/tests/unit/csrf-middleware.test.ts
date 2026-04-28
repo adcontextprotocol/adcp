@@ -114,6 +114,9 @@ describe('csrfProtection', () => {
 
   const exemptExactPaths = [
     '/mcp',
+    '/mcp-strict',
+    '/mcp-strict-required',
+    '/mcp-strict-forbidden',
     '/stripe-webhook',
     '/auth/bridge-callback',
     '/token',
