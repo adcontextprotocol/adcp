@@ -106,9 +106,13 @@ describe('getDigestEmailRecipients — active track scoping', () => {
       [TEST_USER]
     );
 
+    const trackATotal = (await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM certification_modules WHERE track_id = 'A'`,
+    )).rows[0].count;
+
     const r = await recipient();
     expect(r.cert_modules_completed).toBe(2);
-    expect(r.cert_total_modules).toBe(3);
+    expect(r.cert_total_modules).toBe(Number(trackATotal));
   });
 
   it('breaks updated_at ties deterministically via module_id DESC', async () => {
