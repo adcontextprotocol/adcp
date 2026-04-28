@@ -21,6 +21,7 @@ import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/client/auth';
 import type { AddieTool } from '../types.js';
 import type { AgentConfig } from '@adcp/client/types';
 import { createLogger } from '../../logger.js';
+import { sanitizeUrl, validateFetchUrl } from '../../utils/url-security.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,6 +47,11 @@ const logger = createLogger('addie-auth-grader-tools');
 
 type ContentDigestMode = 'either' | 'required' | 'forbidden';
 
+/** Cap response body size at 64 KiB — capabilities responses are tiny; anything
+ * larger is either a misbehaving agent or an attempted memory-exhaustion against
+ * the prod server. Mirrors `@adcp/client`'s `ssrfSafeFetch` default. */
+const PROBE_BODY_CAP_BYTES = 64 * 1024;
+
 /**
  * Probe the agent's `request_signing.covers_content_digest` mode via a
  * JSON-RPC `tools/call` of `get_adcp_capabilities`. Lets us pre-skip the
@@ -54,10 +60,16 @@ type ContentDigestMode = 'either' | 'required' | 'forbidden';
  *
  * Returns null (skip nothing) on any probe failure: better to over-report
  * than to silently swallow a real verifier bug.
+ *
+ * SSRF defense: `validateFetchUrl` resolves the hostname and rejects any URL
+ * whose A/AAAA records land on private/link-local/loopback addresses before
+ * we issue the fetch. Body is capped at PROBE_BODY_CAP_BYTES.
  */
 async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMode | null> {
   try {
-    const res = await fetch(agentUrl, {
+    const url = new URL(agentUrl);
+    await validateFetchUrl(url);
+    const res = await fetch(sanitizeUrl(url), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
@@ -67,14 +79,19 @@ async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMo
         id: 'addie-capability-probe',
       }),
       signal: AbortSignal.timeout(10_000),
+      redirect: 'manual',
     });
     if (!res.ok) return null;
-    const body = await res.json() as {
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    if (declared > PROBE_BODY_CAP_BYTES) return null;
+    const text = await res.text();
+    if (text.length > PROBE_BODY_CAP_BYTES) return null;
+    const body = JSON.parse(text) as {
       result?: { content?: Array<{ text?: string }> };
     };
-    const text = body.result?.content?.[0]?.text;
-    if (!text) return null;
-    const cap = JSON.parse(text) as {
+    const inner = body.result?.content?.[0]?.text;
+    if (!inner) return null;
+    const cap = JSON.parse(inner) as {
       request_signing?: { covers_content_digest?: string };
     };
     const mode = cap.request_signing?.covers_content_digest;
@@ -82,7 +99,7 @@ async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMo
     return null;
   } catch (err) {
     logger.debug(
-      { err: err instanceof Error ? err.message : String(err), agentUrl },
+      { err: err instanceof Error ? err.message : String(err) },
       'capability probe failed; grader will run without auto-skip'
     );
     return null;
