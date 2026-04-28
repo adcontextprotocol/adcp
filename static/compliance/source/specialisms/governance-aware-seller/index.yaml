@@ -25,6 +25,7 @@ requires_scenarios:
   - media_buy_seller/governance_conditions
   - media_buy_seller/governance_denied
   - media_buy_seller/governance_denied_recovery
+  - governance_aware_seller/governance_multi_agent_rejected
 
 narrative: |
   Governance composition is an optional seller capability. A seller agent can be

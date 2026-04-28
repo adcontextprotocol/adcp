@@ -1,0 +1,118 @@
+id: governance_aware_seller/governance_multi_agent_rejected
+version: "1.0.0"
+title: "Seller rejects sync_governance with more than one governance agent"
+category: governance_aware_seller
+summary: "Verifies that a governance-aware seller rejects a sync_governance request carrying more than one governance_agents entry, enforcing the maxItems: 1 constraint."
+track: media_buy
+required_tools:
+  - sync_governance
+
+narrative: |
+  PR #3015 constrained governance_agents to maxItems: 1 — one governance agent
+  per account, mirroring the singular governance_context on the protocol envelope.
+  The sync_governance task doc states that sellers MUST reject registrations
+  carrying more than one agent entry and surface a clear error pointing at the
+  one-agent-per-account invariant.
+
+  A seller that silently accepts a two-agent payload (persisting only the first
+  entry, or all entries) passes every happy-path governance scenario without ever
+  enforcing this constraint. This scenario closes that gap: it submits a
+  sync_governance request with two governance_agents entries and expects the seller
+  to respond with INVALID_REQUEST.
+
+  No governance agent is needed — only the seller's request-schema validation is
+  under test. The test is intentionally narrow: account setup followed by a
+  single schema-violating sync_governance call.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Any governance-aware seller that validates sync_governance request schema"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A seller that supports sync_governance and validates the governance_agents
+    maxItems: 1 constraint on receipt. The scenario does not require a live
+    governance agent — only the seller is under test.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: account_setup
+    title: "Establish account with seller"
+    steps:
+      - id: sync_accounts
+        title: "Create account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Seller returns the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#governance_aware_seller_multi_agent_rejected_account_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: multi_agent_rejected
+    title: "sync_governance with two agents — rejected"
+    steps:
+      - id: sync_governance_two_agents
+        title: "Submit two governance_agents entries (violates maxItems: 1)"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: true
+        expected: |
+          Seller rejects the request because governance_agents contains two entries,
+          violating the maxItems: 1 constraint. Returns INVALID_REQUEST with a
+          message indicating the one-agent-per-account invariant was violated.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "https://governance.pinnacle-agency.example"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                - url: "https://secondary-governance.pinnacle-agency.example"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          idempotency_key: "$generate:uuid_v4#governance_aware_seller_multi_agent_rejected_sync_governance_two_agents"
+          context:
+            correlation_id: "governance_aware_seller--multi_agent_rejected--sync_governance"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Seller rejects two-agent payload — governance_agents maxItems: 1 violated. INVALID_REQUEST (malformed request) or VALIDATION_ERROR (constraint violation) are both compliant."
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_aware_seller--multi_agent_rejected--sync_governance"
+            description: "Context correlation_id echoed verbatim on error response"
