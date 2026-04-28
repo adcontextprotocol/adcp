@@ -1,5 +1,210 @@
 # Changelog
 
+## 3.0.1
+
+### Patch Changes
+
+- 10aa2b3: Cut **3.0.1** to ship `skills/` in the protocol tarball and fix path drift in `skills/call-adcp-agent/SKILL.md`. Closes #3116, #3117.
+
+  **Why a patch bump (not a re-cut at 3.0.0):** the protocol tarball is the SDK distribution surface. `3.0.0.tgz` was published 2026-04-22, before #3097 hoisted `skills/`. Re-cutting at the same version would mean a new SHA-256 at the same stable URL — incompatible with content-addressed pipelines, supply-chain attestations, and the cosign signature bound to the original content. Pre-merge expert review (protocol + security) recommended bumping to preserve immutability and produce a fresh signed release through the normal `release.yml` path.
+
+  **What's in 3.0.1:**
+
+  - `skills/` bundled in `/protocol/3.0.1.tgz` (the seven protocol-managed skills: `call-adcp-agent` + the per-protocol `adcp-{brand,creative,governance,media-buy,si,signals}`)
+  - `manifest.contents.skills` enumerated for SDK sync scripts to detect
+  - `skills/call-adcp-agent/SKILL.md` — replace four hardcoded `dist/schemas/<version>/bundled/...` references with discovery-first phrasing that doesn't assume an SDK layout
+  - `docs/protocol/calling-an-agent.mdx` — sister content fix
+
+  **What does NOT change:** every schema, every task definition, every wire-format detail in 3.0.0 carries over identically to 3.0.1. The bump is for the bundle/skill axis, not the protocol-spec axis.
+
+  **SDK action:** bump `ADCP_VERSION` from `3.0.0` to `3.0.1` to receive the canonical skills via your existing sync flow. JS-side wiring is in [adcontextprotocol/adcp-client#965](https://github.com/adcontextprotocol/adcp-client/pull/965); Python and Go follow-ups tracked in [adcp-client-python#274](https://github.com/adcontextprotocol/adcp-client-python/issues/274) and [adcp-go#91](https://github.com/adcontextprotocol/adcp-go/issues/91).
+
+- a7dbe65: docs(brand): specify normative request-validation clauses for `acquire_rights` (closes #2680, #2681)
+
+  Two campaign-field validations on `acquire_rights` were sensible-but-unspecified in 3.0, leaving implementers to disagree on identical requests:
+
+  1. **Expired campaign window.** Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.end_date"` when `campaign.end_date` is in the past at the time of the request. Issuing a zero-duration grant is almost always a buyer-side bug; deterministic rejection is more useful than silent expiry. Unlike `create_media_buy` (where `any_of` supports time-shifting a flight forward), rights grants attach to the requested period and cannot be retroactively shifted, so reject-only is the correct contract.
+
+  2. **CPM-priced rights under a governed plan.** When the request carries an intent-phase `governance_context` token (the buyer's plan is governed) and the selected pricing option has `model: "cpm"`, brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"` when that field is omitted or `0`. When provided, projected commitment is `(pricing_option.price / 1000) × campaign.estimated_impressions` evaluated in `pricing_option.currency`. If `pricing_option.currency` differs from the plan's budget currency, the agent MUST reject with `field: "pricing_option_id"` — currency conversion is not specified. If the projected commitment exceeds remaining plan budget, the agent MUST reject with `field: "campaign.estimated_impressions"`. Non-CPM pricing options commit the flat amount regardless of volume; agents MUST NOT require `estimated_impressions` for governance projection on those.
+
+  Added a new "Request validation" section to `docs/brand-protocol/tasks/acquire_rights.mdx` and tightened the field descriptions on `static/schemas/source/brand/acquire-rights-request.json` for `campaign.end_date` and `campaign.estimated_impressions` so the validation contract is discoverable from both the task reference and the schema.
+
+  Patch-eligible: docs-only clarification of behavior the spec already implied. No schema shape changes (only description text); no new error codes (`INVALID_REQUEST` is already standard). The `governance_context` anchor and the `(price / 1000) × impressions` projection formula reference fields that exist on the published 3.0 schemas — this PR does not introduce new wire surface, only normative interpretation.
+
+- 926b079: feat(compliance): add seed_creative_format scenario and list_creative_formats pagination
+
+  Adds `seed_creative_format` to `comply_test_controller` so the compliance harness can pre-populate a deterministic, size-controlled set of creative formats for pagination-integrity storyboards. `comply_test_controller` is a conformance-harness surface, not a core-protocol task — additive enum extensions on it bump at patch level under AdCP semver.
+
+  **Schema changes (comply-test-controller-request.json, comply-test-controller-response.json):** `seed_creative_format` added to the `scenario` enum in both files. The request schema gains a `params.format_id` string field (required when `scenario = seed_creative_format`) and the response schema's `list_scenarios` enum is extended to match.
+
+  **Training-agent implementation:** `seed_creative_format` is handled in `handleComplyTestController` before the SDK dispatcher. Seeded formats are stored in a new `session.complyExtensions.seededCreativeFormats` map and replace the static catalog when non-empty for `list_creative_formats` responses.
+
+  **Pagination:** `handleListCreativeFormats` now applies cursor-based pagination (matching the `list_creatives` pattern) and is session-aware to read seeded formats. Non-compliance callers continue to see the full static catalog with pagination applied.
+
+  **Storyboard:** `pagination-integrity-creative-formats.yaml` exercises the cursor↔has_more invariant on `list_creative_formats` by seeding two formats and walking pages at `max_results=1`.
+
+  Non-breaking: adds a new enum value and optional param. Sellers that don't implement `seed_creative_format` will return `UNKNOWN_SCENARIO`; the storyboard's `controller_seeding: true` signals that support is required for this storyboard to pass. Existing callers of `list_creative_formats` are unaffected — pagination fields are additive to the response.
+
+  Closes #3108.
+
+- ae7eae2: Add optional `mode` field to `get_plan_audit_logs` audit entries, recording the governance mode (enforce/advisory/audit) active at check time. Surfaces the enforcement posture that produced each decision, closing a gap where audit and enforce modes produced identical-looking trails.
+- 46439c4: **Apply the AdCP URL canonicalization rule to brand.json agent URLs.**
+
+  Follow-up to #3067 — the canonicalization reference page now exists,
+  and `seller-agent-ref`, `adagents.json` `authorized_agents[].url`,
+  `format-id`, and `provider-registration` all link to it. `brand.json`
+  declares additional agent URLs that fall in the same identifier-
+  comparison class but weren't covered:
+
+  - `brand_agent_entry.url` — the brand-declared agent endpoint (MCP or
+    A2A) used by callers resolving "is this the agent that signed this
+    artifact?" or matching against a discovery cache.
+  - `brand_agent.url` — the brand agent MCP endpoint reference.
+  - `rights_agent.url` — the rights agent MCP endpoint reference.
+
+  All three now reference the AdCP URL canonicalization rules at
+  `docs/reference/url-canonicalization` so two URLs differing only in
+  case, default port, or percent-encoded unreserved characters compare
+  equal during agent resolution.
+
+  `logo.url`, `data_subject_contestation.url`, asset-library `url`, and
+  the brand's primary `url` are _not_ identifier-comparison keys (they
+  point at human-facing pages or asset CDN endpoints), so they were
+  left unchanged.
+
+  `jwks_uri` (line 627) is a fetch target for JWKS download, not an
+  identifier-comparison key — receivers HTTP-GET the URL as declared
+  without comparing it to anything. Not in scope for this rule.
+
+  No schema shape changes. Descriptions only.
+
+- 1cd99c2: Make the `task_status` / `response_status` prohibition from #3021 machine-enforceable at the schema level. Adds a `not: { anyOf: [{ required: [task_status] }, { required: [response_status] }] }` constraint on `protocol-envelope.json` (matching the existing idiom in `catchment.json`) so any JSON Schema validator rejects envelopes that dual-emit legacy status fields — no runner-specific primitive required. The prose MUST NOT in the envelope `status` description remains for human readers; the constraint is what validators act on. Closes #3041 at the spec layer. Runtime conformance (storyboard `field_absent` primitive + `@adcp/client` implementation) is tracked separately.
+- ea8e282: Add `title` to all `oneOf` branches in `format.json`'s `assets[]` array so codegen tools (json-schema-to-typescript, datamodel-code-generator, oapi-codegen) produce named, discriminated per-asset-type interfaces instead of collapsing them to an untyped union. Adds titles `IndividualImageAsset` … `IndividualCatalogAsset` and `RepeatableGroupAsset` at the top level, plus `GroupImageAsset` … `GroupWebhookAsset` for the nested branches inside `repeatable_group.assets[]`. Purely annotation-level; no validation or wire-format change.
+- cecca44: Deprecates top-level `max_results` on `get_signals` and pins `pagination.max_results` precedence.
+
+  `get-signals-request.json` carried two independent pagination fields — a legacy top-level `max_results` (no cap, no default, predates the pagination envelope) and the standard `pagination` envelope (`pagination.max_results`, max: 100, default: 50). The schema was silent on which wins when both are present.
+
+  This change adds a MUST-level precedence rule: when both fields are present, agents MUST honor `pagination.max_results`. It also deprecates the top-level field with guidance for sellers receiving it without a pagination envelope. The top-level `max_results` will be removed in AdCP 4.0.
+
+  All other paginated read endpoints (`get_products`, `list_creatives`, `list_creative_formats`, `get-collection-list`, `get-property-list`, `get-media-buy-artifacts`, `tasks-list`) carry only `pagination` — this brings `get_signals` into alignment.
+
+  Non-breaking: adds description-level deprecation and normative prose. No type, structure, or required-field changes. Existing callers unaffected; sellers adding the conflict check gain new conformance grounding.
+
+- 00c1574: Add `mode` to `check_governance` response schema and fix `binding`→`check_type` drift in training agent audit entries.
+
+  `check-governance-response.json` now declares the optional `mode` field (enforce/advisory/audit) that the training agent was already emitting, letting counterparties and regulators distinguish `approved`-with-finding decisions made under `enforce` from those made under `audit`. The training agent audit log handler no longer emits the non-canonical `binding` field (which caused schema-validation failures on the strict `entries[]` schema); it now emits `check_type: "intent"|"execution"` per the existing schema contract. The schema carries `x-status: experimental`. Audit-entry `mode` is added separately by #3160.
+
+- ff95642: Clarify `policies_evaluated` description in `check-governance-response.json` and `get-plan-audit-logs-response.json`. The previous wording ("Registry policy IDs...") was incomplete and misleading: governance agents also record inline `policy_id`s from `custom_policies` in this field, and a consumer reading the description literally could write a parser that filters them out. The new wording names both sources. Both schemas carry `x-status: experimental`. Description-only clarification; no type, enum, or wire change.
+- 20a8310: Mark `governance-mode.json` enum as `x-status: experimental` and clarify the per-check semantics of the audit-entry `mode` field.
+
+  The enum is referenced exclusively from experimental schemas (`check-governance-response.json`, `get-plan-audit-logs-response.json` `entries[]`); annotating it explicitly prevents the enum from being treated as stable while its consumers are still experimental. The `entries[].mode` description is tightened to clarify that the field reflects the mode active for that specific check, distinct from a future `governed_actions[].mode` (which would describe the action's current mode and may differ if the plan has been re-synced since).
+
+- 3027c39: feat(schema): hoist 4 duplicate inline enum literal sets into shared `enums/` definitions (closes #3144)
+
+  Several inline string-literal unions in the AdCP source schemas had byte-identical value sets across multiple parent schemas but no shared `$ref`, causing the TypeScript SDK to emit per-parent duplicate exports (`Account_PaymentTermsValues`, `GetAccountFinancialsSuccess_PaymentTermsValues`, etc.) when a single canonical `PaymentTermsValues` is what consumers expect.
+
+  **New shared enum files added** (4 new `$id`-bearing schemas in `static/schemas/source/enums/`):
+
+  - `payment-terms.json` — `["net_15","net_30","net_45","net_60","net_90","prepay"]`
+  - `audio-channel-layout.json` — `["mono","stereo","5.1","7.1"]`
+  - `media-buy-valid-action.json` — `["pause","resume","cancel","update_budget","update_dates","update_packages","add_packages","sync_creatives"]`
+  - `rights-billing-period.json` — `["daily","weekly","monthly","quarterly","annual","one_time"]`
+
+  **Schemas updated to use `$ref`** (10 files; wire format unchanged in all cases):
+
+  - `core/account.json`, `account/sync-accounts-request.json`, `account/sync-accounts-response.json`, `account/get-account-financials-response.json` → `payment_terms` now refs `enums/payment-terms.json`
+  - `core/assets/audio-asset.json`, `core/assets/video-asset.json` → `channels`/`audio_channels` now ref `enums/audio-channel-layout.json`
+  - `media-buy/create-media-buy-response.json`, `media-buy/update-media-buy-response.json` → `valid_actions` items now ref `enums/media-buy-valid-action.json`
+  - `brand/rights-terms.json`, `brand/rights-pricing-option.json` → `period` now refs `enums/rights-billing-period.json`
+
+  **Not changed:** `core/insertion-order.json` `payment_terms` (`["net_30","net_60","net_90","prepaid","due_on_receipt"]` — different set, kept inline).
+
+  Non-breaking: replacing inline `{"type":"string","enum":[...]}` with a `$ref` to an equivalent standalone schema produces an identical JSON Schema subgraph; all existing validators behave identically. Source-schema refactor only; bundled wire format is unchanged — patch-eligible.
+
+  After a `npm run sync-schemas` in `adcp-client`, the SDK will emit single canonical exports (`PaymentTermsValues`, `AudioChannelLayoutValues`, etc.) and should ship deprecated re-export aliases for any per-parent names that were in a published release.
+
+- feed616: Hoist 13 duplicate inline enum sets into shared `enums/` definitions (follow-up to #3148).
+
+  Adds `match-type`, `collection-kind`, `frame-rate-type`, `scan-type`, `gop-type`, `moov-atom-position`, `binary-verdict`, `account-scope`, `governance-decision`, `billing-party`, `feature-check-status`, `snapshot-unavailable-reason`, and `travel-time-unit` as standalone `$id`-bearing enum files. Updates 21 source schemas to `$ref` these files instead of repeating the inline definitions. Source-schema refactor only; bundled wire format is unchanged in all cases.
+
+- 4614f4d: Clarify that v3 agents MUST NOT emit legacy status fields (`task_status`, `response_status`, or any alias) alongside the v3 `status` field. Adds a migration checklist row, a conformance warning in the task-lifecycle reference, and extends the protocol envelope schema's `status` description with the prohibition. Closes #2987.
+- 90ad0dd: Add `x-status: experimental` to all 9 TMP schemas and `core/seller-agent-ref.json` (exclusively referenced by TMP), completing the experimental-status contract already declared for `trusted_match.core` in `get_adcp_capabilities` and `experimental-status.mdx`. Mirrors the existing pattern on all 11 sponsored-intelligence schemas. Enables validators, doc generators, and tooling to identify TMP as an experimental surface. No wire-format or field changes.
+- f1e8340: **TMP: explicit seller-agent attribution on AvailablePackage.**
+
+  Add `seller_agent: { agent_url, id? }` to the Trusted Match Protocol
+  AvailablePackage schema, making seller identity explicit on every
+  package cached by a TMP provider. The canonical identifier is the
+  seller's agent URL as declared in the property publisher's
+  `adagents.json` `authorized_agents[].url`; the reserved `id` slot is
+  forward-compatible with a future registry-assigned opaque identifier.
+
+  - **`/schemas/core/seller-agent-ref.json`** — new shared schema
+    mirroring the `{agent_url, id?}` shape used by `format-id` and
+    `ProviderEntry`.
+  - **`/schemas/tmp/available-package.json`** — `seller_agent` added as
+    a required field. Lands as a patch under the experimental-surface
+    contract (`experimental_features: trusted_match.core`, which allows
+    breaking changes between 3.x releases with advance notice); sellers
+    syncing `AvailablePackage` payloads need to populate it going
+    forward.
+  - **`/schemas/tmp/offer.json`** — optional `seller_agent` echo so
+    publisher-side log pipelines can attribute offers to sellers
+    without round-tripping to the media-buy store. Non-authoritative:
+    the cached package binding remains source of truth; routers MAY
+    stamp the field on merge when providers omit it.
+  - **`/schemas/tmp/error.json`** — adds `seller_not_authorized` error
+    code for sync-time rejection when `seller_agent.agent_url` is not
+    present in the property publisher's adagents.json
+    `authorized_agents[].url` list.
+  - **`docs/trusted-match/specification.mdx`** — new "Package Sync"
+    section defines the sync contract, the SHOULD-level adagents.json
+    validation flow, explicit per-actor responsibilities (seller
+    agent, publisher, router, provider), and the "what this is not"
+    boundary (not a request-time filter, not a sellers.json bridge,
+    not a cryptographic attestation). Offer and Error tables updated
+    accordingly; definitions table gains a **Seller agent** entry.
+
+  Seller identity lives on the cached `AvailablePackage`, not on
+  `context_match_request` or `identity_match_request`. Providers —
+  which have no access to a media-buy store — need provenance on the
+  wire they actually receive; putting it on the request would either
+  duplicate the sync-time binding or open a path for request-time
+  seller filtering that re-introduces the identity- and
+  allocation-leakage failure modes that package-set decorrelation
+  exists to prevent. Publishers and routers can derive seller identity
+  from `media_buy_id` against their own stores; providers cannot.
+
+  TMP remains experimental under AdCP 3.x — schema additions here
+  follow the experimental-surface contract and do not bump the stable
+  AdCP major. The `SellerAgentRef.id` slot and optional `ext` namespace
+  leave room to layer signed seller claims or an AAO-assigned opaque
+  identifier without a rename later.
+
+- aa71ebc: **URL canonicalization: one authoritative reference for every URL-as-identifier comparison in AdCP.**
+
+  The canonicalization algorithm previously lived only under the request-signing profile in `docs/building/implementation/security.mdx`, but AdCP compares URLs as identifiers in many other places — TMP seller authorization (`seller_agent.agent_url` vs `authorized_agents[].url`), TMP provider resolution (`ProviderEntry.agent_url`), `format-id.agent_url` equivalence, and signal/feature agent lookups in `adagents.json`. Schemas today said "exactly as declared," which reads as byte-equality; two URLs that differ only in case, default port, or percent-encoded unreserved characters would silently miss the match.
+
+  This change moves the algorithm to a first-class reference page and links every consuming surface to it, so the same canonicalization binds everywhere.
+
+  - **New `docs/reference/url-canonicalization.mdx`** — the authoritative home of the 8-step algorithm (RFC 3986 §6.2.2 + §6.2.3, UTS-46 Nontransitional IDN pin, IPv6 zone-identifier rejection, enumerated malformed-authority cases), a "where it applies" table covering signing / TMP seller authorization / TMP provider resolution / `adagents.json` lookups / `format-id` / `authoritative_location` indirection, a "signing profile extensions" note for the transport-only bits, and a common-pitfalls list.
+  - **`docs/building/implementation/security.mdx`** — `@target-uri` section now cites the reference page instead of restating the eight steps. Keeps only the signing-specific extensions (HTTP/2 `:authority` derivation, dual-header rejection, `request_target_uri_malformed` error, cross-vhost replay gate). Removes the drift risk between two copies.
+  - **`static/schemas/source/core/seller-agent-ref.json`** — `agent_url` description replaces "exactly as declared" with canonicalization-based comparison. Also drops the "in production" weasel on HTTPS — the scheme requirement is now unconditional.
+  - **`static/schemas/source/adagents.json`** — all six `url` descriptions updated: the four `authorized_agents[].url` variants, plus the two signals-authorization variants (`signal_ids`, `signal_tags`) and the property-features variant.
+  - **`static/schemas/source/core/format-id.json`** — `agent_url` description updated to require canonicalization.
+  - **`static/schemas/source/tmp/provider-registration.json`** — `endpoint` description extends the existing SSRF/DNS-rebinding language with a canonicalization rule for provider-registry de-duplication.
+  - **`docs/trusted-match/specification.mdx`** — TMP Sync-Time Validation step 2 links canonicalization rules explicitly and adds an explicit `https://`-only rejection (non-HTTPS seller URLs get `seller_not_authorized`, closing the scheme-mismatch bypass). ProviderEntry table row links the canonicalization rules for provider comparison.
+  - **`docs.json`** — reference page added to both primary and legacy sidebars adjacent to `versioning` (other interop-rules references).
+
+  No schema shape changes. Descriptions only. Schema link style follows the repo convention (`See docs/<path>` bare, no backticks or leading slash).
+
+- 9ff83de: feat(compliance): v3 envelope integrity universal storyboard
+
+  Adds `static/compliance/source/universal/v3-envelope-integrity.yaml` — a universal storyboard (applies to all agent interaction models) that asserts the v3 `status` field is present on the response envelope and that the legacy v2 `task_status` / `response_status` field names are absent.
+
+  Schema-level enforcement of the prohibition is provided separately by `envelope-forbid-legacy-status-fields.md` (top-level `not: { anyOf: [{ required: [task_status] }, { required: [response_status] }] }` on `protocol-envelope.json`). This changeset is the runtime/storyboard counterpart.
+
+  The explicit envelope-root field-absence assertions are wired as TODO `field_absent` checks pending runner support in `@adcp/client`; the immediate enforcement path remains the schema-level constraint, which any schema-aware validator detects without runner-specific primitives. Closes #3041 at the storyboard layer.
+
 ## 3.0.0
 
 See [release notes](docs/reference/release-notes.mdx) for migration guidance, or [prerelease upgrade notes](docs/reference/migration/prerelease-upgrades.mdx) for rc.3 adopters.

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.1/enums/audience-status.json",
+  "title": "Audience Status",
+  "description": "Matching status of a synced audience on a seller platform. Present when the sync action is created, updated, or unchanged; absent when the action is deleted or failed. See the Audience Sync specialism for transition rules.",
+  "type": "string",
+  "enum": [
+    "processing",
+    "ready",
+    "too_small"
+  ],
+  "enumDescriptions": {
+    "processing": "Platform is matching submitted members against its user base, or is holding the audience in a consent/policy-review queue before matching begins (e.g., clean-room flows). Transitions to 'ready' when matching completes with a matched set at or above the platform's minimum, or to 'too_small' when matching completes with too few matches.",
+    "ready": "Audience is available for targeting. `matched_count` and `effective_match_rate` are populated. Sellers MAY re-enter 'processing' on a subsequent re-sync while re-matching runs, and MAY transition to 'too_small' if matched counts later fall below `minimum_size`.",
+    "too_small": "Matched audience is below the platform's minimum size for targeting. `minimum_size` is populated. Not terminal — buyers add more members and re-sync, which MAY return the audience to 'processing' while re-matching runs or directly to 'ready' when the re-matched count clears the minimum. Sellers MUST emit 'too_small' (not 'ready' with a low `matched_count`) whenever `matched_count < minimum_size`, so buyers have a programmatic signal that targeting will fail."
+  }
+}
