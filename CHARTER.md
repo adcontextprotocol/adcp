@@ -106,7 +106,7 @@ Day-to-day technical work happens in **Working Groups**, which are the Foundatio
 
 ## 7. Transparency principles
 
-- **Open meetings** — Board meetings publish agendas and minutes.
+- **Open meetings** — Board meetings publish agendas and minutes ([archive](https://docs.adcontextprotocol.org/docs/community/meeting-minutes)).
 - **Public governing documents** — Bylaws, Membership Agreement, IPR Policy, and Antitrust Policy are publicly available.
 - **Financial reporting** — Annual financial reports are shared with the membership.
 - **Equal voice** — Each voting class has equal representation regardless of company size.
