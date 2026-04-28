@@ -695,6 +695,53 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
+  // POST /api/organizations/:orgId/brand-classification-report - Record that
+  // a member flagged a brand-registry classification as wrong on the team page.
+  // Writes a structured audit row so we have a triage queue + can detect
+  // "10 different members reported the same domain". Doesn't block the user
+  // — they're also opening a mailto in parallel, so this is fire-and-forget
+  // best-effort.
+  router.post('/:orgId/brand-classification-report', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+      const { kind, subject_domain } = req.body ?? {};
+
+      const VALID_KINDS = ['parent', 'self', 'child'];
+      if (!VALID_KINDS.includes(kind)) {
+        return res.status(400).json({ error: 'Invalid kind', message: `kind must be one of: ${VALID_KINDS.join(', ')}` });
+      }
+      if (typeof subject_domain !== 'string' || subject_domain.length === 0 || subject_domain.length > 253) {
+        return res.status(400).json({ error: 'Invalid subject_domain' });
+      }
+
+      // Member of the org can flag — broader than admin/owner, since the
+      // report is informational and the corrective action is admin-side.
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
+        return res.status(403).json({ error: 'Access denied', message: 'You are not a member of this organization' });
+      }
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'brand_classification_report_filed',
+        resource_type: 'brand',
+        resource_id: subject_domain.toLowerCase(),
+        details: {
+          kind,
+          subject_domain: subject_domain.toLowerCase(),
+          reported_by_email: user.email,
+        },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Brand classification report error');
+      res.status(500).json({ error: 'Failed to record report' });
+    }
+  });
+
   // GET /api/organizations/:orgId/domain-users - Get Slack users from verified domains not in org (admin only)
   router.get('/:orgId/domain-users', requireAuth, async (req, res) => {
     try {
