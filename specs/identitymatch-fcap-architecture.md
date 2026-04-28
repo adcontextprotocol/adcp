@@ -42,9 +42,11 @@ The protocol describes **what** the service must compute, not **how** it stores 
 
 `tenant:dimension:value` (e.g. `buyer-acme:campaign:42`, `buyer-acme:advertiser:13`). Tenant prefix required to prevent cross-tenant counter pollution in multi-tenant fleets. Charset constraint `[a-zA-Z0-9_-]+` per segment for unambiguous parsing. Buyers choose dimensions; the protocol does not enumerate them. See [implementation guide § fcap_keys label model](../docs/trusted-match/identity-match-implementation.mdx#fcap_keys-label-model).
 
-### 3. No required canonicalization of user identity
+### 3. Cross-identity dedup via `impression_id`, not merge rules
 
-Records are keyed by `(uid_type, user_token)`. Buyers running their own identity graph can canonicalize before write/read; the protocol stays agnostic. Multi-identity merge is handled at eligibility-check time via the policy's `merge_rule`. **MAX recommended** for graph-canonicalizing operators (matches Xandr/DV360/TTD); OR for graphless operators where identities are known not to alias; SUM rarely correct. See [implementation guide § Identity handling](../docs/trusted-match/identity-match-implementation.mdx#identity-handling).
+Records are keyed by `(uid_type, user_token)`. Buyers running their own identity graph can canonicalize before write/read; the protocol stays agnostic. Multi-identity dedup is handled at eligibility-check time by deduplicating exposure-log entries by `impression_id` — a single impression resolved to multiple identity tokens has the same `impression_id` written to all identity logs, and the read-time union recovers the count exactly.
+
+This approach is correct by construction for **graphless and graph-canonicalizing operators alike**, with no merge-rule policy needed. Earlier drafts of this design proposed counter-based exposure tracking with a `merge_rule` (MAX/OR/SUM) policy field; that approach under-counts when identity resolution toggles across impressions (a real concern given Scope3 is graphless). The `adcp-go/targeting/` reference impl already uses log-based dedup; this spec aligns with the existing impl rather than the abandoned counter design. See [implementation guide § Identity handling and cross-identity dedup](../docs/trusted-match/identity-match-implementation.mdx#identity-handling-and-cross-identity-dedup).
 
 ### 4. `serve_window_sec` replaces `ttl_sec`
 
@@ -77,13 +79,14 @@ The existing wire `sync_audiences` task has `add[]`/`remove[]` deltas of audienc
 
 ## Open questions
 
-1. **Window semantics.** Sliding vs fixed vs exponential decay. Default proposal: fixed window aligned to `window_sec` boundary, with `last_seen` recorded for diagnostics.
-2. **Audience-record TTL inside the store.** `sync_audiences` writes are continuous. Proposal: `expires_at` on the audience-meta companion HASH; readers ignore expired entries.
+1. **`fcap_keys` generalization in `adcp-go/targeting`.** The reference impl currently uses scalar `package_id` and `campaign_id`; the spec defines arbitrary `fcap_keys` (advertiser, creative, line-item, etc.). Generalizing the reference impl is an in-flight refactor.
+2. **Atomic exposure-log append.** Reference impl uses read-modify-write per identity, which is not atomic. Comment in `engine.go:478` explicitly accepts under-counting under contention as benign. Atomic append via Lua or a `Store.Append` method is a deferred optimization.
 3. **Cap on policies per fcap_key.** One policy per key for v1; cross-cutting caps (per-day AND per-hour) are expressed as multiple keys.
 4. **Identity-graph plug-point.** Pre-write/pre-read interceptors in the SDK. Default: identity passthrough.
-5. **Pluggable store interface signatures.** Settled in principle (FrequencyStore / AudienceStore / PackageStore / FcapPolicyStore); specific signatures pinned to `adcp-client#1005`.
+5. **Pluggable store interface signatures.** Modeled on `adcp-go/targeting/store.go`. Specific TS/Python signatures pinned to `adcp-client#1005`.
 6. **Where do fcap policies live on the wire (if anywhere)?** Currently SDK-only. Could embed in `create_media_buy` packages or add a new wire task. Decide before SDK ships.
-7. **Audience strength scores.** ZSET allows per-audience strength; eligibility can apply a floor at check time. v1 ships SET; ZSET migration is buyer-internal.
+7. **Audience strength scores.** Reference impl already supports per-segment scores in `UserProfile.Segments`. SDK should expose the strength floor at eligibility time.
+8. **Production-deployment perf benchmarks.** Mock-store numbers (`scale_test.go`) cover the in-process eligibility path. Network round-trip to a real co-located valkey + cluster sharding effects need real benchmarks. Tracked as a rollout-plan deliverable.
 
 ## Deferred security & privacy issues (follow-up)
 
@@ -134,3 +137,5 @@ Per discussion with @bhuo (Scope3 impression-tracker owner) and Brian:
 ## Threads consolidated from PR #3359 review
 
 - **@oleksandr's normative/reference layering question:** the original spec called the buyer-side valkey schema "normative" while leaving an open question for a pluggable FrequencyStore interface. Inconsistent. Resolved by the three-layer model — wire spec + conformance invariants are normative; reference data model is Scope3's implementation choice, swappable.
+- **Brian: counters can't dedup across identities, what about an exposure log keyed per-identity with imp_id-based dedup?** Direct comparison led to walking through correctness (counter+MAX under-counts when identity resolution toggles, log+imp_id is exact), then perf math (counter pipelined ~10-30ms vs log ~3-10ms — log structurally faster). Surveyed `adcp-go/targeting/`: the log approach is **already implemented and shipping**. Spec was speculating about an architecture the codebase had already chosen. Pivot: spec rewritten to match the existing reference impl (per-identity binary exposure log with `impression_id` dedup, single MGet read pattern, sliding window via timestamp filter, prune-on-write). All the merge-rule, FIXED/SLIDING, counter-comparison content removed. Real perf numbers from `targeting/scale_test.go` substituted for envelope math.
+- **`fcap_keys` generalization** (Brian's call: "B is what we want"): spec defines the label model (`tenant:dimension:value`) as the design direction. The current reference impl uses scalar `package_id`+`campaign_id`; generalizing it to arbitrary fcap_keys is an in-flight refactor in `adcp-go/targeting`. New buyer impls SHOULD build against the label model directly.
