@@ -5680,7 +5680,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     // Per spec line 471 raw mode is an audit path; gate it on admin to
     // prevent any-member exfiltration of moderation state.
     function isAdminRequest(req: import('express').Request): boolean {
-      return Boolean((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey);
+      return Boolean((req as unknown as { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey);
     }
 
     router.get("/registry/authorizations", authMiddleware, async (req, res) => {
