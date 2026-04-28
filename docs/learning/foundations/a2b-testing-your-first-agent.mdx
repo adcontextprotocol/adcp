@@ -136,8 +136,8 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
         "adcp_major_version": 3,
         "idempotency_key": "mb-lab-20260428-001",
         "account": {
-          "brand": "nova-motors",
-          "operator": "pinnacle-agency"
+          "brand": { "domain": "nova-motors.com" },
+          "operator": "pinnacle-media.com"
         },
         "proposal_id": "<proposal-id-from-step-2>",
         "total_budget": { "amount": 50000, "currency": "USD" }
@@ -174,8 +174,8 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
         "adcp_major_version": 3,
         "idempotency_key": "sc-lab-20260428-001",
         "account": {
-          "brand": "nova-motors",
-          "operator": "pinnacle-agency"
+          "brand": { "domain": "nova-motors.com" },
+          "operator": "pinnacle-media.com"
         },
         "creatives": [
           {
@@ -238,12 +238,16 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
   -d '{
     "jsonrpc": "2.0",
     "method": "tasks/get",
-    "params": { "id": "<task-id-from-create>" },
+    "params": { "task_id": "<task-id-from-create>", "include_result": true },
     "id": 6
   }'
 ```
 
-Poll every 2–5 seconds. When `task.status` is `completed`, the `artifact` contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/docs/building/implementation/task-lifecycle) doc for all MCP task status values.
+<Note>
+`tasks/get` is an MCP protocol-level method, not an AdCP tool — it uses `"method": "tasks/get"` directly rather than the `"method": "tools/call"` + `"name": "..."` pattern used for AdCP tasks. It is auto-registered by the MCP SDK alongside `tasks/result`, `tasks/list`, and `tasks/cancel`.
+</Note>
+
+Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/docs/building/implementation/task-lifecycle) doc for all MCP task status values.
 
 ## Common errors
 
@@ -252,7 +256,7 @@ Poll every 2–5 seconds. When `task.status` is `completed`, the `artifact` cont
 | HTTP 401 / `error: "invalid_token"` | Expired or wrong API key | Reissue the token from your dashboard; confirm the `Bearer` prefix |
 | HTTP 401 / `error: "invalid_request"` | `Authorization` header missing | Add `-H "Authorization: Bearer <token>"` to every call |
 | `errors[]` in body, no `media_buy_id` | Schema validation failure | Read `errors[0].field` and `errors[0].code`; fix the field and retry with a **new** `idempotency_key` |
-| `status: "submitted"` stays indefinitely | Async task stalled | Check `task.status` via `tasks/get`; if `failed`, read `task.message` for the rejection reason |
+| `status: "submitted"` stays indefinitely | Async task stalled | Check `task.status` via `tasks/get`; if `failed`, read `task.error.message` for the rejection reason |
 | `mcp-session-id: invalid` error | Session expired or header missing | Re-run Step 1 to get a fresh session ID |
 
 ## Assessment
