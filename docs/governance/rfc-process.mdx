@@ -37,6 +37,8 @@ When in doubt: if the change would force downstream implementations to update co
   </Step>
   <Step title="Specification change">
     After the decision record exists and its status is **accepted**, any contributor may open the spec PR. The PR must reference the RFC issue with `Refs #N` (not `Closes #N`) and may not merge until the decision record exists. The spec PR reviewer confirms the diff matches the accepted RFC scope. The final spec PR carries `Closes #N` to close the RFC issue on merge.
+
+    An accepted RFC is the required trigger for each [spec-lifecycle](/docs/reference/specification-lifecycle) stage transition: it is what moves a feature from Draft → Proposed, or gates Deprecated → Sunset. No lifecycle transition is valid without a traceable, accepted decision record.
   </Step>
 </Steps>
 
@@ -104,5 +106,6 @@ Post this as a comment on the RFC issue after the WG vote. The `Dissent` section
 
 ## See also
 
+- [Specification lifecycle](/docs/reference/specification-lifecycle) — approved RFCs drive spec-lifecycle transitions; an accepted RFC is the trigger that moves a feature from Draft → Proposed → Final, or from Final → Deprecated
 - [Governance overview](/docs/governance/overview) — the three-party model and campaign governance domains
 - [Embedded human judgment](/docs/governance/embedded-human-judgment) — the principle behind the governance system that most RFCs serve
