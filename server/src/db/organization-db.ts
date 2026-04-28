@@ -143,6 +143,8 @@ export interface Organization {
   stripe_promotion_code: string | null;
   billing_address: BillingAddress | null;
   auto_provision_verified_domain: boolean;
+  auto_provision_brand_hierarchy_children: boolean;
+  auto_provision_hierarchy_enabled_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -861,6 +863,7 @@ export class OrganizationDatabase {
       stripe_promotion_code: 'stripe_promotion_code',
       billing_address: 'billing_address',
       auto_provision_verified_domain: 'auto_provision_verified_domain',
+      auto_provision_brand_hierarchy_children: 'auto_provision_brand_hierarchy_children',
     };
 
     const setClauses: string[] = [];

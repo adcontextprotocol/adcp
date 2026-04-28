@@ -570,11 +570,14 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Get domains and the auto-provision setting in a single round trip.
-      // Surfacing the setting here means the team UI can render the toggle
-      // alongside the verified-domain list without a second request.
+      // Get domains, both auto-provision settings, and any inferred
+      // subsidiary brands in one round trip. Inferred subsidiaries — high-
+      // confidence brand-registry rows whose house_domain matches one of
+      // this org's verified domains — are what an owner gives access to
+      // when they enable hierarchical auto-provisioning, so the UI shows
+      // them in the same surface as the toggle.
       const pool = getPool();
-      const [domainsResult, settingResult] = await Promise.all([
+      const [domainsResult, settingResult, subsidiariesResult] = await Promise.all([
         pool.query(
           `SELECT domain, verified, is_primary
            FROM organization_domains
@@ -582,19 +585,48 @@ export function createOrganizationsRouter(): Router {
            ORDER BY is_primary DESC, domain ASC`,
           [orgId]
         ),
-        pool.query<{ auto_provision_verified_domain: boolean }>(
-          `SELECT auto_provision_verified_domain FROM organizations WHERE workos_organization_id = $1`,
+        pool.query<{
+          auto_provision_verified_domain: boolean;
+          auto_provision_brand_hierarchy_children: boolean;
+          auto_provision_hierarchy_enabled_at: Date | null;
+        }>(
+          `SELECT
+             auto_provision_verified_domain,
+             auto_provision_brand_hierarchy_children,
+             auto_provision_hierarchy_enabled_at
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        ),
+        pool.query<{ domain: string; brand_name: string | null; last_validated: Date | null }>(
+          `SELECT db.domain, db.brand_name, db.last_validated
+           FROM brands db
+           WHERE db.house_domain IN (
+                   SELECT od.domain FROM organization_domains od
+                   WHERE od.workos_organization_id = $1 AND od.verified = true
+                 )
+             AND db.brand_manifest->'classification'->>'confidence' = 'high'
+             AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+                 > NOW() - INTERVAL '180 days'
+           ORDER BY db.domain ASC`,
           [orgId]
         ),
       ]);
 
+      const setting = settingResult.rows[0];
       res.json({
         domains: domainsResult.rows.map(r => ({
           domain: r.domain,
           verified: r.verified,
           is_primary: r.is_primary,
         })),
-        auto_provision_verified_domain: settingResult.rows[0]?.auto_provision_verified_domain ?? true,
+        auto_provision_verified_domain: setting?.auto_provision_verified_domain ?? true,
+        auto_provision_brand_hierarchy_children: setting?.auto_provision_brand_hierarchy_children ?? false,
+        auto_provision_hierarchy_enabled_at: setting?.auto_provision_hierarchy_enabled_at ?? null,
+        inferred_subsidiaries: subsidiariesResult.rows.map(r => ({
+          domain: r.domain,
+          brand_name: r.brand_name,
+          last_validated: r.last_validated,
+        })),
       });
     } catch (error) {
       logger.error({ err: error }, 'Get org domains error:');
@@ -1579,12 +1611,19 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
-  // PATCH /api/organizations/:orgId/settings - Update organization settings (company_type, revenue_tier, auto_provision_verified_domain)
+  // PATCH /api/organizations/:orgId/settings - Update organization settings
+  // (company_type, revenue_tier, auto_provision_verified_domain,
+  //  auto_provision_brand_hierarchy_children)
   router.patch('/:orgId/settings', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
       const { orgId } = req.params;
-      const { company_type, revenue_tier, auto_provision_verified_domain } = req.body;
+      const {
+        company_type,
+        revenue_tier,
+        auto_provision_verified_domain,
+        auto_provision_brand_hierarchy_children,
+      } = req.body;
 
       // Verify user is member of this organization with owner or admin role
       const memberships = await workos!.userManagement.listOrganizationMemberships({
@@ -1648,20 +1687,33 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // auto_provision_verified_domain is a privilege grant — turning it on
-      // means any verified-domain email auto-joins as a member, which an admin
-      // could then promote to admin. Restrict to owner-only to keep admins
-      // from quietly widening org membership without owner consent. AAO
-      // super-admin (or the static admin API key for internal tooling) can
-      // override.
-      if (auto_provision_verified_domain !== undefined && userRole !== 'owner') {
+      // Validate auto_provision_brand_hierarchy_children if provided
+      if (
+        auto_provision_brand_hierarchy_children !== undefined &&
+        typeof auto_provision_brand_hierarchy_children !== 'boolean'
+      ) {
+        return res.status(400).json({
+          error: 'Invalid auto_provision_brand_hierarchy_children',
+          message: 'auto_provision_brand_hierarchy_children must be a boolean',
+        });
+      }
+
+      // Both auto-provision flags are privilege grants — turning either on
+      // widens org membership in a way an admin shouldn't be able to do
+      // unilaterally (admins can promote auto-joined members to admin under
+      // the role-cap policy). Restrict to owner-only. AAO super-admin (or
+      // the static admin API key for internal tooling) can override.
+      const isPrivilegeGrant =
+        auto_provision_verified_domain !== undefined ||
+        auto_provision_brand_hierarchy_children !== undefined;
+      if (isPrivilegeGrant && userRole !== 'owner') {
         const isStaticAdminApiKey =
           (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
         const isAAOAdmin = isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
         if (!isAAOAdmin) {
           return res.status(403).json({
             error: 'Insufficient permissions',
-            message: 'Only owners can change the auto-provision setting',
+            message: 'Only owners can change auto-provisioning settings',
           });
         }
       }
@@ -1671,6 +1723,7 @@ export function createOrganizationsRouter(): Router {
         company_type?: CompanyType | null;
         revenue_tier?: RevenueTier | null;
         auto_provision_verified_domain?: boolean;
+        auto_provision_brand_hierarchy_children?: boolean;
       } = {};
       if (company_type !== undefined) {
         updates.company_type = company_type as CompanyType | null;
@@ -1681,11 +1734,14 @@ export function createOrganizationsRouter(): Router {
       if (auto_provision_verified_domain !== undefined) {
         updates.auto_provision_verified_domain = auto_provision_verified_domain;
       }
+      if (auto_provision_brand_hierarchy_children !== undefined) {
+        updates.auto_provision_brand_hierarchy_children = auto_provision_brand_hierarchy_children;
+      }
 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({
           error: 'No updates provided',
-          message: 'Provide company_type, revenue_tier, or auto_provision_verified_domain to update',
+          message: 'Provide company_type, revenue_tier, auto_provision_verified_domain, or auto_provision_brand_hierarchy_children to update',
         });
       }
 
@@ -1711,6 +1767,9 @@ export function createOrganizationsRouter(): Router {
         auto_provision_verified_domain: auto_provision_verified_domain !== undefined
           ? auto_provision_verified_domain
           : org.auto_provision_verified_domain,
+        auto_provision_brand_hierarchy_children: auto_provision_brand_hierarchy_children !== undefined
+          ? auto_provision_brand_hierarchy_children
+          : org.auto_provision_brand_hierarchy_children,
       });
     } catch (error) {
       logger.error({ err: error }, 'Update organization settings error');
