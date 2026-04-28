@@ -183,6 +183,10 @@ If you're getting "authentication required" errors:
 3. **Test with the public test agent** - verify your setup works before testing custom agents
 4. **Check protocol version** - ensure client and server protocol versions are compatible
 
+<Tip>
+For OAuth handshake failures and RFC 9421 signing issues, use the [CLI auth graders](/docs/building/grading) — `diagnose-auth` probes RFC 9728 + RFC 8414 discovery and ranks hypotheses; `grade request-signing` runs every signing vector with per-vector diagnostics.
+</Tip>
+
 ## Obtaining Credentials
 
 ### Account Setup Process
