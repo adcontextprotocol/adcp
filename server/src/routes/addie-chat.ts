@@ -147,6 +147,10 @@ let authenticatedOnlyTools: RequestTools | null = null;
 
 const ANONYMOUS_MAX_ITERATIONS = 5;
 
+// Sources the web client is permitted to assert. Voice / email / unknown are
+// set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
+const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
+
 /**
  * Merge per-request member tools with cached authenticated-only tools,
  * and select model + iteration limits based on auth status.
@@ -717,7 +721,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource } = req.body;
 
       if (!message || typeof message !== "string") {
         return res.status(400).json({ error: "Message is required" });
@@ -735,6 +739,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
+
+      // Accept message_source from client (chip click vs typed); fall back to
+      // heuristic detection so old clients without the field still tag correctly.
+      const messageSource: 'typed' | 'cta_chip' =
+        typeof rawMessageSource === 'string' && VALID_WEB_SOURCES.has(rawMessageSource as 'typed' | 'cta_chip')
+          ? rawMessageSource as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
 
       // Get or create thread using unified service
       // For web chat, the external_id is the conversation_id (UUID)
@@ -807,6 +818,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: messageSource,
       });
 
       // Record inbound message in the relationship system
@@ -1004,7 +1016,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream } = req.body;
 
       if (!message || typeof message !== "string") {
         sendEvent("error", { error: "Message is required" });
@@ -1024,6 +1036,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
+
+      const messageSourceStream: 'typed' | 'cta_chip' =
+        typeof rawMessageSourceStream === 'string' && VALID_WEB_SOURCES.has(rawMessageSourceStream as 'typed' | 'cta_chip')
+          ? rawMessageSourceStream as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
 
       // Get or create thread
       const impersonator = req.user?.impersonator;
@@ -1089,6 +1106,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: messageSourceStream,
       });
 
       // Record inbound message in the relationship system

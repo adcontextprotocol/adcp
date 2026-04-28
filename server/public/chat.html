@@ -3302,6 +3302,7 @@
               chatInput.value = prompt;
               autoResize();
               updateSendButton();
+              pendingMessageSource = 'cta_chip';
               sendMessage();
             }
           });
@@ -3358,6 +3359,7 @@
         chatInput.value = prompt;
         autoResize();
         updateSendButton();
+        pendingMessageSource = 'cta_chip';
         sendMessage();
       }
 
@@ -4046,6 +4048,7 @@
             // Send message to Addie to connect to this agent
             const connectMessage = `Connect me to ${agent.display_name}`;
             chatInput.value = connectMessage;
+            pendingMessageSource = 'cta_chip';
             await sendMessage();
           });
 
@@ -4112,10 +4115,20 @@
         }
       }
 
+      // Set to 'cta_chip' by chip click handlers before calling sendMessage().
+      // Reset to null after each send so subsequent typed messages get 'typed'.
+      let pendingMessageSource = null;
+
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
-        if (!message || isLoading || !isReady) return;
+        if (!message || isLoading || !isReady) {
+          pendingMessageSource = null;
+          return;
+        }
+
+        const messageSource = pendingMessageSource || 'typed';
+        pendingMessageSource = null;
 
         isLoading = true;
         updateSendButton();
@@ -4154,6 +4167,7 @@
             body: JSON.stringify({
               message,
               conversation_id: conversationId,
+              message_source: messageSource,
             }),
           });
 
@@ -4356,6 +4370,7 @@
           chatInput.value = prompt;
           autoResize();
           updateSendButton();
+          pendingMessageSource = 'cta_chip';
           sendMessage();
         }
       });
@@ -4487,6 +4502,7 @@
               chatInput.value = prompt.trim();
               autoResize();
               updateSendButton();
+              pendingMessageSource = 'cta_chip';
               sendMessage();
               // Clean URL without reloading
               window.history.replaceState({}, '', window.location.pathname);
