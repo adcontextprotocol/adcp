@@ -547,7 +547,7 @@ export async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS, ...AUTH_GRADER_TOOLS];
+  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
@@ -555,13 +555,23 @@ export async function prepareRequestWithMemberTools(
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
-    ...createAuthGraderToolHandlers(),
   ]);
 
   // Certification tools (for authenticated users)
   if (userId) {
     allTools.push(...CERTIFICATION_TOOLS);
     for (const [name, handler] of createCertificationToolHandlers(memberContext, { threadId: threadExternalId })) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
+  // users only on the web path; each call spawns a child Node process and
+  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
+  if (userId) {
+    allTools.push(...AUTH_GRADER_TOOLS);
+    for (const [name, handler] of createAuthGraderToolHandlers()) {
       combinedHandlers.set(name, handler);
     }
   }

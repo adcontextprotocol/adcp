@@ -14,6 +14,8 @@
  */
 
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/client/auth';
 import type { AddieTool } from '../types.js';
@@ -21,6 +23,24 @@ import type { AgentConfig } from '@adcp/client/types';
 import { createLogger } from '../../logger.js';
 
 const execFileAsync = promisify(execFile);
+
+// Resolve the bundled @adcp/client CLI from node_modules so the grader runs
+// the same version the server depends on. Avoids `npx @adcp/client@latest`,
+// which would pull a fresh tarball from the registry on every call — a
+// live supply-chain hole if a malicious release ever shipped.
+//
+// The package's `exports` map blocks importing `@adcp/client/package.json`,
+// so we resolve the main entry (which IS in exports) and walk up to the
+// package root. Tied to the package layout (main = `dist/lib/index.js`);
+// upstream changing that requires a major bump per semver, so the walk-up
+// distance is stable enough for now.
+const requireFromHere = createRequire(import.meta.url);
+const ADCP_CLIENT_BIN = (() => {
+  const mainEntry = requireFromHere.resolve('@adcp/client');
+  // .../node_modules/@adcp/client/dist/lib/index.js → .../node_modules/@adcp/client
+  const pkgRoot = path.resolve(mainEntry, '..', '..', '..');
+  return path.join(pkgRoot, 'bin', 'adcp.js');
+})();
 
 const logger = createLogger('addie-auth-grader-tools');
 
@@ -106,18 +126,24 @@ export function createAuthGraderToolHandlers(): Map<
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    // Shell out to the @adcp/client CLI's `grade request-signing --json` —
-    // the underlying `gradeRequestSigning` function isn't on the package's
-    // public export surface yet, and the CLI is what users would invoke
-    // locally anyway. Dogfoods the same path, exit code, and report shape.
-    const args = ['--yes', '@adcp/client@latest', 'grade', 'request-signing', agentUrl, '--json'];
+    // Run the bundled @adcp/client CLI's `grade request-signing --json`.
+    // The underlying `gradeRequestSigning` isn't on the package's public
+    // export surface yet, so we shell out — but we shell out to the CLI
+    // installed in node_modules under the version pinned by package.json,
+    // not via `npx @latest`. Same path, exit code, and report shape the
+    // user would hit locally.
+    const args = [ADCP_CLIENT_BIN, 'grade', 'request-signing', agentUrl, '--json'];
     if (allowLive) args.push('--allow-live-side-effects');
     else args.push('--skip-rate-abuse');
     if (allowHttp) args.push('--allow-http');
 
     try {
-      const { stdout } = await execFileAsync('npx', args, {
-        timeout: 5 * 60_000,
+      // 90s is enough for the safe-default path (rate-abuse skipped, ~25
+      // vectors). When the caller opts into live side effects the cap-flood
+      // vector takes minutes — give it 5min.
+      const timeout = allowLive ? 5 * 60_000 : 90_000;
+      const { stdout } = await execFileAsync(process.execPath, args, {
+        timeout,
         maxBuffer: 10 * 1024 * 1024,
       });
       const report = JSON.parse(stdout) as GradeReport;
@@ -186,8 +212,9 @@ export function createAuthGraderToolHandlers(): Map<
  * parse the CLI's `--json` stdout into this shape rather than importing the
  * upstream type because the type lives behind the same internal subpath the
  * runtime export does. Keep field names in sync with
- * `@adcp/client/dist/lib/testing/storyboard/request-signing/grader.d.ts` —
- * the parity test below verifies the CLI's contract version.
+ * `@adcp/client/dist/lib/testing/storyboard/request-signing/grader.d.ts`.
+ * Verified against @adcp/client@5.21.x; will move to a public type import
+ * once the upstream PR promotes it.
  */
 interface VectorGradeResult {
   vector_id: string;
