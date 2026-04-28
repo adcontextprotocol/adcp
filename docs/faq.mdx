@@ -127,19 +127,24 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 </Accordion>
 
 <Accordion title="What is AdCP's relationship to IAB Tech Lab?">
-AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+AdCP is maintained by AgenticAdvertising.org (AAO), an independent specification body — not a subsidiary or working group of IAB Tech Lab. The two organizations sit at different layers of the advertising stack and run on different cadences.
+
+- **Layer.** AdCP describes the campaign layer — the buyer/seller workflow above the impression-level auction (product discovery, media buy creation, creative, signals, governance). IAB Tech Lab's portfolio (OpenRTB, VAST, `ads.txt`/`sellers.json`, Open Measurement SDK, content taxonomy, audience taxonomy, GPP) standardizes the impression layer and the supply-chain primitives below. AdCP coexists with all of them — content taxonomy fields align with IAB content categories, audience segments can reference IAB audience taxonomy IDs, and [`adagents.json`](/docs/governance/property/adagents) extends the `ads.txt`/`sellers.json` relationship semantics rather than replacing them.
+- **Cadence.** AAO works through public RFCs and working groups on GitHub on a monthly cycle, suited to an agentic surface that is still moving. IAB Tech Lab's standardization process is built for slower, broader-consensus deliberation across a much larger membership.
+
+AdCP is Apache 2.0 — IAB Tech Lab or any other body is free to adopt, reference, or align with the specification. See [Industry landscape](/docs/building/understanding/industry-landscape) for the full picture of how AdCP, OpenRTB, MCP, and A2A relate.
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
 AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). Based on AAMP materials published to date, AdCP and AAMP appear to operate at different layers of the stack and can coexist.
 
-Our read of the distinction: AdCP describes how a buyer agent and a seller agent negotiate, transact, and govern a media buy — product discovery, pricing, creative, governance, and execution. AAMP's work streams, as currently described, address impression-level concerns: how agents are discovered and identified inside the existing programmatic auction, and how agentic audiences move across that layer. A platform could implement both, with AdCP handling the buyer/seller workflow and AAMP's components plugging into the impression-level layer alongside OpenRTB.
+Put simply: **AAMP is agentic bidding; AdCP is agentic buying.** AAMP's work streams, as currently described, address impression-level concerns — how agents are discovered and identified inside the programmatic auction, and how agentic audiences move across it — and sit alongside OpenRTB at the impression layer (sub-200ms, single auction). AdCP describes the campaign layer above: how a buyer agent and a seller agent negotiate, transact, and govern a media buy across product discovery, pricing, creative, signals, and governance. The layers compose — a single AdCP `create_media_buy` can spawn thousands of impression-layer events. A platform can implement both.
 
 As of April 2026:
 
 | | AAMP | AdCP |
 |---|---|---|
-| **Layer** | Impression-level (within the RTB stack, per published work streams) | Buyer/seller workflow (product discovery, media buy, creative, governance, execution) |
+| **Layer** | Impression layer — agentic bidding | Campaign layer — agentic buying |
 | **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
 | **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 GA (released April 2026) |
 | **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
