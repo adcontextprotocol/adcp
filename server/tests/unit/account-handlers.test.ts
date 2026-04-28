@@ -341,13 +341,15 @@ describe('sync_governance', () => {
       }],
     });
 
-    // Schema-shape violation → top-level errors[] envelope; runner reads
-    // success=false off this. Per-account errors[] would leave success=true
-    // and the runner's expect_error step would fail to detect the rejection.
-    const errors = result.errors as Array<{ code: string; message: string }>;
-    expect(errors).toBeDefined();
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].message).toContain('exactly 1 entry');
+    // Schema-shape violation → handler returns top-level errors[] envelope.
+    // The framework wraps single-error envelopes as adcp_error{code,message}
+    // (sync_governance is not in ERROR_IN_BODY_TOOLS), and simulateCallTool's
+    // helper unwraps adcp_error to a flat {code,message} shape on `result`.
+    // The MCP isError flag and structuredContent.adcp_error.code are what the
+    // storyboard runner actually reads — the per-account success envelope is
+    // never produced for this code path.
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message as string).toContain('exactly 1 entry');
     expect(result.accounts).toBeUndefined();
   });
 
