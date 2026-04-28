@@ -1278,9 +1278,9 @@ export interface SlackUserGroup {
 
 export async function getSlackUserGroups(): Promise<SlackUserGroup[]> {
   try {
-    const response = await slackRequest<{ usergroups: SlackUserGroup[] }>('usergroups.list', {
-      include_disabled: false,
-    });
+    // Omit include_disabled — Slack default is false, and passing false serializes
+    // as the string "false" which Slack treats as truthy and includes disabled groups.
+    const response = await slackRequest<{ usergroups: SlackUserGroup[] }>('usergroups.list');
     return response.usergroups ?? [];
   } catch (error) {
     logger.error({ error }, 'Failed to list Slack user groups');

@@ -1015,6 +1015,17 @@ export async function removeMemberBadge(workosUserId: string): Promise<void> {
   const updated = currentMembers.filter((id) => id !== mapping.slack_user_id);
   if (updated.length === currentMembers.length) return;
 
+  // Slack rejects usergroups.users.update with an empty list — skip the call
+  // if removing this user would leave the group empty; the group stays technically
+  // enabled with its last member listed, and will self-correct on the next add.
+  if (updated.length === 0) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Last member removed — skipping empty usergroups.users.update to avoid Slack invalid_users error',
+    );
+    return;
+  }
+
   const result = await setSlackUserGroupMembers(groupId, updated);
   if (result.ok) {
     logger.info(

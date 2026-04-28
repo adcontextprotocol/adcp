@@ -745,6 +745,13 @@ export function createWorkOSWebhooksRouter(): Router {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
               }
 
+              // Add member badge — does not need workosUser; runs even if user fetch failed
+              try {
+                await addMemberBadge(membership.user_id);
+              } catch (badgeErr) {
+                logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not add Slack member badge on membership creation');
+              }
+
               if (workosUser) {
                 // Slack auto-link
                 try {
@@ -757,13 +764,6 @@ export function createWorkOSWebhooksRouter(): Router {
                   }
                 } catch (slackErr) {
                   logger.debug({ error: slackErr, userId: membership.user_id }, 'Could not auto-link Slack on membership');
-                }
-
-                // Add member badge to Slack user group
-                try {
-                  await addMemberBadge(membership.user_id);
-                } catch (badgeErr) {
-                  logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not add Slack member badge on membership creation');
                 }
 
                 // Match pending certification expectations by email
