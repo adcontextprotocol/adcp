@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/enums/frame-rate-type.json",
+  "title": "Frame Rate Type",
+  "description": "Whether the video uses a constant or variable frame rate. Broadcast and SSAI contexts require constant frame rate for seamless splicing.",
+  "type": "string",
+  "enum": ["constant", "variable"],
+  "enumDescriptions": {
+    "constant": "Constant frame rate (CFR) — each frame occupies an identical time interval",
+    "variable": "Variable frame rate (VFR) — frame intervals may differ"
+  }
+}

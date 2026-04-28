@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/enums/payment-terms.json",
+  "title": "Payment Terms",
+  "description": "Standard payment terms for AdCP accounts",
+  "type": "string",
+  "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
+  "enumDescriptions": {
+    "net_15": "Payment due within 15 days of invoice",
+    "net_30": "Payment due within 30 days of invoice",
+    "net_45": "Payment due within 45 days of invoice",
+    "net_60": "Payment due within 60 days of invoice",
+    "net_90": "Payment due within 90 days of invoice",
+    "prepay": "Payment required before campaign delivery"
+  }
+}

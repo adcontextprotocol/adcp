@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/core/signal-pricing-option.json",
+  "title": "Signal Pricing Option",
+  "description": "Deprecated — use vendor-pricing-option.json for new implementations. This alias is retained for backward compatibility.",
+  "$ref": "/schemas/3.0.2-beta.0/core/vendor-pricing-option.json"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/core/creative-consumption.json",
+  "title": "Creative Consumption",
+  "description": "Structured consumption details returned by build_creative when a paid creative agent computes cost. Contains well-known fields for common consumption metrics. The consumption object is informational — it lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth, not consumption.",
+  "type": "object",
+  "properties": {
+    "tokens": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "LLM or generation tokens consumed during creative generation."
+    },
+    "images_generated": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of images produced during generation."
+    },
+    "renders": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of render passes performed (video, animation)."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Processing time billed, in seconds. For compute-time pricing models."
+    }
+  },
+  "additionalProperties": true
+}

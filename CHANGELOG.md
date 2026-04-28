@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.2-beta.0
+
+### Patch Changes
+
+- d6002b1: Add `envelope_field_present` check type to the storyboard schema and update `v3-envelope-integrity.yaml` to use it for the `status` presence assertion. The new check type walks `protocol-envelope.json` rather than the step's `response_schema_ref`, eliminating the static-analysis `VERIFIER_UNREACHABLE` gap in adcp-client's storyboard-drift verifier. Requires adcp-client#1045.
+- abe4bb8: Promote the shared asset-variant `oneOf` union to a canonical `core/assets/asset-union.json` schema. Both `creative-asset.json` and `creative-manifest.json` now reference this single file instead of inlining identical `oneOf` arrays. This eliminates the `VASTAsset1`, `DAASTAsset1`, `BriefAsset1`, and `CatalogAsset1` codegen artifacts emitted by `json-schema-to-typescript` when the same union is encountered through multiple parent schemas. Wire format and validation semantics are unchanged.
+- 14c4a0c: Fix `inventory_list_targeting` storyboard: replace hardcoded `idempotency_key` on `create_buy_with_lists` step with a per-run generated key (`$generate:uuid_v4#...`), matching the pattern already used by the `update_buy_swap_lists` step in the same file.
+
+  The hardcoded key `"inventory-list-targeting-create-v1"` caused `verify_create_persisted` to produce a false failure on spec-correct frozen-response sellers: on run N+1 the seller correctly replays the cached create response while `get_media_buys` reads mutated live state (left by run N's `update_swap_lists`), producing a mismatch that cannot be resolved seller-side without violating idempotency semantics.
+
 ## 3.0.1
 
 See [release notes](docs/reference/release-notes.mdx#version-301) for the curated narrative — 3.0.1 is a stable-surface no-op for 3.0-conformant agents. Skills bundle in `/protocol/3.0.1.tgz`, normative clarifications, additive fields on experimental surfaces (governance, TMP) per the experimental-status contract, and one docs-level deprecation (`get_signals` top-level `max_results`).

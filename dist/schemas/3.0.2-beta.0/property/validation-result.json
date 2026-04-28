@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/property/validation-result.json",
+  "title": "Validation Result",
+  "description": "Result of validating a single delivery record against a property list.",
+  "type": "object",
+  "properties": {
+    "identifier": {
+      "$ref": "/schemas/3.0.2-beta.0/core/identifier.json",
+      "description": "The identifier that was validated"
+    },
+    "record_id": {
+      "type": "string",
+      "description": "Client-provided ID from the delivery record (if provided)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["compliant", "non_compliant", "not_covered", "unidentified"],
+      "description": "Validation status: compliant (in list), non_compliant (not in list), not_covered (identifier recognized but no data available), unidentified (identifier type not resolvable by this governance agent)"
+    },
+    "impressions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of impressions from this record"
+    },
+    "features": {
+      "type": "array",
+      "description": "Per-feature breakdown for this record. SHOULD include all failed and warning features. MAY include passed features. For property validation the buyer authored the requirement, so the `requirement` that was not met MAY be echoed back on failures — this is contract data, not evaluator IP.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": {
+            "type": "string",
+            "description": "Which feature was evaluated. Data features come from the governance agent's feature catalog (e.g., 'mfa_score', 'carbon_score'). Record-level structural checks use reserved namespaces: 'record:list_membership', 'record:excluded', 'delivery:seller_authorization', 'delivery:click_url_presence'. Reserved prefixes: 'record:', 'delivery:'."
+          },
+          "status": {
+            "$ref": "/schemas/3.0.2-beta.0/enums/feature-check-status.json"
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "Registry policy ID that triggered this result. Enables programmatic routing by looking up the policy in the registry.",
+            "x-entity": "governance_registry_policy"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Directional human-readable explanation of the result."
+          },
+          "requirement": {
+            "type": "object",
+            "description": "The feature requirement that was not met. MAY be present on failed features when the caller authored the requirement (e.g., feature_requirements on a property list). The buyer set these thresholds — echoing them back enables fix-and-retry loops without looking up the list definition.",
+            "properties": {
+              "min_value": {
+                "type": "number",
+                "description": "Minimum value that was required"
+              },
+              "max_value": {
+                "type": "number",
+                "description": "Maximum value that was allowed"
+              },
+              "allowed_values": {
+                "type": "array",
+                "description": "Values that would have been acceptable",
+                "items": {}
+              }
+            },
+            "additionalProperties": false
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
+          }
+        },
+        "required": ["feature_id", "status"],
+        "additionalProperties": false
+      }
+    },
+    "authorization": {
+      "$ref": "/schemas/3.0.2-beta.0/property/authorization-result.json",
+      "description": "Authorization validation result (only present if sales_agent_url was provided in the delivery record)"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2-beta.0/core/ext.json"
+    }
+  },
+  "required": ["identifier", "status", "impressions"],
+  "additionalProperties": false
+}

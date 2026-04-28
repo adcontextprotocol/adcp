@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/tmp/provider-registration.json",
+  "title": "TMP Provider Registration",
+  "description": "Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated against SSRF, and dynamic registration endpoints MUST authenticate callers — see docs/trusted-match/specification#provider-registration-security.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "provider_id": {
+      "type": "string",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, and cache keys. Publishers assign this — it is not the provider's agent_url."
+    },
+    "endpoint": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. MUST be HTTPS in production, validated against the canonical reserved IPv4 and IPv6 ranges, with the TCP connection pinned to the validated IP (DNS re-resolution alone is insufficient against rebinding). Publishers comparing two provider registrations for the same `endpoint` MUST canonicalize both per the AdCP URL canonicalization rules; two registrations differing only in case, default port, or path-slash collapsing are the same provider. See docs/trusted-match/specification#provider-registration-security, docs/building/implementation/security#webhook-url-validation-ssrf, and docs/reference/url-canonicalization."
+    },
+    "context_match": {
+      "type": "boolean",
+      "description": "Provider handles Context Match requests (POST /context)."
+    },
+    "identity_match": {
+      "type": "boolean",
+      "description": "Provider handles Identity Match requests (POST /identity)."
+    },
+    "countries": {
+      "type": "array",
+      "description": "ISO 3166-1 alpha-2 country codes this provider serves. The router filters Identity Match providers by the request's country field. MUST be present and non-empty when identity_match is true.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "uid_types": {
+      "type": "array",
+      "description": "Identity types this provider can resolve. The router selects Identity Match providers whose uid_types overlaps with any uid_type in the request's identities array. MUST be present and non-empty when identity_match is true.",
+      "items": {
+        "$ref": "/schemas/3.0.2-beta.0/enums/uid-type.json"
+      },
+      "minItems": 1
+    },
+    "properties": {
+      "type": "array",
+      "description": "Property RIDs (UUID v7) this provider serves. When present, the router only sends requests from these properties to this provider. When absent, the provider serves all properties.",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "minItems": 1
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Per-provider timeout in milliseconds. The router skips this provider if it does not respond within this budget. Must be less than or equal to the router's overall latency_budget_ms. The router may further reduce this based on adaptive timeout allocation.",
+      "minimum": 5,
+      "maximum": 5000,
+      "default": 50
+    },
+    "priority": {
+      "type": "integer",
+      "description": "Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.",
+      "minimum": 0,
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "description": "Provider lifecycle status. Active providers receive requests. Inactive providers are skipped entirely. Draining providers stop receiving new requests but in-flight requests complete normally.",
+      "enum": ["active", "inactive", "draining"],
+      "default": "active"
+    }
+  },
+  "required": [
+    "provider_id",
+    "endpoint"
+  ],
+  "if": {
+    "properties": { "identity_match": { "const": true } },
+    "required": ["identity_match"]
+  },
+  "then": {
+    "required": ["countries", "uid_types"]
+  },
+  "anyOf": [
+    { "properties": { "context_match": { "const": true } }, "required": ["context_match"] },
+    { "properties": { "identity_match": { "const": true } }, "required": ["identity_match"] }
+  ],
+  "additionalProperties": false
+}
