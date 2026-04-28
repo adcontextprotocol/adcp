@@ -581,10 +581,26 @@ The TMPX macro value uses the format `<kid>.<base64url_ciphertext>`. The ciphert
 One X25519 keypair per cluster:
 
 - The cluster master holds the **private key** for decryption.
-- The **public key** is published in `encryption_keys` on agent authorization entries in `adagents.json`.
-- Read replicas use the public key to encrypt. No per-replica key management.
+- The **public key** is published as a JWKS document (RFC 7517) at the URL referenced by `encryption_keys_uri` on agent authorization entries in `adagents.json`. The JWKS conforms to `/schemas/core/agent-encryption-keys-set.json`.
+- Read replicas fetch the JWKS, cache it with a 5-minute TTL, and use it to encrypt. No per-replica key management.
 
-Key rotation follows the same pattern as TMP signing keys: 5-minute cache TTL, kid prefix for versioning, 30-day grace period for old master keys.
+The `encryption_keys_uri` value MAY point to any HTTPS host the publisher trusts. The cluster master is often a third-party service (e.g., a TMPX decryption-as-a-service provider) that operates the X25519 private key on behalf of many sales agents — in that case the URL is hosted on the master's own domain, not the agent's. The publisher's choice to include this URI in `adagents.json` is the trust attestation; encryption-side consumers fetch from the URI as written.
+
+Inline `encryption_keys` is **deprecated** and will be removed in AdCP 4.0. Inline keys force rotation propagation to track downstream `adagents.json` edit cycles, which is unacceptable for compromise response.
+
+### Encryption key rotation
+
+The cluster-master operator rotates by editing the JWKS at `encryption_keys_uri`: remove the retired kid, publish the successor. Within the 5-minute cache TTL, all encryption-side consumers (read replicas) converge on the new key set. There is no in-band revocation marker — removal from the JWKS is the signal.
+
+During the 5-minute convergence window, replicas with stale caches still encrypt with the retired kid, while replicas with fresh caches use the successor. Both paths are valid: the master holds private keys for both kids and decrypts both.
+
+Operators SHOULD rotate at least every **90 days**. Operators MUST be capable of rotating immediately on suspected compromise; the 5-minute cache TTL bounds propagation latency to encryption-side consumers. On compromise, the only difference from routine rotation is timing — the JWKS update happens immediately rather than on cadence.
+
+The master internally retains old private keys long enough to decrypt in-flight TMPX tokens whose `ttl_sec` windows have not yet expired (recommended floor: longer than the longest realistic `ttl_sec`, e.g., 7 days). This retention is a master-side concern and is not reflected in the JWKS — the JWKS lists only currently-active **encryption** keys. After private-key retention expires, tokens encrypted with the retired kid fail to decrypt.
+
+**Master-side retention is independent of compromise status.** The encryption-side guarantee (replicas stop using the leaked key within 5 minutes) is what stops new exposures. Master retention behaves the same on compromise as on routine rotation: a leaked private key compromises confidentiality of every TMPX token ever encrypted with the corresponding public key, so the master discarding its own copy earlier does not improve confidentiality (the attacker already has the key) and would drop in-flight frequency-cap data. Operators MAY choose to shorten master retention on compromise as a per-incident operational decision — for example, to draw a clean audit boundary — but this is not a protocol-level requirement.
+
+Operators SHOULD store private keys in HSM/KMS and rotate proactively on any suspicion of compromise.
 
 ### Replay protection
 

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-encryption-keys-set.json",
+  "title": "Agent Encryption Keys Set",
+  "description": "JWKS document (RFC 7517) served at the URL referenced by encryption_keys_uri in adagents.json authorized_agents entries. Lists currently-active X25519 public keys for TMPX HPKE mode_base encryption. The cluster-master operator removes a key from this document at retirement; encryption-side consumers (read replicas) refresh on a 5-minute cache TTL and converge on the published set. The master internally retains old private keys for in-flight decryption — that is master-side state, not reflected in this document.",
+  "type": "object",
+  "properties": {
+    "keys": {
+      "type": "array",
+      "description": "Currently-active encryption keys. Typically a single key; multiple entries are valid during a brief overlap window if the operator chooses to publish a successor before retiring the predecessor. The operator removes retired kids from this array — there is no in-band revocation marker.",
+      "items": {
+        "$ref": "/schemas/core/agent-encryption-key.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "keys"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "keys": [
+        {
+          "kid": "enc-26b",
+          "kty": "OKP",
+          "crv": "X25519",
+          "use": "enc",
+          "x": "MKjdLJjAo4r0vTjGY6w1QFZ1qJ3l0pvnX4mP9eK7c2A"
+        }
+      ]
+    }
+  ]
+}

@@ -172,6 +172,8 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`effective_from` / `effective_until`** *(optional)*: Time window for the authorization
   - **`exclusive`** *(optional)*: Whether this is the publisher's sole authorized path for the scoped inventory slice
   - **`signing_keys`** *(optional)*: Publisher-attested public keys buyers can pin when verifying signed agent responses
+  - **`encryption_keys_uri`** *(optional)*: HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys used for TMPX exposure-token encryption. MAY point to any HTTPS host the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider acting on behalf of many sales agents. The cluster-master operator rotates by editing the JWKS — remove retired kid, publish successor; the 5-minute cache TTL bounds propagation. Lets the operator rotate without coordinating edits across downstream `adagents.json` files. See [Encryption key rotation](/docs/trusted-match/specification#encryption-key-rotation).
+  - **`encryption_keys`** *(optional, **deprecated**)*: Inline X25519 public keys for TMPX encryption. Use `encryption_keys_uri` instead — inline keys cannot be rotated without editing every downstream `adagents.json` that authorizes this agent. Will be removed in AdCP 4.0.
   - **Additional fields**: Depends on authorization_type (see patterns below)
 
 **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
