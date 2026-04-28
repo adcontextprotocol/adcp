@@ -276,9 +276,10 @@ export function buildRequestSigningAuthenticator(): Authenticator {
 
 /** Authenticator for `/mcp-strict`: presence-gated signing with
  *  `required_for: ['create_media_buy']` and `'either'` content-digest mode.
- *  Distinct from the default authenticator so each route owns an isolated
- *  `InMemoryReplayStore` — sharing one store lets a nonce consumed on `/mcp`
- *  falsely fire `request_signature_replayed` on `/mcp-strict` (#3338). */
+ *  Distinct from the default authenticator so each route gets its own scoped
+ *  store entry — in production via the `@target-uri`-derived scope column of
+ *  the Postgres singleton; in CI via a per-authenticator `InMemoryReplayStore`
+ *  (#3338). */
 export function buildStrictRequestSigningAuthenticator(): Authenticator {
   return buildAuthenticatorWithCapability(getStrictRequestSigningCapability());
 }
