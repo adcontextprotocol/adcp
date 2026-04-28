@@ -30,6 +30,7 @@ import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
@@ -1189,16 +1190,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       return null;
     }
     // Role check: only org admins/owners can issue or verify a brand claim.
-    // Use resolveUserRole so inactive/pending memberships can't pass — a
-    // removed admin must not be able to claim a brand on the org that
-    // removed them.
+    // resolveUserOrgMembership applies the same active-membership filter as
+    // resolveUserRole did, plus a dev-mode bypass — a removed admin can't
+    // claim a brand on the org that removed them.
     try {
-      const memberships = await workos.userManagement.listOrganizationMemberships({
-        userId: req.user!.id,
-        organizationId: orgId,
-      });
-      const role = resolveUserRole(memberships.data);
-      if (role !== 'admin' && role !== 'owner') {
+      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
         res.status(403).json({
           error: 'Not authorized',
           message: 'Only organization admins or owners can issue or verify a brand-domain claim.',
