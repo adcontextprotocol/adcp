@@ -1502,6 +1502,104 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
   }
 
+  // Certification — surface in-progress attempts so Addie can route the
+  // conversation back to the right module without a tool round-trip.
+  if (context.certification) {
+    const cert = context.certification;
+    const id = cert.module_id ?? cert.track_id;
+    const startedDays = Math.floor(
+      (Date.now() - cert.started_at.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    lines.push('');
+    lines.push('### Certification');
+    if (cert.status === 'in_progress') {
+      lines.push(`Currently working on: ${id} (in progress, started ${startedDays} days ago).`);
+      if (startedDays > 45) {
+        lines.push('Note: this attempt is older than 45 days — the user may have moved on.');
+      }
+    } else if (cert.status === 'passed') {
+      lines.push(`Most recent attempt: ${id} — passed.`);
+    } else if (cert.status === 'failed') {
+      lines.push(`Most recent attempt: ${id} — failed. Be encouraging if they want to retry.`);
+    }
+  }
+
+  // Agent testing — surface stale-test signal for builders so Addie can
+  // suggest a fresh evaluation without re-querying agent_test_history.
+  if (context.agent_testing) {
+    const at = context.agent_testing;
+    if (at.last_test_at) {
+      const days = Math.floor(
+        (Date.now() - at.last_test_at.getTime()) / (24 * 60 * 60 * 1000)
+      );
+      lines.push('');
+      lines.push('### Agent Testing');
+      lines.push(`Last agent test: ${days} days ago (${at.last_outcome ?? 'unknown'}).`);
+      if (days > 14) {
+        lines.push('Note: tests older than 14 days are stale — gently suggest a fresh evaluation if the conversation goes near agent setup.');
+      }
+    } else {
+      lines.push('');
+      lines.push('### Agent Testing');
+      lines.push('No agent tests on record. If they discuss building or running an agent, suggest `evaluate_agent_quality` to verify it works.');
+    }
+  }
+
+  // Perspectives — surface zero-or-many footprint so Addie can encourage
+  // contribution without re-querying.
+  if (context.perspectives) {
+    const p = context.perspectives;
+    lines.push('');
+    lines.push('### Perspectives');
+    if (p.published_count === 0) {
+      lines.push('Has not published any perspectives yet. If they share interesting ideas, gently offer to help them turn one into a perspective.');
+    } else {
+      lines.push(`Has published ${p.published_count} perspective(s).`);
+      if (p.last_published_at) {
+        const days = Math.floor(
+          (Date.now() - p.last_published_at.getTime()) / (24 * 60 * 60 * 1000)
+        );
+        lines.push(`Last published: ${days} days ago.`);
+      }
+    }
+  }
+
+  // Upcoming registered event — context for time-bound discussions.
+  if (context.next_event) {
+    const e = context.next_event;
+    const days = Math.floor(
+      (e.starts_at.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+    );
+    lines.push('');
+    lines.push('### Upcoming Event');
+    lines.push(`Registered for: ${e.title} (in ${days} days).`);
+  }
+
+  // Adoption signals — public listing + team WG coverage. Lets Addie
+  // give org-aware suggestions when the conversation drifts toward
+  // setup or community participation.
+  if (context.adoption) {
+    const a = context.adoption;
+    const adoptionLines: string[] = [];
+    if (!a.has_company_listing && context.organization && !context.organization.is_personal) {
+      adoptionLines.push('Their organization does not yet have a public company listing in the directory.');
+    }
+    if (
+      context.org_membership &&
+      context.org_membership.member_count >= 3 &&
+      a.team_wg_coverage < 0.5
+    ) {
+      adoptionLines.push(
+        `Less than half their team (${Math.round(a.team_wg_coverage * 100)}%) is in any working group.`
+      );
+    }
+    if (adoptionLines.length > 0) {
+      lines.push('');
+      lines.push('### Org Adoption');
+      for (const l of adoptionLines) lines.push(l);
+    }
+  }
+
   // Pending content notifications (for committee leads and admins)
   if (context.pending_content && context.pending_content.total > 0) {
     lines.push('');
