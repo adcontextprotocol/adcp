@@ -49,7 +49,7 @@ INSERT INTO certification_modules (
       },
       {
         "topic": "Async polling with tasks/get",
-        "explanation": "When create_media_buy returns status: submitted, the buy is queued for processing (IO signing, governance review, or batch scheduling). Poll tasks/get with the task_id every 2-5 seconds. When task.status is completed, read media_buy_id off the artifact. If task.status is failed, read task.message for the rejection reason.",
+        "explanation": "When create_media_buy returns status: submitted, the buy is queued for processing (IO signing, governance review, or batch scheduling). Poll tasks/get with the task_id every 2-5 seconds. When task.status is completed, read media_buy_id off task.result. If task.status is failed, read task.error.message for the rejection reason.",
         "teaching_notes": "This is the most common place learners get stuck. They call create_media_buy, see submitted, and assume the buy failed. Explicitly running the polling loop and watching status move from submitted → working → completed builds the muscle memory."
       }
     ],
