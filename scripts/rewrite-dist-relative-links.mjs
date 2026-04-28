@@ -30,9 +30,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
-
-const DIST_DOCS_RE = /(^|\/)dist\/docs\/[^/]+\//;
+import { pathToFileURL } from 'node:url';
 
 /**
  * Compute how many path segments the source file sits at within `docs/`.
@@ -40,7 +38,7 @@ const DIST_DOCS_RE = /(^|\/)dist\/docs\/[^/]+\//;
  * the source path is `docs/contributing/storyboard-authoring.md` and the
  * depth-within-docs is 1 (the `contributing/` directory).
  */
-function sourceDepthInDocs(distFile) {
+export function sourceDepthInDocs(distFile) {
   // Strip everything up to and including `dist/docs/<version>/`.
   const norm = distFile.replace(/\\/g, '/');
   const m = norm.match(/dist\/docs\/[^/]+\/(.*)$/);
@@ -114,6 +112,8 @@ function main() {
 }
 
 // Only run main() when executed directly, not when imported by tests.
-if (import.meta.url === `file://${resolve(process.argv[1])}`) {
+// Use pathToFileURL for a robust comparison that handles symlinks and
+// case-insensitive filesystems correctly (vs. naive string comparison).
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

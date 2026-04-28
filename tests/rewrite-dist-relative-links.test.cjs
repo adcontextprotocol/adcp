@@ -89,17 +89,40 @@ const assert = require('node:assert/strict');
     assert.equal(out, 'See `../../../../static/compliance/x.yaml` for the source.');
   });
 
-  test('idempotent: rewriting twice does not double-prepend', () => {
+  test('idempotent at fixed source depth (the documented contract)', () => {
+    // Post-rewrite count is sourceDepth+3, which never matches the
+    // sourceDepth+1 minimal-escape predicate. So a second pass at the same
+    // depth is a no-op. This is the only contract — the rewriter is
+    // depth-aware and the dist file's depth is fixed by its path.
     const once = rewriteContent('[x](../../static/y)', 1);
-    const twice = rewriteContent(once, 3);
-    // After one rewrite, the path has 4 ../, sourceDepth=3 means count(4) > 3
-    // → would rewrite again. So the rewrite is NOT mathematically idempotent
-    // by content alone; it is idempotent at the (file, sourceDepth) tuple
-    // level — calling with the same depth twice on the same content yields
-    // the same output.
-    const stable = rewriteContent(once, 1);
-    assert.equal(stable, once, 'second pass with same depth should be stable');
-    // Sanity: the (incorrect) double-rewrite path would over-apply.
-    assert.notEqual(twice, once);
+    assert.equal(once, '[x](../../../../static/y)');
+    const twice = rewriteContent(once, 1);
+    assert.equal(twice, once, 'second pass at same depth is a no-op');
+  });
+})();
+
+// ── sourceDepthInDocs() ──────────────────────────────────────────────
+
+(async () => {
+  const { sourceDepthInDocs } = await import('../scripts/rewrite-dist-relative-links.mjs');
+
+  test('sourceDepthInDocs: file at root of dist/docs/<version>/ → 0', () => {
+    assert.equal(sourceDepthInDocs('dist/docs/3.0.1/file.md'), 0);
+  });
+
+  test('sourceDepthInDocs: depth 1', () => {
+    assert.equal(sourceDepthInDocs('dist/docs/3.0.1/contributing/file.md'), 1);
+  });
+
+  test('sourceDepthInDocs: depth 3', () => {
+    assert.equal(sourceDepthInDocs('dist/docs/9.9.9/a/b/c/file.md'), 3);
+  });
+
+  test('sourceDepthInDocs: malformed path throws', () => {
+    assert.throws(() => sourceDepthInDocs('not/a/dist/path.md'), /Not a dist\/docs/);
+  });
+
+  test('sourceDepthInDocs: prerelease versions handled (3.1.0-beta.2)', () => {
+    assert.equal(sourceDepthInDocs('dist/docs/3.1.0-beta.2/x/y.md'), 1);
   });
 })();
