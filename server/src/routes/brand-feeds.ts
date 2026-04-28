@@ -321,11 +321,15 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         let fetchResponse;
         try {
           fetchResponse = await safeFetch(sanitizeUrl(parsedUrl), {
-            headers: { 'User-Agent': 'AdCP Brand Builder/1.0' },
+            // Accept-Encoding: identity disables gzip/br auto-decompression.
+            // Without it, undici decodes a small encoded body into many MB
+            // before the streaming byte cap can fire (compression-bomb path).
+            headers: { 'User-Agent': 'AdCP Brand Builder/1.0', 'Accept-Encoding': 'identity' },
             signal: AbortSignal.timeout(15_000),
           });
-        } catch (err) {
-          return res.status(400).json({ error: `Could not fetch URL: ${(err as Error).message}` });
+        } catch {
+          // Fixed string — don't echo undici/network internals to the caller.
+          return res.status(400).json({ error: 'Could not fetch URL' });
         }
         if (!fetchResponse.ok) {
           return res.status(400).json({ error: `URL returned HTTP ${fetchResponse.status}` });
@@ -357,6 +361,13 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         truncated = true;
       }
 
+      // Defense-in-depth against prompt injection on the URL fetch path: a
+      // hostile origin could return a literal `</content>` to break out of
+      // the XML fence and inject instructions. Neutralise the closing tag.
+      // The output filter below (type allowlist + DNS-length cap + lowercase)
+      // is the load-bearing defense; this just narrows the surface.
+      const fencedContent = rawText.replace(/<\/content>/gi, '<\\/content>');
+
       const message = await getAnthropicClient().messages.create({
         model: ModelConfig.fast,
         max_tokens: 4096,
@@ -377,7 +388,7 @@ Return ONLY valid JSON with no explanation or markdown:
 If no identifiers found, return: {"properties":[]}
 
 <content>
-${rawText}
+${fencedContent}
 </content>`,
           },
         ],
@@ -387,7 +398,10 @@ ${rawText}
         message.content[0].type === 'text' ? message.content[0].text.trim() : '';
       // Claude haiku frequently wraps structured output in a ```json fence even
       // when the prompt asks for raw JSON. Strip the fence before parsing.
-      const fenceMatch = responseText.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+      // Tolerate leading/trailing whitespace and CRLF; anchor end-to-end so a
+      // fence appearing mid-prose is left untouched (and falls through to the
+      // JSON.parse error path).
+      const fenceMatch = responseText.match(/^\s*```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/);
       if (fenceMatch) responseText = fenceMatch[1].trim();
       let parsed: { properties?: Array<{ identifier?: string; type?: string }> };
       try {
