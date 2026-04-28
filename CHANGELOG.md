@@ -1,5 +1,162 @@
 # Changelog
 
+## 3.1.0-beta.0
+
+### Minor Changes
+
+- 63e58c3: spec(conformance): AAO Verified mark via continuous delivery observability (transitional)
+
+  Adds an optional top-tier trust mark **AAO Verified**, separate from **AdCP Conformant** (the storyboard-issued mark). Two marks with a containment relationship: AAO Verified ⊆ AdCP Conformant. _Conformant_ attests wire-format correctness (storyboards pass). _Verified_ attests that the seller's live ad-server integration actually delivers real impressions on real inventory — something storyboards cannot prove because `simulate_delivery` is a parallel code path from production reporting.
+
+  Earlier drafts used a "Tier 1 / Tier 2" framing; this PR drops that language because tiering the same word "verified" across two different kinds of claim muddied the buyer signal. AdCP Conformant and AAO Verified are distinct claims, not tiers of one claim, with Verified strictly implying Conformant.
+
+  Seller obligation for AAO Verified: designate a compliance account with real live campaigns (PSA / remnant / house / genuine revenue all qualify) and grant the `attestation_verifier` scope (#2964) to the AAO compliance engine. Eight observable checks run over a 7–14 day rolling window. Mark states: Active / Quiet-Period-Declared / Lapsed. Path B (brownfield) has two first-class forms — B1 polling-only, B2 webhook-attached.
+
+  Closes #2965. **Transitional** — a follow-up RFC ([#3046](https://github.com/adcontextprotocol/adcp/issues/3046)) proposes moving AAO Verified from enrollment-based continuous observation to AAO-operated canonical test campaigns per specialism. The machinery in this PR (eight checks, `attestation_verifier` scope, Path A/B, webhook-ownership contract) is reusable either way; only the issuance trigger changes at the end state.
+
+  Depends on #2964 (`attestation_verifier` scope + RBAC error codes) and on the merged #2963 account-ownership tightening. Multi-subscriber webhooks (which relax the dedicated-tenant requirement on Path B2) tracked for 4.0 in #3009.
+
+- 63e58c3: spec(accounts): caller-scope introspection via per-account `authorization` on sync/list + RBAC error codes
+
+  Caller-scope authorization model for AdCP. Vendor agents (media-buy, signals, governance, creative, brand) attach an optional `authorization` object to each per-account entry in `sync_accounts` and `list_accounts` responses — describing `allowed_tasks`, per-task `field_scopes`, an optional standard `scope_name`, and an optional `read_only` flag. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. Conceptually analogous to RFC 7662 OAuth 2.0 Token Introspection, specialized for AdCP's task-and-field authorization model and folded into existing account discovery rather than split into a new task.
+
+  Standard named scope `attestation_verifier` is spec-mandated (binds to the AAO Verified mark, a Media Buy Protocol flow). Other scope names are vendor-specific and MUST use the `custom:` prefix so a typo of the standard value fails schema validation. Three new error codes surface RBAC decisions that previously had no standard code: `SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`. `FIELD_NOT_PERMITTED` MUST populate `error.field`; `SCOPE_INSUFFICIENT` SHOULD carry an `introspection_hint` pointing at where to re-read scope. All four authz codes classify as `correctable` but are NOT agent-autonomous (scope broadening requires operator intervention) — agents SHOULD surface rather than auto-retry.
+
+  Identity binding, refresh cadence, and consistency are normative: the authorization object is scoped to `(caller identity, account_id)` at read time; vendor agents MUST resolve identity from the authenticated request (not client-supplied fields) and reflect operator-initiated scope changes within 300 seconds. Sequential reads within the refresh window MUST return identical authorization objects (modulo operator-initiated changes) — flicker from load-balanced or eventually-consistent backends is non-conformant.
+
+  Closes #2964.
+
+- 556edf3: Extend `check:platform-agnostic` lint to cover enum and const values; fix `brand.json` platform-agnosticism violation.
+
+  **Lint extension (`tests/check-platform-agnostic.cjs`):** adds enum/const-value scanning alongside the existing property-name check. Uses a path-qualified `ENUM_VALUE_ALLOWLIST` so the same vendor token can be legitimate in one enum (e.g., `roku` in `enums/genre-taxonomy.json`) but a violation in another. Pre-compiles vendor-token regexes. Skips `examples` arrays (user-data samples, not normative definitions). Title/description text intentionally excluded — vendor names in prose are permitted per spec-guidelines.
+
+  **Schema fix (`static/schemas/source/brand.json`):** removes the single-value enum `["openai_agentic_checkout_v1"]` from `product_catalog.agentic_checkout.spec` and replaces it with a free-form `string`. The enum encoded a specific vendor's checkout API version as a normative discriminator, violating the platform-agnosticism rule in `docs/spec-guidelines.md`. Non-breaking: existing data using `"openai_agentic_checkout_v1"` remains valid.
+
+  **Note:** `openai_product_feed` in `brand.json`'s `feed_format` enum is contested (see #2439): one expert treats it as a violation; another treats it as a canonical feed-schema identifier parallel to `google_merchant_center`. It is allowlisted pending @bokelley's decision.
+
+  Closes #2439.
+
+- 1154e9d: feat(schema): add `Submitted` arm to per-tool response `oneOf` for `update_media_buy`, `build_creative`, and `sync_catalogs` (#3392)
+
+  AdCP 3.0 shipped `*-async-response-submitted.json` schemas for 6 HITL tools but only 2 of 6 per-tool `xxx-response.json` schemas included the `Submitted` arm in their top-level `oneOf`. This left SDK codegen unable to generate typed `*Task` HITL methods for the 4 missing tools.
+
+  This changeset fixes 3 of the 4 gaps (the `get_products` case is flagged for human review — see #3392):
+
+  - `update-media-buy-response.json` — adds `UpdateMediaBuySubmitted` arm (`status: "submitted"` + `task_id`); updates `UpdateMediaBuyError.not` to exclude the submitted state
+  - `build-creative-response.json` — adds `BuildCreativeSubmitted` arm; updates `BuildCreativeError.not` to exclude the submitted state
+  - `sync-catalogs-response.json` — adds `SyncCatalogsSubmitted` arm; updates `SyncCatalogsError.not` to exclude the submitted state
+
+  Non-breaking: existing `Success | Error` consumers are unaffected. Buyers gain a new permitted response shape and SDK codegen can produce typed HITL methods for these three tools.
+
+  Note: the fix uses the same inline arm pattern as `create-media-buy-response.json` and `sync-creatives-response.json` — not `$ref` to the `*-async-response-submitted.json` schemas (those are task-completion artifact payloads for the webhook path, not the initial-response discriminated arm).
+
+  Closes partial scope of #3392.
+
+- 7b2de61: Single governance agent per account — reconcile 3.x governance schemas with a coherent semantic model (closes #3010).
+
+  **The inconsistency.** 3.x registration (`sync_governance`) allowed up to 10 governance agents per account with per-agent `categories`, and the campaign-governance spec documented fan-out-and-unanimous-approval. But the protocol envelope and `check_governance` carried a single `governance_context` string, and the four-value `scope` enum on brand.json (`spend_authority | delivery_monitor | brand_safety | regulatory_compliance`) didn't carve the governance responsibility at its joints — those aren't independent specialisms held by different authorities, they're phases and facets of one evaluation over one plan.
+
+  **Decision.** Commit to single-agent: an account binds to one governance agent that owns the full lifecycle. Multi-agent registration was aspirational and produced schema inconsistencies without a coherent semantic story. A plan is unitary (budget, policies, restricted attributes all live on the plan); `check_governance` already separates authorization / fidelity / drift on the `phase` axis (`purchase` / `modification` / `delivery`); internal specialist review (legal, brand safety, category) belongs inside the configured agent, not at the registration layer.
+
+  **Changes.**
+
+  - `account/sync-governance-request`: `governance_agents` constrained to `maxItems: 1`. `categories` field removed. Description makes the one-agent-per-account invariant explicit and explains why (phases, not specialisms; plan is unitary; specialist review composes inside the agent).
+  - `core/protocol-envelope`: `governance_context` stays a singular string. Description updated to state the single-agent invariant and why phased lifecycle (not split authority) means one token covers the full governed action.
+  - `brand.json`: remove the governance-agent `scope` enum (`spend_authority | delivery_monitor | brand_safety | regulatory_compliance`) — no longer meaningful under single-agent registration. P&G example updated to drop the stray `scope` array.
+  - `docs/governance/campaign/specification.mdx`: replace "Multi-agent composition" with "One governance agent per account" explaining the rationale (authorization/fidelity/drift are phases, regulatory rules are encoded in the plan, specialist review composes inside the agent, one lifecycle/one token/one audit trail). Fix the remaining `governance_agent(s)` plural residue.
+  - `governance/check-governance-request` / `response` / `report-plan-outcome-request`: revert any language implying per-agent fan-out; all three are single-agent calls as originally designed.
+  - `docs/governance/campaign/tasks/check_governance.mdx`, `report_plan_outcome.mdx`: revert to the single-agent prose.
+
+  **Backwards compatibility.** Buyers with one agent registered (practically every 3.0 deployment per maintainer's reading of the ecosystem) are unaffected. Buyers that registered more than one agent per account against the previous `maxItems: 10` — if any exist — MUST collapse to a single agent; the protocol does not support routing or aggregating across multiple. Sellers that validated the `categories` field MUST treat registrations without it as valid (the field is removed, not deprecated).
+
+  **What this is not.** This PR does not address specialist governance surfaces adjacent to campaign governance — brand-safety pre-screen of creatives, property-list policy, content-standards evaluation — those are separate governance domains with their own agents and their own lifecycle. Campaign governance speaks only for the plan.
+
+- 6ff3f9d: Reconcile `available-metric` enum with `delivery-metrics.json` so every
+  declarable metric has a corresponding property in the delivery payload.
+
+  **Why.** A buyer that says "I can only use products that report
+  `completed_views`" only has accountability if the enum used at the discovery
+  layer is a 1:1 mirror of what reporting can actually return. The enum had
+  drifted from the property set:
+
+  - `video_completions` was listed in the enum but had no corresponding property
+    in `delivery-metrics.json` — the property was renamed to `completed_views`
+    in a prior release (per `docs/reference/release-notes.mdx` §7) and the enum
+    alias was never cleaned up. A seller declaring it in `available_metrics`
+    was advertising a metric they could not report.
+  - Four scalar properties on `delivery-metrics.json` (`engagements`, `follows`,
+    `saves`, `profile_visits`) had no enum entries, so a product that reports
+    social/social-platform engagements had no way to declare so at discovery.
+
+  **Changes.**
+
+  - `enums/available-metric.json`: remove `video_completions`; add `engagements`,
+    `follows`, `saves`, `profile_visits`. Object/namespace entries (`viewability`,
+    `quartile_data`, `dooh_metrics`) remain — they map to namespace properties
+    in `delivery-metrics.json`.
+  - `core/reporting-capabilities.json`: example updated to use `completed_views`.
+  - `docs/media-buy/media-buys/optimization-reporting.mdx`: metric list rewritten
+    to match the reconciled enum (drops the stale `video_completions` entry,
+    adds `engagements` / `follows` / `saves` / `profile_visits` /
+    `new_to_brand_rate`). Notes platform variance for `saves`
+    (Pinterest "repins", TikTok "video_saves").
+  - `docs/media-buy/task-reference/create_media_buy.mdx`: `requested_metrics`
+    examples updated to `completed_views`.
+  - `server/src/training-agent/publishers.ts`: training-agent fixture
+    `reportingMetrics` arrays use `completed_views`.
+
+  **Vocabulary provenance.** `completed_views` and `engagements` follow IAB/MRC
+  and VAST 4 conventions. `follows`, `saves`, and `profile_visits` are
+  platform-native names (Meta/TikTok/Pinterest); AdCP is setting these as the
+  canonical aliases for cross-platform reporting since IAB does not define
+  social-platform engagement scalars.
+
+  **Backwards compatibility.** Removing `video_completions` from the enum is a
+  validation-constraint change — minor-bumped per the schema-publication-at-merge
+  policy. Any seller that had populated `available_metrics: ["video_completions"]`
+  was already non-functional (no `video_completions` field in delivery responses
+  to populate, only `completed_views`). Buyers that filtered against
+  `video_completions` on the discovery side should switch to `completed_views`.
+
+  This unblocks a follow-up that adds `required_metrics` to `get_products` and
+  `missing_metrics` to `get_media_buy_delivery` for end-to-end metric
+  accountability through the media buy lifecycle.
+
+  **DBCFM KPI cross-reference.** The DBCFM `Reporting`/`Performance` KPI
+  vocabulary has not been mapped into AdCP (PRs #1594, #1605, #1664 covered
+  price/business-entities/proposal-lifecycle; measurement block is out of
+  scope). No string-level or semantic collision exists at merge time. When the
+  DBCFM measurement mapping is eventually added, note that `engagements`
+  corresponds to DBCFM `Interaktionen`, `follows` to `Follower-Gewinn`, `saves`
+  to `Gespeichert`, and `profile_visits` to `Profilbesuche`. No aliasing is
+  required — the AdCP names are unambiguous — but a cross-reference note will be
+  needed in the DBCFM mapping doc (tracked in #3460).
+
+  **`completion_rate` is a derived ratio.** `completion_rate =
+completed_views / impressions` — it is derivable, not independently
+  reportable. The planned `missing_metrics` check in `get_media_buy_delivery`
+  must treat ratio metrics as derivable to avoid false
+  `metric_accountability_breach` hints. This is a design signal for the
+  `required_metrics`/`missing_metrics` follow-up; it does not affect this PR.
+
+- 868a051: feat(schema): add `result` and `include_result` to `tasks/get` request/response (closes #3123)
+
+  `tasks/get` had no typed field for the completion payload — buyers polling an async `create_media_buy` (or any submitted-arm task) could see `status: completed` but had no schema-backed path to retrieve `media_buy_id` and `packages`. The push-notification webhook schema already defined this pattern correctly (`result: $ref async-response-data.json`); the polling API simply never got the same field.
+
+  **Schema changes (both additive, non-breaking):**
+
+  - `static/schemas/source/core/tasks-get-response.json` — adds optional `result: $ref /schemas/core/async-response-data.json`. Present when `status` is `completed` and `include_result: true` was requested; absent otherwise. For `failed`/`canceled` tasks, sellers continue to use the existing `error` field — `result` is for the success terminal only. Mirrors the `result` field in `mcp-webhook-payload.json` so push and pull paths return the same payload shape.
+  - `static/schemas/source/core/tasks-get-request.json` — adds optional `include_result: boolean` (default `false`). Signals that the caller wants the completion payload on the response.
+
+  **Docs:**
+
+  - `docs/protocol/calling-an-agent.mdx` — adds a completed `tasks/get` example showing the `result` field, closing the documentation gap identified in the issue.
+  - `docs/building/implementation/task-lifecycle.mdx`, `async-operations.mdx`, `error-handling.mdx`, `orchestrator-design.mdx` — re-introduces `include_result: true` in the polling examples that patch #3127 stripped (now spec-backed by this PR's schema additions).
+
+  Non-breaking: `result` is optional on both request and response. Sellers omitting it on non-completed tasks or on requests without `include_result: true` remain spec-conformant. Existing `adcp-client` consumers relying on informal `additionalProperties` passthrough continue to work; the typed field gives SDKs a stable, named field to key on.
+
+  Unblocks adcp-client#967 (polling-cycle hardening).
+
 ## 3.0.1
 
 See [release notes](docs/reference/release-notes.mdx#version-301) for the curated narrative — 3.0.1 is a stable-surface no-op for 3.0-conformant agents. Skills bundle in `/protocol/3.0.1.tgz`, normative clarifications, additive fields on experimental surfaces (governance, TMP) per the experimental-status contract, and one docs-level deprecation (`get_signals` top-level `max_results`).
