@@ -22,6 +22,10 @@ The governance agent maintains all state. Callers do not chain check IDs or trac
 
 An account binds to one governance agent (see [`sync_governance`](/docs/accounts/tasks/sync_governance) and [One governance agent per account](/docs/governance/campaign/specification#one-governance-agent-per-account)). All lifecycle calls for a governed action go to that same agent.
 
+<Tip>
+**Per-specialist review surfaces here.** Internal decomposition (legal, brand safety, category) is not exposed as separate endpoints — it appears as agent-internal labels in `categories_evaluated` and, on `denied`, `conditions`, or informational `approved` responses, in `findings[].details`. Treat these values as opaque audit values; do not pattern-match against a fixed list.
+</Tip>
+
 ## Check types
 
 ### Intent checks (orchestrator)
