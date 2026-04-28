@@ -232,6 +232,69 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 - **MINOR**: Add optional fields, new enum values, new tasks
 - **MAJOR**: Remove/rename fields, change types, remove enum values
 
+### Release lines
+
+AdCP runs two release lines simultaneously:
+
+- **`main`** → next minor (currently `3.1.0-beta.N` while in pre mode; see `.changeset/pre.json`)
+- **`3.0.x`** → patches to the current minor (`3.0.2`, `3.0.3`, …)
+
+Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
+
+#### Cherry-pick convention
+
+Default flow when a fix is needed in both lines:
+
+1. Author lands on `main` first (normal PR flow)
+2. After merge, cherry-pick to `3.0.x`:
+   ```bash
+   git checkout 3.0.x && git pull
+   git cherry-pick <main-sha>
+   git push origin 3.0.x
+   ```
+3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it is a near-no-op (the cherry-pick is already in `main`) but keeps the lines provably in sync.
+
+#### Patch eligibility
+
+A change is patch-eligible (lands on `3.0.x`) if **all** of:
+
+- **Stable schemas:** no new fields, no renamed fields, no new enum values, no new normative requirements. Clarifying underspecified behavior is OK.
+- **Experimental surfaces** (governance, TMP, anything `x-status: experimental`): additive changes always permitted per the experimental-surface contract — see `docs/reference/experimental-status.mdx`.
+- **Conformance harness** (`comply_test_controller`, storyboards): additive scenarios always permitted.
+- **Docs and release tooling:** always patch-eligible.
+
+If unsure, default to a `--empty` changeset and discuss whether the change belongs on `3.0.x` at all. Many fixes are stable-only and ship in `3.1.x` only.
+
+#### Pre mode (beta releases)
+
+`.changeset/pre.json` puts main in **pre mode** — every Version Packages cut produces `3.1.0-beta.N` instead of `3.1.0`. This is a deliberate safety net: if a `minor` changeset slips into `main` accidentally, it ships as a beta drop, not as 3.1.0 stable.
+
+To exit pre mode and cut 3.1.0 stable:
+
+```bash
+npx changeset pre exit   # deletes .changeset/pre.json
+git add -A && git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
+# open PR, land it
+```
+
+Next Version Packages cut after the exit PR merges produces `3.1.0` stable.
+
+#### Known friction (until #3417 lands)
+
+GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. This affects three places in the release pipeline:
+
+1. **Version Packages PR** required CI doesn't auto-fire — push from a human identity to trigger
+2. **`release-docs.yml`** doesn't fire on `release: published` — manually `workflow_dispatch` after each tag
+3. **Auto-snapshot PR** required CI doesn't auto-fire — admin-merge
+
+Switching `release.yml` to a GitHub App token closes all three. Tracked in #3417.
+
+#### Runbooks
+
+- `.agents/shortcuts/cut-patch.md` — cutting a `3.0.X` patch
+- `.agents/shortcuts/cut-beta.md` — cutting a `3.1.0-beta.N` and exiting pre mode for 3.1.0 stable
+- `.agents/shortcuts/cut-major.md` — cutting a major (4.0 when its time comes)
+
 ### Addie Code Version
 When making significant changes to Addie's core logic, bump `CODE_VERSION` in `server/src/addie/config-version.ts`.
 
