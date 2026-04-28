@@ -13,7 +13,7 @@
        ============================================================================= */
 
     body {
-      background: #fff;
+      background: var(--color-surface);
       /* padding-top handled by hero */
     }
 
@@ -94,7 +94,8 @@
 
     .filter-btn {
       padding: var(--space-2) var(--space-4);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
       border: var(--border-2) solid var(--color-border);
       border-radius: var(--radius-lg);
       font-size: var(--text-sm);
@@ -107,7 +108,7 @@
     }
 
     .filter-btn.active {
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
       border-color: var(--color-brand);
       color: var(--color-brand);
     }
@@ -142,7 +143,7 @@
 
     /* Join CTA Card */
     .join-cta {
-      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+      background: var(--color-brand-bg);
       border: var(--border-2) solid var(--color-brand);
       border-radius: var(--card-radius);
       padding: var(--space-8);
