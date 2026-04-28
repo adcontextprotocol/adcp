@@ -121,7 +121,6 @@ phases:
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  categories: ["budget_authority"]
           idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_brand_agent_setup_sync_governance"
         validations:
           - check: response_schema

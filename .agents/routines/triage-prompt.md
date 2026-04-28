@@ -261,7 +261,33 @@ consultation. Apply `claude-triaged` + appropriate label. Short
 comment only for NONE / first-time authors.
 
 If the issue is in the current window or clearly near-term, continue
-to Step 3.
+to Step 2.5.
+
+### Step 2.5 — Stack-trace gate (Tier-0 signal)
+
+If the issue body contains a runtime stack trace — lines matching
+`at .* \(.*:\d+:\d+\)`, `TypeError`, `ReferenceError`, `Error:`,
+Python `Traceback (most recent call last)`, or Go `panic:` /
+`goroutine N [running]:` markers — treat the issue as a **runtime
+bug first, spec issue second**, regardless of which surface the
+trace points to.
+
+1. **Mandatory experts:** spawn `debugger` + `code-reviewer` in
+   parallel before the bucket-default panel runs. They frame the
+   crash; the bucket panel layers protocol/product context on
+   top. Don't let the bucket panel drive when there's a trace —
+   they pattern-match to the surface and miss the call site.
+2. **Identify the crashing frame's repo.** Parse the topmost
+   non-`node_modules` frame from the trace. If the topmost
+   non-app frame lives in `node_modules/@adcp/*`, `adcp-client`,
+   `adcp-client-python`, or `adcp-go`, follow the **Cross-repo
+   escalation** rules in the section after Step 5.
+3. **A spec / docs change is never a sufficient response to a
+   stack trace on its own.** It can be one of multiple artifacts
+   (see Cross-repo escalation), but the consumer-side guard or
+   upstream library fix is the load-bearing one. The
+   symptom-coherence check in Step 5 is the gate that enforces
+   this.
 
 ### Step 3 — Classify and bucket
 
@@ -271,7 +297,10 @@ Pick one classification: **Bug**, **Doc/typo**, **Spec question**,
 
 **Tiebreaker:** if you can't tell Bug from Usage/Spec-question
 without running code, classify `needs-info` and ask a concrete repro
-question. Never guess.
+question. Never guess. **A stack trace is never a spec question** —
+it's a Bug, even if the underlying cause is malformed input the spec
+doesn't forbid; the spec gap is a follow-up to the runtime fix, not
+a substitute for it.
 
 Scope buckets — **label application is strictly gated**:
 
@@ -286,6 +315,13 @@ Scope buckets — **label application is strictly gated**:
 
 Common buckets (verify every time):
 
+- **runtime-crash** — overlay bucket: any issue whose body carries
+  a stack trace, `TypeError` / `ReferenceError` / `panic` /
+  `Traceback`, or "crashes on X" symptom. Overlays the surface
+  bucket — a crash in registry-consumer code is still
+  registry-bucketed for the surface panel, but routes through the
+  runtime-crash panel **first** (debugger + code-reviewer) before
+  the surface panel adds context.
 - **spec / protocol** — AdCP schemas, task definitions, spec docs.
   Non-breaking schema changes (see definition) are PR-able.
 - **web / site / docs** — public site (`docs/`, `static/`). Typo
@@ -316,6 +352,7 @@ relevant files you've read.
 
 | Bucket | Default panel |
 |---|---|
+| runtime-crash (overlay — applies to any bucket when a stack trace is present) | debugger, code-reviewer, **+ surface-bucket default** |
 | spec / protocol | ad-tech-protocol-expert, adtech-product-expert |
 | addie | prompt-engineer, user-engagement-expert, adtech-product-expert, internal-tools-strategist (if UI) |
 | admin / ops tools | internal-tools-strategist, dx-expert |
@@ -342,6 +379,19 @@ Combine the experts' reports. Look for:
 
 Never paper over expert disagreement. Surface it.
 
+**Symptom-coherence check (mandatory for any runtime-crash issue —
+i.e., when Step 2.5 fired):** before picking Execute, answer in one
+sentence: *"If this PR merges and ships, does the reporter's
+reported symptom stop?"* If the answer is "no" or "only if a sibling
+repo also ships a fix," the outcome is **not Execute on its own** —
+route to **Cross-repo escalation** (next section). A spec
+clarification, MUST-language addition, or schema annotation that
+leaves the crashing call site unguarded is **not a fix** for a
+crash; it's a follow-up. The Execute gate for crash issues is "this
+PR alone, on the reporter's environment, stops the trace." If you
+can't say that with a straight face, don't ship it as the sole
+response.
+
 **Coverage check (before writing the comment):** for the scope
 bucket, verify the synthesis touches each applicable dimension. If a
 dimension is material and missing, loop back with a targeted
@@ -350,6 +400,7 @@ obvious gap.
 
 | Bucket | Dimensions the synthesis should cover |
 |---|---|
+| runtime-crash (overlay) | crashing-frame repo (this repo vs sibling SDK), reproducibility / trigger conditions, defensive-shim feasibility in consumer code, upstream-fix scope, severity (single-call vs whole-pipeline abort) |
 | spec / protocol | operator reality (what DSPs/SSPs actually do), codebase/schema coherence (existing enums, task boundaries), industry precedent (OpenRTB / VAST / GAM / prebid), migration cost, governance / backwards-compat |
 | addie | pull vs. push dynamics, context use, channel choice, drop-off/decay handling, relationship-model fit |
 | compliance suite | conformance coverage, test reliability, schema alignment, CI cost |
@@ -368,6 +419,44 @@ expert type in parallel. Variance in expert framing is a feature for
 high-scope issues — different instances surface different angles
 (operator reality vs. codebase coherence vs. migration). Synthesize
 across the 2× outputs. Don't do this for small bugs — overkill.
+
+## Cross-repo escalation — when the crash lives in a sibling repo
+
+Triggers when Step 2.5 fired **and** the topmost non-`node_modules`
+frame in the trace points at `adcp-client`, `adcp-client-python`,
+`adcp-go`, or any sibling SDK. The routine produces **two
+artifacts**, not one — and a spec clarification is at most an
+optional third, never a substitute.
+
+1. **Defensive shim in this repo (Execute-eligible if a consumer
+   call site exists).** Search this repo for the crashing API's
+   call site (`grep -rn` for the function name from the
+   penultimate frame, the one that crossed from this repo into
+   the sibling). If a call site exists in `server/`, `static/`,
+   or tooling, draft a minimal guard PR — coerce, validate, or
+   try/catch with a logged skip — so this repo's runtime stops
+   crashing even before the sibling repo ships. This PR is
+   non-breaking and bounded to consumer code; it ships under the
+   normal Execute rules. Mark it as a workaround in the PR body
+   and link the upstream tracker.
+2. **Tracked follow-up for the sibling repo.** If the sibling is
+   in the same org (`adcontextprotocol/*`), add a
+   `Sibling-repo-fix-needed:` line in the triage comment naming
+   the repo, the file, and the symptom. Do **not** open the
+   sibling-repo issue from this routine — it doesn't have the
+   credentials or the context — surface it for the human to
+   file. Don't close this repo's issue on shim merge: convert it
+   to `Blocked-on: <sibling-repo>#<N>` so a future sweep
+   resurfaces it after the upstream fix lands.
+3. **Spec / docs clarification (optional third artifact).** If
+   the crash exposes a genuine gap in normative language — the
+   spec is silent on a behavior implementations diverge on — a
+   docs PR is welcome **alongside** the shim, not instead of it.
+   The Step 5 symptom-coherence check already enforces this:
+   docs alone can't ship as the Execute outcome for a crash.
+
+The pattern: **shim now (this repo) + tracker (sibling repo) +
+docs (optional)**. Never **docs alone**.
 
 ### Step 6 — Comment (only when it adds signal)
 

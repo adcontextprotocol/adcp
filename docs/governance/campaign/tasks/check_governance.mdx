@@ -20,6 +20,8 @@ Universal governance check for campaign actions. Both the orchestrator (buyer-si
 
 The governance agent maintains all state. Callers do not chain check IDs or track conversation history -- they post the action, and the governance agent correlates by `plan_id`. On subsequent lifecycle checks, callers include `governance_context` from the prior response for continuity.
 
+An account binds to one governance agent (see [`sync_governance`](/docs/accounts/tasks/sync_governance) and [One governance agent per account](/docs/governance/campaign/specification#one-governance-agent-per-account)). All lifecycle calls for a governed action go to that same agent.
+
 ## Check types
 
 ### Intent checks (orchestrator)
@@ -35,7 +37,7 @@ The orchestrator calls `check_governance` with `tool` and `payload` before sendi
 
 ### Execution checks (seller)
 
-The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
+The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has a governance agent configured (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
 
 Before executing the check, the seller verifies the signed `governance_context` token that arrived on the protocol envelope from the buyer. The buyer produces an **intent-phase** token (per the [JWS profile](/docs/building/implementation/security#adcp-jws-profile)); the seller's own execution check produces the `purchase`/`modification`/`delivery`-phase tokens bound to the assigned `media_buy_id` for the rest of the lifecycle.
 
@@ -457,9 +459,9 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
 | `status` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Per-category issues found. Present when status is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
+| `findings` | array | Per-category issues found. Present when status is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
-| `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). Useful for verifying which validations ran. |
+| `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). **Agent-internal labels** — each string is defined by the governance agent's policy model and is how internal specialist review (legal, brand safety, category) surfaces for audit from behind the agent's single endpoint. Not a protocol enum; not safe to pattern-match against a fixed list. |
 | `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
 | `mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Lets counterparties, regulators, and auditors distinguish whether an `approved` decision reflects deliberate `enforce` enforcement or `audit`-mode silent logging. |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
