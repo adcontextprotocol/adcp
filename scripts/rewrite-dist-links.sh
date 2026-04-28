@@ -36,9 +36,15 @@ echo "Rewriting links in $DOCS_DIR for version $VERSION"
 #   - /schemas/vN/       → /schemas/$VERSION/  (current; docs source pins to major alias)
 rewrite_file() {
   local file="$1"
+  local original
+  original=$(mktemp)
+  cp "$file" "$original"
   local tmp
   tmp=$(mktemp)
 
+  # Phase 1: rewrite absolute prefixes (/docs/, /schemas/latest/, /schemas/vN/)
+  # to point at the pinned version. Idempotent on repeat runs because the
+  # left-hand patterns no longer match after the first pass.
   sed \
     -e "s|](/docs/|](/dist/docs/$VERSION/|g" \
     -e "s|href=\"/docs/|href=\"/dist/docs/$VERSION/|g" \
@@ -49,18 +55,23 @@ rewrite_file() {
     -e "s|https://adcontextprotocol.org/schemas/v${MAJOR_VERSION}/|https://adcontextprotocol.org/schemas/$VERSION/|g" \
     -e "s|](/schemas/v${MAJOR_VERSION}/|](/schemas/$VERSION/|g" \
     -e "s|\`/schemas/v${MAJOR_VERSION}/|\`/schemas/$VERSION/|g" \
-    `# ../../static/ → ../../../../static/: correct for one-level-deep source files` \
-    `# (docs/contributing/ → dist/docs/VERSION/contributing/ adds 2 path segments).` \
-    `# Files at other depths need separate rules.` \
-    -e "s|](../../static/|](../../../../static/|g" \
-    -e "s|href=\"../../static/|href=\"../../../../static/|g" \
     "$file" > "$tmp"
 
-  if ! diff -q "$file" "$tmp" > /dev/null 2>&1; then
-    mv "$tmp" "$file"
+  mv "$tmp" "$file"
+
+  # Phase 2: rewrite *escaping* relative links (`../../...` etc.) to compensate
+  # for the `dist/docs/<version>/` mirror layer. Depth-aware via a node helper
+  # so this works at any source-file depth, not just `docs/<section>/file.md`.
+  # The helper is idempotent: it only matches the minimal-escape `../` count
+  # for the file's source depth, and post-rewrite the count no longer matches.
+  node "$(dirname "$0")/rewrite-dist-relative-links.mjs" "$file" > /dev/null
+
+  # Report change status across both phases.
+  if ! diff -q "$original" "$file" > /dev/null 2>&1; then
+    rm "$original"
     echo "changed"
   else
-    rm "$tmp"
+    rm "$original"
     echo "unchanged"
   fi
 }
