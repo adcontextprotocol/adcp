@@ -245,11 +245,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
@@ -351,11 +358,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
@@ -457,11 +471,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
@@ -563,11 +584,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
@@ -617,11 +645,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
@@ -671,11 +706,18 @@
                   },
                   "encryption_keys": {
                     "type": "array",
-                    "description": "X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "description": "Deprecated: Use encryption_keys_uri instead. Inline keys cannot be rotated without editing every downstream adagents.json that authorizes this agent. Will be removed in AdCP 4.0. X25519 public keys for TMPX exposure token encryption. Each key identifies a cluster master that can decrypt TMPX tokens. Used with HPKE mode_base — read replicas encrypt with this public key, only the master can decrypt.",
+                    "deprecated": true,
                     "items": {
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "encryption_keys_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "HTTPS URL of a JWKS document (RFC 7517) listing currently-active X25519 public keys for TMPX HPKE mode_base encryption. Conforms to /schemas/core/agent-encryption-keys-set.json. MAY be hosted on any HTTPS domain the publisher trusts — typically the cluster master's own domain, which is often a third-party decryption-as-a-service provider operating the X25519 private key on behalf of many sales agents. The publisher's choice to include this URI in adagents.json is the trust attestation. Encryption-side consumers (read replicas) cache the response with a 5-minute TTL — the cache TTL bounds rotation propagation latency. Preferred over inline encryption_keys: lets the cluster-master operator rotate without coordinating edits across downstream adagents.json files. See docs/trusted-match/specification#encryption-key-rotation."
                   }
                 },
                 "required": [
