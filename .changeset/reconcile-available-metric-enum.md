@@ -52,3 +52,20 @@ to populate, only `completed_views`). Buyers that filtered against
 This unblocks a follow-up that adds `required_metrics` to `get_products` and
 `missing_metrics` to `get_media_buy_delivery` for end-to-end metric
 accountability through the media buy lifecycle.
+
+**DBCFM KPI cross-reference.** The DBCFM `Reporting`/`Performance` KPI
+vocabulary has not been mapped into AdCP (PRs #1594, #1605, #1664 covered
+price/business-entities/proposal-lifecycle; measurement block is out of
+scope). No string-level or semantic collision exists at merge time. When the
+DBCFM measurement mapping is eventually added, note that `engagements`
+corresponds to DBCFM `Interaktionen`, `follows` to `Follower-Gewinn`, `saves`
+to `Gespeichert`, and `profile_visits` to `Profilbesuche`. No aliasing is
+required — the AdCP names are unambiguous — but a cross-reference note will be
+needed in the DBCFM mapping doc (tracked in #3460).
+
+**`completion_rate` is a derived ratio.** `completion_rate =
+completed_views / impressions` — it is derivable, not independently
+reportable. The planned `missing_metrics` check in `get_media_buy_delivery`
+must treat ratio metrics as derivable to avoid false
+`metric_accountability_breach` hints. This is a design signal for the
+`required_metrics`/`missing_metrics` follow-up; it does not affect this PR.
