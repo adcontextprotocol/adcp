@@ -119,13 +119,13 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
 
-        // Auto-approve when the uploader belongs to the verified-owner org for this
-        // domain (brand.json present + AAO pointer verified). The pending queue is
-        // for community uploads where ownership is unclear; an owner uploading their
-        // own logo shouldn't have to wait for human review.
+        // Auto-approve all uploads that pass format/size/safety validation. The
+        // membership + ban gate already restricts who can upload; verified owners and
+        // community members are both trusted enough that holding logos in a manual queue
+        // stalls onboarding without providing meaningful safety benefit (#2568).
         const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
         const source = isOwner ? 'brand_owner' : 'community';
-        const reviewStatus = isOwner ? 'approved' : 'pending';
+        const reviewStatus = 'approved';
 
         // Insert
         const logo = await brandLogoDb.insertBrandLogo({
@@ -169,20 +169,17 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           }
         }
 
-        // Auto-approved owner uploads need the manifest rebuilt so the new logo
-        // shows immediately. Verified hosted brands manage their manifest via
-        // brand.json directly — skip the rebuild for those.
-        if (isOwner) {
-          const hosted = await brandDb.getHostedBrandByDomain(domain);
-          if (!hosted || !hosted.domain_verified) {
-            await rebuildManifestLogos(domain, brandLogoDb, brandDb);
-          }
+        // Rebuild manifest so the new logo shows immediately. Verified hosted brands
+        // manage their manifest via brand.json — skip the rebuild for those.
+        const hosted = await brandDb.getHostedBrandByDomain(domain);
+        if (!hosted || !hosted.domain_verified) {
+          await rebuildManifestLogos(domain, brandLogoDb, brandDb);
         }
 
         // Create a brand revision noting the upload
         try {
           await brandDb.editDiscoveredBrand(domain, {
-            edit_summary: `Logo uploaded by ${user.email}${isOwner ? ' (verified owner — auto-approved)' : ''}`,
+            edit_summary: `Logo uploaded by ${user.email} (${isOwner ? 'verified owner' : 'community'} — auto-approved)`,
             editor_user_id: user.id,
             editor_email: user.email,
           });

@@ -74,7 +74,7 @@ export class BrandLogoDatabase {
         input.width ?? null,
         input.height ?? null,
         input.source,
-        input.review_status ?? 'pending',
+        input.review_status ?? 'approved',
         input.uploaded_by_user_id ?? null,
         input.uploaded_by_email ?? null,
         input.upload_note ?? null,
