@@ -527,6 +527,7 @@
                 "pages": [
                   "docs/learning/overview",
                   "docs/learning/instructional-design",
+                  "docs/learning/failure-mode-scope",
                   {
                     "group": "Basics (free)",
                     "pages": [
@@ -1009,6 +1010,7 @@
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
+              "docs/learning/failure-mode-scope",
               {
                 "group": "Basics (free)",
                 "pages": [
