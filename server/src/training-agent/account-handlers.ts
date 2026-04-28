@@ -45,7 +45,6 @@ interface AccountState {
 
 interface GovernanceAgentEntry {
   url: string;
-  categories?: string[];
 }
 
 interface SyncGovernanceInput extends ToolArgs {
@@ -60,7 +59,6 @@ interface SyncGovernanceAccountInput {
 interface GovernanceAgentInput {
   url: string;
   authentication: { schemes: string[]; credentials: string };
-  categories?: string[];
 }
 
 // ── Session state extension ──────────────────────────────────────
@@ -282,6 +280,8 @@ export const ACCOUNT_TOOLS = [
               account: ACCOUNT_REF_SCHEMA,
               governance_agents: {
                 type: 'array',
+                minItems: 1,
+                maxItems: 1,
                 items: {
                   type: 'object',
                   properties: {
@@ -294,7 +294,6 @@ export const ACCOUNT_TOOLS = [
                       },
                       required: ['schemes', 'credentials'],
                     },
-                    categories: { type: 'array', items: { type: 'string' } },
                   },
                   required: ['url', 'authentication'],
                 },
@@ -529,26 +528,31 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    // Validate governance agent URLs
-    const validAgents: GovernanceAgentEntry[] = [];
-    let hasFailed = false;
-    for (const agent of input.governance_agents) {
-      if (!agent.url) {
-        results.push({
-          account: acctRef,
-          status: 'failed',
-          errors: [{ code: 'INVALID_REQUEST', message: 'governance_agents[].url is required' }],
-        });
-        hasFailed = true;
-        break;
-      }
-      validAgents.push({
-        url: agent.url,
-        categories: agent.categories,
+    // Enforce maxItems: 1 — sync_governance binds an account to exactly one governance agent.
+    // See docs/governance/campaign/specification#one-governance-agent-per-account.
+    if (input.governance_agents.length !== 1) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: `governance_agents must contain exactly 1 entry; got ${input.governance_agents.length}. An account binds to a single governance agent that owns the full lifecycle (purchase / modification / delivery phases). Specialist review composes inside the agent, not across multiple registrations.`,
+        }],
       });
+      continue;
     }
 
-    if (hasFailed) continue;
+    // Validate governance agent URL
+    const agent = input.governance_agents[0];
+    if (!agent.url) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{ code: 'INVALID_REQUEST', message: 'governance_agents[].url is required' }],
+      });
+      continue;
+    }
+    const validAgents: GovernanceAgentEntry[] = [{ url: agent.url }];
 
     // Replace semantics — overwrite previous governance agents
     acct.governanceAgents = validAgents;
@@ -556,10 +560,7 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     results.push({
       account: acctRef,
       status: 'synced',
-      governance_agents: validAgents.map(a => ({
-        url: a.url,
-        ...(a.categories && { categories: a.categories }),
-      })),
+      governance_agents: validAgents.map(a => ({ url: a.url })),
     });
   }
 

@@ -266,7 +266,7 @@ describe('sync_governance', () => {
     return (result.accounts as Record<string, unknown>[])[0];
   }
 
-  it('registers governance agents on an existing account', async () => {
+  it('registers the governance agent on an existing account', async () => {
     await createSandboxAccount();
 
     const { result } = await simulateCallTool(server, 'sync_governance', {
@@ -275,7 +275,6 @@ describe('sync_governance', () => {
         governance_agents: [{
           url: 'https://governance.example.com/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_123' },
-          categories: ['brand_safety'],
         }],
       }],
     });
@@ -284,13 +283,12 @@ describe('sync_governance', () => {
     const govResult = (result.accounts as Record<string, unknown>[])[0];
     expect(govResult.status).toBe('synced');
 
-    const agents = govResult.governance_agents as Array<{ url: string; categories?: string[] }>;
+    const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
     expect(agents[0].url).toBe('https://governance.example.com/mcp');
-    expect(agents[0].categories).toEqual(['brand_safety']);
   });
 
-  it('replaces governance agents on second call', async () => {
+  it('replaces the governance agent on second call', async () => {
     await createSandboxAccount();
 
     const ref = { brand: { domain: 'acme.com' }, operator: 'agency-one' };
@@ -313,17 +311,41 @@ describe('sync_governance', () => {
         governance_agents: [{
           url: 'https://gov-b.example.com/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_b' },
-          categories: ['viewability'],
         }],
       }],
     });
 
     const govResult = (result.accounts as Record<string, unknown>[])[0];
     expect(govResult.status).toBe('synced');
-    const agents = govResult.governance_agents as Array<{ url: string; categories?: string[] }>;
+    const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
     expect(agents[0].url).toBe('https://gov-b.example.com/mcp');
-    expect(agents[0].categories).toEqual(['viewability']);
+  });
+
+  it('rejects payloads carrying more than one governance agent (maxItems: 1)', async () => {
+    await createSandboxAccount();
+
+    const { result } = await simulateCallTool(server, 'sync_governance', {
+      accounts: [{
+        account: { brand: { domain: 'acme.com' }, operator: 'agency-one' },
+        governance_agents: [
+          {
+            url: 'https://gov-a.example.com/mcp',
+            authentication: { schemes: ['bearer'], credentials: 'tok_a' },
+          },
+          {
+            url: 'https://gov-b.example.com/mcp',
+            authentication: { schemes: ['bearer'], credentials: 'tok_b' },
+          },
+        ],
+      }],
+    });
+
+    const govResult = (result.accounts as Record<string, unknown>[])[0];
+    expect(govResult.status).toBe('failed');
+    const errors = govResult.errors as Array<{ code: string; message: string }>;
+    expect(errors[0].code).toBe('INVALID_REQUEST');
+    expect(errors[0].message).toContain('exactly 1 entry');
   });
 
   it('returns ACCOUNT_NOT_FOUND when account does not exist', async () => {
@@ -354,15 +376,14 @@ describe('sync_governance', () => {
         governance_agents: [{
           url: 'https://gov.example.com/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok' },
-          categories: ['fraud'],
         }],
       }],
     });
 
     const govResult = (result.accounts as Record<string, unknown>[])[0];
     expect(govResult.status).toBe('synced');
-    const agents = govResult.governance_agents as Array<{ url: string; categories?: string[] }>;
+    const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].categories).toEqual(['fraud']);
+    expect(agents[0].url).toBe('https://gov.example.com/mcp');
   });
 });
