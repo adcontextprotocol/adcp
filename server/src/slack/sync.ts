@@ -969,18 +969,18 @@ async function resolveMemberUserGroupId(): Promise<string | null> {
   return null;
 }
 
-export async function addMemberBadge(workosUserId: string): Promise<void> {
+export async function addToMemberUserGroup(workosUserId: string): Promise<void> {
   if (!isSlackConfigured()) return;
 
   const mapping = await slackDb.getByWorkosUserId(workosUserId);
   if (!mapping?.slack_user_id) {
-    logger.debug({ workosUserId }, 'No Slack mapping for member badge — will pick up on Slack join');
+    logger.debug({ workosUserId }, 'No Slack mapping for member group add — will pick up on Slack join');
     return;
   }
 
   const groupId = await resolveMemberUserGroupId();
   if (!groupId) {
-    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping badge add');
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping group add');
     return;
   }
 
@@ -991,23 +991,23 @@ export async function addMemberBadge(workosUserId: string): Promise<void> {
   if (result.ok) {
     logger.info(
       { workosUserId, slackUserId: mapping.slack_user_id, groupId },
-      'Added member badge to Slack user group',
+      'Added member to @aao-members Slack user group',
     );
   }
 }
 
-export async function removeMemberBadge(workosUserId: string): Promise<void> {
+export async function removeFromMemberUserGroup(workosUserId: string): Promise<void> {
   if (!isSlackConfigured()) return;
 
   const mapping = await slackDb.getByWorkosUserId(workosUserId);
   if (!mapping?.slack_user_id) {
-    logger.debug({ workosUserId }, 'No Slack mapping for member badge remove — nothing to remove');
+    logger.debug({ workosUserId }, 'No Slack mapping for member group remove — nothing to remove');
     return;
   }
 
   const groupId = await resolveMemberUserGroupId();
   if (!groupId) {
-    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping badge remove');
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping group remove');
     return;
   }
 
@@ -1030,7 +1030,7 @@ export async function removeMemberBadge(workosUserId: string): Promise<void> {
   if (result.ok) {
     logger.info(
       { workosUserId, slackUserId: mapping.slack_user_id, groupId },
-      'Removed member badge from Slack user group',
+      'Removed member from @aao-members Slack user group',
     );
   }
 }

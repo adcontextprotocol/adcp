@@ -24,7 +24,7 @@ import { getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
-import { tryAutoLinkWebsiteUserToSlack, addMemberBadge, removeMemberBadge } from '../slack/sync.js';
+import { tryAutoLinkWebsiteUserToSlack, addToMemberUserGroup, removeFromMemberUserGroup } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
@@ -745,11 +745,11 @@ export function createWorkOSWebhooksRouter(): Router {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
               }
 
-              // Add member badge — does not need workosUser; runs even if user fetch failed
+              // Add to @aao-members user group — does not need workosUser; runs even if user fetch failed
               try {
-                await addMemberBadge(membership.user_id);
-              } catch (badgeErr) {
-                logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not add Slack member badge on membership creation');
+                await addToMemberUserGroup(membership.user_id);
+              } catch (groupErr) {
+                logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not add to @aao-members user group on membership creation');
               }
 
               if (workosUser) {
@@ -792,16 +792,16 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_membership.updated': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await upsertMembership(membership);
-            // Badge sync is intentionally independent of upsertMembership's active-status gate:
-            // a transition to inactive/pending must also remove the badge.
+            // User group sync is intentionally independent of upsertMembership's active-status gate:
+            // a transition to inactive/pending must also remove the member from the group.
             try {
               if (membership.status === 'active') {
-                await addMemberBadge(membership.user_id);
+                await addToMemberUserGroup(membership.user_id);
               } else {
-                await removeMemberBadge(membership.user_id);
+                await removeFromMemberUserGroup(membership.user_id);
               }
-            } catch (badgeErr) {
-              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not sync Slack member badge on membership update');
+            } catch (groupErr) {
+              logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not sync @aao-members user group on membership update');
             }
             invalidateUnifiedUsersCache();
             break;
@@ -811,9 +811,9 @@ export function createWorkOSWebhooksRouter(): Router {
             const membership = event.data as unknown as OrganizationMembershipData;
             await deleteMembership(membership);
             try {
-              await removeMemberBadge(membership.user_id);
-            } catch (badgeErr) {
-              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not remove Slack member badge on membership deletion');
+              await removeFromMemberUserGroup(membership.user_id);
+            } catch (groupErr) {
+              logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not remove from @aao-members user group on membership deletion');
             }
             invalidateUnifiedUsersCache();
             break;
