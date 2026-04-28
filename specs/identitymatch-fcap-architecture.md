@@ -86,7 +86,8 @@ The existing wire `sync_audiences` task has `add[]`/`remove[]` deltas of audienc
 5. **Pluggable store interface signatures.** Modeled on `adcp-go/targeting/store.go`. Specific TS/Python signatures pinned to `adcp-client#1005`.
 6. **Where do fcap policies live on the wire (if anywhere)?** Currently SDK-only. Could embed in `create_media_buy` packages or add a new wire task. Decide before SDK ships.
 7. **Audience strength scores.** Reference impl already supports per-segment scores in `UserProfile.Segments`. SDK should expose the strength floor at eligibility time.
-8. **Production-deployment perf benchmarks.** Mock-store numbers (`scale_test.go`) cover the in-process eligibility path. Network round-trip to a real co-located valkey + cluster sharding effects need real benchmarks. Tracked as a rollout-plan deliverable.
+8. **Production-deployment perf benchmarks.** Mock-store numbers cover the in-process eligibility path: realistic Scope3-shape load (1000 pkg × 1000 log × 3 ids) is ~7.5 ms CPU/request — comfortable. Pathological tail (1000 pkg × 10K log × 3 ids) is ~58 ms CPU/request — outside the 30 ms p95 budget. Network round-trip to real co-located valkey, cluster sharding, and tail-latency under load all need real benchmarks. Tracked as a rollout-plan deliverable.
+9. **Pre-aggregate-per-fcap_key optimization.** Current impl scans the exposure log per candidate package: O(packages × log_entries × identities). Scanning once and building a `map[fcap_key]count` would drop to O(log_entries × identities + packages) — ~7× speedup at realistic load, ~6× at the pathological tail. Buyer-side optimization, not a protocol concern.
 
 ## Deferred security & privacy issues (follow-up)
 
