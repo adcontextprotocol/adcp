@@ -1,13 +1,11 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
-feat(compliance): add v3 envelope integrity storyboard and schema enforcement for legacy status field prohibition
+feat(compliance): v3 envelope integrity universal storyboard
 
-Formalises the normative MUST NOT on `task_status` and `response_status` envelope fields (established in #2987 / #3021) as machine-checkable constraints:
+Adds `static/compliance/source/universal/v3-envelope-integrity.yaml` — a universal storyboard (applies to all agent interaction models) that asserts the v3 `status` field is present on the response envelope and that the legacy v2 `task_status` / `response_status` field names are absent.
 
-1. `static/schemas/source/core/protocol-envelope.json` — adds `"task_status": { "not": {} }` and `"response_status": { "not": {} }` to the properties block. These v2 legacy field names are already prohibited by prose; the schema now encodes that prohibition so any JSON Schema validator can detect violations without reading the migration guide.
+Schema-level enforcement of the prohibition is provided separately by `envelope-forbid-legacy-status-fields.md` (top-level `not: { anyOf: [{ required: [task_status] }, { required: [response_status] }] }` on `protocol-envelope.json`). This changeset is the runtime/storyboard counterpart.
 
-2. `static/compliance/source/universal/v3-envelope-integrity.yaml` — new universal storyboard (applies to all agent interaction models) that asserts `status` is present and `task_status` / `response_status` are absent at the envelope top-level. Scope is intentionally limited to the envelope root; nested `payload` domain data may legitimately carry a field named `task_status`.
-
-Note: the `field_absent` check type used in the storyboard validation steps requires runner support in `@adcp/client`. The `response_schema` check against `protocol-envelope.json` is immediately effective for schema-aware validators. Closes #3041.
+The explicit envelope-root field-absence assertions are wired as TODO `field_absent` checks pending runner support in `@adcp/client`; the immediate enforcement path remains the schema-level constraint, which any schema-aware validator detects without runner-specific primitives. Closes #3041 at the storyboard layer.

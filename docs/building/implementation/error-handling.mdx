@@ -410,11 +410,14 @@ class WebhookErrorHandler {
 
   async startPolling(taskId) {
     const response = await adcp.call('tasks/get', {
-      task_id: taskId,
-      include_result: true
+      task_id: taskId
     });
 
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      // Status is terminal. The completion payload reaches the buyer
+      // through the webhook configured on the original request; if the
+      // webhook also failed, request a retry from the seller per their
+      // operational support channel.
       await this.processResult(taskId, response);
     } else {
       // Schedule next poll

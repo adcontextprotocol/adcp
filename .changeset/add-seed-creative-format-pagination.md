@@ -1,10 +1,10 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 feat(compliance): add seed_creative_format scenario and list_creative_formats pagination
 
-Adds `seed_creative_format` to `comply_test_controller` so the compliance harness can pre-populate a deterministic, size-controlled set of creative formats for pagination-integrity storyboards.
+Adds `seed_creative_format` to `comply_test_controller` so the compliance harness can pre-populate a deterministic, size-controlled set of creative formats for pagination-integrity storyboards. `comply_test_controller` is a conformance-harness surface, not a core-protocol task — additive enum extensions on it bump at patch level under AdCP semver.
 
 **Schema changes (comply-test-controller-request.json, comply-test-controller-response.json):** `seed_creative_format` added to the `scenario` enum in both files. The request schema gains a `params.format_id` string field (required when `scenario = seed_creative_format`) and the response schema's `list_scenarios` enum is extended to match.
 
