@@ -312,7 +312,7 @@ List the most-requested brand domains that are not yet in the registry. Shows de
 
 ## agent_testing
 
-Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests. Use for any "my agent can't see properties", "authorization not working", or publisher setup questions.
+Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can't see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.
 
 ### `validate_adagents`
 
@@ -349,6 +349,18 @@ Deprecated — use evaluate_agent_quality instead. Runs evaluate_agent_quality a
 Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `grade_agent_signing`
+
+Run the RFC 9421 request-signing conformance grader against an agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Live-side-effect vectors (real `create_media_buy`, replay-cap flood) are skipped by default — pass `allow_live_side_effects: true` to run them, and only do that against a sandbox endpoint.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
+
+### `diagnose_agent_auth`
+
+Diagnose an agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
 
 ### `compare_media_kit`
 

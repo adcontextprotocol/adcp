@@ -74,6 +74,10 @@ import {
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
 import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from './mcp/auth-grader-tools.js';
+import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
   canScheduleMeetings,
@@ -959,6 +963,16 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
+
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Available
+  // to every user; the underlying graders only probe the target agent's
+  // public surface and live-side-effect vectors are opt-in.
+  const authGraderHandlers = createAuthGraderToolHandlers();
+  allTools.push(...AUTH_GRADER_TOOLS);
+  for (const [name, handler] of authGraderHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Auth grader tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
