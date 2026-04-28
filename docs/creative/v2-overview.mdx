@@ -17,7 +17,7 @@ v2 collapses today's separate format registry into product-bound declarations. A
 |---|---|---|
 | Format identity | Compound `{ agent_url, id }` referencing a separately-defined format file | Canonical name (e.g., `image`) keyed under `format` on the product, narrowed inline |
 | Format authoring | Each platform authors its own named format files | Platforms narrow AdCP-defined canonicals; canonical IS the contract buyers validate against |
-| Generative formats | Each platform publishes `*_generated_*` formats | `build_creative` capability targeting a canonical; ~30 duplicate format files dissolve |
+| Format input contract | Each platform publishes a parallel set of `*_generated_*` format files for AI-produced creative alongside the asset-upload version (~30 duplicate files in agentic-adapters) | The format declares what it accepts via `inputs` (script, creative_brief, voice_id, starter_assets, etc.) and asset slots (image, video, audio uploads). Some products take only assets; some take only inputs; some take both. **Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is invisible to the buyer.** No "generative" category at the protocol level; the production mechanism is implementation detail. |
 | Discovery (sales) | `list_creative_formats` | `get_products` (each product carries its `format` declaration) |
 | Discovery (creative agents) | `list_creative_formats` (overloaded) | `creative.supported_formats` field on `get_adcp_capabilities` (same `ProductFormatDeclaration` shape as products' inline `format`) |
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
@@ -271,7 +271,16 @@ Response carries per-target results:
 }
 ```
 
-`validate_input` is the predictable-case primitive. For genuinely nondeterministic generative platforms (Veo / Sora / Runway-class), predictive validation is impossible and the platform's own post-synthesis QA loop applies — `build_creative` returns `task_failed` with a `synthesis_failed` reason if the QA loop exhausts without producing a valid artifact. There is **no protocol state for orphaned out-of-spec artifacts**.
+`validate_input` is the predictable-case primitive. For genuinely nondeterministic synthesis (Veo / Sora / Runway-class), predictive validation is impossible and the platform's own post-synthesis QA loop applies — submission returns `task_failed` with a `synthesis_failed` reason if the QA loop exhausts without producing a valid artifact. There is **no protocol state for orphaned out-of-spec artifacts**.
+
+## Preview as the universal "what does this produce" surface
+
+Whether the buyer submits assets (uploaded image/video/audio) or inputs (script, creative_brief, voice_id), `preview_creative` shows what the output renders as. The seller's response to a creative submission can also include a preview URL — the buyer doesn't need a separate preview call to verify that their submission produced the intended output. Same surface, two submission shapes:
+
+- **Asset-driven submission**: buyer uploads finished creative assets → preview shows the rendered placement (with seller-side composition, overlays, CTA buttons applied)
+- **Input-driven submission**: buyer submits script/brief/voice_id → seller produces internally (host recording, generative AI, asset rendering — invisible) → preview shows the produced output
+
+The buyer can iterate on inputs and inspect previews before committing to a buy. Different sellers may produce differently internally; the preview surface is uniform. This is what makes "production mechanism is invisible to the buyer" workable in practice — the buyer doesn't need to know HOW the output was produced because they can see WHAT was produced.
 
 ## Brand identity via brand.json (with override)
 
