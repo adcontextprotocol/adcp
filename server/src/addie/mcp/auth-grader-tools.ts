@@ -88,6 +88,11 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
           type: 'boolean',
           description: 'Allow http:// and private-IP targets (dev loops only). Default false.',
         },
+        transport: {
+          type: 'string',
+          enum: ['mcp', 'raw'],
+          description: 'Transport mode. `mcp` (default) wraps each vector body in a JSON-RPC tools/call envelope and posts to the agent\'s MCP mount — right for AdCP MCP servers. `raw` posts to per-operation AdCP endpoints — for agents that expose a raw HTTP surface.',
+        },
       },
       required: ['agent_url'],
     },
@@ -122,6 +127,7 @@ export function createAuthGraderToolHandlers(): Map<
     const agentUrl = String(input.agent_url ?? '');
     const allowLive = input.allow_live_side_effects === true;
     const allowHttp = input.allow_http === true;
+    const rawTransport = input.transport === 'raw';
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -132,7 +138,13 @@ export function createAuthGraderToolHandlers(): Map<
     // installed in node_modules under the version pinned by package.json,
     // not via `npx @latest`. Same path, exit code, and report shape the
     // user would hit locally.
+    //
+    // Transport defaults to `mcp` rather than the CLI's `raw` default:
+    // every Addie-grade-able agent today is MCP-style (JSON-RPC tools/call),
+    // and `raw` against an MCP mount returns 404 on every probe. Operators
+    // who genuinely have a raw AdCP endpoint can pass `transport: 'raw'`.
     const args = [ADCP_CLIENT_BIN, 'grade', 'request-signing', agentUrl, '--json'];
+    args.push('--transport', rawTransport ? 'raw' : 'mcp');
     if (allowLive) args.push('--allow-live-side-effects');
     else args.push('--skip-rate-abuse');
     if (allowHttp) args.push('--allow-http');

@@ -19,6 +19,15 @@ describe('auth grader tools', () => {
     expect(props.allow_http).toBeDefined();
   });
 
+  it('exposes transport mcp/raw with mcp default (the schema declares enum, handler defaults absent → mcp)', () => {
+    const grader = AUTH_GRADER_TOOLS.find((t) => t.name === 'grade_agent_signing');
+    const props = grader!.input_schema.properties as Record<string, { enum?: string[] }>;
+    expect(props.transport).toBeDefined();
+    expect(props.transport.enum).toEqual(['mcp', 'raw']);
+    // transport is NOT in `required` — handler treats absence as mcp.
+    expect(grader!.input_schema.required).not.toContain('transport');
+  });
+
   it('rejects malformed agent URLs without invoking the grader', async () => {
     const handlers = createAuthGraderToolHandlers();
     const grader = handlers.get('grade_agent_signing')!;
