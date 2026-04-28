@@ -165,6 +165,7 @@ export async function handleEmailConversation(
       email_message_id: input.messageId,
       user_id: input.senderEmail,
       user_display_name: speakerName,
+      message_source: 'email',
     });
 
     // 3. Get conversation history
