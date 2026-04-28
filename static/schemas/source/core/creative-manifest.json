@@ -42,6 +42,11 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
     },
+    "inputs": {
+      "type": "object",
+      "description": "Buyer-supplied inputs for input-driven creative submission. Used when the target format declares an `inputs` contract (e.g., a podcast host-read with `script` + `brand` inputs, or an agent_placement with `brand` + `offering_ref` + `landing_page_url`). Keys SHOULD match the input names declared on the format; values are the buyer's submission. v1 consumers ignore this field. For asset-driven submission (image/video/audio uploads), use the `assets` map instead. Some formats accept both — buyer can mix uploaded assets with inputs that drive seller-side composition. Input names are not yet canonicalized at the spec level; common conventions: `script`, `creative_brief`, `voice_id`, `offering_ref`, `landing_page_url`, `style_reference`, `starter_assets`, `scenes`, `product_feed`.",
+      "additionalProperties": true
+    },
     "brand_kit_override": {
       "type": "object",
       "description": "Explicit brand-kit override for the case where brand.json is missing, stale, or inappropriate for this specific creative. When present, takes precedence over brand.json lookups for the supplied fields. Sellers use brand.json as the default and the override as the per-creative authoritative source.",

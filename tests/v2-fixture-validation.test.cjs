@@ -17,6 +17,7 @@ const path = require('path');
 
 const SCHEMAS_DIR = path.resolve(__dirname, '../static/schemas/source');
 const FIXTURES_DIR = path.resolve(__dirname, '../static/examples/products/v2');
+const RESPONSE_FIXTURES_DIR = path.resolve(__dirname, '../static/examples/get_products_responses/v2');
 
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -102,9 +103,39 @@ function main() {
     }
   }
 
+  // Validate get_products response fixtures (with bundled extensions) if present
+  if (fs.existsSync(RESPONSE_FIXTURES_DIR)) {
+    const responseValidate = ajv.getSchema('/schemas/media-buy/get-products-response.json');
+    if (responseValidate) {
+      const responseFixtures = fs
+        .readdirSync(RESPONSE_FIXTURES_DIR)
+        .filter((f) => f.endsWith('.json'))
+        .sort();
+      if (responseFixtures.length > 0) {
+        console.log('');
+        console.log('get_products response fixtures:');
+        for (const f of responseFixtures) {
+          const full = path.join(RESPONSE_FIXTURES_DIR, f);
+          const fixture = JSON.parse(fs.readFileSync(full, 'utf8'));
+          const valid = responseValidate(fixture);
+          if (valid) {
+            console.log(`  ${GREEN}✓${RESET} ${f}`);
+            pass++;
+          } else {
+            console.log(`  ${RED}✗${RESET} ${f}`);
+            for (const err of (responseValidate.errors || []).slice(0, 10)) {
+              console.log(`      ${err.instancePath || '(root)'}: ${err.message}`);
+            }
+            fail++;
+          }
+        }
+      }
+    }
+  }
+
   console.log('');
   if (fail === 0) {
-    console.log(`${GREEN}✅ All ${pass} v2 reference fixtures validate against the canonical Product schema.${RESET}`);
+    console.log(`${GREEN}✅ All ${pass} v2 reference fixtures validate.${RESET}`);
     process.exit(0);
   } else {
     console.log(`${RED}❌ ${fail} fixture(s) failed validation; ${pass} passed.${RESET}`);

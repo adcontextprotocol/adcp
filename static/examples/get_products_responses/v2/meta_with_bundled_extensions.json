@@ -1,0 +1,171 @@
+{
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "products": [
+    {
+      "product_id": "meta_reels_us",
+      "name": "Meta Reels — United States",
+      "description": "9:16 vertical short-form video on Meta Reels (Facebook + Instagram). Buyers upload H.264 mp4 (3-90s) plus headline and primary text; Meta serves to Reels feeds with placement-native UI overlays and Meta-specific tracking via the meta_pixel extension.",
+      "publisher_properties": [
+        { "publisher_domain": "meta.com", "selection_type": "all" }
+      ],
+      "channels": ["social"],
+      "format": {
+        "video_hosted": {
+          "orientation": "vertical",
+          "aspect_ratio": "9:16",
+          "duration_ms_range": [3000, 90000],
+          "min_width": 1080,
+          "min_height": 1920,
+          "max_file_size_mb": 200,
+          "video_codecs": ["h264"],
+          "audio_codecs": ["aac"],
+          "containers": ["mp4"],
+          "headline_max_chars": 25,
+          "primary_text_max_chars": 72,
+          "captions": "recommended",
+          "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+          "composition_model": "deterministic",
+          "platform_extensions": [
+            {
+              "uri": "https://meta.adcp/extensions/meta_pixel",
+              "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+            },
+            {
+              "uri": "https://meta.adcp/extensions/meta_placements_reels",
+              "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
+            }
+          ]
+        }
+      },
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "floor_price": 5.50 }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["hourly", "daily"],
+        "expected_delay_minutes": 60,
+        "timezone": "America/Los_Angeles",
+        "supports_webhooks": true,
+        "available_metrics": ["impressions", "clicks", "spend", "completion_rate", "viewability"],
+        "date_range_support": "date_range"
+      }
+    },
+    {
+      "product_id": "meta_feed_image_us",
+      "name": "Meta Feed Image — United States",
+      "description": "Static image placement in Meta feed (Facebook + Instagram). 1.91:1, 1:1, or 4:5 aspect ratios accepted. Same Meta-specific tracking as Reels via meta_pixel extension.",
+      "publisher_properties": [
+        { "publisher_domain": "meta.com", "selection_type": "all" }
+      ],
+      "channels": ["social"],
+      "format": {
+        "image": {
+          "width": 1080,
+          "height": 1080,
+          "max_file_size_kb": 30000,
+          "image_formats": ["jpg", "png"],
+          "ssl_required": true,
+          "headline_max_chars": 40,
+          "body_text_max_chars": 125,
+          "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+          "composition_model": "deterministic",
+          "platform_extensions": [
+            {
+              "uri": "https://meta.adcp/extensions/meta_pixel",
+              "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+            },
+            {
+              "uri": "https://meta.adcp/extensions/meta_placements_feed",
+              "digest": "sha256:c2d4e6f8a0b2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4"
+            }
+          ]
+        }
+      },
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "floor_price": 4.00 }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["hourly", "daily"],
+        "expected_delay_minutes": 60,
+        "timezone": "America/Los_Angeles",
+        "supports_webhooks": true,
+        "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability"],
+        "date_range_support": "date_range"
+      }
+    }
+  ],
+  "extensions": {
+    "https://meta.adcp/extensions/meta_pixel@sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2": {
+      "extends": "tracking",
+      "version": "2.1.0",
+      "description": "Meta Pixel + Conversions API integration. Required for conversion-event optimization on Meta products.",
+      "fields": {
+        "type": "object",
+        "required": ["pixel_id"],
+        "properties": {
+          "pixel_id": {
+            "type": "string",
+            "pattern": "^[0-9]{15,16}$",
+            "description": "Meta Pixel ID (15-16 digit numeric)."
+          },
+          "conversion_event": {
+            "type": "string",
+            "enum": ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATE_CHECKOUT", "SUBSCRIBE", "VIEW_CONTENT"],
+            "description": "Standard Meta conversion event the pixel fires on. Custom events use the `custom_event_name` field instead."
+          },
+          "custom_event_name": {
+            "type": "string",
+            "description": "Custom Meta conversion event name. Used when conversion_event is omitted."
+          },
+          "test_event_code": {
+            "type": "string",
+            "description": "Optional Meta Events Manager test event code for sandbox/preview verification."
+          }
+        }
+      }
+    },
+    "https://meta.adcp/extensions/meta_placements_reels@sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0": {
+      "extends": "placement",
+      "version": "1.0.0",
+      "description": "Meta-specific placement enum scoped to Reels surfaces (Facebook Reels + Instagram Reels).",
+      "fields": {
+        "type": "object",
+        "properties": {
+          "placement": {
+            "type": "string",
+            "const": "reels",
+            "description": "Discriminator — products extending this surface accept only Reels placement."
+          },
+          "facebook_reels": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether Facebook Reels delivery is enabled."
+          },
+          "instagram_reels": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether Instagram Reels delivery is enabled."
+          }
+        }
+      }
+    },
+    "https://meta.adcp/extensions/meta_placements_feed@sha256:c2d4e6f8a0b2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4": {
+      "extends": "placement",
+      "version": "1.0.0",
+      "description": "Meta-specific placement enum scoped to feed surfaces (Facebook Feed + Instagram Feed).",
+      "fields": {
+        "type": "object",
+        "properties": {
+          "placement": {
+            "type": "string",
+            "const": "feed",
+            "description": "Discriminator — products extending this surface accept feed placements."
+          },
+          "facebook_feed": { "type": "boolean", "default": true },
+          "instagram_feed": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

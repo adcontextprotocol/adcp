@@ -27,6 +27,10 @@
         "offering_ref": {
           "required": false,
           "description": "Optional offering identifier to focus the mention on a specific product, service, or campaign within the brand."
+        },
+        "landing_page_url": {
+          "required": false,
+          "description": "Optional URL the surface attaches to mentions as a citation or learn-more link. Distinct from a creative-asset slot — this is metadata the agent uses, not a rendered creative element."
         }
       },
       "platform_extensions": [
