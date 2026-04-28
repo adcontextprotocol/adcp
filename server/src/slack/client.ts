@@ -1263,6 +1263,80 @@ export async function getChannelHistory(
   }
 }
 
+// =====================================================
+// USER GROUP (BADGE) API
+// Requires usergroups:read + usergroups:write scopes
+// =====================================================
+
+export interface SlackUserGroup {
+  id: string;
+  handle: string;
+  name: string;
+  is_external: boolean;
+  date_delete: number;
+}
+
+export async function getSlackUserGroups(): Promise<SlackUserGroup[]> {
+  try {
+    const response = await slackRequest<{ usergroups: SlackUserGroup[] }>('usergroups.list', {
+      include_disabled: false,
+    });
+    return response.usergroups ?? [];
+  } catch (error) {
+    logger.error({ error }, 'Failed to list Slack user groups');
+    return [];
+  }
+}
+
+export async function createSlackUserGroup(
+  handle: string,
+  name: string,
+): Promise<SlackUserGroup | null> {
+  try {
+    const response = await slackPostRequest<{ usergroup: SlackUserGroup }>('usergroups.create', {
+      handle,
+      name,
+    });
+    logger.info({ id: response.usergroup.id, handle, name }, 'Created Slack user group');
+    return response.usergroup;
+  } catch (error) {
+    logger.error({ error, handle, name }, 'Failed to create Slack user group');
+    return null;
+  }
+}
+
+export async function getSlackUserGroupMembers(userGroupId: string): Promise<string[]> {
+  try {
+    const response = await slackRequest<{ users: string[] }>('usergroups.users.list', {
+      usergroup: userGroupId,
+    });
+    return response.users ?? [];
+  } catch (error) {
+    logger.error({ error, userGroupId }, 'Failed to get Slack user group members');
+    return [];
+  }
+}
+
+export async function setSlackUserGroupMembers(
+  userGroupId: string,
+  userIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<{ ok: boolean }>('usergroups.users.update', {
+      usergroup: userGroupId,
+      users: userIds.join(','),
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(
+      { error: errorMessage, userGroupId, userCount: userIds.length },
+      'Failed to set Slack user group members',
+    );
+    return { ok: false, error: errorMessage };
+  }
+}
+
 /**
  * Get all messages from a channel within a time range
  * Handles pagination automatically with rate limiting

@@ -24,7 +24,7 @@ import { getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
-import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { tryAutoLinkWebsiteUserToSlack, addMemberBadge, removeMemberBadge } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
@@ -759,6 +759,13 @@ export function createWorkOSWebhooksRouter(): Router {
                   logger.debug({ error: slackErr, userId: membership.user_id }, 'Could not auto-link Slack on membership');
                 }
 
+                // Add member badge to Slack user group
+                try {
+                  await addMemberBadge(membership.user_id);
+                } catch (badgeErr) {
+                  logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not add Slack member badge on membership creation');
+                }
+
                 // Match pending certification expectations by email
                 try {
                   const { matchExpectationToUser } = await import('../db/certification-db.js');
@@ -785,6 +792,17 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_membership.updated': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await upsertMembership(membership);
+            // Badge sync is intentionally independent of upsertMembership's active-status gate:
+            // a transition to inactive/pending must also remove the badge.
+            try {
+              if (membership.status === 'active') {
+                await addMemberBadge(membership.user_id);
+              } else {
+                await removeMemberBadge(membership.user_id);
+              }
+            } catch (badgeErr) {
+              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not sync Slack member badge on membership update');
+            }
             invalidateUnifiedUsersCache();
             break;
           }
@@ -792,6 +810,11 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_membership.deleted': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await deleteMembership(membership);
+            try {
+              await removeMemberBadge(membership.user_id);
+            } catch (badgeErr) {
+              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not remove Slack member badge on membership deletion');
+            }
             invalidateUnifiedUsersCache();
             break;
           }

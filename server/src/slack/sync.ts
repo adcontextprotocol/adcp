@@ -8,7 +8,16 @@
  */
 
 import { logger } from '../logger.js';
-import { getSlackUsers, getChannelMembers, getUserChannels, isSlackConfigured } from './client.js';
+import {
+  getSlackUsers,
+  getChannelMembers,
+  getUserChannels,
+  isSlackConfigured,
+  getSlackUserGroups,
+  createSlackUserGroup,
+  getSlackUserGroupMembers,
+  setSlackUserGroupMembers,
+} from './client.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
@@ -925,4 +934,92 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
   }
 
   return { added: totalAdded, skipped: totalSkipped, errors: totalErrors };
+}
+
+// =====================================================
+// MEMBER BADGE — Slack user group sync
+// Requires usergroups:read + usergroups:write scopes
+// =====================================================
+
+// Ops can override these via env vars to avoid handle collisions or point at a pre-existing group
+const MEMBER_USER_GROUP_HANDLE = process.env.SLACK_MEMBER_USER_GROUP_HANDLE ?? 'aao-members';
+const MEMBER_USER_GROUP_NAME = 'AgenticAdvertising.org Members';
+
+// Cached user group ID resolved at runtime — avoids repeated API lookups
+let memberUserGroupIdCache: string | null = process.env.SLACK_MEMBER_USER_GROUP_ID ?? null;
+
+async function resolveMemberUserGroupId(): Promise<string | null> {
+  if (memberUserGroupIdCache) return memberUserGroupIdCache;
+  if (!isSlackConfigured()) return null;
+
+  const groups = await getSlackUserGroups();
+  // Exclude disabled groups (date_delete is a Unix timestamp when disabled, 0 or absent when active)
+  const existing = groups.find((g) => g.handle === MEMBER_USER_GROUP_HANDLE && !g.date_delete);
+  if (existing) {
+    memberUserGroupIdCache = existing.id;
+    return existing.id;
+  }
+
+  const created = await createSlackUserGroup(MEMBER_USER_GROUP_HANDLE, MEMBER_USER_GROUP_NAME);
+  if (created) {
+    memberUserGroupIdCache = created.id;
+    return created.id;
+  }
+
+  return null;
+}
+
+export async function addMemberBadge(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id) {
+    logger.debug({ workosUserId }, 'No Slack mapping for member badge — will pick up on Slack join');
+    return;
+  }
+
+  const groupId = await resolveMemberUserGroupId();
+  if (!groupId) {
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping badge add');
+    return;
+  }
+
+  const currentMembers = await getSlackUserGroupMembers(groupId);
+  if (currentMembers.includes(mapping.slack_user_id)) return;
+
+  const result = await setSlackUserGroupMembers(groupId, [...currentMembers, mapping.slack_user_id]);
+  if (result.ok) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Added member badge to Slack user group',
+    );
+  }
+}
+
+export async function removeMemberBadge(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id) {
+    logger.debug({ workosUserId }, 'No Slack mapping for member badge remove — nothing to remove');
+    return;
+  }
+
+  const groupId = await resolveMemberUserGroupId();
+  if (!groupId) {
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping badge remove');
+    return;
+  }
+
+  const currentMembers = await getSlackUserGroupMembers(groupId);
+  const updated = currentMembers.filter((id) => id !== mapping.slack_user_id);
+  if (updated.length === currentMembers.length) return;
+
+  const result = await setSlackUserGroupMembers(groupId, updated);
+  if (result.ok) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Removed member badge from Slack user group',
+    );
+  }
 }
