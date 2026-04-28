@@ -143,6 +143,23 @@ describe('get_account — user-table fallback', () => {
     expect(response).toContain('No organization found matching "%"');
   });
 
+  it('escapes LIKE wildcards in the orgs query too — % must not match every org', async () => {
+    // The orgs query at the top of the handler also interpolates the user
+    // input into a LIKE pattern. Without escaping, `query='%'` matches every
+    // org and the response goes through the multi-match path before the
+    // user-table fallback ever runs. Seed an org with a known name and
+    // confirm `query='%'` does not return it.
+    await query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal)
+       VALUES ($1, $2, false)`,
+      [LINKED_ORG_ID, 'Wildcard Sentinel Org']
+    );
+
+    const response = await getAccount({ query: '%' });
+    expect(response).not.toContain('Wildcard Sentinel Org');
+    expect(response).toContain('No organization found matching "%"');
+  });
+
   it('sanitizes user-supplied first/last name to neutralize markdown injection back into Addie context', async () => {
     // First/last name come from WorkOS signup forms — user-controlled. They
     // flow into a markdown response that re-enters Addie's LLM context as a

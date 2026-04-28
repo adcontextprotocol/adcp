@@ -1993,7 +1993,11 @@ export function createAdminToolHandlers(
 
     const pool = getPool();
     const query = input.query as string;
-    const searchPattern = `%${query}%`;
+    // Escape LIKE wildcards in the user-supplied query so a literal `%` or `_`
+    // doesn't fan out to every org or signup. Equality comparison ($2) doesn't
+    // need it; prefix and substring comparisons do.
+    const escapedQuery = query.replace(/[\\%_]/g, '\\$&');
+    const searchPattern = `%${escapedQuery}%`;
 
     try {
       // Find organizations by name or domain - get up to 5 matches
@@ -2004,14 +2008,14 @@ export function createAdminToolHandlers(
          LEFT JOIN brands db_parent ON o.email_domain = db_parent.domain
          LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
          WHERE o.is_personal = false
-           AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
+           AND (LOWER(o.name) LIKE LOWER($1) ESCAPE '\\' OR LOWER(o.email_domain) LIKE LOWER($1) ESCAPE '\\')
          ORDER BY
            CASE WHEN LOWER(o.name) = LOWER($2) THEN 0
-                WHEN LOWER(o.name) LIKE LOWER($3) THEN 1
+                WHEN LOWER(o.name) LIKE LOWER($3) ESCAPE '\\' THEN 1
                 ELSE 2 END,
            o.updated_at DESC
          LIMIT 5`,
-        [searchPattern, query, `${query}%`]
+        [searchPattern, query, `${escapedQuery}%`]
       );
 
       if (result.rows.length === 0) {
@@ -2020,9 +2024,8 @@ export function createAdminToolHandlers(
         // record of "someone from this company signed up" lives in `users`.
         // Domain anchor: pattern is `%@<query>%` so "diageo" matches @diageo.com
         // and @diageo.co.uk but NOT @nondiageo.com — query must immediately
-        // follow `@`. LIKE wildcards in `query` are escaped so a literal `%`
-        // doesn't fan out to every signup.
-        const escapedQuery = query.replace(/[\\%_]/g, '\\$&');
+        // follow `@`. `escapedQuery` (declared above) neutralizes LIKE
+        // wildcards so a literal `%` doesn't fan out to every signup.
         const usersResult = await pool.query(
           `SELECT u.workos_user_id, u.email, u.first_name, u.last_name,
                   u.created_at, u.primary_organization_id, o.name AS primary_org_name
