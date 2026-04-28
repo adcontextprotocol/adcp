@@ -49,6 +49,11 @@ rewrite_file() {
     -e "s|https://adcontextprotocol.org/schemas/v${MAJOR_VERSION}/|https://adcontextprotocol.org/schemas/$VERSION/|g" \
     -e "s|](/schemas/v${MAJOR_VERSION}/|](/schemas/$VERSION/|g" \
     -e "s|\`/schemas/v${MAJOR_VERSION}/|\`/schemas/$VERSION/|g" \
+    `# ../../static/ → ../../../../static/: correct for one-level-deep source files` \
+    `# (docs/contributing/ → dist/docs/VERSION/contributing/ adds 2 path segments).` \
+    `# Files at other depths need separate rules.` \
+    -e "s|](../../static/|](../../../../static/|g" \
+    -e "s|href=\"../../static/|href=\"../../../../static/|g" \
     "$file" > "$tmp"
 
   if ! diff -q "$file" "$tmp" > /dev/null 2>&1; then
