@@ -386,6 +386,10 @@
           "$ref": "/schemas/core/account-ref.json",
           "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional sandbox)"
         },
+        "account-authorization": {
+          "$ref": "/schemas/core/account-authorization.json",
+          "description": "The authenticated caller's grant against a specific account (allowed_tasks, field_scopes, scope_name, read_only). Attached to per-account entries in sync_accounts and list_accounts responses when the seller supports scope introspection."
+        },
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
           "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"

@@ -174,6 +174,8 @@ See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for fu
 
 All Media Buy Protocol sales agents MUST implement [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) and include `reporting_capabilities` on every product. Buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually. See [Required tasks by protocol](/docs/protocol/required-tasks) for the full list of required seller tasks.
 
+Sellers building AdCP into their production stack should consider **[AAO Verified](/docs/building/aao-verified)** once they're serving real campaigns. AAO Verified adds continuous observability of live delivery data on a designated compliance account and produces a mark distinct from AdCP Conformant (which comes from storyboards). Opt-in, no new infrastructure on the seller side — grant the [`attestation_verifier`](/docs/accounts/overview#standard-named-scope-attestation_verifier) scope on one account with live campaigns.
+
 ## Product design patterns
 
 Different inventory types use different AdCP features:

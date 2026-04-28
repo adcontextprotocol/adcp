@@ -123,6 +123,7 @@
                   "docs/building/operating-an-agent",
                   "docs/building/compliance-catalog",
                   "docs/building/conformance",
+                  "docs/building/aao-verified",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -633,6 +634,7 @@
               "docs/building/operating-an-agent",
               "docs/building/compliance-catalog",
               "docs/building/conformance",
+              "docs/building/aao-verified",
               {
                 "group": "Foundations",
                 "pages": [

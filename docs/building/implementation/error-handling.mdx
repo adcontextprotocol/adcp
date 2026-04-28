@@ -174,6 +174,60 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
 
+### Authorization (RBAC)
+
+Returned when the caller is authenticated but lacks the specific scope for the request. Enforcement is seller-local; discoverability is via the `authorization` object on per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape.
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `PERMISSION_DENIED` | correctable | Generic authorization failure, or a required signed credential (e.g., `governance_context`) is missing, failed verification, or was issued for a different plan/seller/phase | Call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission |
+| `SCOPE_INSUFFICIENT` | correctable | The invoked task is not in the caller's `allowed_tasks` for this account | Re-read `authorization` on the account via `sync_accounts` or `list_accounts` to discover the caller's actual `allowed_tasks`; use a permitted task or request a broader scope |
+| `READ_ONLY_SCOPE` | correctable | Caller's scope is `read_only: true`; the invoked task would mutate state | Use a non-mutating alternative, or request a scope that permits mutation |
+| `FIELD_NOT_PERMITTED` | correctable | A request field is not in the caller's `field_scopes` allowlist for this task | Drop the disallowed field, or request broader field scope |
+
+Normative requirements:
+
+- **`FIELD_NOT_PERMITTED` MUST populate `error.field`** with the exact offending field path (e.g., `packages[0].budget`, `end_time`). Without it, agents cannot reliably auto-recover by stripping the field and retrying. When multiple fields are disallowed, sellers SHOULD return one error per offending field so each `error.field` is unambiguous; if returning a single error, `error.details.fields` MAY contain the full list.
+- **`SCOPE_INSUFFICIENT` SHOULD include `error.details.introspection_hint`** when the seller supports the `authorization` object on sync/list. Strawman shape: `{ "task": "sync_accounts", "account": { ... } }` pointing the caller at where to rediscover scope. This closes the "I hit an error; what do I do?" loop for coding agents.
+- **All four codes MUST populate both the `adcp_error` envelope field and the payload `errors[]` array** per the two-layer model above — scope errors carry through to typed client libraries the same way schema errors do.
+
+`SCOPE_INSUFFICIENT` vs. `PERMISSION_DENIED`: use `SCOPE_INSUFFICIENT` when the task itself is not granted to this caller on this account. Reserve `PERMISSION_DENIED` for credential-shaped failures (missing signed context, failed signature verification) and for generic seller policy rejections where scope is not the right abstraction.
+
+`SCOPE_INSUFFICIENT` vs. `UNSUPPORTED_FEATURE`: when both apply — the seller doesn't implement the task AND the caller wouldn't be scoped for it anyway — sellers SHOULD return `SCOPE_INSUFFICIENT` because it is more actionable (the caller can request broader scope) than `UNSUPPORTED_FEATURE` (the caller must switch sellers). A seller that returns `UNSUPPORTED_FEATURE` for a task it *does* implement but is not exposed to this caller is leaking capability information the caller cannot act on.
+
+`FIELD_NOT_PERMITTED` vs. `VALIDATION_ERROR`: the field is valid per the task schema and would be accepted from a differently-scoped caller; it is rejected specifically because this caller's `field_scopes` does not include it.
+
+**About `recovery: correctable` on authorization errors.** All four authz codes classify as `correctable`, meaning *the request can be fixed and re-sent*. This does NOT mean the agent can fix the request autonomously — the "correction" for `SCOPE_INSUFFICIENT` and `READ_ONLY_SCOPE` is an out-of-band scope grant from the operator, which the agent cannot perform on its own. Agents SHOULD surface authz errors to the operator rather than auto-retrying against the same credential; a retry loop against a fixed scope is a bug, not defensive posture. Only `FIELD_NOT_PERMITTED` has an agent-autonomous recovery path (strip the disallowed field and resubmit).
+
+**`FIELD_NOT_PERMITTED` — example envelope and payload populating both layers:**
+
+```json
+{
+  "adcp_error": {
+    "code": "FIELD_NOT_PERMITTED",
+    "message": "Caller's field_scopes for update_media_buy does not include this field",
+    "recovery": "correctable",
+    "field": "packages[0].budget"
+  },
+  "payload": {
+    "errors": [
+      {
+        "code": "FIELD_NOT_PERMITTED",
+        "message": "Caller's field_scopes for update_media_buy does not include this field",
+        "recovery": "correctable",
+        "field": "packages[0].budget",
+        "details": {
+          "task": "update_media_buy",
+          "permitted_fields": ["reporting_webhook"]
+        }
+      }
+    ]
+  }
+}
+```
+
+The `field` value identifies exactly what to strip; `details.permitted_fields` (optional, advisory) lists the allowlist for the offending task so an agent can verify before retrying. For `SCOPE_INSUFFICIENT`, populate `details.introspection_hint: { "task": "list_accounts", "account": { ... } }` to point the caller at where to rediscover scope.
+
 ### Request Validation
 
 | Code | Recovery | Description | Resolution |

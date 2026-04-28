@@ -338,6 +338,10 @@ Verification is a trust signal, not a gate. Finding the operator in `brand.json`
 
 Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `require_operator_auth` capability determines which model applies — and the model determines the buyer's entire integration path.
 
+<Note>
+Sellers that support caller-scope introspection attach an optional `authorization` object to each per-account entry in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses — listing the tasks and request fields this caller is allowed to use on the account, plus any standard named scope (e.g., `attestation_verifier`). See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics.
+</Note>
+
 ### Explicit accounts (`require_operator_auth: true`)
 
 Accounts are managed outside of AdCP. The advertiser creates an account on the seller's platform, grants the operator permission to manage it, and the agent discovers the account via `list_accounts`. The agent is not involved in authentication or billing — those are handled between the advertiser and seller directly.
