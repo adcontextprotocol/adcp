@@ -1,0 +1,52 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "the_daily_30s_host_read_us",
+  "name": "The Daily — 30s Host-Read Pre-roll (US)",
+  "description": "30-second podcast host-read pre-roll on The Daily. Buyer-uploaded audio is rejected (audio_source: publisher_host_recorded); buyer submits a verbatim script (≤800 chars) plus brand context, the publisher's host records the audio, and the audio is dynamically inserted at podcast playback time. 7-business-day production turnaround. Same target format (audio_hosted) as a brief-driven host-read product would use, but with `script` as the required input rather than `creative_brief`.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "thedailypod.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["podcast"],
+  "format": {
+    "audio_hosted": {
+      "duration_ms_exact": 30000,
+      "audio_codecs": ["mp3", "aac"],
+      "audio_sample_rates": [44100, 48000],
+      "audio_channels": ["stereo"],
+      "loudness_lufs": -16,
+      "audio_source": "publisher_host_recorded",
+      "buyer_audio_acceptance": "rejected",
+      "composition_model": "deterministic",
+      "inputs": {
+        "script": {
+          "required": true,
+          "max_chars": 800,
+          "description": "Verbatim script the host will read. Exact wording — no improvisation; legal pre-cleared."
+        },
+        "brand": { "required": true },
+        "offering_ref": { "required": false }
+      },
+      "production_window_business_days": 7
+    }
+  },
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_host_read",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 35.00
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 1440,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend", "completion_rate", "completed_views"],
+    "date_range_support": "date_range"
+  }
+}

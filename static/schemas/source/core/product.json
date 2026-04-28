@@ -453,10 +453,21 @@
     "name",
     "description",
     "publisher_properties",
-    "format_ids",
     "delivery_type",
     "pricing_options",
     "reporting_capabilities"
+  ],
+  "oneOf": [
+    {
+      "title": "v1 Product (named-format reference)",
+      "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). The v1 path; remains supported through 4.x.",
+      "required": ["format_ids"]
+    },
+    {
+      "title": "v2 Product (inline format declaration)",
+      "description": "Product carries an inline ProductFormatDeclaration narrowing exactly one canonical format. The v2 path introduced by RFC #3305.",
+      "required": ["format"]
+    }
   ],
   "additionalProperties": true
 }

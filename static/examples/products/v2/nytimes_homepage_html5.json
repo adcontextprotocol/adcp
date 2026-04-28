@@ -1,0 +1,48 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "nytimes_homepage_html5",
+  "name": "NYTimes.com Homepage HTML5 Banner (300×250)",
+  "description": "IAB Medium Rectangle (300×250) interactive HTML5 banner placement on the NYTimes.com homepage. Buyers upload an HTML5 zip bundle (≤200KB initial load, ≤500KB polite-load with host_initiated_subload, max 30s animation, OM-SDK + clickTag macro). Different canonical from the static image MREC because the tracking model is fundamentally different (MRAID + OM-SDK vs impression pixel + click URL).",
+  "publisher_properties": [
+    {
+      "publisher_domain": "nytimes.com",
+      "selection_type": "by_id",
+      "property_ids": ["homepage_above_fold"]
+    }
+  ],
+  "channels": ["display"],
+  "format": {
+    "html5": {
+      "width": 300,
+      "height": 250,
+      "max_initial_load_kb": 200,
+      "max_polite_load_kb": 500,
+      "host_initiated_subload": true,
+      "max_animation_duration_ms": 30000,
+      "max_cpu_load_percent": 30,
+      "om_sdk_required": true,
+      "clicktag_macro": "clickTag",
+      "backup_image_required": true,
+      "backup_image_max_size_kb": 50,
+      "ssl_required": true,
+      "composition_model": "deterministic"
+    }
+  },
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_homepage_html5",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 28.00
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 240,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability", "engagement_rate"],
+    "date_range_support": "date_range"
+  }
+}
