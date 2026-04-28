@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Extend `check:platform-agnostic` lint to cover enum and const values; fix `brand.json` platform-agnosticism violation.

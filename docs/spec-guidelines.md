@@ -222,7 +222,7 @@ Names that reference **canonical external identifier spaces** are legitimate in 
 Existing examples of legitimate patterns:
 
 - Distribution-platform identifier types: `amazon_music_id`, `roku_channel_id` in `distribution-identifier-type.json` (enum values)
-- Feed formats: `google_merchant_center`, `facebook_catalog` in `brand.json` (enum values) — widely-adopted open interchange formats
+- Feed formats: `google_merchant_center`, `facebook_catalog` in `brand.json` (enum values) — widely-adopted open interchange formats implemented by many third parties
 - Measurement/data identifiers: `nielsen_dma` in `get-adcp-capabilities-response` (field name)
 - Platform IDs: `apple_podcast_id`, `apple_id` (field names)
 

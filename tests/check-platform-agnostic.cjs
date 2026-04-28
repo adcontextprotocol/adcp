@@ -34,6 +34,7 @@ const VENDOR_TOKENS = [
   'meta', 'facebook', 'instagram',
   'openai', 'anthropic',
   'nielsen', 'scope3', 'roku',
+  'linkedin',
 ];
 
 // Pre-compiled regexes for each vendor token (avoids recompiling per-value).
@@ -96,6 +97,9 @@ const ENUM_VALUE_ALLOWLIST = [
   // enums/feed-format.json — widely-adopted open interchange formats.
   { value: 'google_merchant_center', pathContains: 'enums/feed-format.json' },
   { value: 'facebook_catalog',       pathContains: 'enums/feed-format.json' },
+  // linkedin_jobs names LinkedIn's job-listing feed format, the canonical format
+  // for ATS/job-board integrations — parallel to google_merchant_center for retail.
+  { value: 'linkedin_jobs', pathContains: 'enums/feed-format.json' },
 
   // enums/genre-taxonomy.json — platform taxonomy system identifiers, comparable
   // to gracenote and eidr. Note: bare 'roku' is inconsistent with the {vendor}_genres
@@ -213,7 +217,7 @@ function lint() {
         if (isEnumValueAllowed(value, rel)) return;
         const token = containsVendorToken(value);
         if (!token) return;
-        const key = `enum:${rel}:${value}`;
+        const key = `enum:${rel}:${pathArr.join('.')}:${value}`;
         if (seen.has(key)) return;
         seen.add(key);
         enumViolations.push({ file: rel, fieldPath: pathArr.join('.'), value, token });
