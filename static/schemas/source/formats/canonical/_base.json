@@ -21,8 +21,43 @@
     },
     "tracking_extensions": {
       "type": "array",
-      "description": "Platform-specific tracking extensions (e.g., Meta pixel, TikTok pixel) referenced when the canonical's baseline tracking is insufficient. Each entry references the tracking-extension definition.",
+      "description": "Subset of platform_extensions specifically scoped to tracking concerns (pixel IDs, conversion event taxonomies, viewability vendors, OM-SDK partners). Functionally equivalent to listing tracking-related extensions under platform_extensions; the separate field surfaces \"what's tracking-related\" without forcing buyers to fetch each extension definition to find out. When present, every entry MUST also be present in (or implied by) platform_extensions. Producers MAY omit tracking_extensions and put everything under platform_extensions; the split is for buyer convenience, not schema enforcement.",
       "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "synthesis_nondeterministic": {
+      "type": "boolean",
+      "description": "When true, the format's production pipeline is genuinely nondeterministic — the platform cannot guarantee that synthesis from a given input set produces in-spec output. Veo / Sora / Runway-class generative video, and other AI-synthesis flows where output dimensions, duration, or quality vary per run. Implies a different validation contract: predictive `validate_input` is impossible; the platform's own post-synthesis QA loop applies; if the QA loop exhausts without producing a valid artifact, `build_creative` returns task_failed with a synthesis_failed reason. Distinct from `composition_model` (which describes how the surface composes per-slot rendering, not whether synthesis is deterministic). When false or absent, the format's production is predictable enough that `validate_input` can predict output properties from input properties.",
+      "default": false
+    },
+    "slots": {
+      "type": "array",
+      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry. Format-specific narrowing parameters (e.g., headline_max_chars on responsive_creative) live as flat properties on the format declaration; this `slots` field captures the structural slot inventory.",
+      "items": {
+        "type": "object",
+        "required": ["asset_group_id"],
+        "properties": {
+          "asset_group_id": {
+            "type": "string",
+            "description": "Canonical asset_group_id from /schemas/core/asset-group-vocabulary.json. Non-canonical IDs are valid but trigger soft warnings."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this slot is required for a valid manifest.",
+            "default": false
+          },
+          "min": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Minimum count for repeatable / pool slots."
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum count for repeatable / pool slots."
+          }
+        },
+        "additionalProperties": true
+      }
     },
     "inputs": {
       "type": "object",

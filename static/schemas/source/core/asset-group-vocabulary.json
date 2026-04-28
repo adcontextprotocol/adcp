@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/asset-group-vocabulary.json",
   "title": "AdCP Asset Group Vocabulary Registry",
-  "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.",
-  "version": "1.0.0",
-  "lastUpdated": "2026-04-26",
+  "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.\n\n**Slots vs inputs**: this registry covers `asset_group_id` slot names (assets the buyer ships in the manifest's `assets` map). It does NOT cover production input names (`script`, `creative_brief`, `voice_id`, `brand`, `offering_ref`, `starter_assets`, `scenes`, `style_reference`, `product_feed`) used on canonical format `inputs` declarations — those are a separate convention not yet canonicalized at the spec level. v2 leaves input names as a per-format convention; future revisions may canonicalize them.",
+  "version": "1.1.0",
+  "lastUpdated": "2026-04-28",
   "vocabulary": {
     "headlines": {
       "description": "Pool of headline text variants for the surface to choose from.",
@@ -87,7 +87,53 @@
     "cards": {
       "description": "Per-item carousel card array.",
       "asset_type": "object",
-      "typical_use": "Carousel slides on Meta, TikTok, Pinterest, LinkedIn, Reddit. Each card carries its own image/video, headline, and link."
+      "typical_use": "Carousel slides on Meta, TikTok, Pinterest, LinkedIn, Reddit. Each card carries its own image/video, headline, and link.",
+      "aliases": ["carousel_cards", "slides", "carousel_items", "carousel_slides"]
+    },
+    "cta": {
+      "description": "Call-to-action button label or text.",
+      "asset_type": "text",
+      "typical_use": "CTA button on display/video/social ad creative (e.g., \"Shop Now\", \"Learn More\"). Most products narrow to a fixed enum via `cta_values`; this canonical entry names the slot itself.",
+      "aliases": ["cta_text", "call_to_action", "action_text", "button_text"]
+    },
+    "price": {
+      "description": "Product price slot rendered on the creative.",
+      "asset_type": "text",
+      "typical_use": "Pinterest shopping pins, Amazon Sponsored Brand product cards, retail-media catalog rendering. Often pulled from a catalog field via `field_bindings`."
+    },
+    "disclaimer": {
+      "description": "Required legal disclaimer or fine print.",
+      "asset_type": "text",
+      "typical_use": "Pharma, financial services, alcohol, sweepstakes — non-optional in regulated verticals. Receivers may render at reduced size below the primary creative.",
+      "aliases": ["legal_text", "fine_print", "legal_disclaimer"]
+    },
+    "phone_number": {
+      "description": "Phone number for click-to-call placements (E.164 preferred).",
+      "asset_type": "text",
+      "typical_use": "Google call-only ads, Bing call extensions, click-to-call retail/local placements."
+    },
+    "promo_code": {
+      "description": "Promotional / offer code rendered on the creative.",
+      "asset_type": "text",
+      "typical_use": "Retail / promo creative carrying a coupon code (e.g., \"SAVE20\"). Distinct from offering metadata; this is the rendered text.",
+      "aliases": ["offer_code", "coupon_code", "discount_code"]
+    },
+    "subtitle_file": {
+      "description": "Subtitle / closed-caption file for video assets.",
+      "asset_type": "url",
+      "typical_use": "WebVTT or SRT URL paired with a `video` slot. Required by accessibility-strict products; recommended for most video formats.",
+      "aliases": ["caption_file", "captions", "subtitles"]
+    },
+    "source_catalog": {
+      "description": "Catalog asset reference for catalog-driven products.",
+      "asset_type": "catalog",
+      "typical_use": "Required input on `sponsored_placement` formats. Buyer references a synced catalog by `catalog_id` plus optional item filters."
+    },
+    "hero_asset": {
+      "description": "Optional buyer-supplied hero/banner asset alongside a catalog reference.",
+      "asset_type": "image",
+      "typical_use": "Pinterest Collection, Snap Collection, Amazon SB Product Collection — buyer supplies a hero image; surface composes catalog tiles below it.",
+      "aliases": ["hero_banner", "collection_hero"]
     },
     "landing_page_url": {
       "description": "Click-through destination URL for the ad.",
@@ -111,7 +157,8 @@
     "youtube_video_id": {
       "description": "Externally-hosted YouTube video reference.",
       "asset_type": "text",
-      "typical_use": "Reference an existing YouTube video for Google instream/bumper/non-skippable, PMax."
+      "typical_use": "Reference an existing YouTube video for Google instream/bumper/non-skippable, PMax.",
+      "aliases": ["existing_yt_video_id", "yt_video_id", "youtube_id"]
     },
     "pin_id": {
       "description": "Externally-hosted Pinterest creative reference.",

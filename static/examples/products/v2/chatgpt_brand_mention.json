@@ -1,0 +1,57 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "openai_chatgpt_sponsored_mention_us",
+  "name": "ChatGPT Sponsored Brand Mention — United States",
+  "description": "AI-surface sponsored placement on ChatGPT. Buyer supplies a BrandRef (resolving brand.json for context) plus optional offering reference; ChatGPT composes a natural-language sponsored mention within its response to a relevant user query. Composition is algorithmic — the agent chooses phrasing and presentation, with disclosure required and no buyer-fixed creative. Distinct from si_chat (which is the user-converses-with-brand's-agent pattern, brand-owned conversational surface). Parallels sponsored_placement structurally (both surface-composed) but for AI/agentic surfaces rather than retail-media catalog.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "openai.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["sponsored_intelligence"],
+  "format": {
+    "agent_placement": {
+      "output_modality": "text",
+      "max_mention_length_chars": 280,
+      "supports_offering_reference": true,
+      "supports_landing_page_url": true,
+      "tone_constraints": ["factual", "no_superlatives"],
+      "disclosure_required": true,
+      "composition_model": "algorithmic",
+      "inputs": {
+        "brand": {
+          "required": true,
+          "description": "BrandRef resolving brand.json for brand context (logos, voice, taglines, industries)."
+        },
+        "offering_ref": {
+          "required": false,
+          "description": "Optional offering identifier to focus the mention on a specific product, service, or campaign within the brand."
+        }
+      },
+      "platform_extensions": [
+        {
+          "uri": "https://openai.adcp/extensions/chatgpt_response_card",
+          "digest": "sha256:f3a6c9b2e5d8f1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6"
+        }
+      ]
+    }
+  },
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_mention",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 18.00
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 1440,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "engagement_rate"],
+    "date_range_support": "date_range"
+  }
+}

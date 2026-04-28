@@ -2,9 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/agent_placement.json",
   "title": "Canonical Format: Agent Placement (AI-surface sponsored placement)",
-  "description": "Sponsored placement integrated into an AI-surface's response to a user. Buyer supplies a `BrandRef` (resolving brand.json for context) and optional offering reference; the surface (LLM, voice assistant, sponsored-search ranker) composes a natural-language mention, sponsored card, or audio snippet within its response to a user query. **Composition is algorithmic** — the agent chooses phrasing and presentation. Output asset_type varies by surface: `text` for chat UIs and sponsored search snippets; `audio` (synthesized) for voice assistants; `card` for structured AI-surface result cards. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering. Distinct from `si_chat` (which is the user-converses-with-brand's-agent pattern — brand owns the conversational surface) and from `sponsored_placement` (retail-media catalog-driven). Parallels `sponsored_placement` structurally: both are surface-composed placements; agent_placement is for AI/agentic surfaces, sponsored_placement is for retail media.",
+  "description": "Sponsored placement integrated into an AI-surface's response to a user. Buyer supplies a `BrandRef` (resolving brand.json for context) and optional offering reference; the surface (LLM, voice assistant, sponsored-search ranker) composes a natural-language mention, sponsored card, or audio snippet within its response to a user query. **Composition is algorithmic** — the agent chooses phrasing and presentation. Output asset_type varies by surface: `text` for chat UIs and sponsored search snippets; `audio` (synthesized) for voice assistants; `card` for structured AI-surface result cards. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering. Distinct from `si_chat` (which is the user-converses-with-brand's-agent pattern — brand owns the conversational surface) and from `sponsored_placement` (retail-media catalog-driven). Parallels `sponsored_placement` structurally: both are surface-composed placements; agent_placement is for AI/agentic surfaces, sponsored_placement is for retail media. Buyer-supplied data (brand, offering_ref, optional landing page URL) lives on the `inputs` field per the standard inputs convention; there are no buyer-fillable creative slots on the manifest.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "landing_page_url", "required": false, "min": 0, "max": 1 }
+      ]
+    },
     "output_modality": {
       "type": "string",
       "enum": ["text", "audio", "card"],
@@ -31,7 +36,7 @@
     "tone_constraints": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Optional brand-voice constraints the surface must honor (e.g., ['formal', 'no_superlatives'])."
+      "description": "**Advisory only.** Buyer-declared brand-voice preferences the surface SHOULD honor (e.g., ['formal', 'no_superlatives']). LLM/agentic surfaces have no protocol-level mechanism to verify enforcement — adopters that need hard guarantees should rely on brand.json voice declarations and post-mention review rather than this field. Future revisions may tie this to a structured tone vocabulary; for now treat as free-text guidance."
     },
     "disclosure_required": {
       "type": "boolean",

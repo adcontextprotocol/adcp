@@ -59,7 +59,7 @@
       }
     },
     {
-      "description": "Podcast 30s host-read — narrows audio_hosted, requires build_capability_ref on parent product",
+      "description": "Podcast 30s host-read — narrows audio_hosted with inline inputs declaring what the buyer must supply (script + brand). Buyer-uploaded audio rejected; seller produces internally or buyer pre-produces via a creative agent's build_creative.",
       "data": {
         "audio_hosted": {
           "duration_ms_exact": 30000,
@@ -69,7 +69,12 @@
           "loudness_lufs": -16,
           "audio_source": "publisher_host_recorded",
           "buyer_audio_acceptance": "rejected",
-          "composition_model": "deterministic"
+          "composition_model": "deterministic",
+          "inputs": {
+            "script": { "required": true, "max_chars": 800 },
+            "brand": { "required": true }
+          },
+          "production_window_business_days": 7
         }
       }
     }

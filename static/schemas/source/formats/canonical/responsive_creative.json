@@ -2,9 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/responsive_creative.json",
   "title": "Canonical Format: Responsive Creative",
-  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. Slots: `headlines[]`, `descriptions[]`, `images_landscape[]`, `images_square[]`, `images_vertical[]`, `videos[]`, `logo[]`, `landing_page_url`. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Responsive Display Ads (RDA), Responsive Search Ads (RSA), Performance Max (PMax), Demand Gen, and Meta Advantage+ creative. Industry term: \"Responsive\" (Google) / \"Advantage+ creative\" (Meta) / \"Dynamic Creative\" (older Meta term). Distinct from `sponsored_placement` (catalog-driven, deterministic) and `agent_placement` (AI-surface composition).",
+  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Responsive Display Ads (RDA), Responsive Search Ads (RSA), Performance Max (PMax), Demand Gen, and Meta Advantage+ creative. Industry term: \"Responsive\" (Google) / \"Advantage+ creative\" (Meta) / \"Dynamic Creative\" (older Meta term). Distinct from `sponsored_placement` (catalog-driven, deterministic) and `agent_placement` (AI-surface composition). The structured `slots` field below enumerates expected canonical asset_group_id slots; per-slot count/length narrowing lives in flat parameters (`headlines_min`, `headline_max_chars`, etc.).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "headlines", "required": true, "min": 3, "max": 15 },
+        { "asset_group_id": "long_headlines", "required": false, "min": 1, "max": 5 },
+        { "asset_group_id": "descriptions", "required": true, "min": 2, "max": 5 },
+        { "asset_group_id": "images_landscape", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_square", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_vertical", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "video", "required": false, "min": 0, "max": 5 },
+        { "asset_group_id": "logo", "required": true, "min": 1, "max": 5 },
+        { "asset_group_id": "landing_page_url", "required": true, "min": 1, "max": 1 }
+      ]
+    },
     "headlines_min": { "type": "integer", "minimum": 0 },
     "headlines_max": { "type": "integer", "minimum": 0 },
     "headline_max_chars": { "type": "integer", "minimum": 1 },
