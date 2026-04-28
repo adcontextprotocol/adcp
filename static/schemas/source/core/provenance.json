@@ -84,7 +84,7 @@
     },
     "c2pa": {
       "type": "object",
-      "description": "C2PA Content Credentials reference. Links to the cryptographic provenance manifest for this content. Because file-level C2PA bindings break during ad-tech transcoding, this URL reference preserves the chain of provenance through the supply chain.",
+      "description": "C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this content. Note: file-level C2PA bindings break when ad servers transcode, resize, or re-encode assets. For pipelines with intermediaries, consider embedded_provenance as the primary provenance mechanism.",
       "properties": {
         "manifest_url": {
           "type": "string",
@@ -94,6 +94,75 @@
       },
       "required": ["manifest_url"],
       "additionalProperties": true
+    },
+    "embedded_provenance": {
+      "type": "array",
+      "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party; receiving parties verify independently via the provider's endpoint or their own detection tools.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "$ref": "/schemas/enums/embedded-provenance-method.json",
+            "description": "How provenance data is carried within the content"
+          },
+          "standard": {
+            "type": "string",
+            "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc')"
+          },
+          "verify_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Verification endpoint. Governance agents send content to this URL to verify embedded provenance presence and integrity."
+          },
+          "embedded_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the provenance data was embedded (ISO 8601)"
+          }
+        },
+        "required": ["method", "provider", "verify_url"],
+        "additionalProperties": true
+      }
+    },
+    "watermarks": {
+      "type": "array",
+      "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party; receiving parties verify independently.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_type": {
+            "$ref": "/schemas/enums/watermark-media-type.json",
+            "description": "Media category of the watermarked content"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher')"
+          },
+          "verify_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Verification endpoint for watermark detection"
+          },
+          "c2pa_action": {
+            "type": "string",
+            "enum": ["c2pa.watermarked.bound", "c2pa.watermarked.unbound"],
+            "description": "C2PA action classification. 'bound' means the watermark is linked to a C2PA manifest for this asset. 'unbound' means the watermark exists independently (e.g., applied by the AI generator before any provenance signing event)."
+          },
+          "embedded_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the watermark was applied (ISO 8601)"
+          }
+        },
+        "required": ["media_type", "provider"],
+        "additionalProperties": true
+      }
     },
     "disclosure": {
       "type": "object",
