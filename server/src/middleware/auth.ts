@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
@@ -514,20 +514,67 @@ if (DEV_MODE_ENABLED) {
   logger.info('Visit /auth/login to select a test user');
 }
 
+// Per-process secret for signing dev-session cookies. Random bytes generated
+// at boot — restarting the dev server invalidates outstanding cookies, which
+// is the desired property: a cookie minted on someone else's dev box won't
+// work on yours, and a stolen cookie expires whenever the dev server restarts.
+//
+// Pre-signing, the cookie was the literal string "admin" / "member" with no
+// integrity check. Anyone who could write a cookie on the domain (XSS,
+// sibling subdomain) could pick a privileged dev user. Signing closes that
+// without changing the deployment surface.
+const DEV_SESSION_SECRET = randomBytes(32);
+
+function signDevSession(userKey: string): string {
+  const sig = createHmac('sha256', DEV_SESSION_SECRET)
+    .update(userKey)
+    .digest('base64url');
+  return `${userKey}.${sig}`;
+}
+
+function verifyDevSession(cookieValue: string): string | null {
+  const dot = cookieValue.lastIndexOf('.');
+  if (dot < 1) return null;
+  const userKey = cookieValue.slice(0, dot);
+  const presented = cookieValue.slice(dot + 1);
+  const expected = createHmac('sha256', DEV_SESSION_SECRET)
+    .update(userKey)
+    .digest('base64url');
+  // Timing-safe compare. Different lengths means bad signature; bail before
+  // calling timingSafeEqual which throws on length mismatch.
+  if (presented.length !== expected.length) return null;
+  try {
+    if (!timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
+  return userKey;
+}
+
 /**
- * Get the current dev user based on request context
- * Reads from dev-session cookie set by dev login page
+ * Sign a user key into a dev-session cookie value. Use this when setting
+ * the cookie at POST /auth/dev-login.
+ */
+export function encodeDevSessionCookie(userKey: string): string {
+  return signDevSession(userKey);
+}
+
+/**
+ * Get the current dev user based on request context.
+ * Reads + verifies the signed dev-session cookie.
  */
 export function getDevUser(req?: Request): DevUserConfig | null {
   if (!req) return null;
 
-  // Read user key from dev-session cookie
-  const userKey = req.cookies?.[DEV_SESSION_COOKIE];
+  const cookieValue = req.cookies?.[DEV_SESSION_COOKIE];
+  if (!cookieValue || typeof cookieValue !== 'string') return null;
+
+  const userKey = verifyDevSession(cookieValue);
   if (userKey && DEV_USERS[userKey]) {
     return DEV_USERS[userKey];
   }
 
-  // No valid dev session - user is not logged in
+  // No valid dev session - user is not logged in (or signature invalid)
   return null;
 }
 
