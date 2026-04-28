@@ -8,7 +8,20 @@
  */
 
 import { logger } from '../logger.js';
-import { getSlackUsers, getChannelMembers, getUserChannels, isSlackConfigured } from './client.js';
+import {
+  getSlackUsers,
+  getChannelMembers,
+  getUserChannels,
+  isSlackConfigured,
+  getSlackUserGroups,
+  createSlackUserGroup,
+  getSlackUserGroupMembers,
+  setSlackUserGroupMembers,
+  getSlackUserProfile,
+  setSlackUserPhoto,
+} from './client.js';
+import { compositeProfileBadge, fetchImageBuffer } from './photo-badge.js';
+import { getAutoApplyAaoBadge } from '../db/system-settings-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
@@ -925,4 +938,271 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
   }
 
   return { added: totalAdded, skipped: totalSkipped, errors: totalErrors };
+}
+
+// =====================================================
+// MEMBER BADGE — Slack user group sync
+// Requires usergroups:read + usergroups:write scopes
+// =====================================================
+
+// Ops can override these via env vars to avoid handle collisions or point at a pre-existing group
+const MEMBER_USER_GROUP_HANDLE = process.env.SLACK_MEMBER_USER_GROUP_HANDLE ?? 'aao-members';
+const MEMBER_USER_GROUP_NAME = 'AgenticAdvertising.org Members';
+
+// Cached user group ID resolved at runtime — avoids repeated API lookups
+let memberUserGroupIdCache: string | null = process.env.SLACK_MEMBER_USER_GROUP_ID ?? null;
+
+async function resolveMemberUserGroupId(): Promise<string | null> {
+  if (memberUserGroupIdCache) return memberUserGroupIdCache;
+  if (!isSlackConfigured()) return null;
+
+  const groups = await getSlackUserGroups();
+  // Exclude disabled groups (date_delete is a Unix timestamp when disabled, 0 or absent when active)
+  const existing = groups.find((g) => g.handle === MEMBER_USER_GROUP_HANDLE && !g.date_delete);
+  if (existing) {
+    memberUserGroupIdCache = existing.id;
+    return existing.id;
+  }
+
+  const created = await createSlackUserGroup(MEMBER_USER_GROUP_HANDLE, MEMBER_USER_GROUP_NAME);
+  if (created) {
+    memberUserGroupIdCache = created.id;
+    return created.id;
+  }
+
+  return null;
+}
+
+export async function addToMemberUserGroup(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id) {
+    logger.debug({ workosUserId }, 'No Slack mapping for member group add — will pick up on Slack join');
+    return;
+  }
+
+  const groupId = await resolveMemberUserGroupId();
+  if (!groupId) {
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping group add');
+    return;
+  }
+
+  const currentMembers = await getSlackUserGroupMembers(groupId);
+  if (currentMembers.includes(mapping.slack_user_id)) return;
+
+  const result = await setSlackUserGroupMembers(groupId, [...currentMembers, mapping.slack_user_id]);
+  if (result.ok) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Added member to @aao-members Slack user group',
+    );
+  }
+}
+
+export async function removeFromMemberUserGroup(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id) {
+    logger.debug({ workosUserId }, 'No Slack mapping for member group remove — nothing to remove');
+    return;
+  }
+
+  const groupId = await resolveMemberUserGroupId();
+  if (!groupId) {
+    logger.warn({ workosUserId }, 'Could not resolve member user group — skipping group remove');
+    return;
+  }
+
+  const currentMembers = await getSlackUserGroupMembers(groupId);
+  const updated = currentMembers.filter((id) => id !== mapping.slack_user_id);
+  if (updated.length === currentMembers.length) return;
+
+  // Slack rejects usergroups.users.update with an empty list — skip the call
+  // if removing this user would leave the group empty; the group stays technically
+  // enabled with its last member listed, and will self-correct on the next add.
+  if (updated.length === 0) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Last member removed — skipping empty usergroups.users.update to avoid Slack invalid_users error',
+    );
+    return;
+  }
+
+  const result = await setSlackUserGroupMembers(groupId, updated);
+  if (result.ok) {
+    logger.info(
+      { workosUserId, slackUserId: mapping.slack_user_id, groupId },
+      'Removed member from @aao-members Slack user group',
+    );
+  }
+}
+
+// =====================================================
+// MEMBER PHOTO BADGE — composite + upload
+// Gated by the auto_apply_aao_badge system-settings toggle (default OFF).
+// Requires SLACK_ADMIN_USER_TOKEN with users:write + users.profile:read scopes.
+// =====================================================
+
+function pickBestPhotoUrl(profile: { image_512?: string; image_192?: string; image_72?: string }): string | undefined {
+  return profile.image_512 ?? profile.image_192 ?? profile.image_72;
+}
+
+/**
+ * Apply the AgenticAdvertising.org member badge to a user's Slack profile photo.
+ *
+ * - Fetches the user's current profile photo URL (image_512 or image_192 fallback)
+ * - Saves the original URL to DB (allows revert)
+ * - Composites the badge onto the photo using sharp
+ * - Uploads the composited image via users.setPhoto
+ *
+ * No-ops if:
+ * - auto_apply_aao_badge toggle is OFF
+ * - SLACK_ADMIN_USER_TOKEN is not configured
+ * - User has opted out of photo badge
+ * - User has no Slack mapping
+ * - User has no profile photo (default avatar)
+ */
+export async function applyMemberPhotoBadge(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const enabled = await getAutoApplyAaoBadge();
+  if (!enabled) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id) {
+    logger.debug({ workosUserId }, 'applyMemberPhotoBadge: no Slack mapping — skipping');
+    return;
+  }
+
+  if (mapping.badge_opt_out) {
+    logger.debug({ workosUserId, slackUserId: mapping.slack_user_id }, 'applyMemberPhotoBadge: user opted out — skipping');
+    return;
+  }
+
+  const profile = await getSlackUserProfile(mapping.slack_user_id);
+  if (!profile) return;
+
+  const photoUrl = pickBestPhotoUrl(profile);
+  if (!photoUrl) {
+    logger.debug({ workosUserId, slackUserId: mapping.slack_user_id }, 'applyMemberPhotoBadge: no profile photo — skipping');
+    return;
+  }
+
+  // Skip if the badge is already applied and the user hasn't changed their photo:
+  // compare current URL against the badge-applied URL stored at last upload.
+  if (mapping.badge_photo_applied_at && mapping.badge_applied_photo_url === photoUrl) {
+    logger.debug({ workosUserId }, 'applyMemberPhotoBadge: badge already applied and photo unchanged — skipping');
+    return;
+  }
+
+  try {
+    const photoBuffer = await fetchImageBuffer(photoUrl);
+    const composited = await compositeProfileBadge(photoBuffer);
+
+    const uploadResult = await setSlackUserPhoto(mapping.slack_user_id, composited);
+    if (!uploadResult.ok) {
+      logger.warn({ workosUserId, slackUserId: mapping.slack_user_id, error: uploadResult.error }, 'applyMemberPhotoBadge: photo upload failed');
+      return;
+    }
+
+    // Fetch the updated profile to get the new CDN URL for the composited photo.
+    // This URL is stored so the reconcile job can detect when the user later
+    // changes their own photo (current URL ≠ badge_applied_photo_url → re-apply).
+    const updatedProfile = await getSlackUserProfile(mapping.slack_user_id);
+    const badgeAppliedPhotoUrl = updatedProfile ? pickBestPhotoUrl(updatedProfile) ?? null : null;
+
+    await slackDb.setBadgeApplied(mapping.slack_user_id, photoUrl, badgeAppliedPhotoUrl);
+    logger.info({ workosUserId, slackUserId: mapping.slack_user_id }, 'Applied member photo badge');
+  } catch (error) {
+    logger.warn({ error, workosUserId, slackUserId: mapping.slack_user_id }, 'applyMemberPhotoBadge: unexpected error');
+  }
+}
+
+/**
+ * Revert a member's Slack profile photo to the original (pre-badge) image.
+ *
+ * Called on organization_membership.deleted and when a user opts out via
+ * `/aao badge off`.
+ *
+ * No-ops if badge was never applied or original URL is not stored.
+ */
+export async function revertMemberPhotoBadge(workosUserId: string): Promise<void> {
+  if (!isSlackConfigured()) return;
+
+  const mapping = await slackDb.getByWorkosUserId(workosUserId);
+  if (!mapping?.slack_user_id || !mapping.original_photo_url || !mapping.badge_photo_applied_at) {
+    return;
+  }
+
+  try {
+    const photoBuffer = await fetchImageBuffer(mapping.original_photo_url);
+    const uploadResult = await setSlackUserPhoto(mapping.slack_user_id, photoBuffer);
+    if (!uploadResult.ok) {
+      logger.warn({ workosUserId, slackUserId: mapping.slack_user_id, error: uploadResult.error }, 'revertMemberPhotoBadge: photo upload failed');
+      return;
+    }
+
+    await slackDb.clearBadgeApplied(mapping.slack_user_id);
+    logger.info({ workosUserId, slackUserId: mapping.slack_user_id }, 'Reverted member photo badge to original');
+  } catch (error) {
+    logger.warn({ error, workosUserId, slackUserId: mapping.slack_user_id }, 'revertMemberPhotoBadge: unexpected error');
+  }
+}
+
+export interface ReconcileBadgesResult {
+  checked: number;
+  reapplied: number;
+  errors: number;
+}
+
+/**
+ * Daily reconcile job: re-applies the badge for any member who has changed
+ * their Slack profile photo since the badge was last applied.
+ *
+ * Detection: fetch the current profile photo URL and compare it against the
+ * stored original_photo_url. If they differ, the user changed their photo and
+ * we need to apply the badge again.
+ *
+ * Gated by the auto_apply_aao_badge toggle — if OFF, returns immediately.
+ */
+export async function reconcileMemberPhotoBadges(): Promise<ReconcileBadgesResult> {
+  const result: ReconcileBadgesResult = { checked: 0, reapplied: 0, errors: 0 };
+
+  if (!isSlackConfigured()) return result;
+
+  const enabled = await getAutoApplyAaoBadge();
+  if (!enabled) return result;
+
+  const members = await slackDb.getMembersWithBadgeApplied();
+
+  for (const member of members) {
+    result.checked++;
+    if (!member.workos_user_id) continue;
+
+    try {
+      const profile = await getSlackUserProfile(member.slack_user_id);
+      if (!profile) continue;
+
+      const currentPhotoUrl = pickBestPhotoUrl(profile);
+      if (!currentPhotoUrl) continue;
+
+      // If the current photo matches the badge-applied URL, the badge is still
+      // active — skip. If it differs, the user changed their own photo and the
+      // badge must be re-applied.
+      if (currentPhotoUrl === member.badge_applied_photo_url) continue;
+
+      await applyMemberPhotoBadge(member.workos_user_id);
+      result.reapplied++;
+    } catch (error) {
+      logger.warn({ error, slackUserId: member.slack_user_id }, 'reconcileMemberPhotoBadges: error processing member');
+      result.errors++;
+    }
+  }
+
+  if (result.reapplied > 0 || result.errors > 0) {
+    logger.info(result, 'Member photo badge reconciliation complete');
+  }
+  return result;
 }

@@ -24,7 +24,13 @@ import { getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
-import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import {
+  tryAutoLinkWebsiteUserToSlack,
+  addToMemberUserGroup,
+  removeFromMemberUserGroup,
+  applyMemberPhotoBadge,
+  revertMemberPhotoBadge,
+} from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
@@ -745,6 +751,20 @@ export function createWorkOSWebhooksRouter(): Router {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
               }
 
+              // Add to @aao-members user group — does not need workosUser; runs even if user fetch failed
+              try {
+                await addToMemberUserGroup(membership.user_id);
+              } catch (groupErr) {
+                logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not add to @aao-members user group on membership creation');
+              }
+
+              // Apply photo badge (gated by auto_apply_aao_badge toggle, default OFF)
+              try {
+                await applyMemberPhotoBadge(membership.user_id);
+              } catch (badgeErr) {
+                logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not apply member photo badge on membership creation');
+              }
+
               if (workosUser) {
                 // Slack auto-link
                 try {
@@ -785,6 +805,27 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_membership.updated': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await upsertMembership(membership);
+            // User group sync is intentionally independent of upsertMembership's active-status gate:
+            // a transition to inactive/pending must also remove the member from the group.
+            try {
+              if (membership.status === 'active') {
+                await addToMemberUserGroup(membership.user_id);
+              } else {
+                await removeFromMemberUserGroup(membership.user_id);
+              }
+            } catch (groupErr) {
+              logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not sync @aao-members user group on membership update');
+            }
+            // Photo badge: apply on active, revert on inactive/pending
+            try {
+              if (membership.status === 'active') {
+                await applyMemberPhotoBadge(membership.user_id);
+              } else {
+                await revertMemberPhotoBadge(membership.user_id);
+              }
+            } catch (badgeErr) {
+              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not sync photo badge on membership update');
+            }
             invalidateUnifiedUsersCache();
             break;
           }
@@ -792,6 +833,16 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization_membership.deleted': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await deleteMembership(membership);
+            try {
+              await removeFromMemberUserGroup(membership.user_id);
+            } catch (groupErr) {
+              logger.warn({ error: groupErr, userId: membership.user_id }, 'Could not remove from @aao-members user group on membership deletion');
+            }
+            try {
+              await revertMemberPhotoBadge(membership.user_id);
+            } catch (badgeErr) {
+              logger.warn({ error: badgeErr, userId: membership.user_id }, 'Could not revert photo badge on membership deletion');
+            }
             invalidateUnifiedUsersCache();
             break;
           }

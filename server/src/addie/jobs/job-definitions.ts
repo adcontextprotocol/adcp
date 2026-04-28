@@ -34,7 +34,11 @@ import { processUntriagedDomains, escalateUnclaimedProspects } from '../../servi
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { runConversationInsightsJob } from './conversation-insights.js';
-import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
+import {
+  autoLinkUnmappedSlackUsers,
+  autoAddVerifiedDomainUsersAsMembers,
+  reconcileMemberPhotoBadges,
+} from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
@@ -399,6 +403,16 @@ export function registerAllJobs(): void {
     initialDelay: { value: 5, unit: 'minutes' },
     runner: autoAddVerifiedDomainUsersAsMembers,
     shouldLogResult: (r) => r.added > 0 || r.errors > 0,
+  });
+
+  // Re-apply photo badge for members who changed their Slack profile photo
+  jobScheduler.register({
+    name: 'member-badge-reconcile',
+    description: 'Re-apply AgenticAdvertising.org member badge for users who changed their Slack photo',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 7, unit: 'minutes' },
+    runner: reconcileMemberPhotoBadges,
+    shouldLogResult: (r) => r.reapplied > 0 || r.errors > 0,
   });
 
   // GEO prompt monitor - checks LLM visibility for AdCP mentions
@@ -822,6 +836,7 @@ export const JOB_NAMES = {
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
+  MEMBER_BADGE_RECONCILE: 'member-badge-reconcile',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
   EVENT_REMINDER: 'event-reminder',

@@ -28,6 +28,8 @@ import {
   getAnnouncementChannel,
   setAnnouncementChannel,
   getSettingAuditHistory,
+  getAutoApplyAaoBadge,
+  setAutoApplyAaoBadge,
 } from '../../db/system-settings-db.js';
 import {
   getSlackChannels,
@@ -93,6 +95,7 @@ export function createAdminSettingsRouter(): Router {
 
       const editorialChannel = await getEditorialChannel();
       const announcementChannel = await getAnnouncementChannel();
+      const autoApplyAaoBadge = await getAutoApplyAaoBadge();
 
       res.json({
         settings,
@@ -104,6 +107,7 @@ export function createAdminSettingsRouter(): Router {
         error_channel: errorChannel,
         editorial_channel: editorialChannel,
         announcement_channel: announcementChannel,
+        auto_apply_aao_badge: autoApplyAaoBadge,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -511,6 +515,33 @@ export function createAdminSettingsRouter(): Router {
       res.json({ success: true, prospect_triage_enabled: enabled });
     } catch (error) {
       logger.error({ err: error }, 'Failed to update prospect triage enabled');
+      res.status(500).json({
+        error: 'Failed to update setting',
+      });
+    }
+  });
+
+  // PUT /api/admin/settings/auto-apply-aao-badge - Toggle automatic photo badge application
+  router.put('/auto-apply-aao-badge', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = req.body;
+
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({
+          error: 'Invalid value',
+          message: 'enabled must be a boolean',
+        });
+        return;
+      }
+
+      const userId = req.user?.id;
+      await setAutoApplyAaoBadge(enabled, userId);
+
+      logger.info({ enabled, userId }, 'auto_apply_aao_badge setting updated');
+
+      res.json({ success: true, auto_apply_aao_badge: enabled });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update auto_apply_aao_badge setting');
       res.status(500).json({
         error: 'Failed to update setting',
       });

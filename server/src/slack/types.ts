@@ -37,6 +37,11 @@ export interface SlackUserMapping {
   // Marketing opt-in captured via Slack DM before web account mapping
   pending_marketing_opt_in: boolean | null;
   pending_marketing_opt_in_at: Date | null;
+  // Photo-overlay badge state (from migration 448)
+  original_photo_url: string | null;
+  badge_photo_applied_at: Date | null;
+  badge_opt_out: boolean;
+  badge_applied_photo_url: string | null;
   created_at: Date;
   updated_at: Date;
 }
