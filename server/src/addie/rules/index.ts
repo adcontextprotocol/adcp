@@ -6,16 +6,17 @@ import { logger } from '../../logger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Order matters: the factual grounding (knowledge + current-context)
-// comes before the tone/format constraints so that response-style is
-// the last thing the model reads before writing.
+// comes before the prohibition/constraint layer so that constraints bind
+// after dynamic content is loaded. response-style is last so output shape
+// is the final thing the model reads before writing.
 const RULE_FILES_BEFORE_CONTEXT = [
   'identity.md',
   'behaviors.md',
   'knowledge.md',
-  'urls.md',
 ];
 
 const RULE_FILES_AFTER_CONTEXT = [
+  'urls.md',
   'constraints.md',
   'response-style.md',
 ];
