@@ -292,7 +292,14 @@ export class PropertyDatabase {
   }
 
   /**
-   * Get agent authorizations for a property
+   * Get agent authorizations for a property.
+   *
+   * UNION over the legacy `agent_property_authorizations`-JOIN-`discovered_properties`
+   * graph and the catalog-side `v_effective_agent_authorizations` (per-property
+   * rows resolved through `catalog_properties` → `publishers.adagents_json`
+   * JSONB to recover the property name). Legacy wins on
+   * (agent_url, property_name, authorized_for) collisions during the
+   * #3177 dual-read window.
    */
   async getAgentAuthorizationsForDomain(domain: string): Promise<Array<{
     agent_url: string;
@@ -304,10 +311,35 @@ export class PropertyDatabase {
       name: string;
       authorized_for: string;
     }>(
-      `SELECT apa.agent_url, dp.name, apa.authorized_for
-       FROM agent_property_authorizations apa
-       JOIN discovered_properties dp ON apa.property_id = dp.id
-       WHERE dp.publisher_domain = $1`,
+      `WITH unioned AS (
+         SELECT apa.agent_url, dp.name, apa.authorized_for, 0 AS src_priority
+           FROM agent_property_authorizations apa
+           JOIN discovered_properties dp ON apa.property_id = dp.id
+          WHERE dp.publisher_domain = $1
+         UNION ALL
+         SELECT
+           v.agent_url,
+           prop->>'name' AS name,
+           v.authorized_for,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+           JOIN catalog_properties cp ON cp.property_rid = v.property_rid
+           JOIN publishers pub ON pub.domain = regexp_replace(cp.created_by, '^[^:]+:', '')
+                              AND pub.source_type = 'adagents_json'
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(pub.adagents_json->'properties') = 'array'
+                 THEN pub.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+          WHERE v.property_rid IS NOT NULL
+            AND regexp_replace(cp.created_by, '^[^:]+:', '') = $1
+            AND prop->>'property_id' = cp.property_id
+            AND prop->>'name' IS NOT NULL
+       )
+       SELECT DISTINCT ON (agent_url, name, COALESCE(authorized_for, ''))
+              agent_url, name, authorized_for
+         FROM unioned
+        ORDER BY agent_url, name, COALESCE(authorized_for, ''), src_priority`,
       [domain.toLowerCase()]
     );
     return result.rows.map((row) => ({

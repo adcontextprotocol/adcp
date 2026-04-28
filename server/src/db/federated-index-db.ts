@@ -96,30 +96,101 @@ export class FederatedIndexDatabase {
   // ============================================
 
   /**
-   * Get all agents authorized for a specific domain
-   * Uses idx_auth_by_publisher index
+   * Get all agents authorized for a specific domain.
+   *
+   * UNION over the legacy `agent_publisher_authorizations` table and the
+   * catalog-side `v_effective_agent_authorizations` (publisher-wide rows
+   * only — `property_rid IS NULL`) during the #3177 dual-read window.
+   * Legacy wins on (agent_url, publisher_domain, source) collisions so
+   * callers that hold a legacy row's `property_ids` keep seeing them
+   * during cutover. Catalog evidence values are coerced to the legacy
+   * source vocabulary: 'override' → 'adagents_json' (moderator-authoritative),
+   * 'community' → 'agent_claim' (lower trust). After PR 5 the legacy
+   * arm is removed and the query collapses to catalog-only.
    */
   async getAgentsForDomain(domain: string): Promise<AgentPublisherAuthorization[]> {
     const result = await query<AgentPublisherAuthorization>(
-      `SELECT agent_url, publisher_domain, authorized_for, property_ids, source, discovered_at, last_validated
-       FROM agent_publisher_authorizations
-       WHERE publisher_domain = $1
-       ORDER BY source, agent_url`,
+      `WITH unioned AS (
+         SELECT agent_url, publisher_domain, authorized_for, property_ids,
+                source, discovered_at, last_validated, 0 AS src_priority
+           FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1
+         UNION ALL
+         SELECT
+           v.agent_url,
+           v.publisher_domain,
+           v.authorized_for,
+           NULL::text[] AS property_ids,
+           CASE v.evidence
+             WHEN 'adagents_json' THEN 'adagents_json'
+             WHEN 'agent_claim'   THEN 'agent_claim'
+             WHEN 'override'      THEN 'adagents_json'
+             WHEN 'community'     THEN 'agent_claim'
+           END AS source,
+           v.created_at AS discovered_at,
+           v.updated_at AS last_validated,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+          WHERE v.publisher_domain = $1
+            AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
+       ), deduped AS (
+         SELECT DISTINCT ON (agent_url, publisher_domain, source)
+                agent_url, publisher_domain, authorized_for, property_ids,
+                source, discovered_at, last_validated
+           FROM unioned
+          ORDER BY agent_url, publisher_domain, source, src_priority
+       )
+       SELECT * FROM deduped ORDER BY source, agent_url`,
       [domain]
     );
     return result.rows;
   }
 
   /**
-   * Get all publisher domains for a specific agent
-   * Uses idx_auth_by_agent index
+   * Get all publisher domains for a specific agent.
+   *
+   * UNION over legacy + catalog (publisher-wide rows). See
+   * getAgentsForDomain for evidence→source mapping and dual-read
+   * rationale. Canonicalizes the input via lower(rtrim($1, '/')) to
+   * match the writer's canonicalizer (publisher-db.ts:91-108) when
+   * looking up the catalog arm; the legacy arm is keyed on the raw
+   * input to preserve historical behavior on non-canonical legacy data.
    */
   async getDomainsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
     const result = await query<AgentPublisherAuthorization>(
-      `SELECT agent_url, publisher_domain, authorized_for, property_ids, source, discovered_at, last_validated
-       FROM agent_publisher_authorizations
-       WHERE agent_url = $1
-       ORDER BY source, publisher_domain`,
+      `WITH unioned AS (
+         SELECT agent_url, publisher_domain, authorized_for, property_ids,
+                source, discovered_at, last_validated, 0 AS src_priority
+           FROM agent_publisher_authorizations
+          WHERE agent_url = $1
+         UNION ALL
+         SELECT
+           v.agent_url,
+           v.publisher_domain,
+           v.authorized_for,
+           NULL::text[] AS property_ids,
+           CASE v.evidence
+             WHEN 'adagents_json' THEN 'adagents_json'
+             WHEN 'agent_claim'   THEN 'agent_claim'
+             WHEN 'override'      THEN 'adagents_json'
+             WHEN 'community'     THEN 'agent_claim'
+           END AS source,
+           v.created_at AS discovered_at,
+           v.updated_at AS last_validated,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
+       ), deduped AS (
+         SELECT DISTINCT ON (agent_url, publisher_domain, source)
+                agent_url, publisher_domain, authorized_for, property_ids,
+                source, discovered_at, last_validated
+           FROM unioned
+          ORDER BY agent_url, publisher_domain, source, src_priority
+       )
+       SELECT * FROM deduped ORDER BY source, publisher_domain`,
       [agentUrl]
     );
     return result.rows;
@@ -128,6 +199,13 @@ export class FederatedIndexDatabase {
   /**
    * Bulk-fetch first authorization for multiple agents in a single query.
    * Returns a Map from agent_url to its first AgentPublisherAuthorization.
+   *
+   * UNION over legacy + catalog (publisher-wide rows). Legacy wins on
+   * (agent_url) collision; within an arm, source ASC preserves the
+   * "adagents_json over agent_claim" preference. Catalog evidence is
+   * coerced to legacy source values ('override' → 'adagents_json',
+   * 'community' → 'agent_claim') so the source field round-trips as
+   * the literal 'adagents_json' | 'agent_claim' callers expect.
    */
   async bulkGetFirstAuthForAgents(agentUrls: string[]): Promise<Map<string, AgentPublisherAuthorization>> {
     if (agentUrls.length === 0) return new Map();
@@ -137,18 +215,78 @@ export class FederatedIndexDatabase {
 
     for (let i = 0; i < agentUrls.length; i += BATCH_SIZE) {
       const batch = agentUrls.slice(i, i + BATCH_SIZE);
-      // DISTINCT ON picks first row per agent_url.
-      // ORDER BY source ASC ensures adagents_json (alphabetically first) is preferred over agent_claim.
-      const result = await query<AgentPublisherAuthorization>(
-        `SELECT DISTINCT ON (agent_url)
-           agent_url, publisher_domain, authorized_for, property_ids, source, discovered_at, last_validated
-         FROM agent_publisher_authorizations
-         WHERE agent_url = ANY($1)
-         ORDER BY agent_url, source, publisher_domain`,
-        [batch]
+      // Canonicalize each input agent_url for the catalog-side lookup.
+      // Wildcard '*' is preserved literally; other inputs are
+      // lowercased and have trailing slashes stripped to match the
+      // writer's canonicalizer (publisher-db.ts:91-108). The legacy arm
+      // is keyed on the raw input to preserve historical behavior on
+      // non-canonical legacy data.
+      const canonicalToInput = new Map<string, string>();
+      for (const u of batch) {
+        let canon: string;
+        const trimmed = u.trim();
+        if (trimmed === '*') {
+          canon = '*';
+        } else {
+          canon = trimmed.toLowerCase();
+          while (canon.endsWith('/')) canon = canon.slice(0, -1);
+        }
+        // First-wins: if multiple inputs share a canonical form, the
+        // first one in the batch is the lookup key. Callers don't pass
+        // duplicates today.
+        if (!canonicalToInput.has(canon)) canonicalToInput.set(canon, u);
+      }
+      const canonical = Array.from(canonicalToInput.keys());
+      // Both arms emit a `dedup_canonical` column (the canonical form of
+      // their agent_url). DISTINCT ON dedup_canonical collapses cases
+      // where the same agent has both a legacy row and a catalog row.
+      // src_priority=0 means legacy wins on collision.
+      const result = await query<AgentPublisherAuthorization & { dedup_canonical: string }>(
+        `WITH unioned AS (
+           SELECT
+             CASE WHEN agent_url = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
+               AS dedup_canonical,
+             agent_url, publisher_domain, authorized_for,
+             property_ids, source, discovered_at, last_validated, 0 AS src_priority
+             FROM agent_publisher_authorizations
+            WHERE agent_url = ANY($1)
+           UNION ALL
+           SELECT
+             v.agent_url_canonical AS dedup_canonical,
+             v.agent_url,
+             v.publisher_domain,
+             v.authorized_for,
+             NULL::text[] AS property_ids,
+             CASE v.evidence
+               WHEN 'adagents_json' THEN 'adagents_json'
+               WHEN 'agent_claim'   THEN 'agent_claim'
+               WHEN 'override'      THEN 'adagents_json'
+               WHEN 'community'     THEN 'agent_claim'
+             END AS source,
+             v.created_at AS discovered_at,
+             v.updated_at AS last_validated,
+             1 AS src_priority
+             FROM v_effective_agent_authorizations v
+            WHERE v.agent_url_canonical = ANY($2)
+              AND v.property_rid IS NULL
+              AND v.property_id_slug IS NULL
+         )
+         SELECT DISTINCT ON (dedup_canonical)
+                dedup_canonical,
+                agent_url, publisher_domain, authorized_for, property_ids,
+                source, discovered_at, last_validated
+           FROM unioned
+          ORDER BY dedup_canonical, src_priority, source, publisher_domain`,
+        [batch, canonical]
       );
       for (const row of result.rows) {
-        map.set(row.agent_url, row);
+        // Re-key the result to the input verbatim the caller asked
+        // about (so map.get(input) works regardless of casing/slash
+        // differences between input and stored value).
+        const key = canonicalToInput.get(row.dedup_canonical) ?? row.agent_url;
+        const { dedup_canonical, ...auth } = row as AgentPublisherAuthorization & { dedup_canonical: string };
+        void dedup_canonical;
+        map.set(key, auth);
       }
     }
     return map;
@@ -201,10 +339,27 @@ export class FederatedIndexDatabase {
 
   /**
    * Get all agent→domain pairs in a single query (for bulk snapshots).
+   *
+   * UNION over legacy + catalog (publisher-wide rows). Both arms emit
+   * the canonical agent_url (lowercased + trailing-slash-stripped, with
+   * '*' preserved literally) so set-dedup collapses cross-arm duplicates
+   * even when one side stored a non-canonical form. Without this the
+   * snapshot consumer in crawler.ts would emit phantom
+   * agent.discovered/removed events for the casing delta.
    */
   async getAllAgentDomainPairs(): Promise<Array<{ agent_url: string; publisher_domain: string }>> {
     const result = await query<{ agent_url: string; publisher_domain: string }>(
-      `SELECT agent_url, publisher_domain FROM agent_publisher_authorizations ORDER BY agent_url`
+      `SELECT
+         CASE WHEN agent_url = '*' THEN '*'
+              ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END AS agent_url,
+         publisher_domain
+         FROM agent_publisher_authorizations
+       UNION
+       SELECT v.agent_url_canonical AS agent_url, v.publisher_domain
+         FROM v_effective_agent_authorizations v
+        WHERE v.property_rid IS NULL
+          AND v.property_id_slug IS NULL
+        ORDER BY agent_url`
     );
     return result.rows;
   }
@@ -422,15 +577,76 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Get all properties for an agent (via agent_property_authorizations)
+   * Get all properties for an agent (via agent_property_authorizations).
+   *
+   * UNION over legacy `agent_property_authorizations`-JOIN-`discovered_properties`
+   * and the catalog-side per-property authorization rows (resolved
+   * through `catalog_properties` → `publishers.adagents_json` JSONB to
+   * recover name/type/identifiers/tags). Legacy wins on
+   * (publisher_domain, name, property_type) collisions per the same
+   * pattern as `getPropertiesForDomain` (PR 4a).
    */
   async getPropertiesForAgent(agentUrl: string): Promise<DiscoveredProperty[]> {
     const result = await query<DiscoveredProperty>(
-      `SELECT p.*
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE apa.agent_url = $1
-       ORDER BY p.publisher_domain, p.property_type, p.name`,
+      `WITH unioned AS (
+         SELECT p.id, p.property_id, p.publisher_domain, p.property_type, p.name,
+                p.identifiers, p.tags, p.discovered_at, p.last_validated, p.expires_at,
+                0 AS src_priority
+           FROM discovered_properties p
+           JOIN agent_property_authorizations apa ON apa.property_id = p.id
+          WHERE apa.agent_url = $1
+         UNION ALL
+         SELECT
+           cp.property_rid AS id,
+           prop->>'property_id' AS property_id,
+           pub.domain AS publisher_domain,
+           prop->>'property_type' AS property_type,
+           prop->>'name' AS name,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
+           COALESCE(
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
+             ARRAY[]::text[]
+           ) AS tags,
+           cp.created_at AS discovered_at,
+           pub.last_validated AS last_validated,
+           pub.expires_at AS expires_at,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+           JOIN catalog_properties cp ON cp.property_rid = v.property_rid
+           JOIN publishers pub ON pub.domain = regexp_replace(cp.created_by, '^[^:]+:', '')
+                              AND pub.source_type = 'adagents_json'
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(pub.adagents_json->'properties') = 'array'
+                 THEN pub.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NOT NULL
+            -- Slug-match catalog row to manifest entry. Slugless catalog
+            -- rows (cp.property_id IS NULL) can't be uniquely tied to a
+            -- manifest entry without name+type on catalog_properties (a
+            -- schema gap tracked as a follow-up). They're silently
+            -- dropped from the catalog arm here; the legacy arm still
+            -- surfaces them during the dual-read window.
+            AND prop->>'property_id' IS NOT NULL
+            AND cp.property_id IS NOT NULL
+            AND prop->>'property_id' = cp.property_id
+            AND prop->>'name' IS NOT NULL
+            AND prop->>'property_type' IS NOT NULL
+       ), deduped AS (
+         SELECT DISTINCT ON (publisher_domain, name, property_type)
+                id, property_id, publisher_domain, property_type, name,
+                identifiers, tags, discovered_at, last_validated, expires_at
+           FROM unioned
+          ORDER BY publisher_domain, name, property_type, src_priority
+       )
+       SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
       [agentUrl]
     );
     return result.rows.map(row => this.deserializeProperty(row));
@@ -505,28 +721,45 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Get publisher domains for an agent (from properties)
+   * Get publisher domains for an agent (from properties).
+   *
+   * UNION over legacy + catalog (per-property rows; UNION collapses
+   * cross-arm duplicates so a domain that has both a legacy row and a
+   * catalog row surfaces once).
    */
   async getPublisherDomainsForAgent(agentUrl: string): Promise<string[]> {
     const result = await query<{ publisher_domain: string }>(
-      `SELECT DISTINCT p.publisher_domain
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE apa.agent_url = $1
-       ORDER BY p.publisher_domain`,
+      `SELECT DISTINCT publisher_domain FROM (
+         SELECT p.publisher_domain
+           FROM discovered_properties p
+           JOIN agent_property_authorizations apa ON apa.property_id = p.id
+          WHERE apa.agent_url = $1
+         UNION
+         SELECT v.publisher_domain
+           FROM v_effective_agent_authorizations v
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NOT NULL
+       ) sub
+       ORDER BY publisher_domain`,
       [agentUrl]
     );
     return result.rows.map(r => r.publisher_domain);
   }
 
   /**
-   * Find agents that can sell a specific property by identifier
+   * Find agents that can sell a specific property by identifier.
+   *
+   * UNION over legacy (JSONB containment lookup on
+   * `discovered_properties.identifiers`) and catalog (lookup via
+   * `catalog_identifiers` keyed on lowercased identifier_value, then
+   * recover property metadata from `publishers.adagents_json` JSONB).
+   * Legacy wins on (agent_url, publisher_domain, name, property_type)
+   * collisions during the dual-read window.
    */
   async findAgentsForPropertyIdentifier(
     identifierType: string,
     identifierValue: string
   ): Promise<Array<{ agent_url: string; property: DiscoveredProperty; publisher_domain: string }>> {
-    // Query properties that have matching identifier in JSONB array
     const result = await query<{
       agent_url: string;
       publisher_domain: string;
@@ -537,12 +770,70 @@ export class FederatedIndexDatabase {
       identifiers: string;
       tags: string[];
     }>(
-      `SELECT apa.agent_url, p.publisher_domain, p.id, p.property_id, p.property_type, p.name, p.identifiers, p.tags
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.identifiers @> $1::jsonb
-       ORDER BY p.publisher_domain, apa.agent_url`,
-      [JSON.stringify([{ type: identifierType, value: identifierValue }])]
+      `WITH unioned AS (
+         SELECT apa.agent_url, p.publisher_domain, p.id, p.property_id,
+                p.property_type, p.name, p.identifiers, p.tags, 0 AS src_priority
+           FROM discovered_properties p
+           JOIN agent_property_authorizations apa ON apa.property_id = p.id
+          WHERE p.identifiers @> $1::jsonb
+         UNION ALL
+         SELECT
+           v.agent_url,
+           pub.domain AS publisher_domain,
+           cp.property_rid AS id,
+           prop->>'property_id' AS property_id,
+           prop->>'property_type' AS property_type,
+           prop->>'name' AS name,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
+           COALESCE(
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
+             ARRAY[]::text[]
+           ) AS tags,
+           1 AS src_priority
+           FROM catalog_identifiers ci
+           JOIN catalog_properties cp ON cp.property_rid = ci.property_rid
+           JOIN v_effective_agent_authorizations v ON v.property_rid = cp.property_rid
+           JOIN publishers pub ON pub.domain = regexp_replace(cp.created_by, '^[^:]+:', '')
+                              AND pub.source_type = 'adagents_json'
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(pub.adagents_json->'properties') = 'array'
+                 THEN pub.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+          WHERE ci.identifier_type = $2
+            -- Catalog stores identifier_value lowercase (schema CHECK).
+            -- Legacy discovered_properties.identifiers JSONB containment
+            -- match in arm 1 uses raw $1 — historical legacy data may
+            -- not be lowercase. Asymmetry resolves at PR 5 (legacy drop).
+            AND ci.identifier_value = LOWER($3)
+            AND v.property_rid IS NOT NULL
+            -- See getPropertiesForAgent: slugless catalog rows can't be
+            -- uniquely tied to a manifest entry today (no name/type on
+            -- catalog_properties). They drop here; legacy still serves.
+            AND prop->>'property_id' IS NOT NULL
+            AND cp.property_id IS NOT NULL
+            AND prop->>'property_id' = cp.property_id
+            AND prop->>'name' IS NOT NULL
+            AND prop->>'property_type' IS NOT NULL
+       ), deduped AS (
+         SELECT DISTINCT ON (agent_url, publisher_domain, name, property_type)
+                agent_url, publisher_domain, id, property_id, property_type,
+                name, identifiers, tags
+           FROM unioned
+          ORDER BY agent_url, publisher_domain, name, property_type, src_priority
+       )
+       SELECT * FROM deduped ORDER BY publisher_domain, agent_url`,
+      [
+        JSON.stringify([{ type: identifierType, value: identifierValue }]),
+        identifierType,
+        identifierValue,
+      ]
     );
 
     return result.rows.map(row => ({
@@ -645,41 +936,33 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Validate "all" selector - agent must have authorization for the publisher domain
+   * Validate "all" selector - agent must have authorization for the publisher domain.
+   *
+   * Counts both total and authorized properties from the unioned
+   * (legacy ∪ catalog) view via the existing readers — that's the only
+   * place the dual-read shape is materialized. In-memory derivation
+   * keeps validateSelectorAll honest with whatever
+   * getPropertiesForDomain / getAuthorizedPropertiesForDomain return.
    */
   private async validateSelectorAll(
     agentUrl: string,
     publisherDomain: string
   ): Promise<{ requested: number; authorized: number; source: 'adagents_json' | 'agent_claim' | 'none' }> {
-    // Count total properties for this publisher
-    const totalResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM discovered_properties WHERE publisher_domain = $1`,
-      [publisherDomain]
-    );
-    const totalCount = parseInt(totalResult.rows[0]?.count || '0', 10);
-
-    // Count properties the agent is authorized for
-    const authorizedResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1 AND apa.agent_url = $2`,
-      [publisherDomain, agentUrl]
-    );
-    const authorizedCount = parseInt(authorizedResult.rows[0]?.count || '0', 10);
-
-    // Check authorization source
+    const allProps = await this.getPropertiesForDomain(publisherDomain);
+    const authorizedProps = await this.getAuthorizedPropertiesForDomain(agentUrl, publisherDomain);
     const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
-
     return {
-      requested: totalCount,
-      authorized: authorizedCount,
+      requested: allProps.length,
+      authorized: authorizedProps.length,
       source,
     };
   }
 
   /**
-   * Validate "by_id" selector - check specific property IDs
+   * Validate "by_id" selector - check specific property IDs.
+   *
+   * Derives authorized IDs from getAuthorizedPropertiesByIds so the
+   * UNION'd authorization view answers in one place.
    */
   private async validateSelectorByIds(
     agentUrl: string,
@@ -690,19 +973,9 @@ export class FederatedIndexDatabase {
       return { requested: 0, authorized: 0, unauthorized: [], source: 'none' };
     }
 
-    // Find which property IDs the agent is authorized for
-    const result = await query<{ property_id: string }>(
-      `SELECT p.property_id
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1
-         AND apa.agent_url = $2
-         AND p.property_id = ANY($3)`,
-      [publisherDomain, agentUrl, propertyIds]
-    );
-
-    const authorizedIds = new Set(result.rows.map(r => r.property_id));
-    const unauthorizedIds = propertyIds.filter(id => !authorizedIds.has(id));
+    const authorizedProps = await this.getAuthorizedPropertiesByIds(agentUrl, publisherDomain, propertyIds);
+    const authorizedIds = new Set(authorizedProps.map((p) => p.property_id).filter((id): id is string => !!id));
+    const unauthorizedIds = propertyIds.filter((id) => !authorizedIds.has(id));
     const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
 
     return {
@@ -714,7 +987,13 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Validate "by_tag" selector - check properties matching tags
+   * Validate "by_tag" selector - check properties matching tags.
+   *
+   * Derives total count + authorized count + tag coverage from the
+   * unioned property reads. requested counts properties whose tags
+   * overlap propertyTags (matches `tags && $2` in the legacy SQL);
+   * authorized counts the agent's authorized subset of those; tag
+   * coverage is the union of all tags carried by authorized matches.
    */
   private async validateSelectorByTags(
     agentUrl: string,
@@ -725,62 +1004,67 @@ export class FederatedIndexDatabase {
       return { requested: 0, authorized: 0, unauthorized: [], source: 'none' };
     }
 
-    // Count total properties matching these tags for this publisher
-    const totalResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count
-       FROM discovered_properties
-       WHERE publisher_domain = $1 AND tags && $2`,
-      [publisherDomain, propertyTags]
-    );
-    const totalCount = parseInt(totalResult.rows[0]?.count || '0', 10);
+    const tagSet = new Set(propertyTags);
+    const allProps = await this.getPropertiesForDomain(publisherDomain);
+    const totalCount = allProps.filter((p) => (p.tags || []).some((t) => tagSet.has(t))).length;
 
-    // Count authorized properties matching these tags
-    const authorizedResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1
-         AND apa.agent_url = $2
-         AND p.tags && $3`,
-      [publisherDomain, agentUrl, propertyTags]
-    );
-    const authorizedCount = parseInt(authorizedResult.rows[0]?.count || '0', 10);
+    const authorizedProps = await this.getAuthorizedPropertiesByTags(agentUrl, publisherDomain, propertyTags);
 
-    // Find which tags have coverage (single query instead of N+1)
-    const coveredTagsResult = await query<{ tag: string }>(
-      `SELECT DISTINCT unnest(p.tags) as tag
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1
-         AND apa.agent_url = $2
-         AND p.tags && $3`,
-      [publisherDomain, agentUrl, propertyTags]
-    );
-    const coveredTags = new Set(coveredTagsResult.rows.map(r => r.tag));
-    const unauthorizedTags = propertyTags.filter(tag => !coveredTags.has(tag));
+    const coveredTags = new Set<string>();
+    for (const prop of authorizedProps) {
+      for (const tag of prop.tags || []) coveredTags.add(tag);
+    }
+    const unauthorizedTags = propertyTags.filter((tag) => !coveredTags.has(tag));
 
     const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
 
     return {
       requested: totalCount,
-      authorized: authorizedCount,
+      authorized: authorizedProps.length,
       unauthorized: unauthorizedTags,
       source,
     };
   }
 
   /**
-   * Get authorization source for an agent/publisher pair
+   * Get authorization source for an agent/publisher pair.
+   *
+   * UNION over legacy + catalog (publisher-wide rows). Within each arm,
+   * 'adagents_json' beats 'agent_claim'. Legacy wins on collision so a
+   * fixture seeded as 'adagents_json' in legacy keeps surfacing as
+   * 'adagents_json' even if catalog has a weaker (community → agent_claim)
+   * row for the same pair. Catalog evidence values are mapped to the
+   * legacy source vocabulary ('override' → 'adagents_json',
+   * 'community' → 'agent_claim').
    */
   private async getAuthorizationSource(
     agentUrl: string,
     publisherDomain: string
   ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
     const authResult = await query<{ source: string }>(
-      `SELECT source FROM agent_publisher_authorizations
-       WHERE agent_url = $1 AND publisher_domain = $2
-       ORDER BY CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
-       LIMIT 1`,
+      `WITH unioned AS (
+         SELECT source, 0 AS src_priority
+           FROM agent_publisher_authorizations
+          WHERE agent_url = $1 AND publisher_domain = $2
+         UNION ALL
+         SELECT
+           CASE v.evidence
+             WHEN 'adagents_json' THEN 'adagents_json'
+             WHEN 'agent_claim'   THEN 'agent_claim'
+             WHEN 'override'      THEN 'adagents_json'
+             WHEN 'community'     THEN 'agent_claim'
+           END AS source,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.publisher_domain = $2
+            AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
+       )
+       SELECT source FROM unioned
+        ORDER BY src_priority,
+                 CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
+        LIMIT 1`,
       [agentUrl, publisherDomain]
     );
 
@@ -847,25 +1131,24 @@ export class FederatedIndexDatabase {
   }
 
   /**
-   * Get all authorized properties for an agent in a specific domain
+   * Get all authorized properties for an agent in a specific domain.
+   *
+   * Filters the unioned getPropertiesForAgent set to a single
+   * publisher_domain. Keeps the dual-read shape co-located with
+   * getPropertiesForAgent rather than duplicating the catalog JOINs.
    */
   private async getAuthorizedPropertiesForDomain(
     agentUrl: string,
     publisherDomain: string
   ): Promise<DiscoveredProperty[]> {
-    const result = await query<DiscoveredProperty>(
-      `SELECT p.*
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1 AND apa.agent_url = $2
-       ORDER BY p.property_type, p.name`,
-      [publisherDomain, agentUrl]
-    );
-    return result.rows.map(row => this.deserializeProperty(row));
+    const all = await this.getPropertiesForAgent(agentUrl);
+    return all
+      .filter((p) => p.publisher_domain === publisherDomain)
+      .sort((a, b) => a.property_type.localeCompare(b.property_type) || a.name.localeCompare(b.name));
   }
 
   /**
-   * Get authorized properties by specific IDs
+   * Get authorized properties by specific IDs.
    */
   private async getAuthorizedPropertiesByIds(
     agentUrl: string,
@@ -873,22 +1156,13 @@ export class FederatedIndexDatabase {
     propertyIds: string[]
   ): Promise<DiscoveredProperty[]> {
     if (propertyIds.length === 0) return [];
-
-    const result = await query<DiscoveredProperty>(
-      `SELECT p.*
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1
-         AND apa.agent_url = $2
-         AND p.property_id = ANY($3)
-       ORDER BY p.property_type, p.name`,
-      [publisherDomain, agentUrl, propertyIds]
-    );
-    return result.rows.map(row => this.deserializeProperty(row));
+    const idSet = new Set(propertyIds);
+    const inDomain = await this.getAuthorizedPropertiesForDomain(agentUrl, publisherDomain);
+    return inDomain.filter((p) => p.property_id !== undefined && idSet.has(p.property_id));
   }
 
   /**
-   * Get authorized properties by tags
+   * Get authorized properties by tags.
    */
   private async getAuthorizedPropertiesByTags(
     agentUrl: string,
@@ -896,18 +1170,9 @@ export class FederatedIndexDatabase {
     propertyTags: string[]
   ): Promise<DiscoveredProperty[]> {
     if (propertyTags.length === 0) return [];
-
-    const result = await query<DiscoveredProperty>(
-      `SELECT p.*
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE p.publisher_domain = $1
-         AND apa.agent_url = $2
-         AND p.tags && $3
-       ORDER BY p.property_type, p.name`,
-      [publisherDomain, agentUrl, propertyTags]
-    );
-    return result.rows.map(row => this.deserializeProperty(row));
+    const tagSet = new Set(propertyTags);
+    const inDomain = await this.getAuthorizedPropertiesForDomain(agentUrl, publisherDomain);
+    return inDomain.filter((p) => (p.tags || []).some((t) => tagSet.has(t)));
   }
 
   /**
@@ -932,13 +1197,31 @@ export class FederatedIndexDatabase {
       id: string;
       publisher_domain: string;
     }>(
-      `SELECT p.id, p.publisher_domain
-       FROM discovered_properties p
-       JOIN agent_property_authorizations apa ON apa.property_id = p.id
-       WHERE apa.agent_url = $1
-         AND p.identifiers @> $2::jsonb
-       LIMIT 1`,
-      [agentUrl, JSON.stringify([{ type: identifierType, value: identifierValue }])]
+      `WITH unioned AS (
+         SELECT p.id::text AS id, p.publisher_domain
+           FROM discovered_properties p
+           JOIN agent_property_authorizations apa ON apa.property_id = p.id
+          WHERE apa.agent_url = $1
+            AND p.identifiers @> $2::jsonb
+         UNION ALL
+         SELECT
+           cp.property_rid::text AS id,
+           regexp_replace(cp.created_by, '^[^:]+:', '') AS publisher_domain
+           FROM catalog_identifiers ci
+           JOIN catalog_properties cp ON cp.property_rid = ci.property_rid
+           JOIN v_effective_agent_authorizations v ON v.property_rid = cp.property_rid
+          WHERE ci.identifier_type = $3
+            AND ci.identifier_value = LOWER($4)
+            AND v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NOT NULL
+       )
+       SELECT id, publisher_domain FROM unioned LIMIT 1`,
+      [
+        agentUrl,
+        JSON.stringify([{ type: identifierType, value: identifierValue }]),
+        identifierType,
+        identifierValue,
+      ]
     );
 
     if (result.rows.length === 0) {
