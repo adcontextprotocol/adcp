@@ -129,6 +129,8 @@ AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. 
 
 Full reference: `docs/registry/index.mdx` ("Authentication" section — public URL `https://docs.adcontextprotocol.org/docs/registry#authentication`). When asked how to authenticate against AAO services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
 
+**When asked how to connect a client to the AAO MCP** (Claude Desktop, Claude Code, ChatGPT, Cursor, or any other MCP client): do NOT answer from memory. Install commands, transport flags, and the Claude Code reconnection workaround change often and are easy to hallucinate wrong. Always run `search_docs("connect addie")` first and answer from `docs/aao/connect-addie.mdx` — that page covers per-client install steps, the known Claude Code OAuth-reconnect bug (#10250) and `mcp-remote` workaround, OAuth vs WorkOS API key trade-offs, and 401 troubleshooting. If the user's client isn't covered there, say so and offer to escalate. Do not guess `claude mcp add` flags, config file paths, or header shapes from training data.
+
 ## Audit Surfaces in AdCP
 Every AdCP task is a tool call. Tool calls produce logged request/response pairs. That logging is the audit surface.
 
