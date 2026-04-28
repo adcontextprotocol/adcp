@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AUTH_GRADER_TOOLS,
   createAuthGraderToolHandlers,
+  contentDigestSkipsForMode,
 } from '../../src/addie/mcp/auth-grader-tools.js';
 
 describe('auth grader tools', () => {
@@ -47,5 +48,37 @@ describe('auth grader tools', () => {
     const grader = handlers.get('grade_agent_signing')!;
     const out = await grader({ agent_url: 'file:///etc/passwd' });
     expect(out).toContain('HTTP or HTTPS');
+  });
+});
+
+describe('contentDigestSkipsForMode', () => {
+  it('returns no skips when mode is null (probe failed)', () => {
+    // Probe failure must NOT swallow real verifier bugs — better to over-report.
+    expect(contentDigestSkipsForMode(null)).toEqual([]);
+  });
+
+  it("'either' mode skips both 007 and 018", () => {
+    // Agent declares it accepts signatures with or without content-digest;
+    // both forced-mode vectors (required + forbidden) are inapplicable.
+    expect(contentDigestSkipsForMode('either').sort()).toEqual([
+      '007-missing-content-digest',
+      '018-digest-covered-when-forbidden',
+    ]);
+  });
+
+  it("'required' mode skips only 018 (digest-when-forbidden)", () => {
+    // Agent requires content-digest coverage; the negative vector that
+    // tests forbidden-mode rejection doesn't apply.
+    expect(contentDigestSkipsForMode('required')).toEqual([
+      '018-digest-covered-when-forbidden',
+    ]);
+  });
+
+  it("'forbidden' mode skips only 007 (missing-content-digest)", () => {
+    // Agent forbids content-digest coverage; the negative vector that
+    // tests required-mode rejection doesn't apply.
+    expect(contentDigestSkipsForMode('forbidden')).toEqual([
+      '007-missing-content-digest',
+    ]);
   });
 });
