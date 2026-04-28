@@ -383,8 +383,12 @@ ${rawText}
         ],
       });
 
-      const responseText =
+      let responseText =
         message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+      // Claude haiku frequently wraps structured output in a ```json fence even
+      // when the prompt asks for raw JSON. Strip the fence before parsing.
+      const fenceMatch = responseText.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
+      if (fenceMatch) responseText = fenceMatch[1].trim();
       let parsed: { properties?: Array<{ identifier?: string; type?: string }> };
       try {
         parsed = JSON.parse(responseText);
