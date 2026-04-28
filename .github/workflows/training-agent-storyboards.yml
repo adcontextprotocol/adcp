@@ -2,7 +2,7 @@ name: Training Agent Storyboards
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
@@ -10,7 +10,7 @@ on:
       - 'package-lock.json'
       - 'static/compliance/source/**'
   push:
-    branches: [main]
+    branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'

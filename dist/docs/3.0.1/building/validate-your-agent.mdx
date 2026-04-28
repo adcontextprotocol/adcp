@@ -1,0 +1,262 @@
+---
+title: Validate Your Agent
+sidebarTitle: Validate Your Agent
+description: "Test your AdCP agent with storyboards — from the CLI or through Addie."
+"og:title": "AdCP — Validate Your Agent"
+---
+
+Once your agent is running, validate it before going live. Storyboards exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
+
+Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/dist/docs/3.0.1/building/schemas-and-sdks#one-shot-protocol-bundle) for how to fetch them offline.
+
+## Storyboard taxonomy
+
+Storyboards are organized into three layers so agents declare only what they actually support:
+
+| Layer | Path | Who must pass it |
+|-------|------|------------------|
+| **Universal** | `/compliance/{version}/universal/` | Every AdCP agent (capability discovery, error handling, schema validation) |
+| **Protocol** | `/compliance/{version}/protocols/{protocol}/` | Any agent claiming a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
+| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) |
+
+Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for the full taxonomy.
+
+## Setup
+
+Save your agent as a named alias so you can reference it by name:
+
+```bash
+npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
+```
+
+This stores the alias in `~/.adcp/config.json`. You only need to do this once. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents — no setup needed.
+
+<Tip>
+You can also pass a URL directly instead of an alias: `npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller`
+</Tip>
+
+## Run a storyboard
+
+### 1. List available storyboards
+
+```bash
+npx @adcp/client@latest storyboard list
+```
+
+Each storyboard targets a specific agent type. The [Build an Agent](/dist/docs/3.0.1/building/build-an-agent) page maps skills to their matching storyboards.
+
+### 2. Preview what a storyboard tests
+
+```bash
+npx @adcp/client@latest storyboard show media_buy_seller
+```
+
+This shows the phases, steps, and validations without running anything.
+
+### 3. Run the storyboard
+
+```bash
+npx @adcp/client@latest storyboard run my-agent media_buy_seller
+```
+
+Output shows each step with pass/fail:
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ list_creative_formats
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+Pass `--json` for machine-readable results. Pass `--debug` to see full request/response payloads for each step.
+
+### 4. Debug a failing step
+
+If a step fails, run it individually:
+
+```bash
+npx @adcp/client@latest storyboard step my-agent media_buy_seller create_media_buy --json --debug
+```
+
+Pass `--context` to provide state from earlier steps (account IDs, product IDs):
+
+```bash
+npx @adcp/client@latest storyboard step my-agent media_buy_seller get_products \
+  --context '{"account_id":"acct-123"}' --json
+```
+
+### 5. Run all storyboards
+
+Run without a storyboard ID to test everything. The CLI discovers your agent's tools via `tools/list` and selects matching storyboards automatically:
+
+```bash
+npx @adcp/client@latest storyboard run my-agent
+```
+
+Add `--json` for structured output.
+
+The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller):
+
+| Mode | When | What it tests |
+|------|------|---------------|
+| **Observational** | No test controller | Response schemas and buyer-initiated flows |
+| **Deterministic** | Test controller present | Full lifecycle state machines, error codes, operation gates |
+
+## Validate through Addie
+
+[Addie](https://agenticadvertising.org) provides interactive testing without any CLI setup. Paste your agent URL in any conversation to get started.
+
+### Connectivity check
+
+Ask Addie to check your agent. She'll verify it's online, list its advertised tools, and confirm the transport protocol (MCP or A2A). This is the quickest way to confirm your agent is reachable before running any tests.
+
+### Storyboard coaching
+
+Addie runs the same storyboards as the CLI but walks you through each step interactively. When a step fails, she explains what went wrong, shows the expected vs actual response, and suggests specific code changes. This is the fastest way to iterate when you're building.
+
+### RFP testing
+
+Share a real RFP or campaign brief with Addie. She'll parse it, call your agent's `get_products` with the buyer's actual requirements, and compare results against what your sales team would normally propose. This tests whether your agent can handle real buyer demand — not just synthetic briefs derived from your own inventory description.
+
+### IO execution testing
+
+Share an insertion order with Addie. She'll extract the line items, match them against your agent's product catalog, and test whether `create_media_buy` can execute the deal. The output shows line-by-line matching quality (exact, close, weak, unmapped) and rate comparisons so you can see exactly where execution would break down.
+
+### Recommended testing sequence
+
+1. **Connectivity** — Is the agent online?
+2. **Storyboards** — Does it pass protocol compliance?
+3. **RFP testing** — Can it respond to real buyer demand?
+4. **IO execution** — Can it close real deals?
+
+Each step builds confidence. Storyboards prove protocol compliance. RFP and IO testing prove business readiness.
+
+## Sandbox mode
+
+All storyboard runs use sandbox mode by default. The storyboard runner sets `sandbox: true` on every account reference, so your agent processes requests without real platform calls or spend.
+
+Your agent should declare sandbox support in `get_adcp_capabilities`:
+
+```json
+{
+  "account": {
+    "sandbox": true
+  }
+}
+```
+
+When a request references a sandbox account, your agent MUST NOT persist production state or cause real-world side effects — no real orders, no real billing, no real ad platform API calls. Return realistic response shapes with simulated data and include `sandbox: true` in success responses.
+
+See [Sandbox mode](/dist/docs/3.0.1/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
+
+## Verifying cross-instance state
+
+The protocol requires that `(brand, account)`-scoped state [survive across agent process instances](/dist/docs/3.0.1/protocol/architecture#state-persistence-and-horizontal-scaling) — a media buy created on one replica must be readable from any other. Single-instance storyboard success does not by itself prove that invariant. Choose a verification approach that fits your deployment.
+
+**Verify by architecture.** If you run on a managed serverless platform with a shared datastore — Lambda + DynamoDB, Cloudflare Workers + D1, Cloud Run + Firestore, Vercel + Neon — the invariant holds by construction. Storyboards that pass against your deployed endpoint are sufficient. Document your storage pattern so it's discoverable.
+
+**Verify by multi-instance testing.** If you deploy long-running processes (containers, VMs, a classic app server behind a load balancer), put ≥2 replicas behind round-robin routing and run storyboards against the shared endpoint:
+
+```bash
+npx @adcp/client@latest --save-auth my-agent https://my-agent.example/mcp
+npx @adcp/client@latest storyboard run my-agent
+```
+
+The compliance runner rotates requests across replicas for any storyboard that contains a step marked `stateful: true` — the write→read sequences most likely to catch in-process state. Stateless probes (capability discovery, auth rejection, schema validation) are unaffected.
+
+A typical failure looks like:
+
+```
+✗ get_media_buy  MEDIA_BUY_NOT_FOUND
+  create_media_buy on replica A returned media_buy_id=mb_abc123 (status: active)
+  get_media_buy on replica B returned MEDIA_BUY_NOT_FOUND for the same id
+  → Brand-scoped state is not shared across replicas.
+```
+
+**Verify by your own testing.** Property-based tests against a real datastore, chaos fault injection between replicas, or production observability that correlates writes and reads across instances are all valid. The protocol cares about the invariant, not the methodology.
+
+Insertion-order approval records, governance tokens, signal activations, and sponsored-intelligence sessions all fall under the same rule. Any state you write that a later call can read back must live in a shared store — not a per-process `Map` or module-level variable.
+
+## Preparing to test uniform error responses
+
+The [uniform-response MUST](/dist/docs/3.0.1/building/implementation/error-handling#standard-error-codes) requires byte-equivalent responses for "the id exists but the caller lacks access" and "the id does not exist" across every observable channel — error body, transport status, headers, side effects, and telemetry. Verifying this needs a paired-probe runner (`adcp fuzz`) that compares two responses per tool. The runner has two modes, and you need to plan tenant setup before you can exercise the strong one.
+
+**Baseline mode — single tenant.** One auth token, two fresh UUIDs probed per tool. Catches id-echo in error bodies, header divergence outside the allowlist, MCP `isError` / A2A `task.status.state` divergence, and gross latency deltas. Cannot catch cross-tenant existence leaks, because neither probe resolves to a real resource.
+
+**Cross-tenant mode — two tenants.** Tenant A seeds a resource (e.g., a property list, content standard, media buy, creative); tenant B probes against the seeded id plus a fresh UUID. Catches the full MUST, because it exercises the `(exists, unauthorized)` vs `(does not exist)` pair that baseline cannot construct.
+
+Both modes exercise spec MUSTs. Only the cross-tenant path verifies the whole invariant.
+
+### Minimum tenant setup
+
+Provision two isolated test accounts against your agent:
+
+- **Tenant A** — can create resources the invariant seeds (property lists, content standards, media buys, creatives). Sandbox-mode accounts are fine.
+- **Tenant B** — read-only against shared discovery surfaces. MUST NOT share any per-tenant state with A beyond what your platform makes globally visible (e.g., published product catalogs).
+
+Anything else the two tenants share — audit shards, rate-limit buckets keyed by resource type, cache tags — is a potential side channel the invariant is designed to catch. Share only what you'd share in production.
+
+### Runner invocation
+
+```bash
+# Cross-tenant (full MUST)
+npx @adcp/client@latest fuzz my-agent \
+  --auth-token $TENANT_A_TOKEN \
+  --auth-token-cross-tenant $TENANT_B_TOKEN
+
+# Baseline (partial coverage)
+npx @adcp/client@latest fuzz my-agent --auth-token $TOKEN
+```
+
+Tokens may also be supplied via `ADCP_AUTH_TOKEN` and `ADCP_AUTH_TOKEN_CROSS_TENANT`. See the [`@adcp/client` uniform-error-response invariant guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/VALIDATE-YOUR-AGENT.md#uniform-error-response-invariant-paired-probe) for the full flag list, the header allowlist, and the list of tools currently probed.
+
+### Testing with only one tenant
+
+If you haven't provisioned a second tenant yet, run baseline anyway — it still catches a meaningful class of leaks, and the CLI flags the run as baseline-only so operators can see coverage is partial. Treat single-tenant fuzz as a pre-check, not a conformance signal: a clean baseline run does not prove the MUST holds. Add the cross-tenant leg before you claim uniform-response conformance.
+
+## The build-validate-fix loop
+
+The typical development workflow:
+
+1. **Build** — Point a coding agent at a [skill file](/dist/docs/3.0.1/building/build-an-agent) to generate your agent
+2. **Run** — Start the agent locally (`npx tsx agent.ts`)
+3. **Validate** — Run the matching storyboard (`npx @adcp/client@latest storyboard run my-agent media_buy_seller`)
+4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
+5. **Repeat** — Run the storyboard again until all steps pass
+6. **Full check** — Run `npx @adcp/client@latest storyboard run my-agent` (no storyboard ID) for a full assessment before going live
+
+<Info>
+For [Practitioner certification](https://agenticadvertising.org/certification), passing storyboard validation is the capstone — it proves your agent handles the complete protocol workflow for your chosen role track.
+</Info>
+
+## CLI reference
+
+| Command | Description |
+|---------|-------------|
+| `npx @adcp/client@latest storyboard list` | List all available storyboards |
+| `npx @adcp/client@latest storyboard show <id>` | Preview storyboard structure |
+| `npx @adcp/client@latest storyboard run <agent> [id]` | Run one storyboard, or all matching if no ID given |
+| `npx @adcp/client@latest storyboard step <agent> <id> <step>` | Run a single step |
+| `npx @adcp/client@latest <agent> [tool] [payload]` | Call any tool directly |
+| `npx @adcp/client@latest --save-auth <alias> <url>` | Save agent alias |
+| `npx @adcp/client@latest --list-agents` | List saved aliases |
+
+All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2a`.
+
+## When a storyboard fails
+
+- **[Storyboard troubleshooting](/dist/docs/3.0.1/building/implementation/storyboard-troubleshooting)** — Error patterns mapped to root causes and fixes (missing fixtures, signature challenges, envelope drift, context echo, capability mismatches)
+- **[Known spec ambiguities](/dist/docs/3.0.1/building/implementation/known-ambiguities)** — Open spec gaps that affect conformance, with workarounds and issue links
+
+## What's next
+
+- **[Compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller)** — Implement deterministic testing for full lifecycle coverage
+- **[Task lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/dist/docs/3.0.1/building/implementation/error-handling)** — Error categories, codes, and recovery

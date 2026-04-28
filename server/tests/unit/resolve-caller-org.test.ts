@@ -145,20 +145,23 @@ describe('resolveCallerOrgId', () => {
 
   it('falls back to users.primary_organization_id when only req.user is set', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
+    // resolvePrimaryOrganization: fast-path read returns the cached column.
     dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: 'org_from_session' }] });
 
     const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_session' }));
 
     expect(orgId).toBe('org_from_session');
-    expect(dbQueryMock).toHaveBeenCalledWith(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      ['user_session'],
-    );
+    // Assert the fast-path SQL — the WHERE filter is what makes it the fast path.
+    expect(dbQueryMock.mock.calls[0][0]).toMatch(/SELECT primary_organization_id FROM users[\s\S]*workos_user_id\s*=\s*\$1[\s\S]*primary_organization_id IS NOT NULL/);
+    expect(dbQueryMock.mock.calls[0][1]).toEqual(['user_session']);
   });
 
-  it('returns null when session user has no primary_organization_id', async () => {
+  it('returns null when session user has no primary org and no memberships', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: null }] });
+    // Fast-path: no row (column was NULL or user row missing).
+    dbQueryMock.mockResolvedValueOnce({ rows: [] });
+    // Fallback: resolvePreferredOrganization finds no memberships.
+    dbQueryMock.mockResolvedValueOnce({ rows: [] });
 
     const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_no_org' }));
 
