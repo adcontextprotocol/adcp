@@ -16,7 +16,7 @@ A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /co
 | Message type | Receives | Returns |
 |---|---|---|
 | `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
-| `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + serve window |
+| `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + `serve_window_sec` |
 
 Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
@@ -124,7 +124,7 @@ The router sends you one or more opaque identity tokens and a list of ALL your a
 }
 ```
 
-Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `serve_window_sec` is a **per-package single-shot fcap**: after the publisher serves the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Default 60s, max 300s. This is not a router response cache TTL — see [The serve-window contract](#the-serve-window-contract). The deprecated `ttl_sec` field still exists during a 6-week deprecation window; senders SHOULD populate both with the same value.
+Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `serve_window_sec` is a **per-package single-shot fcap**: after the publisher serves the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Default 60s, max 300s. This is not a router response cache TTL — see [The serve-window contract](#the-serve-window-contract).
 
 **What you never receive** in Identity Match: page URLs, content topics, keywords, article text, or any content signal. You cannot determine what the user is looking at.
 
@@ -147,12 +147,12 @@ Cross-publisher frequency capping is the primary use case for Identity Match. Yo
 
 - **Count impressions** per fcap key (campaign, advertiser, creative, line item, or whatever dimensions you cap on) per resolved user identity
 - **Apply policies** with a window and max count
-- **Merge across identities** for users with multiple resolved tokens (RampID + ID5 + MAID for the same person) — see [merge rules](/docs/trusted-match/identity-match-implementation#merge-rules)
+- **Merge across identities** for users with multiple resolved tokens (RampID + ID5 + MAID for the same person) — see [identity handling](/docs/trusted-match/identity-match-implementation#identity-handling-and-cross-identity-dedup)
 - **Exclude packages** from `eligible_package_ids` when any cap on the package trips
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
-For the implementation details — the fcap_keys label model, the reference valkey data model, merge_rule semantics, audience and exposure record shapes, the SDK primitives, and Redis-command walkthroughs for the conformance scenarios — see [Identity Match implementation](/docs/trusted-match/identity-match-implementation).
+For the implementation details — the fcap_keys label model, the reference valkey data model, audience and exposure record shapes, the SDK primitives, and conformance scenarios — see [Identity Match implementation](/docs/trusted-match/identity-match-implementation).
 
 ### How Buyers Learn About Exposures
 
@@ -215,7 +215,6 @@ The router MAY apply an internal deduplication cache keyed by `{identities_hash,
 
 **Choosing a serve_window_sec value**: Default 60 seconds. Range 1–300. Anything longer than 300 makes per-package fcap too coarse for typical campaigns. Anything shorter than your IdentityMatch round-trip just adds load. 60 is a good default; tune downward if eligibility state shifts faster (close to a cap, audience just changed) or upward (max 300) if your IdentityMatch service is at load and the campaigns are tolerant of coarser fcap.
 
-The deprecated `ttl_sec` field still exists during the 6-week deprecation window. Senders SHOULD populate both `ttl_sec` and `serve_window_sec` with the same value during the transition; receivers SHOULD prefer `serve_window_sec` when both are present. `ttl_sec` is removed in a future 3.0.x release ≥ 6 weeks after the 2026-04-26 notice.
 
 ## Performance Requirements
 
@@ -239,7 +238,7 @@ Buyers receive real-time per-user exposure signals via the `{TMPX}` macro. The I
 | | OpenRTB | TMP |
 |---|---|---|
 | **You receive** | Full bid request (user + content + device) | Either content OR identity, never both |
-| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + TTL |
+| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + serve window |
 | **Auction** | Exchange runs auction | No auction — publisher joins locally |
 | **Frequency** | Per-DSP only | Cross-publisher via Identity Match |
 | **Integration** | Per-exchange SSP adapter | Two endpoints (context + identity), any surface |

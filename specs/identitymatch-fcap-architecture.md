@@ -1,13 +1,13 @@
 # IdentityMatch & Frequency Capping — Architecture Spec
 
 **Status**: landed (architecture decisions). Implementation guidance promoted to `docs/trusted-match/`.
-**Target release**: 3.0.1 (additive wire change), then deprecation removal in a 3.0.x ≥ 6 weeks after.
+**Target release**: 3.0.1 (additive wire change).
 **Branch**: `bokelley/idmatch-design`
 **PR**: [#3359](https://github.com/adcontextprotocol/adcp/pull/3359)
 
 This spec captures the architecture decisions behind the buyer-side IdentityMatch surface in TMP. It is a **design-history document**, not an implementation reference — the authoritative implementation guidance lives in:
 
-- [`docs/trusted-match/specification.mdx`](../docs/trusted-match/specification.mdx) — wire spec (normative): `serve_window_sec` field, `ttl_sec` deprecation, conformance invariants for IdentityMatch eligibility, TMPX binary format.
+- [`docs/trusted-match/specification.mdx`](../docs/trusted-match/specification.mdx) — wire spec (normative): `serve_window_sec` field, conformance invariants for IdentityMatch eligibility, TMPX binary format.
 - [`docs/trusted-match/identity-match-implementation.mdx`](../docs/trusted-match/identity-match-implementation.mdx) — implementation guidance (non-normative): `fcap_keys` label model, reference valkey data model, merge rules, SDK primitives, pluggable store interfaces, production topology, conformance scenarios.
 - [`docs/trusted-match/buyer-guide.mdx`](../docs/trusted-match/buyer-guide.mdx) — buyer-agent integration walkthrough; updated for `serve_window_sec` semantic.
 - [`docs/trusted-match/migration-from-axe.mdx`](../docs/trusted-match/migration-from-axe.mdx) — adds OpenRTB 2.6 `User.eids` cross-walk for buyers bridging from OpenRTB-shaped pipelines.
@@ -40,7 +40,7 @@ The protocol describes **what** the service must compute, not **how** it stores 
 
 ### 2. `fcap_keys[]` as a label model, not hierarchy
 
-`tenant:dimension:value` (e.g. `buyer-acme:campaign:42`, `buyer-acme:advertiser:13`). Tenant prefix required to prevent cross-tenant counter pollution in multi-tenant fleets. Charset constraint `[a-zA-Z0-9_-]+` per segment for unambiguous parsing. Buyers choose dimensions; the protocol does not enumerate them. See [implementation guide § fcap_keys label model](../docs/trusted-match/identity-match-implementation.mdx#fcap_keys-label-model).
+`dimension:value` (e.g. `campaign:42`, `advertiser:13`). Multi-tenant operators adopt a tenant prefix as a deployment convention (e.g. `buyer-acme:campaign:42`) — not a protocol requirement. Charset constraint `[a-zA-Z0-9_-]+` per segment for unambiguous parsing. Buyers choose dimensions; the protocol does not enumerate them. See [implementation guide § fcap_keys label model](../docs/trusted-match/identity-match-implementation.mdx#fcap_keys-label-model).
 
 ### 3. Cross-identity dedup via `impression_id`, not merge rules
 
@@ -54,7 +54,7 @@ The original `ttl_sec` field was documented as a router cache TTL but operationa
 
 Replacement: `serve_window_sec` (1–300, default 60) with the corrected semantic — *after serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again.*
 
-`ttl_sec` is deprecated. 6-week notice published 2026-04-26; removal in a 3.0.x release ≥ 2026-06-07. During the window, senders SHOULD populate both fields with the same value; receivers SHOULD prefer `serve_window_sec`.
+`ttl_sec` is removed. No deprecation window: TMP is pre-launch (experimental, pre-3.0.0 GA) and not subject to deprecation cycles. The field is not present in the 3.0.1 schema.
 
 ### 5. Two composable SDK primitives for impression handling, not one
 
@@ -105,7 +105,7 @@ These came out of pre-merge review. Each warrants a focused follow-up rather tha
 
 ### What this PR landed
 
-- Wire spec change (additive): `serve_window_sec` field on `identity-match-response.json`, `ttl_sec` deprecation notice in `CHANGELOG.md`.
+- Wire spec change (additive): `serve_window_sec` field on `identity-match-response.json`. `ttl_sec` removed (pre-launch, no deprecation cycle needed).
 - Doc updates to `docs/trusted-match/specification.mdx`, `buyer-guide.mdx`, `migration-from-axe.mdx`.
 - New page: `docs/trusted-match/identity-match-implementation.mdx` (implementation guide).
 - This architecture-rationale doc.

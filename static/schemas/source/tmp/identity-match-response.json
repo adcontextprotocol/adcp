@@ -29,12 +29,6 @@
       "maximum": 300,
       "default": 60
     },
-    "ttl_sec": {
-      "type": "integer",
-      "description": "DEPRECATED — use serve_window_sec. Originally documented as a router response cache TTL but operationally functioned as a per-package serve throttle, conflating two distinct concerns (response caching vs frequency capping). Senders during the deprecation window SHOULD populate ttl_sec and serve_window_sec with the same value; receivers SHOULD prefer serve_window_sec when both are present. Removed in a future 3.0.x release per the experimental-status contract — see CHANGELOG and specs/identitymatch-fcap-architecture.md.",
-      "minimum": 0,
-      "maximum": 86400
-    },
     "tmpx": {
       "type": "string",
       "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data."
@@ -44,7 +38,7 @@
     "type",
     "request_id",
     "eligible_package_ids",
-    "ttl_sec"
+    "serve_window_sec"
   ],
   "additionalProperties": true
 }

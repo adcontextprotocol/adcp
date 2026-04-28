@@ -7,7 +7,7 @@ description: Authoritative message type definitions, field tables, privacy requi
 # Trusted Match Protocol Specification
 
 <Note>
-**Experimental.** The Trusted Match Protocol is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing TMP MUST declare `trusted_match.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** The Trusted Match Protocol is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing TMP MUST declare `trusted_match.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract. Fields on this surface are not subject to deprecation cycles until 3.0.0 GA.
 </Note>
 
 This is the authoritative reference for the Trusted Match Protocol (TMP). For conceptual introductions, see the [overview](/docs/trusted-match/) and [core concepts](/docs/trusted-match/context-and-identity).
@@ -24,7 +24,7 @@ Specific areas expected to evolve include TMPX exposure tokens, country-partitio
 | **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. |
 | **Available package** | A package from an active media buy that is eligible for evaluation on a given placement. Package metadata — including the originating seller agent — is synced at media buy time. See [Package Sync](#package-sync). |
 | **Seller agent** | The buyer-side agent that sold the package into a publisher. Identified by the agent URL declared in the publisher's `adagents.json` `authorized_agents[].url`. Every `AvailablePackage` is bound to exactly one seller agent at sync time. |
-| **Eligibility** | List of eligible package IDs returned by Identity Match, plus a TTL caching contract. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
+| **Eligibility** | List of eligible package IDs returned by Identity Match, plus a serve-window throttle. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, music ISRC, product GTIN, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
 | **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
 
@@ -195,15 +195,14 @@ Each entry in `identities` is an `{user_token, uid_type}` pair:
 
 ### IdentityMatchResponse
 
-Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
+Returned by the buyer agent. A list of eligible package IDs with a serve-window throttle.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
-| `serve_window_sec` | integer | Yes (additive — see deprecation note) | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is **not** a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by buyer-side exposure records, updated out-of-band via TMPX impression callbacks. |
-| `ttl_sec` | integer | Yes (deprecated) | DEPRECATED — use `serve_window_sec`. Originally documented as a router response cache TTL but operationally functioned as a per-package serve throttle, conflating two distinct concerns. Senders during the deprecation window SHOULD populate both `ttl_sec` and `serve_window_sec` with the same value; receivers SHOULD prefer `serve_window_sec` when both are present. Removed in a future 3.0.x release ≥ 6 weeks after the deprecation notice published 2026-04-26 (earliest landing 2026-06-07). |
+| `serve_window_sec` | integer | Yes | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is **not** a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by buyer-side exposure records, updated out-of-band via TMPX impression callbacks. |
 | `tmpx` | string | No | HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Wire format: `kid.base64url_nopad(ciphertext)` (unpadded, no `=` characters). Publishers MUST treat this value as opaque pass-through data. |
 
 The response includes eligible package IDs, a serve-window throttle, and an optional `tmpx` field. The TMPX token is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
@@ -659,7 +658,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
 - Identity Match responses are bound by `serve_window_sec` (per-package single-shot fcap, max 300s, default 60s). Routers MAY apply an internal deduplication cache keyed on `{identities_hash, provider_id, package_ids_hash, consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset); `package_ids_hash` is SHA-256 over the JCS serialization of the sorted `package_ids` array; `consent_hash` is SHA-256 over the JCS serialization of the request's `consent` object (or JCS `null` when the field is absent — this distinguishes "consent unknown" from an explicit-empty consent object). JCS framing prevents delimiter-injection: raw consent strings or package IDs containing `|`, `,`, or `\n` cannot collide two distinct inputs. Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another. The publisher's binding contract is the serve-window throttle, not the router's internal cache window.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` (Context Match) or `"serve_window_sec": 1` (Identity Match) until the change has propagated, then resume normal values.
-- `cache_ttl` (Context Match) has a schema-enforced maximum of 86400 seconds. `serve_window_sec` is bounded at 300 seconds — longer windows make per-package fcap too coarse for typical campaigns, shorter than the IdentityMatch round-trip wastes the throttle. The deprecated `ttl_sec` field retains its existing 86400 maximum until removal in a future 3.0.x release ≥ 6 weeks after the 2026-04-26 deprecation notice.
+- `cache_ttl` (Context Match) has a schema-enforced maximum of 86400 seconds. `serve_window_sec` is bounded at 300 seconds — longer windows make per-package fcap too coarse for typical campaigns, shorter than the IdentityMatch round-trip wastes the throttle.
 
 ## Conformance Levels
 
