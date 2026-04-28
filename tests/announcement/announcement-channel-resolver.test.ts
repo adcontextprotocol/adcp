@@ -39,10 +39,12 @@ vi.mock('../../server/src/services/announcement-visual.js', () => ({
   AAO_FALLBACK_VISUAL_URL: '',
 }));
 
+import { resolveEditorialChannel } from '../../server/src/addie/jobs/announcement-trigger.js';
+
 const ORIGINAL_ENV = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockGetEditorialChannel.mockReset();
   delete process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
 });
 
@@ -58,7 +60,6 @@ describe('resolveEditorialChannel', () => {
       channel_name: 'admin-editorial-review',
     });
 
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBe('C0FROMDB01');
   });
 
@@ -70,7 +71,6 @@ describe('resolveEditorialChannel', () => {
     });
     process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
 
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBe('C0FROMDB01');
   });
 
@@ -80,13 +80,11 @@ describe('resolveEditorialChannel', () => {
     // completed, a stale env var would otherwise mask a misconfigured DB.
     process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
 
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBeNull();
   });
 
   it('treats empty-string DB channel_id as unset', async () => {
     mockGetEditorialChannel.mockResolvedValueOnce({ channel_id: '', channel_name: null });
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBeNull();
   });
 
@@ -95,7 +93,6 @@ describe('resolveEditorialChannel', () => {
       channel_id: '   ',
       channel_name: 'whatever',
     });
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBeNull();
   });
 
@@ -104,7 +101,6 @@ describe('resolveEditorialChannel', () => {
       channel_id: '  C0FROMDB01  ',
       channel_name: 'editorial',
     });
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBe('C0FROMDB01');
   });
 
@@ -114,7 +110,6 @@ describe('resolveEditorialChannel', () => {
     // fallback — the job skips and logs instead.
     process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
 
-    const { resolveEditorialChannel } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     expect(await resolveEditorialChannel()).toBeNull();
   });
 });

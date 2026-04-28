@@ -22,7 +22,7 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted. Used in single mode."
+      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted. Used in single mode."
     },
     "inputs": {
       "type": "array",

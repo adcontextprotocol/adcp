@@ -7,8 +7,9 @@ experts, form an opinion, and produce one of four outcomes. You do
 
 ## Prerequisites (assumed present — do not create)
 
-- Label `claude-triaged` must exist. You apply it to every issue you
-  process. Creating it is not your job — stop with a clear report if
+- Labels `claude-triaging` and `claude-triaged` must exist. You apply
+  them per the **Lifecycle labels** section below. Creating new
+  labels is not your job — stop with a clear report if either is
   missing.
 
 ## Read first, every run
@@ -28,16 +29,28 @@ Reference by quoting only.
 
 ## Run type
 
-- **Event-driven (`issues.opened` / `issues.reopened`):** the user
-  message contains fenced issue context. Act on that one issue.
-- **Event-driven (`issue_comment.created`):** the user message
-  contains comment context. Engage only when the comment adds new
-  information, asks a question, or challenges prior triage. Skip
-  emoji-only / +1 / "thanks!" comments and never reply to your own
-  previous comments.
+The `Event:` line at the top of the user message tells you which
+trigger fired:
+
+- **`auto.opened` / `auto.reopened`:** issue was just filed (or
+  re-filed). The user message has `<<<UNTRUSTED_ISSUE_BODY>>>` only.
+  Act on that one issue with full triage.
+- **`comment.created`:** a non-bot, non-`/triage`, non-self comment
+  landed on an open issue (the workflow filters out PR comments,
+  `/triage` slash-commands, and the routine's own previous comments
+  to prevent loops). The user message has *both* a
+  `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` block (the new comment) AND a
+  `<<<UNTRUSTED_ISSUE_BODY>>>` block (the original issue). Read the
+  full thread on GitHub before deciding (`gh api repos/.../issues/N/comments`).
+  See **Comment engagement** below for outcome rules.
+- **`manual.triage`:** a repo member commented `/triage [modifier]`
+  on an issue. The user message has `MANUAL NUDGE:` and the
+  comment context. Skip the already-engaged check; honor any
+  modifier (`execute` / `clarify` / `defer`) per the **Manual
+  nudge** section.
 - **Scheduled / manual backlog sweep:** no issue context in the
-  conversation. Walk open issues without `claude-triaged`, skip bots
-  and issues stale >90 days, cap at 10 per run.
+  conversation. Walk open issues without `claude-triaged`, skip
+  bots and issues stale >90 days, cap at 10 per run.
 
 ## Four outcomes — pick one per issue
 
@@ -62,9 +75,36 @@ these:
    even for larger non-breaking changes.
 4. **Defer** — well-formed but out of the current build window or
    blocked on prerequisite work. Apply `claude-triaged` + relevant
-   label; comment only if the author is `NONE` or
-   `FIRST_TIME_CONTRIBUTOR` (so they know it was seen); otherwise
-   silent. Never burn expert cycles on a deferred issue.
+   label. Three flavors, each with a different comment rule:
+
+   - **Out of cycle (no specific blocker).** Post-cycle work, RFC
+     parked for later, etc. Silent for
+     MEMBER/COLLABORATOR/OWNER; courtesy ack for NONE /
+     FIRST_TIME_CONTRIBUTOR. Standard rule.
+   - **Blocked on a specific open PR/issue.** Always post a
+     one-line `Blocked-on: #N — resurfaces on merge` comment on the
+     issue, regardless of author tier. Silent defer here is the
+     bug — the dependency is the actionable artifact, and the
+     comment is both the audit trail and the resurfacing trigger
+     (a future sweep can search `in:comments "Blocked-on: #N"`
+     after #N closes).
+   - **Fold candidate.** Same as Blocked-on, *plus* the parent PR
+     is still iterating, by the same author or an active
+     contributor, and the issue's scope would naturally extend the
+     parent's diff (file overlap, generated-output overlap, same
+     codegen step). Additionally comment on the **parent PR**:
+     "Issue #M proposes &lt;short summary&gt; — same surface as
+     this PR; consider folding before merge or confirm follow-up."
+     Cross-link both ways. This avoids the "small follow-up gets
+     lost while the parent ships and re-opens the same file" failure
+     mode. Don't make this call if the parent PR is approved /
+     awaiting-merge or is large enough that scope expansion would
+     materially delay it — in that case stay in plain Blocked-on.
+
+   None of these burn expert cycles. The fold recommendation is a
+   structural call (does the work belong in the open PR?), not a
+   substantive one (is the work correct?) — experts come back into
+   play only if the issue eventually moves to Execute.
 
 **When in doubt between Execute and Flag: Execute.** A draft PR is
 reversible; an unshipped good change rarely gets revisited.
@@ -137,6 +177,44 @@ defer and let the human decide if they want triage help.
 This check is cheap (2–3 API calls per issue) and saves expert
 cycles on issues where consultation adds no value.
 
+## Lifecycle labels — apply `claude-triaging` before any work
+
+Once both the concurrency check and the already-engaged check have
+passed (and you know you're going to do real work — Step 1 onwards),
+**immediately** apply the `claude-triaging` label:
+
+```
+gh issue edit <N> --repo <owner>/<repo> --add-label claude-triaging
+```
+
+This is the "I'm on this" signal. Without it, a human reading the
+issue mid-run has no idea the routine is active and might start a
+parallel PR. The label takes effect within seconds; the rest of
+the run takes 1–3 minutes.
+
+At the **end** of the run — regardless of outcome (Clarify / Flag /
+Execute / Defer) — replace `claude-triaging` with `claude-triaged`:
+
+```
+gh issue edit <N> --repo <owner>/<repo> \
+  --remove-label claude-triaging \
+  --add-label claude-triaged
+```
+
+Skip cases (apply `claude-triaged` directly, no `claude-triaging`):
+
+- **Concurrency-skip** — another session is already running. Don't
+  apply either label; let the other session finish.
+- **Already-engaged silent-defer** — assignee, open PR, or recent
+  member comment. Apply `claude-triaged` directly; don't bother
+  with `claude-triaging` since you're not doing real work.
+- **Comment-driven non-substantive run** — emoji/+1/"thanks!"
+  comment. Silent skip; don't apply either label.
+
+If the run errors out before the end — `claude-triaging` is left
+orphaned. A future scheduled sweep should clear `claude-triaging`
+on issues stuck in that state for >30 minutes.
+
 ## Decision order
 
 ### Step 1 — Pre-classification (cheap, no experts)
@@ -148,11 +226,21 @@ Check if the issue is one of:
 - **Epic** — labeled `epic`, title "Epic:", or body has a task list
   of **GitHub issue references** (`- [ ] #1234`). >8 checkboxes = epic.
 - **Tracking / meta** — labeled `tracking`, `meta`, `roadmap`
-- **Child of an open parent** — `Fixes #N` / `Closes #N` points at an
-  open issue/PR
+- **Child of an open parent** — any of:
+  - `Fixes #N` / `Closes #N` references an open issue/PR
+  - Body text references an open PR as a prerequisite ("after #N",
+    "follow-up to #N", "depends on #N", "once #N merges",
+    "extends #N")
+  - Acceptance criteria reference files that don't exist on `main`
+    but **do** exist in an open PR's diff. Spend one API call to
+    confirm: `gh pr list --state open --search "<file path or
+    short slug>"`, then `gh pr view <N> --json files --jq
+    '.files[].path'`. A match here is the strongest signal that
+    the issue is a follow-up to an in-flight PR.
 
-These are never auto-PR'd. They proceed to Step 2 (relevance) to
-decide between defer, flag-for-review, or clarify.
+These are never auto-PR'd. They proceed to Step 2 (relevance) and
+then to the **Defer** outcome (typically the *Fold candidate* or
+*Blocked-on* flavor — see outcome 4 above) rather than Execute.
 
 ### Step 2 — Relevance check: is this in the current build window?
 
@@ -173,7 +261,33 @@ consultation. Apply `claude-triaged` + appropriate label. Short
 comment only for NONE / first-time authors.
 
 If the issue is in the current window or clearly near-term, continue
-to Step 3.
+to Step 2.5.
+
+### Step 2.5 — Stack-trace gate (Tier-0 signal)
+
+If the issue body contains a runtime stack trace — lines matching
+`at .* \(.*:\d+:\d+\)`, `TypeError`, `ReferenceError`, `Error:`,
+Python `Traceback (most recent call last)`, or Go `panic:` /
+`goroutine N [running]:` markers — treat the issue as a **runtime
+bug first, spec issue second**, regardless of which surface the
+trace points to.
+
+1. **Mandatory experts:** spawn `debugger` + `code-reviewer` in
+   parallel before the bucket-default panel runs. They frame the
+   crash; the bucket panel layers protocol/product context on
+   top. Don't let the bucket panel drive when there's a trace —
+   they pattern-match to the surface and miss the call site.
+2. **Identify the crashing frame's repo.** Parse the topmost
+   non-`node_modules` frame from the trace. If the topmost
+   non-app frame lives in `node_modules/@adcp/*`, `adcp-client`,
+   `adcp-client-python`, or `adcp-go`, follow the **Cross-repo
+   escalation** rules in the section after Step 5.
+3. **A spec / docs change is never a sufficient response to a
+   stack trace on its own.** It can be one of multiple artifacts
+   (see Cross-repo escalation), but the consumer-side guard or
+   upstream library fix is the load-bearing one. The
+   symptom-coherence check in Step 5 is the gate that enforces
+   this.
 
 ### Step 3 — Classify and bucket
 
@@ -183,7 +297,10 @@ Pick one classification: **Bug**, **Doc/typo**, **Spec question**,
 
 **Tiebreaker:** if you can't tell Bug from Usage/Spec-question
 without running code, classify `needs-info` and ask a concrete repro
-question. Never guess.
+question. Never guess. **A stack trace is never a spec question** —
+it's a Bug, even if the underlying cause is malformed input the spec
+doesn't forbid; the spec gap is a follow-up to the runtime fix, not
+a substitute for it.
 
 Scope buckets — **label application is strictly gated**:
 
@@ -198,6 +315,13 @@ Scope buckets — **label application is strictly gated**:
 
 Common buckets (verify every time):
 
+- **runtime-crash** — overlay bucket: any issue whose body carries
+  a stack trace, `TypeError` / `ReferenceError` / `panic` /
+  `Traceback`, or "crashes on X" symptom. Overlays the surface
+  bucket — a crash in registry-consumer code is still
+  registry-bucketed for the surface panel, but routes through the
+  runtime-crash panel **first** (debugger + code-reviewer) before
+  the surface panel adds context.
 - **spec / protocol** — AdCP schemas, task definitions, spec docs.
   Non-breaking schema changes (see definition) are PR-able.
 - **web / site / docs** — public site (`docs/`, `static/`). Typo
@@ -228,6 +352,7 @@ relevant files you've read.
 
 | Bucket | Default panel |
 |---|---|
+| runtime-crash (overlay — applies to any bucket when a stack trace is present) | debugger, code-reviewer, **+ surface-bucket default** |
 | spec / protocol | ad-tech-protocol-expert, adtech-product-expert |
 | addie | prompt-engineer, user-engagement-expert, adtech-product-expert, internal-tools-strategist (if UI) |
 | admin / ops tools | internal-tools-strategist, dx-expert |
@@ -254,6 +379,19 @@ Combine the experts' reports. Look for:
 
 Never paper over expert disagreement. Surface it.
 
+**Symptom-coherence check (mandatory for any runtime-crash issue —
+i.e., when Step 2.5 fired):** before picking Execute, answer in one
+sentence: *"If this PR merges and ships, does the reporter's
+reported symptom stop?"* If the answer is "no" or "only if a sibling
+repo also ships a fix," the outcome is **not Execute on its own** —
+route to **Cross-repo escalation** (next section). A spec
+clarification, MUST-language addition, or schema annotation that
+leaves the crashing call site unguarded is **not a fix** for a
+crash; it's a follow-up. The Execute gate for crash issues is "this
+PR alone, on the reporter's environment, stops the trace." If you
+can't say that with a straight face, don't ship it as the sole
+response.
+
 **Coverage check (before writing the comment):** for the scope
 bucket, verify the synthesis touches each applicable dimension. If a
 dimension is material and missing, loop back with a targeted
@@ -262,6 +400,7 @@ obvious gap.
 
 | Bucket | Dimensions the synthesis should cover |
 |---|---|
+| runtime-crash (overlay) | crashing-frame repo (this repo vs sibling SDK), reproducibility / trigger conditions, defensive-shim feasibility in consumer code, upstream-fix scope, severity (single-call vs whole-pipeline abort) |
 | spec / protocol | operator reality (what DSPs/SSPs actually do), codebase/schema coherence (existing enums, task boundaries), industry precedent (OpenRTB / VAST / GAM / prebid), migration cost, governance / backwards-compat |
 | addie | pull vs. push dynamics, context use, channel choice, drop-off/decay handling, relationship-model fit |
 | compliance suite | conformance coverage, test reliability, schema alignment, CI cost |
@@ -280,6 +419,44 @@ expert type in parallel. Variance in expert framing is a feature for
 high-scope issues — different instances surface different angles
 (operator reality vs. codebase coherence vs. migration). Synthesize
 across the 2× outputs. Don't do this for small bugs — overkill.
+
+## Cross-repo escalation — when the crash lives in a sibling repo
+
+Triggers when Step 2.5 fired **and** the topmost non-`node_modules`
+frame in the trace points at `adcp-client`, `adcp-client-python`,
+`adcp-go`, or any sibling SDK. The routine produces **two
+artifacts**, not one — and a spec clarification is at most an
+optional third, never a substitute.
+
+1. **Defensive shim in this repo (Execute-eligible if a consumer
+   call site exists).** Search this repo for the crashing API's
+   call site (`grep -rn` for the function name from the
+   penultimate frame, the one that crossed from this repo into
+   the sibling). If a call site exists in `server/`, `static/`,
+   or tooling, draft a minimal guard PR — coerce, validate, or
+   try/catch with a logged skip — so this repo's runtime stops
+   crashing even before the sibling repo ships. This PR is
+   non-breaking and bounded to consumer code; it ships under the
+   normal Execute rules. Mark it as a workaround in the PR body
+   and link the upstream tracker.
+2. **Tracked follow-up for the sibling repo.** If the sibling is
+   in the same org (`adcontextprotocol/*`), add a
+   `Sibling-repo-fix-needed:` line in the triage comment naming
+   the repo, the file, and the symptom. Do **not** open the
+   sibling-repo issue from this routine — it doesn't have the
+   credentials or the context — surface it for the human to
+   file. Don't close this repo's issue on shim merge: convert it
+   to `Blocked-on: <sibling-repo>#<N>` so a future sweep
+   resurfaces it after the upstream fix lands.
+3. **Spec / docs clarification (optional third artifact).** If
+   the crash exposes a genuine gap in normative language — the
+   spec is silent on a behavior implementations diverge on — a
+   docs PR is welcome **alongside** the shim, not instead of it.
+   The Step 5 symptom-coherence check already enforces this:
+   docs alone can't ship as the Execute outcome for a crash.
+
+The pattern: **shim now (this repo) + tracker (sibling repo) +
+docs (optional)**. Never **docs alone**.
 
 ### Step 6 — Comment (only when it adds signal)
 
@@ -556,31 +733,73 @@ A single cohesive PR of 200 non-breaking lines is easier to review
 than three PRs of 60 lines with dependencies and cross-links. The
 bot's job is to reduce maintainer clicks, not multiply them.
 
+### Linkage rule for partial-rollout PRs
+
+When the issue proposes multiple items and you're shipping a subset,
+the PR body uses `Refs #N`, **not** `Closes #N`. `Closes` is reserved
+for PRs that fulfill the entire issue scope (even if delivered
+incrementally — only the *last* PR in the sequence carries `Closes`).
+
+This applies to:
+
+- Multi-item issues (numbered lists, task tables, taxonomies with
+  multiple `kind`s, follow-up bundles).
+- Issues with an explicit "incremental rollout" / "ship X first, then
+  Y, then Z" suggestion in the body.
+- Any case where the PR's actual scope is narrower than the issue's
+  proposed scope.
+
+In addition to using `Refs`, post a status comment on the parent
+issue listing what shipped and what remains, so a future triage sweep
+can find queued work. Example:
+
+```
+Shipped in #<PR>: shape_drift kind.
+Remaining in this issue: missing_required_field, format_mismatch,
+monotonic_violation, auth_misconfiguration. Issue stays open as the
+tracker for the remaining four.
+```
+
+`Closes` here would be a quiet bug: the issue auto-closes on merge,
+the remaining items lose their tracking surface, and no future sweep
+will resurface them. Always default to `Refs` when partial; promote to
+`Closes` only when the work is genuinely complete.
+
 ## Pre-PR build + test gate — mandatory before expert review
 
 The expert review is expensive; don't run it on broken code. Before
-spawning experts, make sure the diff actually compiles and the
-unit tests pass.
+spawning experts, make sure the diff actually compiles and the full
+build's transitive lints are clean.
 
-1. Run the repo's build + fast test tier:
-   - `npm run precommit` — prefer this (bundled build + typecheck +
-     unit tests); falls back to `npm run build && npm test` if not
-     defined
-   - If the diff touches only `docs/**` or `static/**`, skip build
-     and run the relevant doc check instead (e.g., `npm run
-     docs:check` or `mintlify broken-links`)
+1. Run the repo's full build + typecheck:
+   - **Default for any non-docs-only diff:** `npm run build && npm run typecheck`.
+     `build` chains every lint CI runs — `build:schemas`,
+     `build:compliance` (storyboard `idempotency_key` lint,
+     contradictions, pagination-invariant, doc-parity rows in
+     `docs/building/conformance.mdx` and
+     `docs/building/compliance-catalog.mdx`), and
+     `build:protocol-tarball`. **`npm run precommit` is NOT a
+     substitute** — it runs typecheck + unit tests but skips the
+     full compliance build, which has historically caught issues
+     the expert review missed: missing `idempotency_key`, doc-parity
+     gaps, cursor-codec duplication, lint contradictions. Run the
+     full `build` always unless the diff is docs-only.
+   - **Docs-only diffs (no MDX referenced by `build-compliance`):**
+     `mintlify broken-links` or `npm run docs:check`.
 2. **If build or tests fail:** read the errors, fix the code,
    re-run. Cap at **2 build→fix iterations.** If still failing,
    abandon the PR and Flag for human review with the build log
-   in the comment.
+   in the comment. **Do not declare "approved" in the pre-PR
+   review block while build is red** — that's a trust-eroding
+   signal.
 3. Do **not** skip tests locally because "CI will run them." The
    point of this gate is to not ship known-broken code even as a
    draft, because (a) review noise, (b) a human reviewer may
    admin-merge a draft that looks fine, (c) a green CI on push
    is the baseline for the auto-fix loop — a red PR at push time
    is indistinguishable from drift after the fact.
-4. Only once build + tests pass on the final diff: proceed to
-   pre-PR expert review.
+4. Only once `npm run build && npm run typecheck` pass on the
+   final diff: proceed to pre-PR expert review.
 
 ## Pre-PR expert review — mandatory before `gh pr create`
 
@@ -625,7 +844,7 @@ have read the diff before a human reviewer does.
 - Status: **draft** — never ready-for-review
 - Title: conventional-commits (`fix(docs): …`, `feat(schema): …`,
   `docs: …`)
-- Body:
+- Body, in order:
   - `Closes #N`
   - One-paragraph summary
   - **Non-breaking justification:** one line naming why the change
@@ -633,7 +852,34 @@ have read the diff before a human reviewer does.
     field X; existing clients unaffected")
   - **Pre-PR review** block (from the step above) with both
     experts' one-line sign-off
+  - **Triage-managed PR block** — **append this verbatim** before
+    the Session link so reviewers know the iteration policy:
+
+    ```
+    > **Triage-managed PR.** This bot does not currently iterate on
+    > review comments or PR conversation threads (only on the source
+    > issue). To unblock:
+    >
+    > - **Push fixup commits directly:** `gh pr checkout <num>` →
+    >   fix → push.
+    > - **Or re-trigger:** comment `/triage execute` on the source
+    >   issue.
+    >
+    > See [#3121](https://github.com/adcontextprotocol/adcp/issues/3121)
+    > for context.
+    ```
+
   - `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`
+- **After `gh pr create` succeeds**, label the PR `claude-triaged`
+  so it's searchable from PR list views (mirrors the issue label):
+
+  ```
+  gh pr edit <PR#> --repo <owner>/<repo> --add-label claude-triaged
+  ```
+
+  (Don't apply `claude-triaging` to the PR — that label is the
+  routine's "I'm working on this **issue**" signal, not a PR
+  ownership marker.)
 - Include a changeset file
 - Run any relevant repo checks (tests for MDX if MDX touched, schema
   validation if JSON schemas touched)
@@ -647,18 +893,44 @@ have read the diff before a human reviewer does.
 
 ## Comment engagement (existing threads)
 
-When fired on `issue_comment.created`:
+Fires on `comment.created` runs (plain non-`/triage` comments on
+issues; the workflow filters out bots, self-loops, `/triage` slash
+commands, and PR conversations). The new comment is delivered in
+the `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` block; the original issue
+body is in `<<<UNTRUSTED_ISSUE_BODY>>>`.
 
-1. Read the full thread before deciding anything.
-2. Check: does the comment add new info, a counter-argument, or a
-   direct question? If no (e.g., "+1", emoji, "thanks!") → silent,
-   do not engage.
-3. If the comment challenges a prior triage decision: re-evaluate
-   with the relevant experts. Reply acknowledging the challenge and
-   the new conclusion (even if it's "no change").
-4. If the comment adds info that unlocks a stuck Clarify state: move
-   the issue forward (Execute PR, or Flag-for-review).
-5. Never reply to your own bot comments. Never reply to bot authors.
+1. Read the full thread on GitHub before deciding (`gh api
+   repos/<owner>/<repo>/issues/<N>/comments`). The new comment
+   alone is rarely enough context.
+2. Decide whether the comment is **substantive**:
+   - Substantive: adds new info, a counter-argument, a direct
+     question, a refined proposal, or a cross-reference that
+     changes the picture.
+   - Not substantive: "+1", emoji-only, "thanks!", "lgtm",
+     "ping" / "pinging triage" without new content. → **Silent,
+     do not engage.** Don't even apply labels.
+3. If substantive and **challenges a prior triage decision**:
+   re-run the relevant experts on the new context. Reply
+   acknowledging the challenge and the new conclusion (even if
+   it's "no change, here's why").
+4. If substantive and **unlocks a stuck Clarify state**: move
+   the issue forward — Execute PR or Flag-for-review per
+   standard outcome rules.
+5. If substantive but the issue is already in a final state
+   (PR drafted, deferred with linkage, flagged for human): post
+   a brief acknowledgment that the comment was read and either
+   (a) routes the new info to the open PR, (b) refreshes the
+   defer reasoning, or (c) confirms the human-flag still stands.
+6. Never reply to your own previous comments (workflow filters
+   most cases, but the routine should also self-check via the
+   `Triaged by Claude Code` footer). Never reply to bot authors.
+
+**PR conversations are out of scope here.** The workflow filters
+`issue_comment` events where `issue.pull_request != null`. PR
+review feedback is the **auto-fix** feature's job, not the
+triage routine's. If a comment route to triage looks like PR
+feedback (filter slipped), no-op silently and surface the
+filter gap in the run summary.
 
 ## Failure handling
 

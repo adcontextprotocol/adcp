@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ask Addie - AgenticAdvertising.org</title>
   <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <!-- Runs before CSS to apply stored theme and avoid flash of wrong theme -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('addie-theme');
+        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) { /* localStorage unavailable (Safari private / sandboxed iframe) */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -17,7 +27,7 @@
 
     body {
       font-family: var(--font-family-sans);
-      background: #fff;
+      background: var(--color-surface);
       color: var(--color-text);
       height: 100vh;
       overflow: hidden;
@@ -36,31 +46,40 @@
       position: relative;
     }
 
-    /* Chat header — hidden in welcome state, shown during conversation */
+    /* Chat header — minimal bar in welcome state (shows dark mode toggle);
+       expands to full identity header once messages are present */
     .chat-header {
-      display: none;
-      text-align: center;
-      padding: var(--space-3) 16px;
-      border-bottom: 1px solid var(--color-border);
-      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: var(--space-3) 0;
+      background: var(--color-surface);
       margin: 0 -16px;
       padding-left: 32px;
       padding-right: 32px;
-    }
-
-    .chat-container.has-messages .chat-header {
-      display: block;
+      position: relative;
     }
 
     .chat-header h1 {
+      display: none;
       font-size: 16px;
       font-weight: 600;
       color: var(--color-text-heading);
       margin: 0;
-      display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
+    }
+
+    .chat-container.has-messages .chat-header {
+      display: flex;
+      text-align: center;
+      justify-content: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .chat-container.has-messages .chat-header h1 {
+      display: flex;
     }
 
     .chat-header h1 .addie-avatar {
@@ -266,7 +285,8 @@
       border-top: 1px solid var(--color-border);
     }
 
-    /* Inline HTML creative container */
+    /* Inline HTML creative container — white is intentional: ad creative HTML has
+       its own contrast model and must not be dark-themed by the host page */
     .message-content .creative-html-container {
       margin: 12px 0;
       border-radius: 8px;
@@ -460,7 +480,7 @@
     .chat-input-container {
       padding: 16px 0 20px;
       border-top: 1px solid var(--color-border);
-      background: #fff;
+      background: var(--color-surface);
     }
 
     /* Welcome state — everything centers as one cluster, offset slightly above true center */
@@ -2382,6 +2402,46 @@
         padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
       }
     }
+
+    /* Dark mode toggle button */
+    .dark-mode-toggle {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      width: 34px;
+      height: 34px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-secondary);
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .dark-mode-toggle:hover {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-border-strong);
+      color: var(--color-text);
+    }
+
+    /* In conversation state the toggle sits at the right edge of the header */
+    .chat-container.has-messages .dark-mode-toggle {
+      position: absolute;
+      right: 32px;
+    }
+
+    /* Icon visibility — sun shows in dark mode, moon in light mode */
+    .dark-mode-toggle .icon-sun { display: none; }
+    .dark-mode-toggle .icon-moon { display: block; }
+
+    html[data-theme="dark"] .dark-mode-toggle .icon-sun { display: block; }
+    html[data-theme="dark"] .dark-mode-toggle .icon-moon { display: none; }
+
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]) .dark-mode-toggle .icon-sun { display: block; }
+      html:not([data-theme="light"]) .dark-mode-toggle .icon-moon { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -2502,6 +2562,24 @@
           Ask Addie
         </h1>
         <p>Your AI guide to agentic advertising</p>
+        <button type="button" class="dark-mode-toggle" id="darkModeToggle">
+          <!-- moon icon — shown in light mode -->
+          <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <!-- sun icon — shown in dark mode -->
+          <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
       </div>
 
       <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
@@ -2620,6 +2698,41 @@
       const siModalMessages = document.getElementById('siModalMessages');
       const siModalInput = document.getElementById('siModalInput');
       const siModalSend = document.getElementById('siModalSend');
+
+      // Dark mode toggle
+      const darkModeToggle = document.getElementById('darkModeToggle');
+
+      function getDarkModeAriaLabel() {
+        return document.documentElement.getAttribute('data-theme') === 'dark'
+          ? 'Switch to light mode'
+          : 'Switch to dark mode';
+      }
+
+      function syncDarkModeToggle() {
+        if (!darkModeToggle) return;
+        var label = getDarkModeAriaLabel();
+        darkModeToggle.setAttribute('aria-label', label);
+        darkModeToggle.setAttribute('title', label);
+      }
+
+      if (darkModeToggle) {
+        syncDarkModeToggle();
+        darkModeToggle.addEventListener('click', function () {
+          var html = document.documentElement;
+          var current = html.getAttribute('data-theme');
+          var next = current === 'dark' ? 'light' : 'dark';
+          html.setAttribute('data-theme', next);
+          try { localStorage.setItem('addie-theme', next); } catch (e) { /* private browsing */ }
+          syncDarkModeToggle();
+        });
+      }
+
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+        if (!localStorage.getItem('addie-theme')) {
+          document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+          syncDarkModeToggle();
+        }
+      });
 
       // Video elements
       const videoCallBtn = document.getElementById('videoCallBtn');
@@ -3132,7 +3245,7 @@
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
       // Current conversation channel (web or slack)

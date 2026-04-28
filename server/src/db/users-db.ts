@@ -1,5 +1,8 @@
 import { query } from './client.js';
+import { createLogger } from '../logger.js';
 import type { UpdateUserLocationInput, UserLocation } from '../types.js';
+
+const logger = createLogger('users-db');
 
 /**
  * User record from the users table
@@ -199,8 +202,17 @@ export class UsersDatabase {
 
 /**
  * Resolve the preferred organization for a user from their memberships.
- * Prefers paying orgs, then most recently created membership.
  * Returns null if the user has no memberships.
+ *
+ * Tie-breaker: paying orgs first (subscription_status = 'active'), then most
+ * recent membership. Note this matches on the column literal — a sub that's
+ * still 'active' but has subscription_canceled_at set ranks the same as a
+ * fully-paying one. That's looser than the org-filters MEMBER_FILTER but
+ * good enough for the "which org is this user's primary?" question.
+ *
+ * For a user with memberships in multiple paying orgs, the most-recent wins.
+ * Cross-org auth code that relies on a deterministic "primary" should
+ * tolerate the user changing primary across membership additions.
  */
 export async function resolvePreferredOrganization(workosUserId: string): Promise<string | null> {
   const result = await query<{ workos_organization_id: string }>(
@@ -227,4 +239,43 @@ export async function backfillPrimaryOrganization(workosUserId: string, orgId: s
      WHERE workos_user_id = $2 AND primary_organization_id IS NULL`,
     [orgId, workosUserId]
   );
+}
+
+/**
+ * Resolve the user's primary organization id.
+ *
+ *   1. Read users.primary_organization_id (the cached pointer).
+ *   2. If NULL, derive from organization_memberships (preferring paying orgs).
+ *   3. Best-effort backfill so the next read hits the fast path.
+ *
+ * Returns null when the user has no organization at all.
+ *
+ * Use this instead of selecting primary_organization_id directly. Direct reads
+ * silently return null for users whose backfill never completed (race between
+ * organization_membership.created and user.created webhooks, fire-and-forget
+ * backfill failures), which silently breaks every surface that gates on the
+ * column. The integrity invariant `users-have-primary-organization` catches
+ * any rows that stay NULL despite the fallback.
+ */
+export async function resolvePrimaryOrganization(workosUserId: string): Promise<string | null> {
+  const cached = await query<{ primary_organization_id: string | null }>(
+    `SELECT primary_organization_id FROM users
+       WHERE workos_user_id = $1 AND primary_organization_id IS NOT NULL`,
+    [workosUserId]
+  );
+  if (cached.rows[0]?.primary_organization_id) {
+    return cached.rows[0].primary_organization_id;
+  }
+
+  const derived = await resolvePreferredOrganization(workosUserId);
+  if (!derived) return null;
+
+  // Opportunistic backfill — failures don't block the lookup. The integrity
+  // invariant catches any row that stays NULL (e.g. because the users row
+  // doesn't exist yet, or a transient DB error swallows the UPDATE).
+  backfillPrimaryOrganization(workosUserId, derived).catch((err) => {
+    logger.warn({ err, userId: workosUserId, orgId: derived }, 'opportunistic primary_organization_id backfill failed');
+  });
+
+  return derived;
 }

@@ -214,15 +214,69 @@ function tokenize(text: string): string[] {
     .filter(w => w.length > 1 && !STOP_WORDS.has(w));
 }
 
+/**
+ * Locate the skills/ directory across dev (tsx watch from server/src) and
+ * production (node dist/) layouts. Exported for tests.
+ */
+export function resolveSkillsDir(): string | null {
+  // Source layout: server/src/addie/mcp → 4 ups to repo root.
+  // Built layout:  dist/addie/mcp        → 3 ups to /app.
+  // CWD fallback for both `npm run` and Docker `node dist/index.js`.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, '../../../../skills'),
+    path.join(here, '../../../skills'),
+    path.join(process.cwd(), 'skills'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch { /* not a directory; try next */ }
+  }
+  return null;
+}
+
+interface SkillFrontmatter {
+  name?: string;
+  type?: string;
+}
+
+function parseFrontmatter(raw: string): { frontmatter: SkillFrontmatter; body: string } {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!match) return { frontmatter: {}, body: raw };
+  const fm: SkillFrontmatter = {};
+  for (const line of match[1].split('\n')) {
+    const kv = line.match(/^(\w+):\s*"?([^"]*)"?\s*$/);
+    if (kv) fm[kv[1] as keyof SkillFrontmatter] = kv[2].trim();
+  }
+  return { frontmatter: fm, body: raw.slice(match[0].length) };
+}
+
+/**
+ * Map a skill's frontmatter to a search area.
+ * - `type: cross-cutting` → 'buyer' (the cross-cutting buyer skill)
+ * - `name: adcp-<X>`      → '<X>'   (per-protocol skills)
+ * - otherwise              → null (skip — not an AdCP skill)
+ */
+function areaForSkill(fm: SkillFrontmatter): string | null {
+  if (fm.type === 'cross-cutting') return 'buyer';
+  if (fm.name?.startsWith('adcp-')) return fm.name.slice('adcp-'.length);
+  return null;
+}
+
 function loadSkillDocs(): SkillSection[] {
   const sections: SkillSection[] = [];
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const skillsDir = path.join(__dirname, '../../../../skills');
+  const skillsDir = resolveSkillsDir();
+
+  if (!skillsDir) {
+    logger.warn({ cwd: process.cwd() }, 'Could not locate skills directory');
+    return sections;
+  }
 
   let dirs: string[];
   try {
     dirs = fs.readdirSync(skillsDir).filter(d =>
-      d.startsWith('adcp-') && fs.statSync(path.join(skillsDir, d)).isDirectory()
+      fs.statSync(path.join(skillsDir, d)).isDirectory()
     );
   } catch {
     logger.warn({ skillsDir }, 'Could not read skills directory');
@@ -231,18 +285,16 @@ function loadSkillDocs(): SkillSection[] {
 
   for (const dir of dirs) {
     const skillPath = path.join(skillsDir, dir, 'SKILL.md');
-    let content: string;
+    let raw: string;
     try {
-      content = fs.readFileSync(skillPath, 'utf-8');
+      raw = fs.readFileSync(skillPath, 'utf-8');
     } catch {
       continue;
     }
 
-    // Strip frontmatter
-    const fmMatch = content.match(/^---\n[\s\S]*?\n---\n/);
-    if (fmMatch) content = content.slice(fmMatch[0].length);
-
-    const area = dir.replace('adcp-', '');
+    const { frontmatter, body: content } = parseFrontmatter(raw);
+    const area = areaForSkill(frontmatter);
+    if (!area) continue;
 
     // Split by ## and ### headings
     const lines = content.split('\n');
@@ -338,10 +390,11 @@ function searchSkillDocs(question: string): string {
     }
   }
 
-  // Build response with character limit, reserving space for registry section
+  // Build response with character limit, reserving space for the buyer
+  // rules preamble (always-on cross-cutting rules) and the registry section.
   const MAX_CHARS = 6000;
-  const docBudget = MAX_CHARS - registrySection.length;
-  let result = '';
+  const docBudget = MAX_CHARS - registrySection.length - BUYER_RULES_PREAMBLE.length;
+  let result = BUYER_RULES_PREAMBLE;
 
   for (const { section } of matches) {
     const entry = `## ${section.heading} (${section.area})\n\n${section.content}\n\n---\n\n`;
@@ -353,6 +406,27 @@ function searchSkillDocs(question: string): string {
   return result.trim();
 }
 
+/**
+ * Buyer-side rule preamble injected on every search response. Single source
+ * of truth for the cross-cutting rules every AdCP caller must follow.
+ */
+const BUYER_RULES_PREAMBLE = [
+  '## Buyer-side rules (apply to every AdCP call)',
+  '',
+  '- **idempotency_key**: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.',
+  '- **account is oneOf**: pick ONE variant — `{account_id}` OR `{brand:{domain}, operator}`. Don\'t merge fields across variants.',
+  '- **brand uses {domain}**, not `{brand_id}`.',
+  '- **budget is a number**; currency is implied by `pricing_option_id`.',
+  '- **format_id is `{agent_url, id}`**, never a bare string.',
+  '- **Async response `{status:"submitted", task_id}`** = queued, NOT done. Poll the task_id.',
+  '- **On adcp_error**: read `issues[]`. For oneOf failures, `issues[].variants[]` gives the exact valid shape — patch and retry, do not re-guess.',
+  '',
+  'Full skill: `skills/call-adcp-agent/SKILL.md`. Per-task shapes: search by task name below.',
+  '',
+  '---',
+  '',
+].join('\n');
+
 function formatAvailableAreas(): string {
   const areas = new Map<string, string[]>();
   for (const [name, meta] of Object.entries(ADCP_TASK_REGISTRY)) {
@@ -360,7 +434,8 @@ function formatAvailableAreas(): string {
     areas.get(meta.area)!.push(name);
   }
 
-  let result = 'Available AdCP protocol areas:\n\n';
+  let result = BUYER_RULES_PREAMBLE;
+  result += '## Available AdCP protocol areas\n\n';
   for (const [area, tasks] of areas) {
     result += `**${area}**: ${tasks.join(', ')}\n\n`;
   }
@@ -375,15 +450,15 @@ function formatAvailableAreas(): string {
 const askAboutAdcpTaskTool: AddieTool = {
   name: 'ask_about_adcp_task',
   description:
-    'Search AdCP protocol documentation to understand tasks, parameters, workflows, and concepts. Returns relevant sections from protocol documentation. Call this BEFORE call_adcp_task to learn what parameters a task needs.',
+    'Search AdCP protocol documentation for task parameters, workflows, concepts, or buyer rules. Call this BEFORE call_adcp_task when you need full parameter shapes for an uncommon task, or when an adcp_error response leaves you unsure how to recover.',
   usage_hints:
-    'use when you need to understand AdCP task parameters, workflows, or concepts before executing a task',
+    'use to look up AdCP task parameters or cross-cutting buyer rules',
   input_schema: {
     type: 'object',
     properties: {
       question: {
         type: 'string',
-        description: 'What you want to know about AdCP tasks (e.g., "how do I create a media buy?", "what parameters does get_signals accept?", "creative workflow")',
+        description: 'What you want to know (e.g., "how do I create a media buy?", "get_signals parameters", "what does status submitted mean", "how do I recover from oneOf validation error")',
       },
     },
     required: ['question'],
@@ -392,8 +467,15 @@ const askAboutAdcpTaskTool: AddieTool = {
 
 const callAdcpTaskTool: AddieTool = {
   name: 'call_adcp_task',
-  description:
-    'Execute any AdCP protocol task against an agent. For common tasks you can call directly — for uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+  description: [
+    'Execute any AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+    '',
+    'Two rules a search round-trip cannot rescue you from after a mutating call:',
+    '• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.',
+    '• On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.',
+    '',
+    'Full buyer rules: ask_about_adcp_task with area="buyer".',
+  ].join('\n'),
   usage_hints:
     'use when executing any AdCP protocol operation against a sales, creative, signals, governance, SI, or brand agent',
   input_schema: {
@@ -413,11 +495,12 @@ const callAdcpTaskTool: AddieTool = {
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
           '• get_products: { brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
-          '• create_media_buy: { brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: { type: "asap"|"scheduled" }, end_time }',
-          '• update_media_buy: { account: { account_id | brand+operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
-          '• sync_creatives: { creatives: [{ creative_id, format_id: { agent_url, id }, assets }], assignments? }',
+          '• create_media_buy: { idempotency_key, brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: { type: "asap"|"scheduled" }, end_time }',
+          '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
+          '• sync_creatives: { idempotency_key, creatives: [{ creative_id, format_id: { agent_url, id }, assets }], assignments? }',
           '• build_creative: { message, target_format_id: { agent_url, id }, brand?: { domain } }',
           '• get_signals: { signal_spec, destinations?, countries? }',
+          '• activate_signal: { idempotency_key, signal_agent_segment_id, destinations: [{type, ...}] }',
           'For other tasks, call ask_about_adcp_task first.',
         ].join('\n'),
       },
@@ -574,7 +657,13 @@ export function createAdcpToolHandlers(
         const ctx = { mode: 'training' as const, userId };
         const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
-          return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
+          return [
+            `**Task failed:** \`${task}\`\n`,
+            `**Error:** ${result.error}\n`,
+            `**Recovery:** if the error mentions a field shape (oneOf / required / additionalProperties), ` +
+            `read \`adcp_error.issues[].variants[]\` if present and patch the pointers. Reuse the same ` +
+            `\`idempotency_key\` on retry — fresh UUIDs cause duplicates.`,
+          ].join('\n');
         }
         let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;
         output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
@@ -590,6 +679,25 @@ export function createAdcpToolHandlers(
 
     try {
       const { AdCPClient } = await import('@adcp/client');
+      const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
+
+      // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
+      // when configured. Verifiers fetch the public key from
+      // `${BASE_URL}/.well-known/jwks.json` (kid: aao-signing-2026-04).
+      //
+      // Init failures (KMS unreachable, wrong algorithm, tripwire mismatch,
+      // bad SA JSON) are fail-closed: structured-log the full error for
+      // operators, surface a generic message to the LLM. KMS error chains
+      // include the project ID, IAM principal email, and resource paths;
+      // those don't belong in the model's context window or in the tool
+      // result rendered to the end user.
+      let signingProvider;
+      try {
+        signingProvider = await getRequestSigningProvider();
+      } catch (kmsErr) {
+        logger.error({ err: kmsErr, agentUrl, task }, 'GCP KMS signing provider init failed');
+        return '**Error:** Outbound AdCP signing is misconfigured. Operator: check structured logs for KMS init failure (gcp-kms-signer module).';
+      }
 
       const agentConfig = {
         id: 'target',
@@ -599,6 +707,15 @@ export function createAdcpToolHandlers(
         ...(authInfo?.authType === 'basic'
           ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
           : authInfo ? { auth_token: authInfo.token } : {}),
+        ...(signingProvider
+          ? {
+              request_signing: {
+                kind: 'provider' as const,
+                provider: signingProvider,
+                agent_url: getBaseUrl(),
+              },
+            }
+          : {}),
       };
 
       const multiClient = new AdCPClient(
@@ -692,7 +809,14 @@ export function createAdcpToolHandlers(
         );
       }
 
-      return `**Task failed:** \`${task}\`\n\n**Error:** ${errorMessage}`;
+      return [
+        `**Task failed:** \`${task}\`\n`,
+        `**Error:** ${errorMessage}\n`,
+        `**Recovery:** if the error envelope includes \`adcp_error.issues[]\`, read it before retrying. ` +
+        `For \`oneOf\` failures, \`issues[].variants[]\` lists the valid shapes — patch the pointers and retry, do not re-guess. ` +
+        `Reuse the **same** \`idempotency_key\` on retry; generating a fresh UUID is how you double-book. ` +
+        `If you need parameter shapes, call \`ask_about_adcp_task\` with the failing field name as the question.`,
+      ].join('\n');
     }
   }
 

@@ -174,8 +174,23 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * through the brand registry hierarchy (house_domain chain).
  *
  * If the org itself is a paying member, returns direct membership.
- * Otherwise, walks up the house_domain chain (max 5 hops) looking for
- * a paying ancestor org. Only traverses high-confidence classifications.
+ * Otherwise, walks up the house_domain chain looking for a paying ancestor.
+ *
+ * Trust gates on inheritance — same shape as findPayingOrgForDomain so the
+ * pre-link auto-provisioning path and post-link is_member resolution agree
+ * on which edges are trustworthy:
+ *   - max 4 hops up
+ *   - cycle protection via visited-domain array
+ *   - only edges classified at confidence='high' (LLM classifier output)
+ *   - 180-day TTL on the brand classification
+ *   - inherited match only counts if the paying ancestor has opted into
+ *     auto_provision_brand_hierarchy_children (default false). Without
+ *     opt-in, the child org's is_member stays false even if the brand
+ *     registry says it's a subsidiary.
+ *
+ * The opt-in gate at the post-link step matches the auto-provision step:
+ * an admin who hasn't consented to auto-joining children doesn't grant
+ * "you're a member" feature access to those children either.
  */
 export async function resolveEffectiveMembership(orgId: string): Promise<EffectiveMembership> {
   // Check cache
@@ -194,36 +209,43 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       subscription_status: string | null;
       subscription_canceled_at: Date | null;
       membership_tier: string | null;
+      auto_provision_hierarchy: boolean;
       depth: number;
     }>(`
       WITH RECURSIVE org_chain AS (
         -- Start: the org in question
         SELECT o.workos_organization_id, o.email_domain, o.name,
                o.subscription_status, o.subscription_canceled_at,
-               o.membership_tier, 1 as depth,
+               o.membership_tier,
+               COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+               1 as depth,
                ARRAY[o.email_domain]::TEXT[] as visited
         FROM organizations o
         WHERE o.workos_organization_id = $1
 
         UNION ALL
 
-        -- Walk up: join through brands.house_domain
+        -- Walk up: join through brands.house_domain. Same trust gates as
+        -- findPayingOrgForDomain — high-confidence only, 180-day freshness.
         SELECT parent_o.workos_organization_id, parent_o.email_domain, parent_o.name,
                parent_o.subscription_status, parent_o.subscription_canceled_at,
-               parent_o.membership_tier, oc.depth + 1,
+               parent_o.membership_tier,
+               COALESCE(parent_o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+               oc.depth + 1,
                oc.visited || parent_o.email_domain
         FROM org_chain oc
         JOIN brands db ON db.domain = oc.email_domain
         JOIN organizations parent_o ON parent_o.email_domain = db.house_domain
         WHERE db.house_domain IS NOT NULL
           AND oc.depth < 5
-          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
-               OR db.source_type = 'brand_json')
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
           AND parent_o.email_domain != ALL(oc.visited)
       )
       SELECT workos_organization_id, email_domain, name,
              subscription_status, subscription_canceled_at,
-             membership_tier, depth
+             membership_tier, auto_provision_hierarchy, depth
       FROM org_chain
       ORDER BY depth ASC
     `, [orgId]);
@@ -243,7 +265,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return noResult;
     }
 
-    // Check the org itself first (depth 1)
+    // Check the org itself first (depth 1) — opt-in flag does not apply to
+    // self; an org's own paying subscription always counts.
     const self = rows[0];
     if (self.subscription_status === 'active' && !self.subscription_canceled_at) {
       const directResult: EffectiveMembership = {
@@ -258,9 +281,11 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return directResult;
     }
 
-    // Check ancestors (depth > 1) for paying member
+    // Check ancestors (depth > 1) for a paying member that has opted into
+    // hierarchy inheritance. An ancestor that didn't consent to children
+    // auto-joining doesn't grant is_member to those children either.
     for (const row of rows.slice(1)) {
-      if (row.subscription_status === 'active' && !row.subscription_canceled_at) {
+      if (row.subscription_status === 'active' && !row.subscription_canceled_at && row.auto_provision_hierarchy) {
         const chain = rows
           .filter(r => r.depth <= row.depth)
           .map(r => r.email_domain)
@@ -309,5 +334,154 @@ export function invalidateMembershipCache(orgId?: string): void {
     membershipCache.delete(orgId);
   } else {
     membershipCache.clear();
+  }
+}
+
+// =============================================================================
+// Find paying org for a raw domain (auto-link target resolution)
+// =============================================================================
+
+export interface DomainOwnerOrg {
+  organization_id: string;
+  organization_name: string;
+  /** True when matched_domain != input domain (came via brand-hierarchy ascent). */
+  is_inherited: boolean;
+  /** The verified-domain row that actually matched a paying org. */
+  matched_domain: string;
+  /** Domains walked from input → matched_domain, inclusive. */
+  hierarchy_chain: string[];
+  /** Direct (non-inherited) auto-provisioning is allowed on the resolved org. */
+  auto_provision_direct_allowed: boolean;
+  /** Hierarchical (inherited) auto-provisioning is allowed on the resolved org. Default false. */
+  auto_provision_hierarchy_allowed: boolean;
+  /**
+   * Timestamp the paying org enabled auto_provision_brand_hierarchy_children.
+   * Cohort gate: callers should only auto-link inherited matches for users
+   * created on or after this time. NULL when the flag is off (no cohort).
+   */
+  auto_provision_hierarchy_enabled_at: Date | null;
+}
+
+/**
+ * Find the paying organization that "owns" a raw email domain — directly via a
+ * verified `organization_domains` row or transitively up the brand registry's
+ * `house_domain` chain.
+ *
+ * Returns the closest match: a direct verified-domain hit on the input wins
+ * over an inherited one. When two ancestors at different depths both have
+ * paying orgs, the shallower one wins.
+ *
+ * Trust gates on the inheritance walk:
+ *   - max 4 hops up from the input domain
+ *   - cycle protection via visited-domain array
+ *   - only edges classified at confidence='high' by the brand classifier
+ *     (brand-classifier.ts). source_type='brand_json' is NOT a trust signal —
+ *     brand.json schema has no parent/house_domain field today, so brand_json
+ *     rows never carry inheritance data, and the crawler does not authenticate
+ *     domain ownership for brand_json discoveries.
+ *   - 180-day TTL on the brand classification (last_validated, fallback to
+ *     discovered_at) so divestments age out instead of inheriting forever.
+ *
+ * Caller is responsible for honoring `auto_provision_*_allowed` flags and any
+ * already-a-member short-circuit. The two flags split direct vs. inherited
+ * auto-provisioning consent — orgs default to direct=true (DNS-verified, low
+ * risk) and inherited=false (LLM-classified, opt-in).
+ */
+export async function findPayingOrgForDomain(domain: string): Promise<DomainOwnerOrg | null> {
+  const normalizedDomain = domain.trim().toLowerCase();
+  if (!normalizedDomain) return null;
+
+  const pool = getPool();
+
+  try {
+    const result = await pool.query<{
+      depth: number;
+      domain: string;
+      workos_organization_id: string;
+      org_name: string;
+      auto_provision_direct: boolean;
+      auto_provision_hierarchy: boolean;
+      auto_provision_hierarchy_enabled_at: Date | null;
+    }>(`
+      WITH RECURSIVE domain_chain AS (
+        -- Start: the user's email domain
+        SELECT $1::text AS domain, 1 AS depth, ARRAY[$1::text]::TEXT[] AS visited
+
+        UNION ALL
+
+        -- Walk up: brands.house_domain points to the parent brand's domain.
+        -- Trust gates: high-confidence classification, last validated within
+        -- 180 days, no cycles, max 4 hops up.
+        SELECT db.house_domain AS domain, dc.depth + 1, dc.visited || db.house_domain
+        FROM domain_chain dc
+        JOIN brands db ON db.domain = dc.domain
+        WHERE db.house_domain IS NOT NULL
+          AND dc.depth < 5
+          AND db.house_domain != ALL(dc.visited)
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
+      ),
+      paying_match AS (
+        SELECT
+          dc.depth,
+          dc.domain,
+          od.workos_organization_id,
+          o.name AS org_name,
+          COALESCE(o.auto_provision_verified_domain, true) AS auto_provision_direct,
+          COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+          o.auto_provision_hierarchy_enabled_at
+        FROM domain_chain dc
+        JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
+        JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+        WHERE od.verified = true
+          AND o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+        ORDER BY dc.depth ASC  -- direct match (depth 1) wins over inherited
+        LIMIT 1
+      )
+      SELECT * FROM paying_match
+    `, [normalizedDomain]);
+
+    if (result.rows.length === 0) return null;
+
+    const match = result.rows[0];
+
+    // Reconstruct the chain from input domain to matched_domain. For a direct
+    // match this is just [input]; for an inherited match it's [input, ..., matched_domain].
+    // Bound is `< $2` (matching the first CTE's `< 5`) so we don't recurse one
+    // step past the matched depth and pull in non-paying ancestors.
+    const chainResult = await pool.query<{ domain: string; depth: number }>(`
+      WITH RECURSIVE domain_chain AS (
+        SELECT $1::text AS domain, 1 AS depth, ARRAY[$1::text]::TEXT[] AS visited
+
+        UNION ALL
+
+        SELECT db.house_domain AS domain, dc.depth + 1, dc.visited || db.house_domain
+        FROM domain_chain dc
+        JOIN brands db ON db.domain = dc.domain
+        WHERE db.house_domain IS NOT NULL
+          AND dc.depth < $2
+          AND db.house_domain != ALL(dc.visited)
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
+      )
+      SELECT domain, depth FROM domain_chain ORDER BY depth ASC
+    `, [normalizedDomain, match.depth]);
+
+    return {
+      organization_id: match.workos_organization_id,
+      organization_name: match.org_name,
+      is_inherited: match.depth > 1,
+      matched_domain: match.domain,
+      hierarchy_chain: chainResult.rows.map((r) => r.domain),
+      auto_provision_direct_allowed: match.auto_provision_direct,
+      auto_provision_hierarchy_allowed: match.auto_provision_hierarchy,
+      auto_provision_hierarchy_enabled_at: match.auto_provision_hierarchy_enabled_at,
+    };
+  } catch (error) {
+    logger.error({ err: error, domain: normalizedDomain }, 'Failed to find paying org for domain');
+    return null;
   }
 }

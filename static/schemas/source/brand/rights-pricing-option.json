@@ -33,8 +33,7 @@
       "minItems": 1
     },
     "period": {
-      "type": "string",
-      "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"],
+      "$ref": "/schemas/enums/rights-billing-period.json",
       "description": "Billing period for flat_rate and time-based models"
     },
     "impression_cap": {

@@ -1,139 +1,82 @@
-/**
- * Suggested Prompts Builder
- *
- * Builds contextual conversation starters for Addie chat based on
- * the user's engagement state, membership, and activity.
- */
-
 import type { SuggestedPrompt } from '../types.js';
 import type { MemberContext } from '../../member-context.js';
+import { ADMIN_RULES, MEMBER_RULES } from './rules/prompt-rules.js';
+import { resolvePromptString } from './rules/types.js';
+import type { PromptRule, PromptRuleContext } from './rules/types.js';
+
+const MAX_PROMPTS = 4;
 
 /**
- * Build suggested prompts based on user context.
- * Returns 3-5 prompts ordered by relevance.
+ * Pick the top N rules to show this user. Returns both the rendered
+ * prompts and the rule IDs so callers can record telemetry for the
+ * suppression layer.
+ */
+export function pickPrompts(
+  memberContext: MemberContext | null,
+  isAdmin: boolean,
+): { prompts: SuggestedPrompt[]; ruleIds: string[] } {
+  const rules = isAdmin ? ADMIN_RULES : MEMBER_RULES;
+  return evaluate(rules, { memberContext, isAdmin });
+}
+
+/**
+ * Convenience wrapper for callers that only need the rendered prompts.
  */
 export function buildSuggestedPrompts(
-  memberContext: MemberContext,
-  isAdmin: boolean
+  memberContext: MemberContext | null,
+  isAdmin: boolean,
 ): SuggestedPrompt[] {
-  const prompts: SuggestedPrompt[] = [];
+  return pickPrompts(memberContext, isAdmin).prompts;
+}
 
-  // Everyone gets a general help prompt
-  prompts.push({
-    label: 'What can you help me with?',
-    prompt: 'What can you do? What kinds of things can I ask you about?',
-  });
+function evaluate(
+  rules: PromptRule[],
+  ctx: { memberContext: MemberContext | null; isAdmin: boolean },
+): { prompts: SuggestedPrompt[]; ruleIds: string[] } {
+  const now = Date.now();
+  const telemetry = ctx.memberContext?.prompt_telemetry;
 
-  if (!memberContext.is_member && !memberContext.is_mapped) {
-    // Anonymous / not logged in — discovery prompts
-    prompts.push({
-      label: 'Learn about AdCP',
-      prompt: 'What is AdCP and how does it work?',
-    });
-    prompts.push({
-      label: 'AdCP vs programmatic',
-      prompt: 'How is agentic advertising different from programmatic, and why does it matter?',
-    });
-    prompts.push({
-      label: 'Why join?',
-      prompt: 'What are the benefits of joining AgenticAdvertising.org?',
-    });
-    return prompts;
+  const matched = rules
+    .filter((r) => {
+      // Skip suppressed rules first — cheap check, avoids running the
+      // rule's predicate when we know we won't pick it anyway. Rules
+      // with decay: false are exempt and never get suppressed.
+      if (r.decay !== false) {
+        const t = telemetry?.get(r.id);
+        if (t?.suppressed_until && t.suppressed_until.getTime() > now) {
+          return false;
+        }
+      }
+      try {
+        return r.when(ctx);
+      } catch {
+        return false;
+      }
+    })
+    .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+
+  // Resolve dynamic labels/prompts once per rule so dedup-by-label
+  // operates on the rendered text, not the function reference. If a
+  // dynamic rule ever renders to the same label as a higher-priority
+  // static rule, the higher-priority rule wins (priority sort above
+  // runs first); the dynamic rule is dropped from this render.
+  const ruleCtx: PromptRuleContext = ctx;
+  const seenLabels = new Set<string>();
+  const picked: { rule: PromptRule; label: string; prompt: string }[] = [];
+  for (const rule of matched) {
+    const label = resolvePromptString(rule.label, ruleCtx);
+    const prompt = resolvePromptString(rule.prompt, ruleCtx);
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    picked.push({ rule, label, prompt });
+    if (picked.length >= MAX_PROMPTS) break;
   }
+  // Web home renders these in a 2-column grid; an odd count leaves a stray cell.
+  if (picked.length % 2 !== 0) picked.pop();
 
-  if (!memberContext.is_member) {
-    // Logged in but not a member — conversion prompts
-    prompts.push({
-      label: 'Learn about AdCP',
-      prompt: 'What is AdCP and how does it work?',
-    });
-    prompts.push({
-      label: 'Membership options',
-      prompt: 'What membership tiers are available and what do they include?',
-    });
-    prompts.push({
-      label: 'Start the Academy',
-      prompt: "I'd like to start learning AdCP in the Academy. What modules are available?",
-    });
-    return prompts;
-  }
-
-  // --- Member prompts: based on what they haven't done yet ---
-
-  // Profile incomplete
-  if (memberContext.community_profile && memberContext.community_profile.completeness < 80) {
-    prompts.push({
-      label: 'Complete my profile',
-      prompt: 'Help me complete my community profile so I appear in search results.',
-    });
-  }
-
-  // Not in any working groups
-  if (!memberContext.working_groups || memberContext.working_groups.length === 0) {
-    prompts.push({
-      label: 'Find a working group',
-      prompt: 'What working groups are available and which ones would be relevant for my work?',
-    });
-  }
-
-  // Has working groups — offer deeper engagement
-  if (memberContext.working_groups && memberContext.working_groups.length > 0) {
-    const groupNames = memberContext.working_groups.map(g => g.name).join(', ');
-    prompts.push({
-      label: 'Working group updates',
-      prompt: `What's happening in my working groups? I'm in: ${groupNames}`,
-    });
-  }
-
-  // Academy prompt — always relevant for members
-  const hasRecentConversations = memberContext.addie_history &&
-    memberContext.addie_history.total_interactions > 5;
-  if (!hasRecentConversations) {
-    prompts.push({
-      label: 'Start the Academy',
-      prompt: "I'd like to start learning AdCP in the Academy. What modules are available?",
-    });
-  }
-
-  // Builder prompt for tech-oriented personas
-  if (memberContext.persona?.persona &&
-    ['ad_tech_vendor', 'agency_tech', 'publisher_tech'].includes(memberContext.persona.persona)) {
-    prompts.push({
-      label: 'Build with AdCP',
-      prompt: 'How do I set up a sales agent with AdCP? Walk me through the integration.',
-    });
-  }
-
-  // Engagement score / industry context
-  if (memberContext.engagement && memberContext.engagement.login_count_30d <= 2) {
-    prompts.push({
-      label: "What's new?",
-      prompt: "What's been happening at AgenticAdvertising.org since I last checked in?",
-    });
-  }
-
-  // Admin-specific
-  if (isAdmin) {
-    prompts.push({
-      label: 'Admin overview',
-      prompt: 'Give me a quick overview of member activity, flagged conversations, and anything that needs attention.',
-    });
-  }
-
-  // Pad to even count for clean 2-column grid
-  const filler: SuggestedPrompt[] = [
-    { label: 'Learn about AdCP', prompt: 'What is AdCP and how does it work?' },
-    { label: "What's new?", prompt: "What's been happening at AgenticAdvertising.org recently?" },
-  ];
-  for (const f of filler) {
-    if (prompts.length >= 4) break;
-    if (!prompts.some(p => p.label === f.label)) {
-      prompts.push(f);
-    }
-  }
-
-  // Cap at 4, ensure even count
-  const capped = prompts.slice(0, 4);
-  if (capped.length % 2 !== 0) capped.pop();
-  return capped;
+  // ruleIds returned to callers excludes decay: false rules — those should
+  // not be recorded in telemetry, since they're exempt from suppression.
+  const prompts = picked.map(({ label, prompt }) => ({ label, prompt }));
+  const ruleIds = picked.filter(({ rule }) => rule.decay !== false).map(({ rule }) => rule.id);
+  return { prompts, ruleIds };
 }

@@ -9,13 +9,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
-
-const { mockQuery, mockSendChannelMessage } = vi.hoisted(() => ({
-  mockQuery: vi.fn<any>(),
-  mockSendChannelMessage: vi.fn<any>(),
-}));
+const { mockQuery, mockSendChannelMessage } = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  return {
+    mockQuery: vi.fn<any>(),
+    mockSendChannelMessage: vi.fn<any>(),
+  };
+});
 
 // The reminder job opens a pooled client for its advisory lock and
 // acquire/release via pg_try_advisory_lock / pg_advisory_unlock.
@@ -62,6 +63,16 @@ vi.mock('../../server/src/db/system-settings-db.js', () => ({
   getEditorialChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
 }));
 
+import {
+  findStaleLiCandidates,
+  REMINDER_STALE_DAYS,
+  REMINDER_INTERVAL_DAYS,
+  MAX_REMINDERS_PER_ORG,
+  runAnnouncementReminderJob,
+  buildReminderText,
+  buildDeadParentText,
+} from '../../server/src/addie/jobs/announcement-trigger.js';
+
 const REVIEW_CHANNEL = 'C0EDITORIAL';
 const REVIEW_TS = '1700000000.123';
 
@@ -80,8 +91,10 @@ function candidate(overrides: Partial<any> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // mockReset drains the mockResolvedValueOnce queue per mock; clearAllMocks
+  // alone clears history but leaves queued values (would bleed across tests).
   mockQuery.mockReset();
+  mockSendChannelMessage.mockReset();
   lockAcquireReturnsFalse = false;
   mockSendChannelMessage.mockResolvedValue({ ok: true, ts: '1700000000.999' });
 });
@@ -89,12 +102,6 @@ beforeEach(() => {
 describe('findStaleLiCandidates', () => {
   it('passes the cap + interval + stale-days as SQL parameters', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const {
-      findStaleLiCandidates,
-      REMINDER_STALE_DAYS,
-      REMINDER_INTERVAL_DAYS,
-      MAX_REMINDERS_PER_ORG,
-    } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await findStaleLiCandidates();
 
     const [, params] = mockQuery.mock.calls[0];
@@ -109,7 +116,6 @@ describe('findStaleLiCandidates', () => {
 
   it('SQL filters out orgs with a linkedin post or a skip row', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { findStaleLiCandidates } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await findStaleLiCandidates();
     const sql = mockQuery.mock.calls[0][0] as string;
     // Both exclusion clauses are load-bearing — missing either
@@ -135,7 +141,6 @@ describe('findStaleLiCandidates', () => {
         },
       ],
     });
-    const { findStaleLiCandidates } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const rows = await findStaleLiCandidates();
     expect(rows[0].org_name).toBe('org_GONE');
     // 8.7 rounds to 9 — matches how an operator reads a duration,
@@ -149,7 +154,6 @@ describe('findStaleLiCandidates', () => {
 describe('runAnnouncementReminderJob', () => {
   it('empty candidate list: no Slack calls, no INSERTs, clean result', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result).toEqual({ candidates: 0, reminded: 0, failed: 0 });
     expect(mockSendChannelMessage).not.toHaveBeenCalled();
@@ -157,7 +161,6 @@ describe('runAnnouncementReminderJob', () => {
 
   it('refuses when another run holds the advisory lock', async () => {
     lockAcquireReturnsFalse = true;
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result.lockedOut).toBe(true);
     expect(result.candidates).toBe(0);
@@ -169,7 +172,6 @@ describe('runAnnouncementReminderJob', () => {
     mockQuery.mockResolvedValueOnce({ rows: [candidate()] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT
 
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
 
     expect(result).toMatchObject({ candidates: 1, reminded: 1, failed: 0 });
@@ -203,7 +205,6 @@ describe('runAnnouncementReminderJob', () => {
   it('records the reminder_number in metadata even though user-facing text does not mention it', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [candidate({ reminder_count: '2' })] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     await runAnnouncementReminderJob();
     const insertCall = mockQuery.mock.calls.find(
       ([sql]: any) => typeof sql === 'string' && sql.startsWith('INSERT INTO org_activities'),
@@ -216,7 +217,6 @@ describe('runAnnouncementReminderJob', () => {
     mockQuery.mockResolvedValueOnce({ rows: [candidate()] });
     mockSendChannelMessage.mockResolvedValueOnce({ ok: false, error: 'rate_limited' });
 
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result).toMatchObject({ candidates: 1, reminded: 0, failed: 1 });
 
@@ -237,7 +237,6 @@ describe('runAnnouncementReminderJob', () => {
       .mockResolvedValueOnce({ ok: true, ts: '1700000000.555' }); // fresh notice
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT dead-parent
 
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result).toMatchObject({ candidates: 1, reminded: 0, failed: 1 });
 
@@ -263,7 +262,6 @@ describe('runAnnouncementReminderJob', () => {
     mockQuery.mockResolvedValueOnce({ rows: [candidate()] });
     mockQuery.mockRejectedValueOnce(new Error('db write failed'));
 
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     // Slack message is already sent; unwinding it would be bad UX
     // (deleting an admin-visible thread reply). We accept the edge
@@ -284,14 +282,12 @@ describe('runAnnouncementReminderJob', () => {
       .mockResolvedValueOnce({ ok: true, ts: '1.2' });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT for org_B
 
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result).toMatchObject({ candidates: 2, reminded: 1, failed: 1 });
   });
 
   it('candidate-load failure returns {0,0,0} instead of throwing', async () => {
     mockQuery.mockRejectedValueOnce(new Error('db connection reset'));
-    const { runAnnouncementReminderJob } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const result = await runAnnouncementReminderJob();
     expect(result).toEqual({ candidates: 0, reminded: 0, failed: 0 });
     expect(mockSendChannelMessage).not.toHaveBeenCalled();
@@ -300,7 +296,6 @@ describe('runAnnouncementReminderJob', () => {
 
 describe('buildReminderText', () => {
   it('renders org name, days since Slack, and admin backlog link', async () => {
-    const { buildReminderText } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const text = buildReminderText({
       orgName: 'Summit Foods',
       daysSinceSlack: 12,
@@ -316,7 +311,6 @@ describe('buildReminderText', () => {
   });
 
   it('escapes Slack mrkdwn formatting chars in org names so rendering stays correct', async () => {
-    const { buildReminderText } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const text = buildReminderText({
       orgName: 'Foo*Bar_Inc',
       daysSinceSlack: 9,
@@ -331,7 +325,6 @@ describe('buildReminderText', () => {
     // A WorkOS org name containing `<url|label>` would render as a
     // clickable Slack link; a bare `https://evil/` would auto-link.
     // Both paths have to be shut down.
-    const { buildReminderText } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const text = buildReminderText({
       orgName: 'Acme<https://evil/|click>Co',
       daysSinceSlack: 9,
@@ -349,7 +342,6 @@ describe('buildReminderText', () => {
 
 describe('buildDeadParentText', () => {
   it('points editorial at the admin backlog + neutralizes hostile chars', async () => {
-    const { buildDeadParentText } = await import('../../server/src/addie/jobs/announcement-trigger.js');
     const text = buildDeadParentText({
       orgName: 'Summit<https://evil|x>Foods',
       daysSinceSlack: 21,

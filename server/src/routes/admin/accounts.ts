@@ -18,7 +18,6 @@ import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
 import {
   getPendingInvoices,
-  createCheckoutSession,
   getProductsForCustomer,
 } from "../../billing/stripe-client.js";
 import {
@@ -836,16 +835,18 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Subscription details (for members)
+          // Subscription details
           subscription: org.subscription_status
             ? {
                 status: org.subscription_status,
+                stripe_subscription_id: org.stripe_subscription_id || null,
                 product_name: org.subscription_product_name,
                 amount: org.subscription_amount,
                 interval: org.subscription_interval,
                 currency: org.subscription_currency,
                 current_period_end: org.subscription_current_period_end,
                 canceled_at: org.subscription_canceled_at,
+                price_lookup_key: org.subscription_price_lookup_key || null,
               }
             : null,
 
@@ -2406,9 +2407,7 @@ export function setupAccountRoutes(
 
         // Verify the target role exists in WorkOS for this organization
         try {
-          const roles = await workos.organizations.listOrganizationRoles({
-            organizationId: orgId,
-          });
+          const roles = await workos.authorization.listOrganizationRoles(orgId);
           const roleExists = roles.data.some((r) => r.slug === role);
           if (!roleExists) {
             logger.warn(
@@ -2706,104 +2705,32 @@ export function setupAccountRoutes(
     }
   );
 
-  // POST /api/admin/accounts/:orgId/payment-link - Generate a Stripe payment link
+  // POST /api/admin/accounts/:orgId/payment-link - removed.
+  // The direct admin payment-link endpoint let `org.prospect_contact_email` —
+  // a free-text field — become the Stripe customer, which mis-attributed at
+  // least one $10K subscription across orgs (Triton/Encypher cross-contamination,
+  // Apr 2026). Admins now send membership invitations; the recipient mints the
+  // checkout session in their own authenticated session.
   apiRouter.post(
     "/accounts/:orgId/payment-link",
     requireAuth,
     requireAdmin,
-    async (req, res) => {
-      try {
-        const { orgId } = req.params;
-        const { lookup_key, coupon_id, promotion_code } = req.body;
-        const pool = getPool();
-
-        const orgResult = await pool.query(
-          `SELECT workos_organization_id, name, is_personal, prospect_contact_email,
-                  stripe_coupon_id, stripe_promotion_code
-           FROM organizations WHERE workos_organization_id = $1`,
-          [orgId]
-        );
-
-        if (orgResult.rows.length === 0) {
-          return res.status(404).json({ error: "Organization not found" });
-        }
-
-        const org = orgResult.rows[0];
-        const customerType = org.is_personal ? "individual" : "company";
-
-        const products = await getProductsForCustomer({
-          customerType,
-          category: "membership",
-        });
-
-        if (!lookup_key) {
-          return res.json({
-            needs_selection: true,
-            products: products.map((p) => ({
-              lookup_key: p.lookup_key,
-              display_name: p.display_name,
-              amount_cents: p.amount_cents,
-              revenue_tiers: p.revenue_tiers,
-            })),
-            message: "Select a product to generate payment link",
-          });
-        }
-
-        const product = products.find((p) => p.lookup_key === lookup_key);
-        if (!product) {
-          return res.status(400).json({
-            error: "Product not found",
-            message: `No product found with lookup key: ${lookup_key}`,
-          });
-        }
-
-        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
-        const effectivePromoCode = promotion_code || org.stripe_promotion_code;
-
-        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
-        const session = await createCheckoutSession({
-          priceId: product.price_id,
-          customerEmail: org.prospect_contact_email || undefined,
-          successUrl: `${baseUrl}/dashboard?payment=success`,
-          cancelUrl: `${baseUrl}/join?payment=cancelled`,
-          workosOrganizationId: orgId,
-          isPersonalWorkspace: org.is_personal,
-          couponId: effectiveCouponId || undefined,
-          promotionCode: !effectiveCouponId ? effectivePromoCode : undefined,
-        });
-
-        if (!session?.url) {
-          return res.status(500).json({
-            error: "Failed to create payment link",
-            message: "Stripe is not configured or session created but no URL returned",
-          });
-        }
-
-        logger.info(
-          { orgId, orgName: org.name, lookupKey: lookup_key, adminEmail: req.user!.email },
-          "Admin generated payment link"
-        );
-
-        res.json({
-          success: true,
-          payment_url: session.url,
-          product: { display_name: product.display_name, amount_cents: product.amount_cents },
-          organization: { name: org.name, email: org.prospect_contact_email },
-        });
-      } catch (error) {
-        logger.error({ err: error }, "Error generating payment link");
-        res.status(500).json({ error: "Internal server error" });
-      }
+    (_req, res) => {
+      res.status(410).json({
+        error: "Gone",
+        message:
+          "The direct admin payment-link endpoint has been removed. Use POST /api/admin/accounts/:orgId/invite-membership to send a membership invitation; the recipient signs in and completes checkout in their own session.",
+      });
     }
   );
 
-  // POST /api/admin/accounts/:orgId/invoice - Generate and send a Stripe invoice
   // POST /api/admin/accounts/:orgId/invite-membership
-  // Admin sends a membership invitation (not a direct invoice). The prospect
-  // clicks the emailed link, signs in, signs the membership agreement,
-  // confirms billing, and only then is the Stripe invoice issued. This
-  // replaces the previous admin-fills-out-a-form-and-invoice-goes-out flow,
-  // which was fragile (typos in email → orphan customers → unlinked payments).
+  // Admin sends a membership invitation (not a direct invoice or payment link).
+  // The prospect clicks the emailed link, signs in, signs the membership
+  // agreement, confirms billing, and only then is the Stripe invoice or checkout
+  // issued — under their authenticated identity. This replaces the previous
+  // admin-fills-out-a-form-and-billing-goes-out flow, which was fragile (typos
+  // in email → orphan customers → unlinked payments → cross-org contamination).
   apiRouter.post(
     "/accounts/:orgId/invite-membership",
     requireAuth,
@@ -2889,15 +2816,19 @@ export function setupAccountRoutes(
           expiresAt: invite.expires_at,
         });
 
-        // Keep the prospect contact info on the org record for visibility.
+        // Stamp invoice_requested_at and a non-PII contact name (if supplied)
+        // for admin-dashboard visibility. We deliberately do NOT mirror the
+        // invite's contact_email back onto the org row — it lives on the
+        // membership_invites row, and any future code that re-reads
+        // prospect_contact_email for billing would re-introduce the cross-org
+        // contamination the invite flow is meant to prevent.
         const pool = getPool();
         await pool.query(
           `UPDATE organizations SET
             invoice_requested_at = NOW(),
-            prospect_contact_name = COALESCE($1, prospect_contact_name),
-            prospect_contact_email = $2
-           WHERE workos_organization_id = $3`,
-          [contact_name?.trim() || null, normalizedEmail, orgId]
+            prospect_contact_name = COALESCE($1, prospect_contact_name)
+           WHERE workos_organization_id = $2`,
+          [contact_name?.trim() || null, orgId]
         );
 
         logger.info(

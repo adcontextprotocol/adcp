@@ -1,0 +1,98 @@
+name: IPR Agreement (callable)
+
+# Reusable workflow that downstream AAO repositories invoke from their own
+# IPR-check workflow. It checks out the central ledger
+# (adcontextprotocol/adcp) into `.ipr-ledger/` using a GitHub App token,
+# runs the same `scripts/ipr/check-and-record.mjs` against it, and writes
+# any new signatures back to the central ledger.
+#
+# The default repo `GITHUB_TOKEN` is used for API calls on the *event*
+# repository — comments and the `IPR Policy / Signature` commit status
+# both live on the PR in the calling repo, not on adcp.
+#
+# Caller workflow shape (drop into each downstream repo):
+#
+#   name: IPR Agreement
+#   on:
+#     issue_comment:
+#       types: [created]
+#     pull_request_target:
+#       types: [opened, synchronize, reopened]
+#   permissions:
+#     pull-requests: write
+#     statuses: write
+#   jobs:
+#     check:
+#       uses: adcontextprotocol/adcp/.github/workflows/ipr-check-callable.yml@main
+#       secrets:
+#         IPR_APP_ID: ${{ secrets.IPR_APP_ID }}
+#         IPR_APP_PRIVATE_KEY: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+
+on:
+  workflow_call:
+    secrets:
+      IPR_APP_ID:
+        required: true
+        description: 'GitHub App ID for the AAO IPR Bot (org-level secret)'
+      IPR_APP_PRIVATE_KEY:
+        required: true
+        description: 'PEM private key for the AAO IPR Bot (org-level secret)'
+
+# Per-repo serialization. GitHub Actions concurrency is scoped per-repo, so
+# this group only serializes signatures landing from THIS caller repo. The
+# rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles contention
+# across sibling AAO repos pushing to the same JSON file.
+concurrency:
+  group: adcp-ipr-signature-write
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Skip issue comments that can't contain the sign phrase. Same filter as
+    # adcp's own workflow — avoids spinning up a runner for every comment.
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, 'I have read the IPR Policy'))
+    # SECURITY: do not add a checkout of the caller repo to this job. The
+    # App token + caller's GITHUB_TOKEN both live in this job's env; a step
+    # that runs PR-head code (e.g. `npm ci`, build scripts, anything that
+    # executes from a caller-repo workspace) would expose them to attacker-
+    # controlled code. The script we run is fetched from `.ipr-ledger/`,
+    # which is the ledger repo only.
+    steps:
+      - name: Mint AAO IPR Bot installation token (scoped to adcp)
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.IPR_APP_ID }}
+          private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
+      - name: Checkout central IPR ledger
+        uses: actions/checkout@v6
+        with:
+          repository: adcontextprotocol/adcp
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+          path: .ipr-ledger
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Check and record IPR signature
+        env:
+          # GITHUB_TOKEN is the caller repo's default token — used for API
+          # calls on the event repo (comment, status). The git push back to
+          # adcp uses the App token configured on the .ipr-ledger origin
+          # remote by the checkout step above.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEDGER_DIR: ${{ github.workspace }}/.ipr-ledger
+        run: node ${{ github.workspace }}/.ipr-ledger/scripts/ipr/check-and-record.mjs

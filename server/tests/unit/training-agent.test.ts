@@ -1077,6 +1077,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('preview_creative');
     expect(toolNames).toContain('report_usage');
     expect(toolNames).toContain('sync_accounts');
+    expect(toolNames).toContain('list_accounts');
     expect(toolNames).toContain('sync_governance');
     expect(toolNames).toContain('sync_catalogs');
     expect(toolNames).toContain('sync_event_sources');
@@ -1087,7 +1088,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(48);
+    expect(toolNames).toHaveLength(49);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -1993,6 +1994,109 @@ describe('get_media_buys handler', () => {
     const buys = result.media_buys as Array<Record<string, unknown>>;
     const pkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(pkgs[0].snapshot_unavailable_reason).toBe('SNAPSHOT_UNSUPPORTED');
+  });
+
+  it('paginates broad-scope queries: first page → cursor → terminal page', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'paginationmb.example' }, operator: 'paginationmb.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (let i = 1; i <= 3; i++) {
+      await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'paginationmb.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 5000 + 1000 * i,
+        }],
+      });
+    }
+
+    // First page: 3 buys, max_results=2 → non-terminal
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page1 } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { max_results: 2 },
+    });
+    const page1Buys = page1.media_buys as Array<Record<string, unknown>>;
+    expect(page1Buys).toHaveLength(2);
+    const pg1 = page1.pagination as Record<string, unknown>;
+    expect(pg1.has_more).toBe(true);
+    expect(typeof pg1.cursor).toBe('string');
+    expect(pg1.total_count).toBe(3);
+
+    // Terminal page: follow cursor → one remaining buy, no cursor
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page2 } = await simulateCallTool(server3, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { cursor: pg1.cursor as string, max_results: 2 },
+    });
+    const page2Buys = page2.media_buys as Array<Record<string, unknown>>;
+    expect(page2Buys).toHaveLength(1);
+    const pg2 = page2.pagination as Record<string, unknown>;
+    expect(pg2.has_more).toBe(false);
+    expect(pg2.cursor).toBeUndefined();
+    expect(pg2.total_count).toBe(3);
+  });
+
+  it('returns INVALID_REQUEST on malformed cursor', async () => {
+    const account = { brand: { domain: 'badcursor.example' }, operator: 'badcursor.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      status_filter: ['active'],
+      pagination: { cursor: 'not-a-valid-cursor' },
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+  });
+
+  it('media_buy_ids bypasses pagination — returns all requested IDs regardless of max_results', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'idlookup.example' }, operator: 'idlookup.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'idlookup.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 5000 + 1000 * i,
+        }],
+      });
+      ids.push(result.media_buy_id as string);
+    }
+
+    // Fetch all 3 by ID with max_results=2 — ID lookup ignores max_results
+    // and returns all matching IDs. Pagination block is still emitted (per
+    // the cursor↔has_more invariant) but signals terminal: has_more=false,
+    // no cursor.
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: ids,
+      pagination: { max_results: 2 },
+    });
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys).toHaveLength(3);
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(3);
+    expect(pg.cursor).toBeUndefined();
   });
 });
 
@@ -5894,7 +5998,7 @@ describe('governance audit logs by governance_context', () => {
     expect(plans[0].plan_id).toBe('plan-ctx-filter');
   });
 
-  it('infers binding from field presence', async () => {
+  it('infers check_type from field presence', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const plan = {
       plan_id: 'plan-infer',
@@ -5905,7 +6009,7 @@ describe('governance audit logs by governance_context', () => {
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
 
-    // Intent check: tool+payload, no binding field
+    // Intent check: tool+payload, no binding field — infers check_type: "intent"
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-infer',
       caller: 'https://buyer.example',
@@ -5914,7 +6018,16 @@ describe('governance audit logs by governance_context', () => {
     });
 
     expect(result.status).toBe('approved');
-    expect(result.binding).toBe('proposed');
+
+    // The inference is observable on the audit entry (canonical schema field).
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-infer'],
+      include_entries: true,
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const entries = plans[0].entries as Array<Record<string, unknown>>;
+    const checkEntry = entries.find(e => e.type === 'check');
+    expect(checkEntry?.check_type).toBe('intent');
   });
 });
 

@@ -12,13 +12,7 @@
       "x-entity": "governance_check"
     },
     "status": {
-      "type": "string",
-      "enum": [
-        "approved",
-        "denied",
-        "conditions"
-      ],
-      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters."
+      "$ref": "/schemas/enums/governance-decision.json"
     },
     "plan_id": {
       "type": "string",
@@ -37,7 +31,7 @@
         "properties": {
           "category_id": {
             "type": "string",
-            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety')."
+            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety'). This is an **agent-internal** taxonomy: the string is defined by the governance agent's own policy model and is not constrained to any protocol-level enum. Sellers and buyers MUST NOT pattern-match `category_id` values against a fixed list — treat them as opaque labels with human-readable significance for audit but no machine-level contract. See the Campaign Governance specification for how an agent composes internal specialist review behind one endpoint."
           },
           "policy_id": {
             "type": "string",
@@ -120,14 +114,18 @@
       "items": {
         "type": "string"
       },
-      "description": "Governance categories evaluated during this check."
+      "description": "Governance categories evaluated during this check. Each value is an **agent-internal** label (e.g., `budget_authority`, `regulatory_compliance`, or any internal-reviewer key the agent's policy model defines) — not a protocol-level enum. Since one governance agent per account composes all specialist review behind its single endpoint, `categories_evaluated` is how that internal decomposition surfaces to auditors. Consumers MUST treat values as opaque labels for display and audit, not as a machine-level contract."
     },
     "policies_evaluated": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Registry policy IDs evaluated during this check."
+      "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`."
+    },
+    "mode": {
+      "$ref": "/schemas/enums/governance-mode.json",
+      "description": "Governance enforcement mode active when this check was evaluated. Allows counterparties, regulators, and auditors to distinguish whether a finding blocked execution (enforce) or was logged silently (audit)."
     },
     "governance_context": {
       "type": "string",

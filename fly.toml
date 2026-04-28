@@ -48,17 +48,32 @@ primary_region = 'iad'
     [http_service.checks.headers]
       User-Agent = "Fly Health Check"
 
-# Worker health check (no public traffic, just keeps Fly from killing it)
-[[checks]]
-  name = "worker-health"
-  port = 8080
-  type = "http"
-  interval = "15s"
-  timeout = "20s"
-  grace_period = "60s"
-  method = "GET"
-  path = "/health"
+# Worker process group config.
+#
+# `[[services]]` (rather than a bare `[[checks]]`) opts the worker process
+# group into Fly's auto_start_machines + min_machines_running lifecycle —
+# the same mechanism `[http_service]` uses for web. Without this, workers
+# created by a rolling deploy stay in `stopped` state forever (no
+# auto_start path) and the periodic crawler / scheduled jobs don't run.
+#
+# No `[[services.ports]]` block: no external traffic. The internal_port
+# is only used by the health check below.
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
   processes = ["worker"]
+  auto_start_machines = true
+  auto_stop_machines = "off"
+  min_machines_running = 2
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "20s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    tls_skip_verify = false
 
 [[vm]]
   processes = ["web"]

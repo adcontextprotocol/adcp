@@ -1,3 +1,6 @@
+// lint-allow-test-imports-file: this suite legitimately tests
+// `STRIPE_SECRET_KEY`-loaded module init — vi.resetModules() and dynamic
+// imports per test are how the env-var-load behavior is exercised.
 import { describe, test, expect, vi, beforeEach, type MockedClass } from 'vitest';
 import type Stripe from 'stripe';
 

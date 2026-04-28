@@ -240,6 +240,7 @@ const FIXTURE_CATEGORY_PRIMARY_ID = {
   products: 'product_id',
   pricing_options: 'pricing_option_id',
   creatives: 'creative_id',
+  creative_formats: 'format_id',
   plans: 'plan_id',
   media_buys: 'media_buy_id',
 };

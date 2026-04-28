@@ -229,7 +229,7 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
   if (!isWorkOSApiKeyFormat(token)) return null;
 
   try {
-    const result = await workos.apiKeys.validateApiKey({ value: token });
+    const result = await workos.apiKeys.createValidation({ value: token });
     if (!result.apiKey) return null;
 
     return {
@@ -482,9 +482,34 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
 // Dev session cookie name
 const DEV_SESSION_COOKIE = 'dev-session';
 
+// Hard prod-boot guard: dev mode bypasses auth on every requireAuth-protected
+// endpoint (now widened to 23 admin/owner-gated org routes after the
+// resolveUserOrgMembership refactor). Refuse to start if these env vars are
+// set in a production-shaped environment — better to crash boot than silently
+// expose owner-level mutations to a stray cookie.
+//
+// "Production-shaped" is detected by NODE_ENV=production OR FLY_APP_NAME being
+// set (Fly.io always sets it on deployed apps). Override via
+// ALLOW_DEV_MODE_IN_PROD=true if you genuinely need it for a one-off (you
+// almost certainly don't).
 if (DEV_MODE_ENABLED) {
+  const isProdShaped =
+    process.env.NODE_ENV === 'production' || !!process.env.FLY_APP_NAME;
+  const overrideOk = process.env.ALLOW_DEV_MODE_IN_PROD === 'true';
+  if (isProdShaped && !overrideOk) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[FATAL] DEV_USER_EMAIL + DEV_USER_ID are set in a production-shaped ' +
+      'environment (NODE_ENV=production or FLY_APP_NAME present). Dev mode ' +
+      'bypasses auth on every requireAuth-protected endpoint. Refusing to start.'
+    );
+    process.exit(1);
+  }
   logger.warn({
     availableUsers: Object.keys(DEV_USERS),
+    nodeEnv: process.env.NODE_ENV,
+    flyAppName: process.env.FLY_APP_NAME,
+    overrideAllowed: overrideOk,
   }, 'DEV MODE ENABLED - Auth bypass active. DO NOT use in production!');
   logger.info('Visit /auth/login to select a test user');
 }

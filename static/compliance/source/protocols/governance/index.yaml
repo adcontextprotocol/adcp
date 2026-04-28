@@ -200,7 +200,6 @@ phases:
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  categories: ["budget_authority", "brand_policy"]
 
           idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_account_setup_sync_governance"
           context:

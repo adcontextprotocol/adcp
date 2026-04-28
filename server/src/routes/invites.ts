@@ -25,6 +25,11 @@ import {
   createCoupon,
 } from '../billing/stripe-client.js';
 import { sanitizeBillingAddress } from '../billing/billing-address.js';
+import {
+  blockIfActiveSubscription,
+  type ActiveSubscriptionBlock,
+} from '../billing/active-subscription-guard.js';
+import { withOrgIntakeLock } from '../billing/org-intake-lock.js';
 import * as referralDb from '../db/referral-codes-db.js';
 
 const logger = createLogger('invites-routes');
@@ -153,6 +158,23 @@ export function createInvitesRouter(): Router {
         });
       }
 
+      // Refuse if the org already has an active subscription. Accepting this
+      // invite would mint a duplicate sub on the same Stripe customer — the
+      // Triton Apr-2026 incident in literal form.
+      //
+      // We deliberately omit `customerPortalReturnUrl`: the invite recipient
+      // gets `member` role on the org (not `admin`), and a Stripe Customer
+      // Portal session would grant them admin-equivalent control over the
+      // existing subscription. The 409 message points them at the dashboard
+      // and finance@ instead.
+      const activeBlock = await blockIfActiveSubscription(
+        org.workos_organization_id,
+        orgDb,
+      );
+      if (activeBlock) {
+        return res.status(activeBlock.status).json(activeBlock.body);
+      }
+
       // Ensure the accepting user is a member of the target org.
       //
       // Role is always 'member'. We never auto-grant 'owner' via invite accept:
@@ -234,21 +256,42 @@ export function createInvitesRouter(): Router {
         [user.firstName, user.lastName].filter(Boolean).join(' ') ||
         user.email;
 
-      const invoiceResult = await createAndSendInvoice({
-        lookupKey: invite.lookup_key,
-        companyName: org.name,
-        contactName,
-        contactEmail: user.email,
-        billingAddress: sanitizedAddress,
-        workosOrganizationId: org.workos_organization_id,
-        couponId: couponId ?? org.stripe_coupon_id ?? undefined,
-        // Token-keyed idempotency. Two concurrent clicks converge to one
-        // subscription on Stripe's side; the DB atomic mark below then picks
-        // one winner and the other sees 409.
-        idempotencyKey: `invite_${invite.token}`,
+      // Lock + re-guard + Stripe write must be atomic per-org. The early
+      // `blockIfActiveSubscription` above handles the common case fast; this
+      // section closes the race where two concurrent intakes (e.g., two
+      // invite-accept clicks racing a different intake path) both pass the
+      // early check before either has minted a sub.
+      const intake = await withOrgIntakeLock<
+        | { kind: 'block'; block: ActiveSubscriptionBlock }
+        | { kind: 'invoiceFailed' }
+        | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
+      >(org.workos_organization_id, async () => {
+        const racedBlock = await blockIfActiveSubscription(
+          org.workos_organization_id,
+          orgDb,
+        );
+        if (racedBlock) return { kind: 'block', block: racedBlock };
+        const result = await createAndSendInvoice({
+          lookupKey: invite.lookup_key,
+          companyName: org.name,
+          contactName,
+          contactEmail: user.email,
+          billingAddress: sanitizedAddress,
+          workosOrganizationId: org.workos_organization_id,
+          couponId: couponId ?? org.stripe_coupon_id ?? undefined,
+          // Token-keyed idempotency. Two concurrent clicks converge to one
+          // subscription on Stripe's side; the DB atomic mark below then picks
+          // one winner and the other sees 409.
+          idempotencyKey: `invite_${invite.token}`,
+        });
+        if (!result) return { kind: 'invoiceFailed' };
+        return { kind: 'success', invoiceResult: result };
       });
 
-      if (!invoiceResult) {
+      if (intake.kind === 'block') {
+        return res.status(intake.block.status).json(intake.block.body);
+      }
+      if (intake.kind === 'invoiceFailed') {
         logger.error({ orgId: org.workos_organization_id, lookupKey: invite.lookup_key },
           'createAndSendInvoice returned null on invite accept');
         return res.status(500).json({
@@ -257,7 +300,16 @@ export function createInvitesRouter(): Router {
             "We couldn't issue your invoice. Please contact finance@agenticadvertising.org.",
         });
       }
+      const invoiceResult = intake.invoiceResult;
 
+      // INVARIANT: in-lock-guard-re-check
+      // markMembershipInviteAccepted runs OUTSIDE the lock. That is safe
+      // only because the in-lock `blockIfActiveSubscription` re-check
+      // (above, inside withOrgIntakeLock) catches duplicate-sub attempts:
+      // a third concurrent click on the same invite will block when its
+      // lock-internal guard reads the Stripe-side sub this acceptance just
+      // minted. Do not remove the re-guard inside the lock without
+      // re-thinking this invariant.
       const accepted = await markMembershipInviteAccepted(
         token,
         user.id,

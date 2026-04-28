@@ -59,8 +59,9 @@ narrative: |
   reclassified in 3.1 to a universal capability-gated storyboard.)
 
   Composition means the seller:
-  - accepts `sync_governance` to register the buyer's governance agent URL and
-    authority categories,
+  - accepts `sync_governance` to register the buyer's single governance agent
+    URL for the account (one agent per account; internal specialist review
+    composes inside the agent, not at registration — see #3010 / #3015),
   - calls `check_governance` on the registered agent before confirming a
     spend-committing request,
   - returns `GOVERNANCE_DENIED` with the governance findings propagated

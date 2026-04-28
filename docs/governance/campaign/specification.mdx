@@ -52,7 +52,13 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
   },
   "countries": ["US"],
   "policy_ids": ["us_coppa", "alcohol_advertising"],
-  "custom_policies": ["No competitor brand adjacency"],
+  "custom_policies": [
+    {
+      "policy_id": "no_competitor_adjacency",
+      "enforcement": "must",
+      "policy": "No advertising adjacent to competitor brand content."
+    }
+  ],
   "approved_sellers": null,
   "ext": {}
 }
@@ -242,7 +248,11 @@ For holding companies and multi-brand organizations, a plan can include a `portf
     "total_budget_cap": { "amount": 50000000, "currency": "USD" },
     "shared_policy_ids": ["eu_gdpr_advertising", "eu_ai_act_article_50"],
     "shared_exclusions": [
-      "No advertising on properties owned by competitor holding companies"
+      {
+        "policy_id": "no_competitor_properties",
+        "enforcement": "must",
+        "policy": "No advertising on properties owned by competitor holding companies."
+      }
     ]
   }
 }
@@ -252,7 +262,7 @@ Portfolio constraints:
 
 - **`total_budget_cap`**: Maximum aggregate spend across all member plans. The governance agent tracks committed budget across all member plans and denies actions that would exceed the cap.
 - **`shared_policy_ids`**: Registry policies enforced across all member plans, regardless of individual brand compliance configuration. Corporate-level regulations that no brand team can override.
-- **`shared_exclusions`**: Natural language exclusion rules applied to all member plans.
+- **`shared_exclusions`**: Bespoke exclusion policies applied to all member plans, using the `PolicyEntry` shape. Additive only — same constraint as plan-level `custom_policies`.
 
 The governance agent validates member plan actions against both the member plan's own constraints and the portfolio plan's constraints. A denial from either level blocks the action.
 
@@ -348,6 +358,10 @@ Policies are declared directly on the plan via `policy_ids` and `custom_policies
 1. Load registry policies referenced by `policy_ids`
 2. Intersect with the plan's `countries` and `regions` -- only policies applicable to the plan's markets are active
 3. Include all `custom_policies` (these apply regardless of geography)
+
+<Warning>
+**`custom_policies` are additive only.** Governance agents MUST pin registry-sourced policy text as system-level instructions and MUST NOT permit `custom_policies` (or the plan's `objectives` field) to relax, override, or disable registry-sourced policies. Custom policies may add tighter restrictions — they cannot lower enforcement levels or exempt categories. A `custom_policies` entry that contradicts a registry policy is evaluated alongside it, not instead of it; the stricter constraint governs.
+</Warning>
 
 The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject governed actions targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects actions not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
@@ -611,14 +625,14 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 `planned_delivery` is the seller's interpretation of the request -- the actual delivery parameters they will use. It serves two purposes:
 
-1. **Governance checks** -- When the account has `governance_agents`, the seller sends `planned_delivery` to the governance agent(s) for verification before confirming the media buy.
+1. **Governance checks** -- When the account has a governance agent configured, the seller sends `planned_delivery` to the governance agent for verification before confirming the media buy.
 2. **Transparency** -- The buyer can compare `planned_delivery` against what they requested to catch discrepancies early, before delivery begins.
 
 ## Governance checks
 
 Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Seller-side governance checks close this gap by giving sellers an independent way to confirm that purchases are approved.
 
-The seller POSTs to the buyer's `governance_agents` URLs when governed action events occur. The governance agent maintains all state and correlates requests by `plan_id` + `governance_context` -- the seller does not need to track governance history or chain IDs across calls.
+The seller POSTs to the buyer's configured governance agent URL when governed action events occur. The governance agent maintains all state and correlates requests by `plan_id` + `governance_context` -- the seller does not need to track governance history or chain IDs across calls.
 
 ### Both checks must pass
 
@@ -968,13 +982,20 @@ Governance agent implementations SHOULD respond to `check_governance` calls with
 
 The seller calls each governance agent at its registered URL using MCP over HTTP (Streamable HTTP transport). The request is an MCP `tools/call` invocation with tool name `check_governance` and the request arguments as the tool input. Authentication uses the Bearer token from the agent's `authentication.credentials` in the `Authorization` header.
 
-### Multi-agent composition
+### One governance agent per account
 
-Accounts MAY register multiple governance agents via [`sync_governance`](/docs/accounts/tasks/sync_governance), each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
+An account binds to exactly one governance agent per [`sync_governance`](/docs/accounts/tasks/sync_governance). Registration is single-agent by schema — `governance_agents` is an array because that is what 3.0 shipped with, constrained to `maxItems: 1` as a load-bearing invariant (not a staging post toward relaxation). The envelope carries a single `governance_context` token; all lifecycle calls route to that one agent. Loosening the cap would require a coordinated change across `sync_governance`, the protocol envelope, and every lifecycle task that threads the token — that change is not planned.
 
-When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied`, the action is blocked.
+This is deliberate. A governance plan is unitary — budget authority, delivery monitoring, brand safety, and regulatory compliance are not independent specialisms held by different authorities. They are phases and facets of the same evaluation against the same plan state:
 
-For accounts with a single governance agent, pass a one-element array.
+- **Authorization, fidelity, and drift are phases, not specialisms.** `check_governance` already separates them on the `phase` axis (`purchase` / `modification` / `delivery`). Splitting them across agents partitions the same plan state across separate authorities, which can only produce drift, disagreement, or duplicated re-reads of the same plan.
+- **Regulatory rules are encoded in the plan, not held by a separate agent.** `enforced_policies`, `restricted_attributes`, `policy_ids`, and `human_review_required` live on the plan itself. A "regulatory compliance" agent separate from the "spend authority" agent would re-evaluate the same plan and reach the same decision, or diverge — neither is useful.
+- **Internal specialist review belongs inside the governance agent.** A buyer that wants legal, brand-safety, or category-specialist review composes those reviewers behind a single governance-agent endpoint (human review, internal routing, multi-reviewer consensus are all governance-agent-internal concerns). The protocol sees one agent; the agent's internal organization is the agent's business.
+- **One lifecycle, one token, one audit trail.** Plan binding (`plan_hash`), signed context (`governance_context`), and `get_plan_audit_logs` are all single-agent designs. A single agent is what makes post-hoc accountability ("this transaction was authorized under plan state X by agent Y at time T") a clean, verifiable claim.
+
+Buyers that need internal specialist review (legal, brand safety, category) compose those reviewers inside the governance agent they configure — the protocol does not surface the split.
+
+Related specialist reviews that sit adjacent to (not inside) campaign governance — brand-safety pre-screen of creatives, property-list policy, content-standards evaluation — are separate governance surfaces with their own agents and their own lifecycle (see [`build_creative`](/docs/creative/task-reference/build_creative), property governance, content-standards governance). Campaign governance speaks only for the plan.
 
 ### Governance checks and the governance loop
 
@@ -991,7 +1012,7 @@ Governance checks complement the buyer-side governance loop, they do not replace
 
 The `delivery` phase gives the governance agent real-time visibility into what sellers are actually delivering. The buyer-side `report_plan_outcome` depends on the orchestrator reporting honestly; the `delivery` phase gets reports directly from the seller.
 
-The buyer-side and seller-side governance checks MAY be handled by the same agent or by separate agents. The protocol does not prescribe the relationship -- only that the seller can call the `governance_agents` URLs registered on the account.
+The buyer-side and seller-side governance checks hit the same agent — the one registered on the account via `sync_governance`. The orchestrator calls it for intent checks and the seller calls it for execution checks; both conversations reach the same authority with the same plan state.
 
 ## Orchestrator integration pattern
 

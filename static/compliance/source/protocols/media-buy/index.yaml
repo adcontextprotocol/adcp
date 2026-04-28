@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/create_media_buy_async
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -218,7 +219,6 @@ phases:
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  categories: ["budget_authority", "brand_policy"]
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_setup_sync_governance"
           context:
             correlation_id: "media_buy_seller--sync_governance"

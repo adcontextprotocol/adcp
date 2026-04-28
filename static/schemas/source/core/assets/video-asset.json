@@ -53,14 +53,10 @@
       "description": "Frame rate as string to preserve precision (e.g., '23.976', '29.97', '30')"
     },
     "frame_rate_type": {
-      "type": "string",
-      "enum": ["constant", "variable"],
-      "description": "Whether the video uses constant (CFR) or variable (VFR) frame rate"
+      "$ref": "/schemas/enums/frame-rate-type.json"
     },
     "scan_type": {
-      "type": "string",
-      "enum": ["progressive", "interlaced"],
-      "description": "Scan type of the video"
+      "$ref": "/schemas/enums/scan-type.json"
     },
     "color_space": {
       "type": "string",
@@ -87,14 +83,10 @@
       "description": "GOP/keyframe interval in seconds"
     },
     "gop_type": {
-      "type": "string",
-      "enum": ["closed", "open"],
-      "description": "GOP structure type"
+      "$ref": "/schemas/enums/gop-type.json"
     },
     "moov_atom_position": {
-      "type": "string",
-      "enum": ["start", "end"],
-      "description": "Position of moov atom in MP4 container"
+      "$ref": "/schemas/enums/moov-atom-position.json"
     },
     "has_audio": {
       "type": "boolean",
@@ -109,8 +101,7 @@
       "description": "Audio sampling rate in Hz (e.g., 44100, 48000)"
     },
     "audio_channels": {
-      "type": "string",
-      "enum": ["mono", "stereo", "5.1", "7.1"],
+      "$ref": "/schemas/enums/audio-channel-layout.json",
       "description": "Audio channel configuration"
     },
     "audio_bit_depth": {

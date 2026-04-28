@@ -251,12 +251,7 @@
                   "description": "The AdCP tool (present for check entries)."
                 },
                 "status": {
-                  "type": "string",
-                  "enum": [
-                    "approved",
-                    "denied",
-                    "conditions"
-                  ],
+                  "$ref": "/schemas/enums/governance-decision.json",
                   "description": "Governance check status (present for check entries)."
                 },
                 "check_type": {
@@ -267,6 +262,10 @@
                   ],
                   "description": "Whether the check was an intent check (orchestrator) or execution check (seller). Inferred from the fields present on the original check request. Present for check entries."
                 },
+                "mode": {
+                  "$ref": "/schemas/enums/governance-mode.json",
+                  "description": "Governance mode active at the moment this specific check was evaluated. Governance agents SHOULD populate this field on check entries, recording the mode from their runtime configuration at the moment check_governance was processed — not derived from a plan field. This is a per-check value: if the operator changes mode between checks for the same governed action, each entry records the mode active for that entry. A future `governed_actions[].mode` field would describe the action's current mode, which may differ from the most recent entry's `mode` if the plan has since been re-synced. Absent for outcome entries and for pre-3.1 governance agents that do not surface mode on audit responses."
+                },
                 "explanation": {
                   "type": "string",
                   "description": "Human-readable explanation of the governance decision (present for check entries)."
@@ -276,7 +275,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Registry policy IDs evaluated during this check (present for check entries)."
+                  "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`. Present for check entries."
                 },
                 "categories_evaluated": {
                   "type": "array",

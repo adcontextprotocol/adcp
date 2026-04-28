@@ -26,13 +26,14 @@ vi.mock('../../src/logger.js', () => ({
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { resetRequestSigning } = await import('../../src/training-agent/request-signing.js');
 
 const AUTH = 'Bearer test-token-for-strict';
 
 /** Call a tool via MCP JSON-RPC and return the parsed inner response. */
 async function callTool(
   app: express.Application,
-  route: '/mcp' | '/mcp-strict',
+  route: '/mcp' | '/mcp-strict' | '/mcp-strict-required' | '/mcp-strict-forbidden',
   tool: string,
   args: Record<string, unknown>,
   opts: { auth?: boolean } = { auth: true },
@@ -96,30 +97,42 @@ describe('Training Agent /mcp-strict route', () => {
     it('/mcp returns required_for: [] (sandbox)', async () => {
       const res = await callTool(app, '/mcp', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual([]);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
 
     it('/mcp-strict returns required_for: ["create_media_buy"] (grader target)', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {});
       expect(res.status).toBe(200);
-      const inner = innerResponse(res) as { request_signing: { required_for: string[] }; specialisms: string[] };
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; required_for: string[] };
+        specialisms?: string[];
+      };
+      expect(inner.request_signing.supported).toBe(true);
       expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
-      expect(inner.specialisms).toContain('signed-requests');
+      expect(inner.specialisms ?? []).not.toContain('signed-requests');
     });
   });
 
   describe('presence-gated enforcement', () => {
+    // Regression gate for #3338: presence-gated signing on /mcp-strict must
+    // fire `request_signature_required` for unsigned mutations when the
+    // strict capability advertises `required_for: ['create_media_buy']`.
     it('unsigned create_media_buy on /mcp-strict returns 401 request_signature_required', async () => {
+      // auth: false — bearer bypass (SDK #2586) short-circuits required_for; graders send no bearer.
       const res = await callTool(app, '/mcp-strict', 'create_media_buy', {
         account: { brand: { domain: 'strict-test.example.com' }, sandbox: true },
         idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
-      });
+      }, { auth: false });
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('request_signature_required');
-      expect(res.body.error_description).toMatch(/create_media_buy.*signed/);
-      expect(res.headers['www-authenticate']).toMatch(/^Bearer /);
+      expect(res.body.error_description).toMatch(/Signature required for create_media_buy/);
+      expect(res.headers['www-authenticate']).toMatch(/error="request_signature_required"/);
     });
 
     it('unsigned create_media_buy on /mcp still accepted (bearer fallthrough)', async () => {
@@ -179,6 +192,80 @@ describe('Training Agent /mcp-strict route', () => {
 
     it('POST /mcp-strict without auth returns 401', async () => {
       const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {}, { auth: false });
+      expect(res.status).toBe(401);
+    });
+  });
+});
+
+describe('Training Agent /mcp-strict-required and /mcp-strict-forbidden routes', () => {
+  let app: express.Application;
+
+  beforeAll(() => {
+    resetRequestSigning();
+    app = express();
+    app.use(express.json({
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }));
+    app.use('/api/training-agent', createTrainingAgentRouter());
+  });
+
+  afterAll(() => {
+    stopSessionCleanup();
+  });
+
+  describe('capability declaration — covers_content_digest mode', () => {
+    it('/mcp-strict-required advertises covers_content_digest: required', async () => {
+      const res = await callTool(app, '/mcp-strict-required', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; covers_content_digest: string; required_for: string[] };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('required');
+      expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
+    });
+
+    it('/mcp-strict-forbidden advertises covers_content_digest: forbidden', async () => {
+      const res = await callTool(app, '/mcp-strict-forbidden', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { supported: boolean; covers_content_digest: string; required_for: string[] };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('forbidden');
+      expect(inner.request_signing.required_for).toEqual(['create_media_buy']);
+    });
+
+    it('/mcp-strict still advertises covers_content_digest: either (unchanged)', async () => {
+      const res = await callTool(app, '/mcp-strict', 'get_adcp_capabilities', {});
+      expect(res.status).toBe(200);
+      const inner = innerResponse(res) as {
+        request_signing: { covers_content_digest: string };
+      };
+      expect(inner.request_signing.covers_content_digest).toBe('either');
+    });
+  });
+
+  describe('route contract', () => {
+    it('GET /mcp-strict-required returns 405', async () => {
+      const res = await request(app).get('/api/training-agent/mcp-strict-required');
+      expect(res.status).toBe(405);
+      expect(res.headers['allow']).toMatch(/POST/);
+    });
+
+    it('GET /mcp-strict-forbidden returns 405', async () => {
+      const res = await request(app).get('/api/training-agent/mcp-strict-forbidden');
+      expect(res.status).toBe(405);
+      expect(res.headers['allow']).toMatch(/POST/);
+    });
+
+    it('POST /mcp-strict-required without auth returns 401', async () => {
+      const res = await callTool(app, '/mcp-strict-required', 'get_adcp_capabilities', {}, { auth: false });
+      expect(res.status).toBe(401);
+    });
+
+    it('POST /mcp-strict-forbidden without auth returns 401', async () => {
+      const res = await callTool(app, '/mcp-strict-forbidden', 'get_adcp_capabilities', {}, { auth: false });
       expect(res.status).toBe(401);
     });
   });

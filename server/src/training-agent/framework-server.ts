@@ -29,9 +29,9 @@ import { MediaChannelSchema } from '@adcp/client/types';
 import type { Product } from '@adcp/client';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
-import { getIdempotencyStore } from './idempotency.js';
-import { getWebhookSigningKey, maybeEmitCompletionWebhook } from './webhooks.js';
-import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+import { getIdempotencyStore, scopedPrincipal } from './idempotency.js';
+import { getWebhookSigningMaterial, maybeEmitCompletionWebhook } from './webhooks.js';
+import { selectSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
 import { getSession, runWithSessionContext, flushDirtySessions, sessionKeyFromArgs } from './state.js';
 import { createLogger } from '../logger.js';
@@ -52,7 +52,7 @@ import {
   handleActivateSignal,
   handleReportUsage,
 } from './task-handlers.js';
-import { handleSyncAccounts, handleSyncGovernance } from './account-handlers.js';
+import { handleSyncAccounts, handleSyncGovernance, handleListAccounts } from './account-handlers.js';
 import {
   handleSyncCatalogs,
   handleSyncEventSources,
@@ -266,6 +266,7 @@ function adapt(toolName: string, handler: LegacyHandler) {
           args: handlerArgs as Record<string, unknown>,
           response: (result ?? {}) as Record<string, unknown>,
           requestIdempotencyKey: typeof idk === 'string' ? idk : undefined,
+          principal: scopedWebhookPrincipal(ctx, handlerArgs as Record<string, unknown>),
         });
       }
       return response;
@@ -288,6 +289,18 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
   return undefined;
 }
 
+/** Scoped principal for webhook idempotency. Mirrors the
+ *  `resolveIdempotencyPrincipal` rule on the AdcpServer config below: only
+ *  `static:public` (the shared sandbox token) needs account-level partitioning;
+ *  other principals are single-caller and use the auth principal directly.
+ *  Delegates to `scopedPrincipal` so the partition format stays defined in
+ *  one place and can never drift from the request-side cache. */
+function scopedWebhookPrincipal(ctx: HandlerContext, params: Record<string, unknown>): string {
+  const auth = ctx.authInfo?.clientId ?? 'anonymous';
+  if (auth !== 'static:public') return auth;
+  return scopedPrincipal(auth, deriveAccountScope(params));
+}
+
 // ── Server factory ──────────────────────────────────────────────
 
 /**
@@ -296,7 +309,7 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
  * escape our module boundary.
  */
 export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpServer {
-  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
+  const signingCap = selectSigningCapability(ctx);
 
   // ── Custom tools outside AdcpToolMap ─────────────────────────
   // Registered through the framework's `customTools` config (5.4).
@@ -428,6 +441,10 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     account: ACCOUNT_REF,
     brand: BRAND_REF,
     context: CONTEXT_REF,
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().optional(),
+    }).optional(),
   };
 
   const DELETE_COLLECTION_LIST_SCHEMA = {
@@ -461,7 +478,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     version: '1.0.0',
 
     idempotency: getIdempotencyStore(),
-    webhooks: { signerKey: getWebhookSigningKey() },
+    webhooks: getWebhookSigningMaterial(),
 
     // Only `static:public` is account-scoped: it's the shared sandbox token,
     // so unscoped idempotency keys would collide across callers. Other
@@ -516,7 +533,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 
     capabilities: {
       major_versions: [3],
-      specialisms: ['signed-requests'],
+      specialisms: [],
       features: {
         inlineCreativeManagement: true,
         propertyListFiltering: true,
@@ -628,6 +645,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
     accounts: {
       syncAccounts: adapt('sync_accounts', handleSyncAccounts),
+      listAccounts: adapt('list_accounts', handleListAccounts),
       syncGovernance: adapt('sync_governance', handleSyncGovernance),
       reportUsage: adapt('report_usage', handleReportUsage),
     },

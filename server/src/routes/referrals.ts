@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { getReferralCode, acceptReferralCode, getAcceptedReferralForOrg } from '../db/referral-codes-db.js';
 import { MemberDatabase } from '../db/member-db.js';
-import { BrandDatabase } from '../db/brand-db.js';
+import { BrandDatabase, resolveBrandFromJson } from '../db/brand-db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { query } from '../db/client.js';
+import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { emailPrefsDb } from '../db/email-preferences-db.js';
 
 const logger = createLogger('referral-routes');
@@ -47,24 +47,21 @@ export function createReferralsRouter(): Router {
       let logo_url: string | null = null;
       let brand_color: string | null = null;
       if (profile?.primary_brand_domain) {
-        const hosted = await brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
-        if (hosted) {
-          const bj = hosted.brand_json as Record<string, unknown>;
-          const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-          const primary = brands?.[0];
-          const logos = primary?.logos as Array<Record<string, unknown>> | undefined;
-          const colors = primary?.colors as Record<string, unknown> | undefined;
-          logo_url = (logos?.[0]?.url as string) || null;
-          brand_color = (colors?.primary as string) || null;
+        const domain = profile.primary_brand_domain;
+        // Skip orphaned brands — manifest is preserved server-side for adoption
+        // but must not surface on public read paths until claim is applied.
+        const hosted = await brandDb.getHostedBrandByDomain(domain);
+        if (hosted?.brand_json && !hosted.manifest_orphaned) {
+          const resolved = resolveBrandFromJson(domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified ?? false);
+          logo_url = resolved.logo_url ?? null;
+          brand_color = resolved.brand_color ?? null;
         }
         if (!logo_url) {
-          const discovered = await brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-          if (discovered) {
-            const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-            const logos = manifest?.logos as Array<Record<string, unknown>> | undefined;
-            const colors = manifest?.colors as Record<string, unknown> | undefined;
-            logo_url = (logos?.[0]?.url as string) || null;
-            brand_color = brand_color || (colors?.primary as string) || null;
+          const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+          if (discovered?.brand_manifest && !discovered.manifest_orphaned) {
+            const resolved = resolveBrandFromJson(domain, discovered.brand_manifest as Record<string, unknown>, discovered.domain_verified ?? false);
+            logo_url = resolved.logo_url ?? null;
+            brand_color = brand_color || (resolved.brand_color ?? null);
           }
         }
       }
@@ -94,12 +91,7 @@ export function createReferralsRouter(): Router {
       const { marketing_opt_in } = req.body || {};
       const userId = req.user!.id;
 
-      // Look up the user's primary org
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [userId]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(userId);
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with your account' });
       }
@@ -168,11 +160,7 @@ export function createReferralsRouter(): Router {
     try {
       const userId = req.user!.id;
 
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [userId]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(userId);
       if (!orgId) {
         return res.json({ referral: null });
       }

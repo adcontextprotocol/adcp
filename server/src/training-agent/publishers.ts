@@ -28,7 +28,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     measurementProvider: 'Google Ad Manager with IAS viewability',
     measurementNotes: 'MRC-accredited viewability. 50% in-view for 1s display / 2s video. GroupM standard available on request.',
     reportingFrequencies: ['daily', 'monthly'],
-    reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'viewability', 'video_completions', 'completion_rate'],
+    reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'viewability', 'completed_views', 'completion_rate'],
     properties: [
       {
         propertyId: 'pinnacle_web',
@@ -266,7 +266,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     measurementProvider: 'IAS in-game viewability with Anzu SDK',
     measurementNotes: 'In-game impression tracking via SDK. Viewability measured per MRC in-game standards. Brand safety context derived from ESRB/PEGI ratings.',
     reportingFrequencies: ['daily'],
-    reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'video_completions', 'completion_rate', 'viewability', 'engagement_rate'],
+    reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'completed_views', 'completion_rate', 'viewability', 'engagement_rate'],
     properties: [
       {
         propertyId: 'playfield_mobile',
@@ -346,7 +346,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     measurementProvider: 'Nielsen DAR with VideoAmp cross-screen',
     measurementNotes: 'Nielsen Digital Ad Ratings for demographic guarantee. VideoAmp cross-screen deduplication. Live sports viewability measured at 95%+ completion.',
     reportingFrequencies: ['daily', 'monthly'],
-    reportingMetrics: ['impressions', 'spend', 'video_completions', 'completion_rate', 'reach', 'frequency', 'grps', 'viewability'],
+    reportingMetrics: ['impressions', 'spend', 'completed_views', 'completion_rate', 'reach', 'frequency', 'grps', 'viewability'],
     properties: [
       {
         propertyId: 'viewpoint_ctv',

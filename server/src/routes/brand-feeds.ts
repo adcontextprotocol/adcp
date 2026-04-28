@@ -10,6 +10,7 @@ import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
+import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
 import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
@@ -31,13 +32,14 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
     const brand = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!brand) return { error: 'Brand not found', status: 404 };
     if (brand.source_type === 'brand_json') return { error: 'Cannot edit self-hosted brand', status: 409 };
+    // Orphaned brands are awaiting adoption — feed/property edits during this
+    // window would write into the prior owner's manifest fields. Force the
+    // caller through updateBrandIdentity (which atomically clears or adopts
+    // the orphan state) before allowing further edits.
+    if (brand.manifest_orphaned) return { error: 'This brand is awaiting adoption — claim it through the brand identity flow first', status: 409 };
 
     // Verify the user's org owns this brand (via primary_brand_domain or organization_domains)
-    const userOrg = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userOrg.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return { error: 'No organization associated with your account', status: 403 };
     }

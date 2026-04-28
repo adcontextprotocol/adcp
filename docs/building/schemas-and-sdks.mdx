@@ -21,13 +21,13 @@ Both sources contain identical schemas. The GitHub repository includes all relea
 
 Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
 
-| Path | Contents | Stability |
-|------|----------|-----------|
+| Path | Contents | Notes |
+|------|----------|-------|
 | `https://adcontextprotocol.org/protocol/latest.tgz` | Current development bundle | Changes with every merge |
 | `https://adcontextprotocol.org/protocol/{version}.tgz` | Pinned release bundle | Immutable once published |
 | `https://adcontextprotocol.org/protocol/{version}.tgz.sha256` | SHA-256 checksum | Use to verify download integrity |
-| `https://adcontextprotocol.org/protocol/{version}.tgz.sig` | Sigstore detached signature | Use to verify publisher identity |
-| `https://adcontextprotocol.org/protocol/{version}.tgz.crt` | Fulcio-issued signing certificate | Pairs with the signature for `cosign verify-blob` |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.sig` | Sigstore detached signature | Use to verify publisher identity. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.crt` | Fulcio-issued signing certificate | Pairs with `.sig` for `cosign verify-blob`. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
 
 Every tarball extracts into a single `adcp-{version}/` directory (safe extraction, no tarbomb). Inside:
 
@@ -78,7 +78,7 @@ cosign verify-blob \
 
 `cosign verify-blob` exits non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid. Use this in any pipeline that ingests the protocol bundle as an enforcement source. The `@adcp/client` `sync-schemas` command performs this verification automatically when the sidecars are present.
 
-Older releases that predate signing remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
+Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 
 ### Compliance storyboards
 

@@ -14,6 +14,7 @@ import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
@@ -86,6 +87,16 @@ import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
+import { canonicalizeAgentUrl } from "../db/publisher-db.js";
+import {
+  AuthorizationSnapshotDatabase,
+  EvidenceValidationError,
+  IncludeValidationError,
+  parseEvidenceParam,
+  parseIncludeParam,
+} from "../db/authorization-snapshot-db.js";
+import { createHash } from "crypto";
+import { createGzip, constants as zlibConstants } from "zlib";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -1118,6 +1129,136 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+// ── Authorization sync endpoints (PR 4b-snapshots of #3177) ──────────
+// Spec: specs/registry-authorization-model.md:374-401
+//
+// Two read shapes for verification consumers:
+//  1. /api/registry/authorizations — narrow per-agent pull (default for
+//     most adopters; one agent's rows fit in a single JSON response).
+//  2. /api/registry/authorizations/snapshot — bootstrap for inline
+//     verifiers that maintain a local copy. Streams gzipped NDJSON so
+//     memory stays bounded as the table grows toward long-run scale
+//     (~5M rows, ~150-300 MB on the wire).
+//
+// X-Sync-Cursor on both responses is the change-feed position consumers
+// tail from after applying the response. agent_claim is excluded by
+// default (?evidence=adagents_json,agent_claim opt-in) per spec line 391.
+
+const AuthorizationRowSchema = z.object({
+  id: z.string().uuid(),
+  agent_url: z.string(),
+  agent_url_canonical: z.string(),
+  property_rid: z.string().uuid().nullable(),
+  property_id_slug: z.string().nullable(),
+  publisher_domain: z.string().nullable(),
+  authorized_for: z.string().nullable(),
+  evidence: z.string(),
+  disputed: z.boolean(),
+  created_by: z.string().nullable(),
+  expires_at: z.string().datetime().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+  override_applied: z.boolean(),
+  override_reason: z.string().nullable(),
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/authorizations",
+  operationId: "getAgentAuthorizations",
+  summary: "Per-agent authorization pull",
+  description:
+    "Default endpoint for verification consumers (DSPs, sales houses, agencies). " +
+    "Returns the rows where the requested agent appears as `agent_url` — typically " +
+    "≤ a few hundred. Pair with `/api/registry/feed?entity_type=authorization` to " +
+    "tail subsequent changes via the `X-Sync-Cursor` header.\n\n" +
+    "**evidence** defaults to `adagents_json` only. `agent_claim` is opt-in " +
+    "(`?evidence=adagents_json,agent_claim`) to prevent buy-side trust " +
+    "misuse — see specs/registry-authorization-model.md.",
+  tags: ["Change Feed"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed)." }),
+      include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
+      evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Authorization rows for the agent.",
+      headers: {
+        "X-Sync-Cursor": {
+          description: "UUIDv7 cursor for the authorization change feed at snapshot time. Pass to /api/registry/feed?entity_type=authorization&cursor=<value>.",
+          schema: { type: "string" },
+        },
+      },
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            evidence: z.array(z.string()),
+            include: z.enum(["raw", "effective"]),
+            rows: z.array(AuthorizationRowSchema),
+            count: z.number().int(),
+          }),
+        },
+      },
+    },
+    400: { description: "Validation error (missing/empty agent_url, unknown evidence, unknown include)", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/authorizations/snapshot",
+  operationId: "getAgentAuthorizationsSnapshot",
+  summary: "Bootstrap snapshot for inline verifiers",
+  description:
+    "Streams the full effective authorization set as gzipped NDJSON (one JSON " +
+    "object per line). Consumers persist `X-Sync-Cursor` and tail " +
+    "`/api/registry/feed?entity_type=authorization&cursor=<value>` for deltas.\n\n" +
+    "**ETag** is the hash of the X-Sync-Cursor — clients can `If-None-Match` to " +
+    "skip a re-pull when nothing has changed. **evidence** defaults to " +
+    "`adagents_json` only; long-run wire size ~150 MB gzipped.",
+  tags: ["Change Feed"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
+      evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "gzipped NDJSON stream — one authorization row per line.",
+      headers: {
+        "X-Sync-Cursor": {
+          description: "UUIDv7 cursor for the authorization change feed at snapshot time.",
+          schema: { type: "string" },
+        },
+        ETag: {
+          description: "Hash of X-Sync-Cursor; clients can If-None-Match.",
+          schema: { type: "string" },
+        },
+        "Content-Encoding": {
+          description: "gzip",
+          schema: { type: "string" },
+        },
+      },
+      content: {
+        "application/x-ndjson": {
+          schema: z.string().openapi({ description: "Newline-delimited JSON, gzip-compressed." }),
+        },
+      },
+    },
+    304: { description: "Not modified — cursor unchanged from If-None-Match." },
+    400: { description: "Validation error (unknown evidence, unknown include)", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -2370,7 +2511,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
       if (!resolved) {
         const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-        if (discovered) {
+        // Hide orphaned manifests and explicitly non-public rows. The manifest
+        // is preserved server-side for adoption-at-claim-time but must not
+        // surface on public read paths until the next claim is applied.
+        if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
@@ -2547,7 +2691,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             }
 
             const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-            if (discovered) {
+            // Hide orphaned manifests and explicitly non-public rows; same
+            // rationale as the single-resolve route above.
+            if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
@@ -5130,11 +5276,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       // Look up the user's primary org once — used for both hosted brand creation and profile linking
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(req.user!.id);
 
       // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
       // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.
@@ -5495,6 +5637,193 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       } catch (error) {
         logger.error({ error }, "Failed to query registry feed");
         return res.status(500).json({ error: "Failed to query registry feed" });
+      }
+    });
+  }
+
+  // ── Authorization sync endpoints (PR 4b-snapshots of #3177) ──────
+  // Spec: specs/registry-authorization-model.md:374-401
+  //
+  // Auth: gated by the same authMiddleware as /registry/feed — admin
+  // API key + member tokens both flow through. No new permissions.
+  // Match the /registry/feed pattern (line ~5604) of throwing on missing
+  // auth rather than silently skipping route registration; this surfaces
+  // misconfiguration at startup instead of at first request.
+  if (!authMiddleware) {
+    throw new Error('requireAuth middleware is required for /registry/authorizations endpoints');
+  }
+  {
+    const authSnapshotDb = new AuthorizationSnapshotDatabase();
+
+    /**
+     * Translate parse errors into a single 400 path. Catches the typed
+     * errors from authorization-snapshot-db and returns the same shape
+     * for consumers regardless of which param failed validation.
+     */
+    function handleParseError(err: unknown, res: import("express").Response): boolean {
+      if (err instanceof EvidenceValidationError) {
+        res.status(400).json({ error: err.message });
+        return true;
+      }
+      if (err instanceof IncludeValidationError) {
+        res.status(400).json({ error: err.message });
+        return true;
+      }
+      return false;
+    }
+
+    // include=raw bypasses v_effective_agent_authorizations and can surface
+    // moderator-suppressed rows (e.g. takedown of a phishing relationship).
+    // Per spec line 471 raw mode is an audit path; gate it on admin to
+    // prevent any-member exfiltration of moderation state.
+    function isAdminRequest(req: import('express').Request): boolean {
+      return Boolean((req as unknown as { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey);
+    }
+
+    router.get("/registry/authorizations", authMiddleware, async (req, res) => {
+      try {
+        const rawAgentUrl = req.query.agent_url;
+        if (typeof rawAgentUrl !== 'string' || rawAgentUrl.trim() === '') {
+          return res.status(400).json({ error: "agent_url query parameter is required" });
+        }
+
+        // canonicalizeAgentUrl rejects whitespace, embedded wildcards, and
+        // empty-after-trim. Use the same function the writer uses so a
+        // narrow lookup matches stored rows even when the caller submits
+        // a non-canonical URL.
+        const agentUrlCanonical = canonicalizeAgentUrl(rawAgentUrl);
+        if (!agentUrlCanonical) {
+          return res.status(400).json({ error: "agent_url is not a valid URL after canonicalization" });
+        }
+
+        let evidence: ReadonlyArray<string>;
+        let include: 'raw' | 'effective';
+        try {
+          evidence = parseEvidenceParam(req.query.evidence as string | undefined);
+          include = parseIncludeParam(req.query.include as string | undefined);
+        } catch (err) {
+          if (handleParseError(err, res)) return;
+          throw err;
+        }
+
+        if (include === 'raw' && !isAdminRequest(req)) {
+          return res.status(403).json({ error: "include=raw requires admin access" });
+        }
+
+        const { rows, cursor } = await authSnapshotDb.getNarrow({
+          agentUrlCanonical,
+          evidence,
+          include,
+        });
+
+        res.setHeader('X-Sync-Cursor', cursor);
+        return res.json({
+          agent_url: agentUrlCanonical,
+          evidence: [...evidence],
+          include,
+          rows,
+          count: rows.length,
+        });
+      } catch (error) {
+        logger.error({ error }, "Failed to query authorizations");
+        return res.status(500).json({ error: "Failed to query authorizations" });
+      }
+    });
+
+    router.get("/registry/authorizations/snapshot", bulkResolveRateLimiter, authMiddleware, async (req, res) => {
+      let evidence: ReadonlyArray<string>;
+      let include: 'raw' | 'effective';
+      try {
+        evidence = parseEvidenceParam(req.query.evidence as string | undefined);
+        include = parseIncludeParam(req.query.include as string | undefined);
+      } catch (err) {
+        if (handleParseError(err, res)) return;
+        throw err;
+      }
+
+      if (include === 'raw' && !isAdminRequest(req)) {
+        return res.status(403).json({ error: "include=raw requires admin access" });
+      }
+
+      // Open the snapshot transaction — captures the X-Sync-Cursor
+      // value before declaring the data cursor. If the request
+      // short-circuits on If-None-Match below, we still need to
+      // release the connection via rows.return().
+      let snapshot: { cursor: string; rows: AsyncIterableIterator<import("../db/authorization-snapshot-db.js").AuthRow[]> };
+      try {
+        snapshot = await authSnapshotDb.openSnapshot({ evidence, include });
+      } catch (err) {
+        logger.error({ err }, "Failed to open authorizations snapshot");
+        return res.status(500).json({ error: "Failed to open authorizations snapshot" });
+      }
+
+      const { cursor, rows } = snapshot;
+      // ETag must change with the response body. Two clients passing
+      // different evidence/include filters get different bodies — hash
+      // the cursor + filters so If-None-Match doesn't return 304 for a
+      // payload the client hasn't actually seen.
+      const etagInput = `${cursor}|${[...evidence].sort().join(',')}|${include}`;
+      const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
+        try { await rows.return?.(undefined as never); } catch { /* ignored */ }
+        res.setHeader('ETag', etag);
+        res.setHeader('X-Sync-Cursor', cursor);
+        return res.status(304).end();
+      }
+
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('X-Sync-Cursor', cursor);
+      res.setHeader('ETag', etag);
+
+      const gzip = createGzip();
+      gzip.pipe(res);
+
+      // Release the cursor/transaction the moment the client disconnects.
+      // Without this, the gzip pipe only learns of the closed socket on
+      // the next write — a holding pattern that pins one pooled DB
+      // connection per aborted request and can DoS the pool when many
+      // clients abort.
+      let aborted = false;
+      const onClose = (): void => {
+        if (aborted) return;
+        aborted = true;
+        rows.return?.(undefined as never).catch(() => { /* iterator already closed */ });
+      };
+      req.on('close', onClose);
+
+      // Z_SYNC_FLUSH after each chunk so the gzip layer emits bytes
+      // incrementally — without it, the deflate buffer holds the
+      // response server-side until .end() and the consumer can't parse
+      // NDJSON line-by-line as advertised.
+      const writeRows = (chunk: import("../db/authorization-snapshot-db.js").AuthRow[]): Promise<void> => {
+        return new Promise((resolve, reject) => {
+          const buf: string[] = [];
+          for (const row of chunk) buf.push(JSON.stringify(row) + '\n');
+          gzip.write(buf.join(''), (writeErr) => {
+            if (writeErr) return reject(writeErr);
+            gzip.flush(zlibConstants.Z_SYNC_FLUSH, () => resolve());
+          });
+        });
+      };
+
+      try {
+        for await (const chunk of rows) {
+          if (aborted) break;
+          await writeRows(chunk);
+        }
+        gzip.end();
+      } catch (err) {
+        logger.error({ err }, "Snapshot streaming aborted");
+        try { await rows.return?.(undefined as never); } catch { /* ignored */ }
+        // Headers + Content-Encoding are already set; we can't switch to
+        // a JSON 500 response. End the gzip stream so the client at
+        // least gets a clean EOF and surfaces a parse error rather than
+        // a hang.
+        gzip.end();
+      } finally {
+        req.removeListener('close', onClose);
       }
     });
   }

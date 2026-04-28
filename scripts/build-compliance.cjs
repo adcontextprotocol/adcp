@@ -345,10 +345,16 @@ function verifyEnumParity(specialisms, protocols) {
   }
 }
 
+const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
   verifyEnumParity(specialisms, protocols);
+  const docParityErrors = lintUniversalDocParity({ sourceDir });
+  if (docParityErrors.length) {
+    throw new Error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+  }
   lintStoryboardIdempotency(sourceDir, SCHEMAS_DIR);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
@@ -486,6 +492,18 @@ function main() {
   // under "Test kit flavors". #2721.
   try {
     execSync('node scripts/lint-storyboard-test-kits.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Pagination invariant: schema examples and storyboard fixtures MUST NOT
+  // teach the cursor↔has_more contradiction. has_more=true requires cursor;
+  // has_more=false MUST omit cursor. See pagination-response.json.
+  try {
+    execSync('node scripts/lint-pagination-invariant.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

@@ -670,6 +670,125 @@ function hoistNestedDefsToRoot(schema) {
 }
 
 /**
+ * After resolveRefs inlines every $ref, the same pure-enum schema can appear
+ * at multiple paths in the bundled output. json-schema-to-typescript sees two
+ * structurally identical inline shapes and emits both as Foo and Foo1, making
+ * the generated type look like a versioned duplicate that doesn't exist.
+ *
+ * This function detects pure-enum schemas (type === 'string', has enum,
+ * ≤ 4 top-level keys — allows title, description alongside type+enum) that
+ * appear at 2+ distinct non-$defs locations, hoists each into root $defs, and
+ * replaces every occurrence with a $ref pointer. Single-occurrence enums are
+ * left inline — no change to those bundled schemas.
+ *
+ * Complex object schemas ($defs hoisting for objects) is intentionally out of
+ * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
+ */
+function hoistDuplicateInlineEnums(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  function isPureEnum(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+    return (
+      s.type === 'string' &&
+      Array.isArray(s.enum) &&
+      !Object.keys(s).some(k => ['properties', 'items', 'oneOf', 'anyOf', 'allOf', 'not', '$ref', 'patternProperties'].includes(k))
+    );
+  }
+
+  function fingerprint(s) {
+    // Preserve enum value order — order-different arrays are distinct schemas.
+    // Include title so two enums with same values but different titles are NOT
+    // collapsed into one $ref (would silently rename one of them).
+    return JSON.stringify({ type: s.type, enum: s.enum, title: s.title || null });
+  }
+
+  // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
+  // Check array elements directly (symmetry with Pass 2's array branch).
+  const seen = new Map(); // fingerprint -> { schema, count }
+
+  function track(s) {
+    const fp = fingerprint(s);
+    const entry = seen.get(fp);
+    if (entry) { entry.count++; } else { seen.set(fp, { schema: s, count: 1 }); }
+  }
+
+  function collect(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (isPureEnum(item)) track(item);
+        collect(item);
+      }
+      return;
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      if (isPureEnum(val)) track(val);
+      collect(val);
+    }
+  }
+
+  collect(schema);
+
+  // Build fingerprint → defName map for titled enums that appear 2+ times.
+  // Untitled enums are left inline — we can't derive a meaningful type name
+  // for them, and a generic "InlineEnumN" is worse than the status quo.
+  const hoistMap = new Map();
+  const usedNames = new Set(Object.keys(schema.$defs || {}));
+
+  for (const [fp, { schema: s, count }] of seen) {
+    if (count < 2 || !s.title) continue;
+    let name = s.title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+    name = name.charAt(0).toUpperCase() + name.slice(1);
+    if (!name) continue; // skip titles that sanitize to empty string
+    let safeName = name;
+    let idx = 2;
+    while (usedNames.has(safeName)) { safeName = name + idx++; }
+    usedNames.add(safeName);
+    hoistMap.set(fp, safeName);
+  }
+
+  if (hoistMap.size === 0) return schema;
+
+  const rootDefs = { ...(schema.$defs || {}) };
+  // Pre-populate $defs with all hoisted definitions before the replace pass.
+  for (const [fp, defName] of hoistMap) {
+    rootDefs[defName] = seen.get(fp).schema;
+  }
+
+  // Pass 2: replace duplicate inline occurrences with $ref pointers.
+  function replace(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (isPureEnum(node[i])) {
+          const fp = fingerprint(node[i]);
+          if (hoistMap.has(fp)) { node[i] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+        }
+        replace(node[i]);
+      }
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      const val = node[key];
+      if (isPureEnum(val)) {
+        const fp = fingerprint(val);
+        if (hoistMap.has(fp)) { node[key] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+      }
+      replace(val);
+    }
+  }
+
+  replace(schema);
+  schema.$defs = rootDefs;
+  return schema;
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -722,6 +841,11 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Hoist every nested `$defs` / `definitions` block to the root so
       // those pointers resolve. See #2648.
       hoistNestedDefsToRoot(dereferenced);
+
+      // Hoist pure-enum schemas that were inlined 2+ times to $defs and
+      // replace duplicates with $ref pointers. Eliminates the Foo / Foo1
+      // numbered-suffix codegen artifact. See #3145.
+      hoistDuplicateInlineEnums(dereferenced);
 
       // Update $id to indicate this is a bundled schema
       if (dereferenced.$id) {
@@ -988,7 +1112,11 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-main().catch(err => {
-  console.error('❌ Build failed:', err.message);
-  process.exit(1);
-});
+module.exports = { hoistDuplicateInlineEnums };
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ Build failed:', err.message);
+    process.exit(1);
+  });
+}

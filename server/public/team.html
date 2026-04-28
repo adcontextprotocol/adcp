@@ -270,16 +270,16 @@
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
 
-  <!-- Invite Modal -->
+  <!-- Add Member Modal -->
   <div id="inviteModal" class="modal-overlay">
     <div class="modal">
-      <h2>Invite Team Member</h2>
+      <h2>Add team member</h2>
       <div id="inviteError" class="error-message" style="display: none;"></div>
       <form id="inviteForm">
         <div class="form-group">
-          <label for="inviteEmail">Email Address</label>
+          <label for="inviteEmail">Email address</label>
           <input type="email" id="inviteEmail" placeholder="colleague@company.com" required>
-          <p class="form-help">An invitation email will be sent to this address</p>
+          <p class="form-help">If they already have an account, they're added directly. If not, an invitation is sent. If they're already a member, their role is updated.</p>
         </div>
         <div class="form-group">
           <label for="inviteRole">Role</label>
@@ -298,7 +298,7 @@
         </div>
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeInviteModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Send Invitation</button>
+          <button type="submit" class="btn btn-primary">Add member</button>
         </div>
       </form>
     </div>
@@ -386,7 +386,7 @@
       <div class="card">
         <h2>
           <span>Team Members</span>
-          <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Invite Member</button>
+          <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Add member</button>
         </h2>
 
         <div id="seatUsageSummary" style="display: none; margin-bottom: var(--space-4);"></div>
@@ -476,6 +476,45 @@
         <div id="domainsContent">
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">Loading domains...</div>
         </div>
+
+        <div id="brandHierarchyRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <h3 style="margin: 0 0 var(--space-2) 0; font-size: var(--text-base); color: var(--color-text-heading);">Brand registry classification</h3>
+          <div style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-3);">
+            How the brand registry classifies your organization. This drives which employees can auto-join via subsidiary relationships and how your org appears in the network. If anything below is wrong, please report it &mdash; we'll review and fix.
+          </div>
+          <div id="brandHierarchyContent"></div>
+        </div>
+
+        <div id="autoProvisionRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <label style="display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;">
+            <input type="checkbox" id="autoProvisionToggle" style="margin-top: 4px;">
+            <span>
+              <strong style="display: block; color: var(--color-text-heading); margin-bottom: var(--space-1);">Auto-add verified-domain employees</strong>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">
+                When on (default), anyone who signs in with an email at one of your verified domains is automatically added as a member. Turn off to require explicit invites only.
+              </span>
+            </span>
+          </label>
+          <div id="autoProvisionStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
+        </div>
+
+        <div id="autoProvisionHierarchyRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <label style="display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;">
+            <input type="checkbox" id="autoProvisionHierarchyToggle" style="margin-top: 4px;">
+            <span>
+              <strong style="display: block; color: var(--color-text-heading); margin-bottom: var(--space-1);">Auto-add employees of subsidiary brands</strong>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-sm); display: block;">
+                When on, employees signing in from a subsidiary brand's domain are auto-added to your organization. Off by default. <strong>Lower trust than verified-domain</strong> &mdash; subsidiary relationships come from our brand registry's classification, which can be wrong or stale (especially after divestitures), so review the list below before turning this on.
+              </span>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-xs); display: block; margin-top: var(--space-2);">
+                Existing employees aren't retroactively added &mdash; only new sign-ups after you flip this on.
+              </span>
+            </span>
+          </label>
+          <div id="autoProvisionHierarchyStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
+          <div id="inferredSubsidiariesList" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); font-size: var(--text-sm);"></div>
+        </div>
+
         <div style="margin-top: 16px;">
           <button class="btn btn-secondary" onclick="openDomainVerification()">Manage Domains</button>
         </div>
@@ -985,7 +1024,10 @@
       const seat_type = document.getElementById('inviteSeatType').value;
 
       try {
-        const response = await fetch(`/api/organizations/${currentOrg}/invitations`, {
+        // Unified state-machine endpoint: invites if the user has no account,
+        // creates a membership if they have an account but aren't in the org,
+        // updates their role if they're already a member.
+        const response = await fetch(`/api/organizations/${currentOrg}/members/by-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, role, seat_type }),
@@ -994,7 +1036,7 @@
         const data = await response.json();
 
         if (!response.ok) {
-          document.getElementById('inviteError').textContent = data.message || 'Failed to send invitation';
+          document.getElementById('inviteError').textContent = data.message || 'Failed to add member';
           document.getElementById('inviteError').style.display = 'block';
           return;
         }
@@ -1002,8 +1044,8 @@
         closeInviteModal();
         loadTeamMembers();
       } catch (error) {
-        console.error('Error sending invitation:', error);
-        document.getElementById('inviteError').textContent = 'Failed to send invitation. Please try again.';
+        console.error('Error adding member:', error);
+        document.getElementById('inviteError').textContent = 'Failed to add member. Please try again.';
         document.getElementById('inviteError').style.display = 'block';
       }
     });
@@ -1147,7 +1189,7 @@
       if (!str) return '';
       const div = document.createElement('div');
       div.textContent = str;
-      return div.innerHTML;
+      return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // Load verified domains
@@ -1224,6 +1266,13 @@
             </p>
           `;
         }
+
+        // Render the auto-provision toggle whenever there is at least one
+        // verified domain. With no verified domain the toggle is a no-op
+        // (autoLinkByVerifiedDomain has nothing to match), so we hide it.
+        renderBrandHierarchy(data);
+        renderAutoProvisionToggle(orgId, data);
+        renderAutoProvisionHierarchyToggle(orgId, data);
       } catch (error) {
         console.error('Error loading domains:', error);
         domainsContent.innerHTML = `
@@ -1233,6 +1282,252 @@
         `;
       }
     }
+
+    function renderBrandHierarchy(data) {
+      const row = document.getElementById('brandHierarchyRow');
+      const content = document.getElementById('brandHierarchyContent');
+      const classification = data.hierarchy_classification;
+      const inferred = data.inferred_subsidiaries || [];
+
+      // Hide the section if we have no classification at all AND no
+      // children — there's nothing useful to show.
+      if (!classification && inferred.length === 0) {
+        row.style.display = 'none';
+        return;
+      }
+      row.style.display = 'block';
+
+      const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '—';
+      const reportLink = (kind, domain) => {
+        const subject = encodeURIComponent(`Brand registry correction: ${domain}`);
+        const body = encodeURIComponent(
+          `Issue: ${kind} classification of ${domain} appears wrong.\n\n` +
+          `Please describe the correct classification:\n\n`
+        );
+        return `mailto:hello@agenticadvertising.org?subject=${subject}&body=${body}`;
+      };
+
+      // Source badge: brand_json self-asserted is authoritative ("they told
+      // us"), enriched is LLM-inferred ("our best guess"). Distinguish them
+      // visually so admins know whether to fix it in their own brand.json
+      // (the better path) vs email us to dispute.
+      const sourceBadge = (source) => {
+        if (source === 'brand_json') {
+          return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-success-50); color: var(--color-success-700);" title="Self-asserted in brand.json">Asserted</span>`;
+        }
+        return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-gray-100); color: var(--color-text-secondary);" title="Inferred by automated classification">Inferred</span>`;
+      };
+
+      const parts = [];
+
+      // Parent (if classified as a child of someone else)
+      if (classification && classification.parent) {
+        const p = classification.parent;
+        parts.push(`
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
+            <span style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Parent</span>
+            <strong style="color: var(--color-text-heading);">${escapeHtml(p.brand_name || p.domain)}</strong>
+            <span style="color: var(--color-text-tertiary);">— ${escapeHtml(p.domain)}</span>
+            ${sourceBadge(p.source)}
+            <a href="${reportLink('parent', p.domain)}" style="margin-left: auto; color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+          </div>
+          <div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>
+        `);
+      }
+
+      // Self (always shown when classification exists)
+      if (classification && classification.self) {
+        const s = classification.self;
+        // Confidence badge applies to inferred classifications. brand_json
+        // entries are self-asserted; "confidence" is the wrong frame.
+        const confidenceBadge = (s.source !== 'brand_json' && s.confidence)
+          ? `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: ${s.confidence === 'high' ? 'var(--color-success-50)' : 'var(--color-warning-50)'}; color: ${s.confidence === 'high' ? 'var(--color-success-700)' : 'var(--color-warning-700)'};">${escapeHtml(s.confidence)} confidence</span>`
+          : '';
+        parts.push(`
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-primary-50, var(--color-gray-100)); border: 1px solid var(--color-primary-200, var(--color-gray-200)); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
+            <span style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">You</span>
+            <strong style="color: var(--color-text-heading);">${escapeHtml(s.brand_name || s.domain)}</strong>
+            <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
+            ${sourceBadge(s.source)}
+            ${confidenceBadge}
+            <span style="margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs);">last validated ${fmtDate(s.last_validated)}</span>
+          </div>
+        `);
+        // brand_json-asserted? Tell the admin where the right fix is.
+        if (s.source === 'brand_json' && classification.parent) {
+          parts.push(`
+            <div style="margin: -4px 0 var(--space-2) 0; padding: var(--space-2) var(--space-3); color: var(--color-text-tertiary); font-size: var(--text-xs);">
+              The hierarchy above came from your own brand.json (asserted by you). To correct it, update <code>${escapeHtml(s.domain)}/.well-known/brand.json</code> rather than emailing us.
+            </div>
+          `);
+        }
+      }
+
+      // Children
+      if (inferred.length > 0) {
+        parts.push(`<div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>`);
+        parts.push(`
+          <div style="padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2);">
+            <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-2);">Subsidiary brands (${inferred.length})</div>
+            <ul style="list-style: none; margin: 0; padding: 0;">
+              ${inferred.map(s => `
+                <li style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0;">
+                  <strong style="color: var(--color-text-heading);">${escapeHtml(s.brand_name || s.domain)}</strong>
+                  <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
+                  ${sourceBadge(s.source)}
+                  <span style="margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs);">last validated ${fmtDate(s.last_validated)}</span>
+                  <a href="${reportLink('child', s.domain)}" style="color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        `);
+      } else if (classification) {
+        // Self exists but no children — say so explicitly.
+        parts.push(`
+          <div style="padding: var(--space-2) var(--space-3); color: var(--color-text-tertiary); font-size: var(--text-sm); font-style: italic;">
+            No subsidiary brands classified.
+          </div>
+        `);
+      }
+
+      content.innerHTML = parts.join('');
+    }
+
+    function renderAutoProvisionToggle(orgId, data) {
+      const row = document.getElementById('autoProvisionRow');
+      const toggle = document.getElementById('autoProvisionToggle');
+      const status = document.getElementById('autoProvisionStatus');
+      const hasVerified = (data.domains || []).some(d => d.verified);
+      // Owner-only: turning auto-provision on widens org membership in a way
+      // an admin shouldn't be able to do unilaterally (admins can promote
+      // auto-joined members to admin under the new role-cap policy). The
+      // backend enforces the same restriction; the UI mirrors it.
+      const isOwner = currentUserRole === 'owner';
+
+      if (!hasVerified || !isOwner) {
+        row.style.display = 'none';
+        return;
+      }
+
+      row.style.display = 'block';
+      toggle.checked = data.auto_provision_verified_domain !== false;
+      status.style.display = 'none';
+      status.textContent = '';
+
+      // Replace any prior listener by cloning the node
+      const fresh = toggle.cloneNode(true);
+      toggle.parentNode.replaceChild(fresh, toggle);
+      fresh.addEventListener('change', async (e) => {
+        const desired = e.target.checked;
+        e.target.disabled = true;
+        try {
+          const response = await fetch(`/api/organizations/${orgId}/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ auto_provision_verified_domain: desired }),
+          });
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.message || 'Failed to update setting');
+          }
+          status.style.display = 'block';
+          status.style.color = 'var(--color-success-700)';
+          status.textContent = desired
+            ? 'Auto-add is on. Verified-domain sign-ins will join automatically.'
+            : 'Auto-add is off. Members must be invited explicitly.';
+        } catch (err) {
+          console.error('Error updating auto_provision_verified_domain:', err);
+          e.target.checked = !desired;
+          status.style.display = 'block';
+          status.style.color = 'var(--color-danger-700)';
+          status.textContent = 'Could not update — please try again.';
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    }
+
+    function renderAutoProvisionHierarchyToggle(orgId, data) {
+      const row = document.getElementById('autoProvisionHierarchyRow');
+      const toggle = document.getElementById('autoProvisionHierarchyToggle');
+      const status = document.getElementById('autoProvisionHierarchyStatus');
+      const subsidiariesList = document.getElementById('inferredSubsidiariesList');
+      const inferred = data.inferred_subsidiaries || [];
+      const isOwner = currentUserRole === 'owner';
+      const enabled = data.auto_provision_brand_hierarchy_children === true;
+
+      // Hide entirely when (a) the brand registry has no high-confidence
+      // children for this org AND the flag isn't already on (no use case),
+      // or (b) the user isn't an owner. Owners see the row even with zero
+      // children if they've already opted in, so they can turn it back off.
+      if (!isOwner) {
+        row.style.display = 'none';
+        return;
+      }
+      if (inferred.length === 0 && !enabled) {
+        row.style.display = 'none';
+        return;
+      }
+
+      row.style.display = 'block';
+      toggle.checked = enabled;
+      status.style.display = 'none';
+      status.textContent = '';
+
+      // The subsidiaries themselves are listed in the brand-hierarchy
+      // section above (renderBrandHierarchy). Just show enabled-at + a
+      // pointer up.
+      const enabledAt = data.auto_provision_hierarchy_enabled_at
+        ? new Date(data.auto_provision_hierarchy_enabled_at).toLocaleDateString()
+        : null;
+      if (inferred.length > 0) {
+        subsidiariesList.innerHTML = `
+          <div style="color: var(--color-text-secondary); font-size: var(--text-sm);">
+            Subsidiaries that would be auto-added are listed in the <em>Brand registry classification</em> section above (${inferred.length}).
+          </div>
+          ${enabledAt ? `<div style="margin-top: var(--space-2); color: var(--color-text-tertiary); font-size: var(--text-xs);">Enabled on ${enabledAt}. New sign-ups from these domains after that date are auto-added.</div>` : ''}
+        `;
+      } else {
+        subsidiariesList.innerHTML = `
+          <span style="color: var(--color-text-secondary);">No subsidiary brands classified to your domain right now. The toggle is currently on, but it has nothing to match — turn it off if you don't expect this to change.</span>
+        `;
+      }
+
+      const fresh = toggle.cloneNode(true);
+      toggle.parentNode.replaceChild(fresh, toggle);
+      fresh.addEventListener('change', async (e) => {
+        const desired = e.target.checked;
+        e.target.disabled = true;
+        try {
+          const response = await fetch(`/api/organizations/${orgId}/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ auto_provision_brand_hierarchy_children: desired }),
+          });
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.message || 'Failed to update setting');
+          }
+          status.style.display = 'block';
+          status.style.color = 'var(--color-success-700)';
+          status.textContent = desired
+            ? 'On. New sign-ups from subsidiary brands will be auto-added.'
+            : 'Off. Subsidiary-brand sign-ups will not be auto-added.';
+        } catch (err) {
+          console.error('Error updating auto_provision_brand_hierarchy_children:', err);
+          e.target.checked = !desired;
+          status.style.display = 'block';
+          status.style.color = 'var(--color-danger-700)';
+          status.textContent = 'Could not update — please try again.';
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    }
+
 
     // Store domain users for batch add
     let domainUsersList = [];

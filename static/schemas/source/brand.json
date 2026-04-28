@@ -263,7 +263,7 @@
           "description": "Agentic checkout endpoint configuration",
           "properties": {
             "endpoint": { "type": "string", "format": "uri", "description": "Base URL for checkout session API" },
-            "spec": { "type": "string", "enum": ["openai_agentic_checkout_v1"], "description": "Checkout API specification" },
+            "spec": { "type": "string", "description": "Checkout API specification identifier. Use a namespaced string to identify the checkout protocol (e.g., vendor-prefixed or custom). Vendor-specific values belong under ext.{vendor}." },
             "supported_payment_providers": {
               "type": "array",
               "description": "Payment providers supported by this checkout endpoint",
@@ -629,20 +629,6 @@
           "format": "uri",
           "pattern": "^https://",
           "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs or requests it sends. Verified artifacts include signed governance_context tokens (for governance agents) and RFC 9421 HTTP Signatures on outgoing requests (for any agent). When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header or RFC 9421 `keyid` parameter; JWKS MAY contain multiple keys to support rotation and per-purpose separation via `key_ops` and `use`."
-        },
-        "scope": {
-          "type": "array",
-          "description": "For governance agents: which governance responsibilities this agent handles. Values correspond to compliance specialisms. When a house declares multiple governance agents, scope distinguishes them. When absent on a governance agent, the agent is assumed to handle all governance categories.",
-          "items": {
-            "type": "string",
-            "enum": [
-              "spend_authority",
-              "delivery_monitor",
-              "brand_safety",
-              "regulatory_compliance"
-            ]
-          },
-          "uniqueItems": true
         },
         "available_uses": {
           "type": "array",
@@ -1434,8 +1420,7 @@
             "url": "https://agents.pg.com/governance",
             "id": "pg_governance",
             "description": "Brand safety and compliance for all P&G brands",
-            "jwks_uri": "https://agents.pg.com/.well-known/jwks.json",
-            "scope": ["spend_authority", "delivery_monitor", "brand_safety"]
+            "jwks_uri": "https://agents.pg.com/.well-known/jwks.json"
           }
         ]
       },

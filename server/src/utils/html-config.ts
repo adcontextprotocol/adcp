@@ -9,9 +9,8 @@ import type { Request, Response } from "express";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { getPool } from "../db/client.js";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
-import { resolvePreferredOrganization, backfillPrimaryOrganization } from "../db/users-db.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { createLogger } from "../logger.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 
@@ -177,32 +176,7 @@ export async function enrichUserWithAdmin(user: AppUser | null | undefined): Pro
 export async function enrichUserWithMembership(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
   if (!user?.id || user.isMember !== undefined) return user;
   try {
-    const pool = getPool();
-
-    // Try primary_organization_id first (fast path)
-    const result = await pool.query(
-      `SELECT u.primary_organization_id
-       FROM users u
-       WHERE u.workos_user_id = $1
-         AND u.primary_organization_id IS NOT NULL`,
-      [user.id]
-    );
-
-    let orgId: string | null = result.rows[0]?.primary_organization_id ?? null;
-
-    // Fall back to organization_memberships if primary_organization_id is not set.
-    // This handles users who signed up after the initial backfill migration.
-    if (!orgId) {
-      orgId = await resolvePreferredOrganization(user.id);
-
-      // Backfill primary_organization_id so future lookups use the fast path
-      if (orgId) {
-        backfillPrimaryOrganization(user.id, orgId).catch((err) => {
-          logger.warn({ error: err, userId: user.id }, 'Best-effort backfill of primary_organization_id failed');
-        });
-      }
-    }
-
+    const orgId = await resolvePrimaryOrganization(user.id);
     if (orgId) {
       const membership = await resolveEffectiveMembership(orgId);
       user.isMember = membership.is_member;

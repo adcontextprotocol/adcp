@@ -16,6 +16,7 @@ import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
@@ -28,6 +29,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
+import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -117,7 +119,7 @@ import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
-import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -211,6 +213,97 @@ interface CacheEntry<T> {
 const workosOrgCache = new Map<string, CacheEntry<{ name: string }>>();
 const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Shape the dedup helper outcome into a serializable JSON object for the
+ * registry_audit_log details field. The admin UI reads this back to render
+ * the dedup history panel.
+ */
+function dedupAuditDetails(
+  outcome: Awaited<ReturnType<typeof dedupOnSubscriptionCreated>>,
+  newSub: Stripe.Subscription,
+  customerId: string,
+): Record<string, unknown> {
+  const base = {
+    kind: outcome.kind,
+    customer_id: customerId,
+    new_sub_id: newSub.id,
+  };
+  switch (outcome.kind) {
+    case 'canceled_new':
+      return {
+        ...base,
+        existing_live_sub_ids: outcome.existingLiveSubIds,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'canceled_existing':
+      return {
+        ...base,
+        canceled_sub_id: outcome.canceledSubId,
+        surviving_new_sub_id: outcome.survivingNewSubId,
+        canceled_facts: outcome.canceledFacts,
+        surviving_tier_label: outcome.survivingTierLabel,
+      };
+    case 'manual_review':
+      return {
+        ...base,
+        all_live_sub_ids: outcome.allLiveSubIds,
+        reason: outcome.reason,
+      };
+    default:
+      // Caller already filters to the three above; this is a defensive
+      // fallthrough so a future outcome variant doesn't write nothing.
+      return base;
+  }
+}
+
+/**
+ * Fire-and-forget customer notification when the webhook dedup helper
+ * canceled a duplicate subscription on this org. We always send to the
+ * full set of org admins (typically a single founder/owner). All failures
+ * are logged but never thrown — the dedup itself is the primary action.
+ */
+function fireDedupNotice(args: {
+  org: { workos_organization_id: string; name: string | null };
+  workos: WorkOS;
+  logger: import('pino').Logger;
+  scenario: 'canceled_new' | 'canceled_existing';
+  survivingTierLabel: string | null;
+}): void {
+  const { org, workos: workosClient, logger: log, scenario, survivingTierLabel } = args;
+  void (async () => {
+    try {
+      const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+      const adminEmails = await getOrgAdminEmails(workosClient, org.workos_organization_id);
+      if (adminEmails.length === 0) {
+        log.warn(
+          { orgId: org.workos_organization_id, scenario },
+          'No admin emails found for org — skipping duplicate-subscription notice',
+        );
+        return;
+      }
+      await Promise.all(
+        adminEmails.map((to) =>
+          sendDuplicateSubscriptionNotice({
+            to,
+            organizationName: org.name ?? 'your organization',
+            scenario,
+            survivingTierLabel,
+            workosOrganizationId: org.workos_organization_id,
+          }).catch((err) =>
+            log.error({ err, to, orgId: org.workos_organization_id }, 'Failed to send dedup notice'),
+          ),
+        ),
+      );
+    } catch (err) {
+      log.error(
+        { err, orgId: org.workos_organization_id, scenario },
+        'Error dispatching duplicate-subscription notice',
+      );
+    }
+  })();
+}
 
 function getCachedOrg(orgId: string): { name: string } | null {
   const entry = workosOrgCache.get(orgId);
@@ -556,6 +649,14 @@ export class HTTPServer {
     this.app.get('/.well-known/openapi.yaml', (_req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.redirect(302, '/openapi/registry.yaml');
+    });
+
+    // RFC 7517 JWKS publishing Addie's request-signing public key. Verifiers
+    // (sellers receiving signed AdCP requests from Addie) fetch this to
+    // resolve the `kid` carried in `Signature-Input`.
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(getPublicSigningJwks());
     });
 
     // RFC 9728 protected-resource metadata for the REST API. Points at the same
@@ -3473,25 +3574,149 @@ export class HTTPServer {
             // until the organizations row reflects the activated membership.
             let activationAdminContext: ActivationAdminContext | undefined;
 
-            if (event.type === 'customer.subscription.created' && org) {
-              activationAdminContext = await handleSubscriptionCreated({
+            // Dedup outcome controls two things:
+            //   - suppressOrgUpdate: skip the row UPDATE when we want a
+            //     different sub (the existing one, or none) to remain
+            //     tracked instead of this newly-created one.
+            //   - whether to fire fresh-activation hooks (welcome email,
+            //     listing autopublish): only on `no_duplicate`. The
+            //     `canceled_existing` case is a swap, not an activation —
+            //     the customer was already a member.
+            let suppressOrgUpdate = false;
+
+            if (event.type === 'customer.subscription.created') {
+              const dedup = await dedupOnSubscriptionCreated({
                 subscription,
                 customerId,
-                org,
+                orgId: org?.workos_organization_id,
                 stripe,
-                workos: workos!,
-                orgDb,
-                pool,
                 logger,
                 notifySystemError,
-                notifyNewSubscription,
               });
+
+              switch (dedup.kind) {
+                case 'canceled_new':
+                  // We canceled the just-created sub (it was the unpaid
+                  // duplicate). Keep the org row pointing at the surviving
+                  // existing sub.
+                  suppressOrgUpdate = true;
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_new',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
+                  break;
+                case 'retry_skip':
+                  // Stripe retried `customer.subscription.created` after a
+                  // prior invocation already canceled this sub. The event's
+                  // status is non-live now; running UPDATE would overwrite
+                  // the surviving sub's row state with `status: 'canceled'`.
+                  suppressOrgUpdate = true;
+                  break;
+                case 'manual_review':
+                  // Don't change tracking — ops will resolve in Stripe and
+                  // run /sync to reconcile.
+                  suppressOrgUpdate = true;
+                  break;
+                case 'canceled_existing':
+                  // The new sub becomes the org's tracked sub. Let the
+                  // UPDATE block below run, but skip handleSubscriptionCreated
+                  // — this is a tier swap, not a fresh activation.
+                  if (dedup.canceledFacts.cancelSucceeded && org && workos) {
+                    fireDedupNotice({
+                      org,
+                      workos,
+                      logger,
+                      scenario: 'canceled_existing',
+                      survivingTierLabel: dedup.survivingTierLabel,
+                    });
+                  }
+                  break;
+                case 'no_duplicate':
+                  if (org) {
+                    activationAdminContext = await handleSubscriptionCreated({
+                      subscription,
+                      customerId,
+                      org,
+                      stripe,
+                      workos: workos!,
+                      orgDb,
+                      pool,
+                      logger,
+                      notifySystemError,
+                      notifyNewSubscription,
+                    });
+                  }
+                  break;
+              }
+
+              // Persist the dedup decision to the audit log so admins can
+              // retroactively see what happened on this org. We only record
+              // the cases where the helper actually decided something; the
+              // common no_duplicate / retry_skip paths are uninteresting and
+              // would drown the log. Failure here is logged but never
+              // throws — the dedup itself is the primary action.
+              if (
+                org &&
+                (dedup.kind === 'canceled_new' ||
+                  dedup.kind === 'canceled_existing' ||
+                  dedup.kind === 'manual_review')
+              ) {
+                try {
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: SYSTEM_USER_ID,
+                    action: 'subscription_dedup',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: dedupAuditDetails(dedup, subscription, customerId),
+                  });
+                } catch (auditErr) {
+                  logger.error(
+                    { err: auditErr, orgId: org.workos_organization_id, dedupKind: dedup.kind },
+                    'Failed to persist dedup audit log entry',
+                  );
+                }
+              }
+            }
+
+            // For `.updated`/`.deleted` events, ignore the event when its
+            // subscription id is not the one we currently track for this org
+            // AND the event's status is non-live. That covers two cases:
+            // (a) the dedup helper just canceled a duplicate, and Stripe is
+            // now firing the follow-up `.updated`/`.deleted` for that
+            // canceled duplicate — without this guard, those events would
+            // overwrite the surviving sub's row state. (b) a customer's
+            // long-canceled standby sub gets a webhook event by some Stripe
+            // path; we shouldn't reset the org's tracked sub.
+            // `.created` is exempt because that's how we *learn* about a new
+            // sub the org row doesn't yet point to.
+            const isStaleNonLiveEvent =
+              event.type !== 'customer.subscription.created' &&
+              org !== null &&
+              org.stripe_subscription_id !== null &&
+              org.stripe_subscription_id !== subscription.id &&
+              !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status);
+
+            if (isStaleNonLiveEvent) {
+              logger.info({
+                eventType: event.type,
+                eventSubId: subscription.id,
+                trackedSubId: org!.stripe_subscription_id,
+                eventStatus: subscription.status,
+                orgId: org!.workos_organization_id,
+              }, 'Ignoring webhook event for non-tracked sub in non-live status');
+              break;
             }
 
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
-              if (org) {
+              if (org && !suppressOrgUpdate) {
                 const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
                 // Capture current tier before update for change detection
@@ -5465,6 +5690,11 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-addie-costs.html');
     });
 
+    // Suggested-prompts metrics dashboard.
+    this.app.get('/admin/prompt-metrics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-prompt-metrics.html');
+    });
+
     // Note: /admin/billing is now served from billing.ts router
 
     // Admin content management — now lives in dashboard
@@ -6638,15 +6868,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           statuses: ['active'],
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              statuses: ['active'],
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            statuses: ['active'],
+          });
         }
 
         // Map memberships to organization details with roles
@@ -7861,10 +8090,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.debug({ err }, 'Failed to load content for member profile');
         }
 
-        // Resolve brand data from registry if linked
+        // Resolve brand data from registry if linked. Skip orphaned brands —
+        // the manifest is preserved server-side for adoption-at-claim-time
+        // but must not surface on the public member-profile endpoint.
         if (profile.primary_brand_domain) {
           const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-          if (brand?.brand_manifest) {
+          if (brand?.brand_manifest && !brand.manifest_orphaned) {
             profile.resolved_brand = resolveBrandFromJson(
               profile.primary_brand_domain,
               brand.brand_manifest as Record<string, unknown>,
@@ -8306,6 +8537,28 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     await runMigrations();
 
+    // Validate the idempotency backend can actually query its table — fails
+    // fast on a stale pool, missing migration, or wrong-credentials boot
+    // rather than silently passing every mutating call to a broken backend.
+    // No-ops when the store falls back to memoryBackend.
+    //
+    // Bounded with a 10s deadline because the pg pool has connectionTimeoutMillis=5000
+    // but no statement_timeout — without this race, a hung query (e.g., DB starting
+    // up, replica failover) would stall boot indefinitely and starve Fly's TCP healthcheck.
+    const { getIdempotencyStore } = await import("./training-agent/idempotency.js");
+    const probe = getIdempotencyStore().probe?.();
+    if (probe) {
+      await Promise.race([
+        probe,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Idempotency backend probe timed out after 10s — check DATABASE_URL and pool reachability")),
+            10_000,
+          ),
+        ),
+      ]);
+    }
+
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
     if (AUTH_ENABLED && workos) {
       const orgDb = new OrganizationDatabase();
@@ -8399,6 +8652,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
             startSeatRequestReminders(workos!);
           }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+
+          // Daily auto-provision new-member digest for org admins/owners.
+          // Consent receipt for the auto_provision_verified_domain default.
+          import('./scheduled/auto-provision-digest.js').then(({ startAutoProvisionDigest }) => {
+            startAutoProvisionDigest(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start auto-provision digest'));
         }
 
         // Start Luma calendar sync (catches events missed by webhooks)
@@ -8451,6 +8710,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
         stopSeatRequestReminders();
+      }).catch(() => {});
+
+      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+        stopAutoProvisionDigest();
       }).catch(() => {});
 
       import('./luma/sync.js').then(({ stopLumaSync }) => {
