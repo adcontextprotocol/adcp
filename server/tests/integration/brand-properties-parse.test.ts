@@ -352,6 +352,40 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     expect(res.body.properties).toHaveLength(500);
   });
 
+  it('strips ```json markdown fences from the LLM response', async () => {
+    // Claude haiku frequently wraps structured output in a ```json fence even
+    // when the prompt asks for raw JSON. Caught end-to-end during PR #3396
+    // playwright testing.
+    const fenced = '```json\n' +
+      JSON.stringify({ properties: [{ identifier: 'cnn.com', type: 'website' }] }, null, 2) +
+      '\n```';
+    mocks.anthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: fenced }],
+    });
+
+    const res = await request(app)
+      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .send({ input: 'cnn.com', input_type: 'text' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.properties[0].identifier).toBe('cnn.com');
+  });
+
+  it('strips bare ``` (no language tag) fences', async () => {
+    const fenced = '```\n{"properties":[{"identifier":"x.example","type":"website"}]}\n```';
+    mocks.anthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: fenced }],
+    });
+
+    const res = await request(app)
+      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .send({ input: 'x', input_type: 'text' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+  });
+
   it('returns warning + empty list when the LLM emits non-JSON', async () => {
     mocks.anthropicCreate.mockResolvedValueOnce({
       content: [{ type: 'text', text: 'sorry, no domains here' }],
