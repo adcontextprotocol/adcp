@@ -7,7 +7,7 @@ description: "Implementation guidance for the buyer-side IdentityMatch service �
 
 # Identity Match Implementation Guide
 
-This page covers how to implement the buyer side of TMP's Identity Match operation. The wire spec lives in the [specification](specification.mdx); the conformance invariants the service must satisfy are also normative there. What lives on this page is **implementation guidance** — the data model, the SDK primitives, and the operational shape of a working IdentityMatch service. Storage backend is an implementer choice; the SDK exposes pluggable interfaces.
+This page covers how to implement the buyer side of TMP's Identity Match operation. The wire spec lives in the [specification](/docs/trusted-match/specification); the conformance invariants the service must satisfy are also normative there. What lives on this page is **implementation guidance** — the data model, the SDK primitives, and the operational shape of a working IdentityMatch service. Storage backend is an implementer choice; the SDK exposes pluggable interfaces.
 
 The reference data model on this page is **valkey-backed** and reflects what Scope3 ships. Other buyers may use Aerospike, DynamoDB, PostgreSQL, in-memory state, or anything else — as long as the conformance invariants hold, the service is valid.
 
@@ -15,8 +15,8 @@ The reference data model on this page is **valkey-backed** and reflects what Sco
 
 | Layer | Status | What it covers |
 |---|---|---|
-| Wire spec | Normative | The HTTP JSON request/response on `POST /identity`, the `serve_window_sec` semantic, the TMPX binary format. See [specification.mdx](specification.mdx). |
-| Conformance invariants | Normative | The eligibility logic an IdentityMatch service MUST compute (audience intersection, fcap merge across identities, active state, audience freshness). Also in [specification.mdx](specification.mdx#conformance-invariants-for-identitymatch-eligibility). |
+| Wire spec | Normative | The HTTP JSON request/response on `POST /identity`, the `serve_window_sec` semantic, the TMPX binary format. See the [TMP specification](/docs/trusted-match/specification). |
+| Conformance invariants | Normative | The eligibility logic an IdentityMatch service MUST compute (audience intersection, fcap merge across identities, active state, audience freshness). See [Conformance invariants for IdentityMatch eligibility](/docs/trusted-match/specification#conformance-invariants-for-identitymatch-eligibility). |
 | Reference data model | Non-normative | Scope3's valkey-backed implementation choice — Redis primitives, key patterns, field names. The rest of this page. |
 
 ## fcap_keys label model
@@ -162,7 +162,7 @@ The SDK ships impression handling as **two composable functions**, not a single 
 ```
 decodeTmpx(raw_tmpx) -> ExposureLog
   Decrypts HPKE ciphertext, parses the published TMPX binary format
-  (specification.mdx#binary-format), returns the resolved identity entries
+  (/docs/trusted-match/specification#binary-format), returns the resolved identity entries
   in a structured form ready for serialization onto a topic or for direct write.
 
 writeExposure(log, store_context) -> { ok, count }
@@ -340,8 +340,8 @@ This is the semantic the `serve_window_sec` field encodes. The buyer agent's job
 
 ## See also
 
-- [TMP Specification](specification.mdx) — wire spec, TMPX format, conformance invariants
-- [Buyer Guide](buyer-guide.mdx) — buyer agent integration, Context Match + Identity Match flows
-- [Migration from AXE](migration-from-axe.mdx) — for buyers transitioning from AXE-shaped pipelines, including the OpenRTB User.eids cross-walk
-- [Privacy architecture](privacy-architecture.mdx) — what each party learns
-- [Router architecture](router-architecture.mdx) — provider registration, fan-out, latency
+- [TMP Specification](/docs/trusted-match/specification) — wire spec, TMPX format, conformance invariants
+- [Buyer Guide](/docs/trusted-match/buyer-guide) — buyer agent integration, Context Match + Identity Match flows
+- [Migration from AXE](/docs/trusted-match/migration-from-axe) — for buyers transitioning from AXE-shaped pipelines, including the OpenRTB User.eids cross-walk
+- [Privacy architecture](/docs/trusted-match/privacy-architecture) — what each party learns
+- [Router architecture](/docs/trusted-match/router-architecture) — provider registration, fan-out, latency

@@ -217,13 +217,13 @@ The publisher enforces allocation rules (competitive separation, pod composition
 A conformant IdentityMatch service MUST compute `eligible_package_ids` such that, for each `package_id ∈ request.package_ids`, the package is included in `eligible_package_ids` if and only if **all** of the following hold:
 
 1. **Audience eligibility.** Either the package has no audience requirement, OR there exists at least one audience identifier `a` such that `a` is in the package's required audience set AND `a` is in the audience-membership of at least one identity `i ∈ request.identities` (the union across the user's resolved identities intersects the package's required audiences).
-2. **Frequency cap eligibility.** For every fcap policy `k` declared on the package, the merged exposure count for `request.identities` against `k` is strictly less than the policy's `max_count`. The merge across identities applies the policy's declared rule (MAX, OR, or SUM — see § Buyer-side implementation in the [buyer guide](buyer-guide.mdx)).
+2. **Frequency cap eligibility.** For every fcap policy `k` declared on the package, the merged exposure count for `request.identities` against `k` is strictly less than the policy's `max_count`. The merge across identities applies the policy's declared rule (MAX, OR, or SUM — see § Buyer-side implementation in the [buyer guide](/docs/trusted-match/buyer-guide)).
 3. **Active state.** Packages or policies marked inactive MUST be treated as if absent.
 4. **Audience freshness.** If the buyer's audience pipeline publishes a freshness deadline and the current time is past it, that audience-membership entry MUST NOT contribute to (1).
 
 The TMPX returned with the response MUST encode the resolved identities so the out-of-band impression handler can update exposure state atomically — see § TMPX tokens.
 
-Storage backend (valkey, Aerospike, DynamoDB, in-memory, anything) is implementation. Two services with different storage backends that satisfy these invariants for the same inputs MUST return the same eligibility output. See the [buyer guide](buyer-guide.mdx) for a reference valkey-backed data model and SDK primitives that satisfy the invariants.
+Storage backend (valkey, Aerospike, DynamoDB, in-memory, anything) is implementation. Two services with different storage backends that satisfy these invariants for the same inputs MUST return the same eligibility output. See the [buyer guide](/docs/trusted-match/buyer-guide) for a reference valkey-backed data model and SDK primitives that satisfy the invariants.
 
 #### Consent
 

@@ -147,12 +147,12 @@ Cross-publisher frequency capping is the primary use case for Identity Match. Yo
 
 - **Count impressions** per fcap key (campaign, advertiser, creative, line item, or whatever dimensions you cap on) per resolved user identity
 - **Apply policies** with a window and max count
-- **Merge across identities** for users with multiple resolved tokens (RampID + ID5 + MAID for the same person) — see [merge rules](identity-match-implementation#merge-rules)
+- **Merge across identities** for users with multiple resolved tokens (RampID + ID5 + MAID for the same person) — see [merge rules](/docs/trusted-match/identity-match-implementation#merge-rules)
 - **Exclude packages** from `eligible_package_ids` when any cap on the package trips
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
-For the implementation details — the fcap_keys label model, the reference valkey data model, merge_rule semantics, audience and exposure record shapes, the SDK primitives, and Redis-command walkthroughs for the conformance scenarios — see [Identity Match implementation](identity-match-implementation.mdx).
+For the implementation details — the fcap_keys label model, the reference valkey data model, merge_rule semantics, audience and exposure record shapes, the SDK primitives, and Redis-command walkthroughs for the conformance scenarios — see [Identity Match implementation](/docs/trusted-match/identity-match-implementation).
 
 ### How Buyers Learn About Exposures
 
@@ -160,7 +160,7 @@ The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE
 
 This gives you real-time per-user exposure signals without the publisher seeing user identity.
 
-See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure, and [Identity Match implementation](identity-match-implementation.mdx#sdk-primitives) for the SDK functions.
+See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure, and [Identity Match implementation](/docs/trusted-match/identity-match-implementation#sdk-primitives) for the SDK functions.
 
 ## Provider Registration
 
