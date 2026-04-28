@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadRules, invalidateRulesCache } from '../../src/addie/rules/index.js';
+import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
 
 describe('Rules Loader', () => {
   beforeEach(() => {
@@ -79,5 +80,55 @@ describe('Rules Loader', () => {
 
     // Content should be the same but it's a fresh read
     expect(first).toEqual(second);
+  });
+});
+
+describe('Addie tool reference', () => {
+  it('appends the auto-generated authoritative catalog', () => {
+    expect(ADDIE_TOOL_REFERENCE).toContain('## Authoritative tool catalog (auto-generated)');
+    // Catalog must list capability sets and a representative tool from each;
+    // any of these going missing means the generator output drifted from
+    // tool-sets.ts and the doc page is no longer the source of truth.
+    expect(ADDIE_TOOL_REFERENCE).toContain('**knowledge**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_testing**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
+    expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
+  });
+
+  it('catalog lands at the END of the assembled system prompt (claude-client concat order)', () => {
+    // Mirror the concat in claude-client.ts:getSystemPrompt — base rules,
+    // then `\n\n---\n\n`, then ADDIE_TOOL_REFERENCE. The catalog needs to be
+    // the LAST section the model reads so its "treat every listed tool as
+    // available" framing isn't undercut by earlier prose.
+    const assembled = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    const catalogIdx = assembled.indexOf('## Authoritative tool catalog (auto-generated)');
+    expect(catalogIdx).toBeGreaterThan(0);
+    // Nothing of substance after the catalog (allow trailing whitespace).
+    const tail = assembled.slice(catalogIdx);
+    const lastNonEmptyLine = tail.split('\n').reverse().find(l => l.trim().length > 0);
+    expect(lastNonEmptyLine).toMatch(/^[a-z_, ]+$/); // a flat tool list line, not prose
+  });
+
+  it('includes the honest-search-report rule', () => {
+    const rules = loadRules();
+    expect(rules).toContain('## Honest Reporting After Search');
+    expect(rules).toContain("aren't loaded in this conversation");
+  });
+
+  it('every tool in the public docs page is also referenced in the prompt catalog', async () => {
+    // The two outputs of build-addie-tool-reference share a registration
+    // source but use different render paths (`render` for the docs page,
+    // `renderCatalog` for the prompt). A silent filter divergence would let
+    // one omit a tool the other includes. Invariant: every tool the docs
+    // page renders as a heading must appear by name in the prompt catalog.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const mdx = fs.readFileSync(path.join(repoRoot, 'docs/aao/addie-tools.mdx'), 'utf8');
+    const catalog = fs.readFileSync(path.join(repoRoot, 'server/src/addie/generated/tool-catalog.generated.ts'), 'utf8');
+    const mdxTools = Array.from(mdx.matchAll(/^### `([a-z_][a-z_0-9]*)`/gm)).map(m => m[1]);
+    expect(mdxTools.length).toBeGreaterThan(50);
+    const missing = mdxTools.filter(name => !new RegExp(`\\b${name}\\b`).test(catalog));
+    expect(missing).toEqual([]);
   });
 });

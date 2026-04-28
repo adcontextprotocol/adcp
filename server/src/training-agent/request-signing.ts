@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import {
   StaticJwksResolver,
+  InMemoryReplayStore,
   InMemoryRevocationStore,
   RequestSignatureError,
 } from '@adcp/client/signing';
@@ -168,25 +169,59 @@ export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'e
  * Singleton across all per-route authenticators so they all hit the same
  * `adcp_replay_cache` table; the (keyid, scope, nonce) primary key
  * partitions by route automatically via the `@target-uri`-derived scope.
+ *
+ * Falls back to `InMemoryReplayStore` in test/dev environments where
+ * `getPool()` throws because the DB isn't initialized (CI storyboard
+ * runner, vitest unit suites, local CLI tools). The fallback is gated on
+ * `NODE_ENV !== 'production'` so a misconfigured prod doesn't silently
+ * lose cross-instance replay protection — production must have a pool.
  */
 let _replayStore: ReplayStore | null = null;
 function getReplayStore(): ReplayStore {
   if (_replayStore) return _replayStore;
-  const store = new PostgresReplayStore(getPool());
-  _replayStore = store;
-  return store;
+  try {
+    _replayStore = new PostgresReplayStore(getPool());
+    return _replayStore;
+  } catch (err) {
+    if (process.env.NODE_ENV === 'production') {
+      // Production must have a Postgres pool. Don't paper over a real
+      // misconfig — let the verifier fail loudly and the operator fix it.
+      throw err;
+    }
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'No Postgres pool available — falling back to InMemoryReplayStore (test/dev only; not cross-instance safe)'
+    );
+    _replayStore = new InMemoryReplayStore();
+    return _replayStore;
+  }
 }
 
 /**
  * Schedule periodic deletion of expired rows from `adcp_replay_cache`.
  * Postgres has no native TTL — without this, the table grows unboundedly.
  * Called from the server boot path (index.ts).
+ *
+ * Silent no-op when no pool is initialized (test/dev environments). The
+ * `getReplayStore()` fallback handles the runtime path; the sweeper has
+ * nothing to sweep without a real Postgres table.
  */
 let _sweepInterval: NodeJS.Timeout | null = null;
 export function startReplayCacheSweeper(): void {
   if (_sweepInterval) return;
+  try {
+    getPool(); // probe — throws if not initialized
+  } catch {
+    return; // no DB to sweep
+  }
   _sweepInterval = setInterval(() => {
-    sweepExpiredReplays(getPool())
+    let pool;
+    try {
+      pool = getPool();
+    } catch {
+      return; // pool was torn down; skip this tick
+    }
+    sweepExpiredReplays(pool)
       .then((result: { deleted: number }) => {
         if (result.deleted > 0) logger.info({ deleted: result.deleted }, 'Swept expired replay-cache rows');
       })
@@ -406,4 +441,6 @@ export function resetRequestSigning(): void {
   strictCapability = null;
   strictRequiredCapability = null;
   strictForbiddenCapability = null;
+  _replayStore = null;
+  stopReplayCacheSweeper();
 }

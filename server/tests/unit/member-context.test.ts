@@ -708,4 +708,140 @@ describe('community_profile formatting', () => {
     expect(result).toContain('GitHub: Not linked');
     expect(result).toContain('/account');
   });
+
+  describe('coverage of CTA-producing context blocks', () => {
+    const baseMember: MemberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: { workos_user_id: 'user_x', email: 'x@y.co' },
+      organization: {
+        workos_organization_id: 'org_x',
+        name: 'Acme',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+    };
+
+    it('renders in-progress certification with module id and started-days', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          last_activity_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('### Certification');
+      expect(out).toContain('A1');
+      expect(out).toContain('in progress');
+      expect(out).toContain('started 7 days ago');
+    });
+
+    it('flags stale (>45d) cert attempts', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        certification: {
+          track_id: 'A',
+          module_id: 'A1',
+          status: 'in_progress',
+          started_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+          last_activity_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+        },
+      };
+      expect(formatMemberContextForPrompt(ctx)).toContain('older than 45 days');
+    });
+
+    it('renders agent_testing with last-test-age and stale flag', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        agent_testing: {
+          last_test_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+          last_outcome: 'passed',
+        },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('### Agent Testing');
+      expect(out).toContain('20 days ago');
+      expect(out).toContain('stale');
+    });
+
+    it('renders agent_testing "no tests on record" when never tested', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        agent_testing: { last_test_at: null, last_outcome: null },
+      };
+      expect(formatMemberContextForPrompt(ctx)).toContain('No agent tests on record');
+    });
+
+    it('renders perspectives zero-state with a writing nudge', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        perspectives: { published_count: 0, last_published_at: null },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('### Perspectives');
+      expect(out).toContain('Has not published');
+    });
+
+    it('renders perspectives footprint when user has shipped some', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        perspectives: {
+          published_count: 3,
+          last_published_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+        },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('Has published 3 perspective');
+      expect(out).toContain('14 days ago');
+    });
+
+    it('renders next_event with title and days-until', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        next_event: {
+          title: 'Cannes Lions',
+          slug: 'cannes-2026',
+          starts_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('### Upcoming Event');
+      expect(out).toContain('Cannes Lions');
+      expect(out).toContain('in 5 days');
+    });
+
+    it('renders adoption signals when company has no public listing', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        adoption: { has_company_listing: false, team_wg_coverage: 1 },
+      };
+      expect(formatMemberContextForPrompt(ctx)).toContain('does not yet have a public company listing');
+    });
+
+    it('renders adoption signals when team WG coverage is low and team >= 3', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        org_membership: { role: 'owner', member_count: 5, joined_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
+        adoption: { has_company_listing: true, team_wg_coverage: 0.2 },
+      };
+      const out = formatMemberContextForPrompt(ctx);
+      expect(out).toContain('### Org Adoption');
+      expect(out).toContain('Less than half their team');
+      expect(out).toContain('20%');
+    });
+
+    it('omits adoption section when nothing notable to say', () => {
+      const ctx: MemberContext = {
+        ...baseMember,
+        adoption: { has_company_listing: true, team_wg_coverage: 0.9 },
+      };
+      expect(formatMemberContextForPrompt(ctx)).not.toContain('### Org Adoption');
+    });
+  });
 });
