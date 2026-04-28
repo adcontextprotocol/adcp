@@ -1502,6 +1502,101 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
   }
 
+  // Certification — surface in-progress attempts so Addie can route the
+  // conversation back to the right module without a tool round-trip.
+  // Only facts here; response policy lives in server/src/addie/rules/*.md.
+  if (context.certification) {
+    const cert = context.certification;
+    const id = cert.module_id ?? cert.track_id;
+    const startedDays = Math.floor(
+      (Date.now() - cert.started_at.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    lines.push('');
+    lines.push('### Certification');
+    if (cert.status === 'in_progress') {
+      lines.push(`Currently working on: ${id} (in progress, started ${startedDays} days ago).`);
+      if (startedDays > 45) {
+        lines.push('This attempt is older than 45 days (stale).');
+      }
+    } else if (cert.status === 'passed') {
+      lines.push(`Most recent attempt: ${id} — passed.`);
+    } else if (cert.status === 'failed') {
+      lines.push(`Most recent attempt: ${id} — failed.`);
+    }
+  }
+
+  // Agent testing — last-run signal for builders. Facts only.
+  if (context.agent_testing) {
+    const at = context.agent_testing;
+    lines.push('');
+    lines.push('### Agent Testing');
+    if (at.last_test_at) {
+      const days = Math.floor(
+        (Date.now() - at.last_test_at.getTime()) / (24 * 60 * 60 * 1000)
+      );
+      lines.push(`Last agent test: ${days} days ago (${at.last_outcome ?? 'unknown'}).`);
+      if (days > 14) {
+        lines.push('Last test is older than 14 days (stale).');
+      }
+    } else {
+      lines.push('No agent tests on record.');
+    }
+  }
+
+  // Perspectives — published-count footprint. Facts only.
+  if (context.perspectives) {
+    const p = context.perspectives;
+    lines.push('');
+    lines.push('### Perspectives');
+    if (p.published_count === 0) {
+      lines.push('Has not published any perspectives yet.');
+    } else {
+      lines.push(`Has published ${p.published_count} perspective(s).`);
+      if (p.last_published_at) {
+        const days = Math.floor(
+          (Date.now() - p.last_published_at.getTime()) / (24 * 60 * 60 * 1000)
+        );
+        lines.push(`Last published: ${days} days ago.`);
+      }
+    }
+  }
+
+  // Upcoming registered event — context for time-bound discussions.
+  if (context.next_event) {
+    const e = context.next_event;
+    const days = Math.floor(
+      (e.starts_at.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+    );
+    lines.push('');
+    lines.push('### Upcoming Event');
+    lines.push(`Registered for: ${e.title} (in ${days} days).`);
+  }
+
+  // Adoption signals — public listing + team WG coverage. Lets Addie
+  // give org-aware suggestions when the conversation drifts toward
+  // setup or community participation.
+  if (context.adoption) {
+    const a = context.adoption;
+    const adoptionLines: string[] = [];
+    if (!a.has_company_listing && context.organization && !context.organization.is_personal) {
+      adoptionLines.push('Their organization does not yet have a public company listing in the directory.');
+    }
+    if (
+      context.org_membership &&
+      context.org_membership.member_count >= 3 &&
+      a.team_wg_coverage < 0.5
+    ) {
+      adoptionLines.push(
+        `Less than half their team (${Math.round(a.team_wg_coverage * 100)}%) is in any working group.`
+      );
+    }
+    if (adoptionLines.length > 0) {
+      lines.push('');
+      lines.push('### Org Adoption');
+      for (const l of adoptionLines) lines.push(l);
+    }
+  }
+
   // Pending content notifications (for committee leads and admins)
   if (context.pending_content && context.pending_content.total > 0) {
     lines.push('');

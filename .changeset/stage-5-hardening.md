@@ -1,4 +1,0 @@
----
----
-
-Hardening pass on the membership invite chain after expert review. Invite accept never auto-grants `owner` (always `member`); `createAndSendInvoice` no longer overwrites the linked Stripe customer's email on reuse; concurrent-accept clicks converge via Stripe idempotency keys (`invite_<token>`); server validates `agreement_version` against the current published agreement on both the invoice-request and invite-accept paths; two-step org updates merged into a single atomic write; billing address goes through a field-allowlist + length cap sanitizer before hitting the DB or Stripe; deleted-on-Stripe linked customers are cleared from the org row (instead of falling into the email-dedup path that caused the original bug); admin invite lowercases `contact_email` end-to-end; `invite.html` ships a `Referrer-Policy: same-origin` meta and blocks submit until the current agreement version has loaded.

@@ -104,6 +104,10 @@ import {
   IMAGE_TOOLS,
   createImageToolHandlers,
 } from "../addie/mcp/image-tools.js";
+import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from "../addie/mcp/auth-grader-tools.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
@@ -557,6 +561,17 @@ export async function prepareRequestWithMemberTools(
   if (userId) {
     allTools.push(...CERTIFICATION_TOOLS);
     for (const [name, handler] of createCertificationToolHandlers(memberContext, { threadId: threadExternalId })) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
+  // users only on the web path; each call spawns a child Node process and
+  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
+  if (userId) {
+    allTools.push(...AUTH_GRADER_TOOLS);
+    for (const [name, handler] of createAuthGraderToolHandlers()) {
       combinedHandlers.set(name, handler);
     }
   }

@@ -171,7 +171,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   agent_testing: {
     name: 'agent_testing',
-    description: 'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests. Use for any "my agent can\'t see properties", "authorization not working", or publisher setup questions.',
+    description: 'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can\'t see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.',
     tools: [
       'validate_adagents',
       'resolve_brand',
@@ -179,6 +179,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'check_publisher_authorization',
       'test_adcp_agent',
       'evaluate_agent_quality',
+      'grade_agent_signing',
+      'diagnose_agent_auth',
       'compare_media_kit',
       'test_rfp_response',
       'test_io_execution',

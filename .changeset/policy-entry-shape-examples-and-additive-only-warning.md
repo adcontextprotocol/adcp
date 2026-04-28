@@ -1,4 +1,0 @@
----
----
-
-Fix schema-invalid `custom_policies` and `shared_exclusions` examples in governance docs. The `sync-plans-request.json` schema defines both as `PolicyEntry[]` (requiring `policy_id`, `enforcement`, `policy` text), but the existing examples in `docs/governance/campaign/specification.mdx` and `docs/governance/campaign/tasks/sync_plans.mdx` used plain strings. A reader copy-pasting those examples and validating against the schema would fail. Updates the field-table descriptions in `sync_plans.mdx` to reflect the actual shape, and adds a `<Warning>` block in the Policy resolution section of `specification.mdx` highlighting the additive-only invariant from `policy-entry.json`. Cherry-picked from PR #3143 (which is superseded by the merged #3187 for the conceptual content but carried this real schema-validity fix).

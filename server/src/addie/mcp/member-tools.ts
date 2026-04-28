@@ -62,6 +62,7 @@ import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
@@ -1988,11 +1989,7 @@ export function createMemberToolHandlers(
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
     }
@@ -2098,11 +2095,7 @@ export function createMemberToolHandlers(
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
     }

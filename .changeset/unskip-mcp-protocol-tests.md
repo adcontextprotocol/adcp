@@ -1,4 +1,0 @@
----
----
-
-test(integration): un-skip mcp-protocol — closes #3317. Adds an SSE-parsing `callMcp` helper (the StreamableHTTP transport requires `Accept: text/event-stream` and frames JSON-RPC responses as `event: message\ndata: {...}` even for unary calls). Mocks `express-rate-limit` to passthrough so 22 sequential calls don't trip the inline `mcpRateLimiter` (max: 10/min). Loosens the `toHaveLength(32)` count assertion to `length > 0` so future tool additions don't break the file. Realigns three tests from JSON-RPC `error` envelopes to the spec-correct `result.isError` / structured-content shape — tools/call carries tool-execution errors in `result`, not in `error`. Drops the stale `(server as any)['app']` private-property access; `server.app` is the public getter. Adds `afterAll(() => server.stop())` to close the open HTTP handle.

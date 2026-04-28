@@ -1,4 +1,0 @@
----
----
-
-Fix `/my-content` status dropdown for non-leads (#2719). Before this change `updateStatusHint()` force-set the dropdown to `draft` and disabled it, so a member submitting to a committee they were a member of could not actually pick "Submit for Review" — the option existed in the markup but was unreachable. The dropdown is now always enabled with `Submit for Review` as the default for non-leads, and the hint text explains what each option does. After a successful submit, `saveContent()` compares the requested status against the server-resolved `status` field and surfaces a toast — most importantly, when a non-lead picks "Publish Now" and the propose endpoint demotes the request to `pending_review`, the user sees "Submitted for review — a committee lead will approve before publishing. Track it in the Pending tab." instead of a silent demotion.

@@ -280,6 +280,85 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows.map((r) => r.property_id_slug)).toEqual(['known']);
     });
 
+    it('anchor-adopt promotes a contributed/community catalog row to authoritative so the auth lands', async () => {
+      // Pre-seed a catalog row for TEST_PUB's domain identifier with a
+      // non-adagents created_by (mirrors community/enrichment seeding).
+      // The publisher's manifest then arrives with the same domain
+      // identifier — it MUST adopt the rid (Rule 4 anchor) AND promote
+      // the row's source / created_by so the auth projection's
+      // `WHERE created_by = 'adagents_json:TEST_PUB'` filter matches.
+      // Regression for wheelrandom.com (escalation #287).
+      const { rows: seedRows } = await pool.query<{ property_rid: string }>(
+        `INSERT INTO catalog_properties
+           (property_rid, property_id, classification, source, status, created_by)
+         VALUES (gen_random_uuid(), NULL, 'property', 'contributed', 'active',
+                 'community:' || $1)
+         RETURNING property_rid`,
+        [TEST_PUB]
+      );
+      const seedRid = seedRows[0].property_rid;
+      await pool.query(
+        `INSERT INTO catalog_identifiers
+           (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+         VALUES (gen_random_uuid(), $1, 'domain', $2, 'community', 'medium')`,
+        [seedRid, TEST_PUB]
+      );
+
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'property_ids',
+              property_ids: ['flagship'],
+            },
+          ],
+          [
+            {
+              property_id: 'flagship',
+              property_type: 'website',
+              name: 'Flagship Site',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+
+      // Catalog row promoted: same rid (no duplicate row), now
+      // source='authoritative' + created_by='adagents_json:TEST_PUB' +
+      // property_id='flagship'.
+      const { rows: cpRows } = await pool.query<{
+        property_rid: string;
+        source: string;
+        created_by: string;
+        property_id: string | null;
+      }>(
+        `SELECT property_rid, source, created_by, property_id
+           FROM catalog_properties
+          WHERE property_rid = $1`,
+        [seedRid]
+      );
+      expect(cpRows).toHaveLength(1);
+      expect(cpRows[0].source).toBe('authoritative');
+      expect(cpRows[0].created_by).toBe(`adagents_json:${TEST_PUB}`);
+      expect(cpRows[0].property_id).toBe('flagship');
+
+      // Auth projection lands a CAA row referencing the promoted rid.
+      const { rows: caaRows } = await pool.query<{
+        property_rid: string;
+        property_id_slug: string;
+      }>(
+        `SELECT property_rid, property_id_slug
+           FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(caaRows).toHaveLength(1);
+      expect(caaRows[0].property_rid).toBe(seedRid);
+      expect(caaRows[0].property_id_slug).toBe('flagship');
+    });
+
     it('does not resolve slugs owned by another publisher', async () => {
       // Pre-seed VICTIM_PUB's `home` slug. The attacker's manifest
       // references the same string but the slug-resolution query is

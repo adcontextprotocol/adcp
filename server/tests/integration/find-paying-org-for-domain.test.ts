@@ -9,7 +9,7 @@
  * walked the brand hierarchy. This helper closes that asymmetry.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { findPayingOrgForDomain, resolveEffectiveMembership, invalidateMembershipCache } from '../../src/db/org-filters.js';
@@ -108,6 +108,12 @@ describe('findPayingOrgForDomain', () => {
   });
 
   beforeEach(async () => {
+    await cleanup(pool);
+  });
+
+  // afterEach so a failing test localizes its mess instead of leaking rows
+  // into the next test's beforeEach.
+  afterEach(async () => {
     await cleanup(pool);
   });
 
@@ -322,6 +328,10 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
   beforeEach(async () => {
     await cleanup(pool);
     invalidateMembershipCache();
+  });
+
+  afterEach(async () => {
+    await cleanup(pool);
   });
 
   it('inherited membership requires the parent to opt into auto_provision_brand_hierarchy_children', async () => {

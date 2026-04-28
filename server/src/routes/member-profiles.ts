@@ -21,6 +21,7 @@ import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
@@ -923,11 +924,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
    * already been sent.
    */
   async function resolveUserOrgId(req: any, res: any): Promise<string | null> {
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [req.user!.id]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(req.user!.id);
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated' });
       return null;
@@ -1102,11 +1099,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // POST /api/me/member-profile/verify-brand - Check if member's domain pointer is live and mark verified
   router.post('/verify-brand', requireAuth, async (req, res) => {
     try {
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(req.user!.id);
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with this account' });
       }
@@ -1186,11 +1179,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
    * response and returns null. Both /issue and /verify gate through this.
    */
   async function resolveBrandClaimOrgOr401(req: import('express').Request, res: import('express').Response): Promise<string | null> {
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [req.user!.id]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(req.user!.id);
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated with this account' });
       return null;

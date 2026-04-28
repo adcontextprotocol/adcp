@@ -160,12 +160,21 @@ async function askAddie(
   question: string,
   csrf: { cookie: string; token: string }
 ): Promise<{ status: number; response: string }> {
+  // Optional admin bypass: when ADMIN_API_KEY is set in the env, the runner
+  // authenticates as admin so it skips the anonymous 50-msg/IP daily limiter
+  // and the per-IP anonymous-tier cost cap. Without it, a single 33-scenario
+  // run can exhaust the daily IP budget and contaminate the result with
+  // HTTP 429 / cost-cap responses (which contain none of the redteam's
+  // marker words → spurious missing_marker failures).
+  // No-op when the env var is unset, so default behavior is unchanged.
+  const adminKey = process.env.ADMIN_API_KEY;
   const res = await fetch(`${baseUrl}/api/addie/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Cookie: csrf.cookie,
       'X-CSRF-Token': csrf.token,
+      ...(adminKey ? { Authorization: `Bearer ${adminKey}` } : {}),
     },
     body: JSON.stringify({ message: question, user_name: 'RedTeam Tester' }),
   });

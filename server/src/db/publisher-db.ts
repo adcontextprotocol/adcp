@@ -87,8 +87,13 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
  * (lowercase, no trailing slash, wildcard '*' is the sentinel).
  * Returns null when the input is not a usable URL — callers skip those
  * rows rather than fail the whole projection.
+ *
+ * Exported so the agent-side sync endpoints
+ * (server/src/db/authorization-snapshot-db.ts) canonicalize the
+ * agent_url query parameter through the same function the writer uses
+ * for stored rows. Drift between the two would silently miss matches.
  */
-function canonicalizeAgentUrl(raw: string): string | null {
+export function canonicalizeAgentUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
   if (trimmed === '*') return '*';
@@ -368,14 +373,34 @@ export class PublisherDatabase {
       }
 
       propertyRid = ownRids[0];
+      // Anchor-adopt promotion: when a publisher's adagents.json claims a rid
+      // previously created by community/enrichment/contributed flows AND
+      // anchors via a domain identifier under their own host, the publisher
+      // is now the source-of-truth pipeline for this property. Promote
+      // source → 'authoritative' and rebind created_by →
+      // 'adagents_json:<publisher>' so downstream queries that filter by
+      // created_by (auth projection in projectAuthorizationToCatalog,
+      // publisher_domain derivation in v_effective_agent_authorizations)
+      // see this row as a publisher-owned authoritative entry. Without
+      // this rebind, the auth projection's
+      // `WHERE created_by = 'adagents_json:<pub>' AND property_id = ANY(...)`
+      // returns 0 rows for properties that were already in the catalog
+      // under a different pipeline — silently dropping the manifest's
+      // authorized_agents[] entries on the floor.
+      //
+      // Own re-crawls (matchedCreatedBy === expectedCreatedBy) re-set
+      // source_updated_at without changing created_by; the SET below is
+      // idempotent for that case.
       await client.query(
         `UPDATE catalog_properties SET
            source_updated_at = NOW(),
            updated_at = NOW(),
            adagents_url = COALESCE(adagents_url, $2),
-           property_id = COALESCE(property_id, $3)
+           property_id = COALESCE(property_id, $3),
+           source = 'authoritative',
+           created_by = $4
          WHERE property_rid = $1`,
-        [propertyRid, adagentsUrl, property.property_id ?? null]
+        [propertyRid, adagentsUrl, property.property_id ?? null, expectedCreatedBy]
       );
     } else {
       propertyRid = uuidv7();
