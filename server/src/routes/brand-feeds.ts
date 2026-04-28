@@ -294,6 +294,10 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         return res.status(400).json({ error: "relationship must be one of: owned, direct, delegated, ad_network" });
       }
 
+      // Verify brand ownership before any outbound fetch or LLM spend.
+      const check = await getBrandForEdit(domain, req.user!.id);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
+
       let rawText = input.trim();
       let truncated = false;
 
@@ -304,12 +308,12 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         } catch {
           return res.status(400).json({ error: 'Invalid URL' });
         }
-        // safeFetch re-validates internally; validate here only to return an early user-friendly 400
-        // before spending a full fetch round-trip (avoids revealing internal error messages on SSRF paths).
+        // safeFetch re-validates internally; validate here first to return a clean 400
+        // without revealing internal DNS error messages to the caller.
         try {
           await validateFetchUrl(parsedUrl);
-        } catch (err) {
-          return res.status(400).json({ error: (err as Error).message || 'URL not allowed' });
+        } catch {
+          return res.status(400).json({ error: 'URL not allowed for security reasons' });
         }
         let fetchResponse;
         try {
@@ -323,11 +327,14 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         if (!fetchResponse.ok) {
           return res.status(400).json({ error: `URL returned HTTP ${fetchResponse.status}` });
         }
+        if (!fetchResponse.body) {
+          return res.status(400).json({ error: 'URL returned no body' });
+        }
         // Stream with a hard byte cap — Content-Length alone is not reliable for chunked responses.
         const decoder = new TextDecoder();
         const chunks: string[] = [];
         let totalBytes = 0;
-        const reader = fetchResponse.body!.getReader();
+        const reader = fetchResponse.body.getReader();
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -346,9 +353,6 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         rawText = rawText.slice(0, MAX_PARSE_INPUT_CHARS);
         truncated = true;
       }
-
-      const check = await getBrandForEdit(domain, req.user!.id);
-      if ('error' in check) return res.status(check.status!).json({ error: check.error });
 
       const message = await getAnthropicClient().messages.create({
         model: ModelConfig.fast,
