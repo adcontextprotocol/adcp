@@ -9,9 +9,15 @@
       "selection_type": "all"
     }
   ],
-  "channels": ["search", "display", "ctv", "olv"],
+  "channels": [
+    "search",
+    "display",
+    "ctv",
+    "olv"
+  ],
   "format": {
-    "responsive_creative": {
+    "format_kind": "responsive_creative",
+    "params": {
       "headlines_min": 3,
       "headlines_max": 15,
       "headline_max_chars": 30,
@@ -32,7 +38,10 @@
       "video_max_duration_ms": 600000,
       "logo_min": 1,
       "logo_max": 5,
-      "logo_aspect_ratios": ["1:1", "4:1"],
+      "logo_aspect_ratios": [
+        "1:1",
+        "4:1"
+      ],
       "business_name_max_chars": 25,
       "asset_image_max_file_size_kb": 5120,
       "supports_catalog_input": true,
@@ -56,15 +65,27 @@
       "pricing_model": "cpa",
       "event_type": "purchase",
       "currency": "USD",
-      "fixed_price": 25.00
+      "fixed_price": 25
     }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["daily"],
+    "available_reporting_frequencies": [
+      "daily"
+    ],
     "expected_delay_minutes": 240,
     "timezone": "America/Los_Angeles",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "clicks", "spend", "ctr", "conversions", "conversion_value", "cost_per_acquisition", "roas", "viewability"],
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "conversions",
+      "conversion_value",
+      "cost_per_acquisition",
+      "roas",
+      "viewability"
+    ],
     "date_range_support": "date_range"
   }
 }

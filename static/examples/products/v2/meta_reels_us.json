@@ -9,22 +9,39 @@
       "selection_type": "all"
     }
   ],
-  "channels": ["social"],
+  "channels": [
+    "social"
+  ],
   "format": {
-    "video_hosted": {
+    "format_kind": "video_hosted",
+    "params": {
       "orientation": "vertical",
       "aspect_ratio": "9:16",
-      "duration_ms_range": [3000, 90000],
+      "duration_ms_range": [
+        3000,
+        90000
+      ],
       "min_width": 1080,
       "min_height": 1920,
       "max_file_size_mb": 200,
-      "video_codecs": ["h264"],
-      "audio_codecs": ["aac"],
-      "containers": ["mp4"],
+      "video_codecs": [
+        "h264"
+      ],
+      "audio_codecs": [
+        "aac"
+      ],
+      "containers": [
+        "mp4"
+      ],
       "headline_max_chars": 25,
       "primary_text_max_chars": 72,
       "captions": "recommended",
-      "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+      "cta_values": [
+        "LEARN_MORE",
+        "SHOP_NOW",
+        "DOWNLOAD",
+        "SIGN_UP"
+      ],
       "composition_model": "deterministic",
       "platform_extensions": [
         {
@@ -44,15 +61,24 @@
       "pricing_option_id": "cpm_floor",
       "pricing_model": "cpm",
       "currency": "USD",
-      "floor_price": 5.50
+      "floor_price": 5.5
     }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["hourly", "daily"],
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
     "expected_delay_minutes": 60,
     "timezone": "America/Los_Angeles",
     "supports_webhooks": true,
-    "available_metrics": ["impressions", "clicks", "spend", "completion_rate", "viewability"],
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "completion_rate",
+      "viewability"
+    ],
     "date_range_support": "date_range"
   }
 }

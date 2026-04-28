@@ -9,30 +9,36 @@
       "selection_type": "all"
     }
   ],
-  "channels": ["sponsored_intelligence"],
+  "channels": [
+    "sponsored_intelligence"
+  ],
   "format": {
-    "agent_placement": {
+    "format_kind": "agent_placement",
+    "params": {
       "output_modality": "text",
       "max_mention_length_chars": 280,
       "supports_offering_reference": true,
       "supports_landing_page_url": true,
-      "tone_constraints": ["factual", "no_superlatives"],
+      "tone_constraints": [
+        "factual",
+        "no_superlatives"
+      ],
       "disclosure_required": true,
       "composition_model": "algorithmic",
-      "inputs": {
-        "brand": {
-          "required": true,
-          "description": "BrandRef resolving brand.json for brand context (logos, voice, taglines, industries)."
-        },
-        "offering_ref": {
+      "slots": [
+        {
+          "asset_group_id": "offering_ref",
           "required": false,
+          "asset_type": "text",
           "description": "Optional offering identifier to focus the mention on a specific product, service, or campaign within the brand."
         },
-        "landing_page_url": {
+        {
+          "asset_group_id": "landing_page_url",
           "required": false,
-          "description": "Optional URL the surface attaches to mentions as a citation or learn-more link. Distinct from a creative-asset slot — this is metadata the agent uses, not a rendered creative element."
+          "asset_type": "url",
+          "description": "Optional URL the surface MAY attach to mentions as a citation or learn-more link."
         }
-      },
+      ],
       "platform_extensions": [
         {
           "uri": "https://openai.adcp/extensions/chatgpt_response_card",
@@ -47,15 +53,23 @@
       "pricing_option_id": "cpm_mention",
       "pricing_model": "cpm",
       "currency": "USD",
-      "floor_price": 18.00
+      "floor_price": 18
     }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["daily"],
+    "available_reporting_frequencies": [
+      "daily"
+    ],
     "expected_delay_minutes": 1440,
     "timezone": "UTC",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "clicks", "spend", "ctr", "engagement_rate"],
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "engagement_rate"
+    ],
     "date_range_support": "date_range"
   }
 }

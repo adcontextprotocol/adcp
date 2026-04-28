@@ -71,7 +71,8 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
   "product_id": "meta_reels_us",
   "name": "Meta Reels — United States",
   "format": {
-    "video_hosted": {
+    "format_kind": "video_hosted",
+    "params": {
       "orientation": "vertical",
       "aspect_ratio": "9:16",
       "duration_ms_range": [3000, 90000],
@@ -92,9 +93,9 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 }
 ```
 
-A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format`) — not both. The product schema's `oneOf` enforces this.
+The v2 `format` is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format`) — not both. The product schema's `oneOf` enforces this.
 
-For five fully-validated worked examples (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products), see `static/examples/products/v2/`. Each fixture passes `npm run test:v2-fixtures`.
+For seven fully-validated worked examples (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention), see `static/examples/products/v2/`. Each fixture passes `npm run test:v2-fixtures`.
 
 ## Slot name mapping (v1 → canonical)
 
@@ -175,22 +176,25 @@ Side-by-side for an audio format:
   ]
 }
 
-// v2: same canonical (audio_hosted), inputs declared inline
+// v2: same canonical (audio_hosted), buyer-shipped assets declared as slots
 {
-  "audio_hosted": {
+  "format_kind": "audio_hosted",
+  "params": {
     "duration_ms_exact": 30000,
     "audio_codecs": ["mp3"],
     "loudness_lufs": -16,
     "audio_source": "agent_synthesized",
     "buyer_audio_acceptance": "rejected",
-    "inputs": {
-      "creative_brief": { "required": true, "max_chars": 1000 },
-      "voice_id": { "required": false }
-    },
+    "slots": [
+      { "asset_group_id": "creative_brief", "required": true, "asset_type": "brief", "max_chars": 1000 },
+      { "asset_group_id": "voice_id", "required": false, "asset_type": "text" }
+    ],
     "production_window_business_days": 0
   }
 }
 ```
+
+Note the v2 manifest has no separate `inputs` map — the buyer ships the brief and voice_id as `text`/`brief` assets in the `assets` map under those slot names. The seller dispatches per the format's slot declaration: brief → consume for synthesis; rendered audio is what comes out the other side.
 
 ## Brand identity — slots disappear
 

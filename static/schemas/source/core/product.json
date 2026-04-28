@@ -269,42 +269,78 @@
     },
     "product_card": {
       "type": "object",
-      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "description": "Optional standard visual card for displaying this product in user interfaces (catalog browsers, dashboards, agent UIs). Distinct from `format` — product_card describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection. Receivers render the card directly from these fields.",
       "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the card layout (typically product_card_standard)"
+        "image": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Hero image for the card. Recommended ~300x400 (4:3 portrait) for the standard card layout; receivers may scale."
         },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the card, structure defined by the format",
-          "additionalProperties": true
+        "title": {
+          "type": "string",
+          "description": "Card title (typically the product name).",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "description": "Short descriptive blurb shown below the title.",
+          "maxLength": 200
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary (e.g., 'From $5 CPM', 'Auction floor $0.50 CPC'). Free-text — receivers render verbatim.",
+          "maxLength": 30
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label (e.g., 'View details', 'Get proposal').",
+          "maxLength": 25
         }
       },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
       "additionalProperties": true
     },
     "product_card_detailed": {
       "type": "object",
-      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "description": "Optional detailed card with hero + carousel + structured specifications, for rich product presentation (media-kit-style pages, full product detail views). Distinct from `format` — describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection.",
       "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        "hero_image": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Primary hero image at the top of the detailed view."
         },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
-          "additionalProperties": true
+        "carousel_images": {
+          "type": "array",
+          "description": "Additional images for a swipeable carousel below the hero.",
+          "items": { "$ref": "/schemas/core/assets/image-asset.json" }
+        },
+        "title": {
+          "type": "string",
+          "description": "Page title (typically the product name)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Full descriptive copy. Markdown allowed in client renderers that support it; otherwise treat as plain text."
+        },
+        "specifications": {
+          "type": "array",
+          "description": "Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration: 30s'). Each item is a labeled fact about the product.",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "string", "maxLength": 60 },
+              "value": { "type": "string", "maxLength": 200 }
+            },
+            "additionalProperties": true
+          }
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary."
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label."
         }
       },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
       "additionalProperties": true
     },
     "collections": {

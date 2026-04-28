@@ -53,7 +53,8 @@ Meta Reels narrows `video_hosted` (vertical orientation) with Meta-specific para
   ],
   "channels": ["social"],
   "format": {
-    "video_hosted": {
+    "format_kind": "video_hosted",
+    "params": {
       "orientation": "vertical",
       "aspect_ratio": "9:16",
       "duration_ms_range": [3000, 90000],
@@ -100,7 +101,8 @@ The canonical-as-contract value is clearest for IAB-standard formats. NYTimes an
   ],
   "channels": ["display"],
   "format": {
-    "image": {
+    "format_kind": "image",
+    "params": {
       "width": 300,
       "height": 250,
       "max_file_size_kb": 200,
@@ -133,7 +135,8 @@ For HTML5 banners on the same placement, NYTimes publishes a *separate* product 
   ],
   "channels": ["display"],
   "format": {
-    "html5": {
+    "format_kind": "html5",
+    "params": {
       "width": 300,
       "height": 250,
       "max_initial_load_kb": 200,
@@ -170,7 +173,8 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
   ],
   "channels": ["podcast"],
   "format": {
-    "audio_hosted": {
+    "format_kind": "audio_hosted",
+    "params": {
       "duration_ms_exact": 30000,
       "audio_codecs": ["mp3", "aac"],
       "audio_sample_rates": [44100, 48000],
@@ -179,15 +183,20 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
       "audio_source": "publisher_host_recorded",
       "buyer_audio_acceptance": "rejected",
       "composition_model": "deterministic",
-      "inputs": {
-        "script": {
+      "slots": [
+        {
+          "asset_group_id": "script",
           "required": true,
+          "asset_type": "text",
           "max_chars": 800,
-          "description": "Verbatim script the host will read. Exact wording — no improvisation; legal pre-cleared."
+          "description": "Verbatim script the host reads."
         },
-        "brand": { "required": true },
-        "offering_ref": { "required": false }
-      },
+        {
+          "asset_group_id": "offering_ref",
+          "required": false,
+          "asset_type": "text"
+        }
+      ],
       "production_window_business_days": 7
     }
   },
@@ -197,7 +206,7 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
 }
 ```
 
-The format declaration tells the buyer everything they need to know — no extra capability lookup. `inputs` lives directly on the format. The buyer has two flows depending on whether the seller doubles as a creative agent and whether the buyer wants to pre-produce externally.
+The format declaration tells the buyer everything they need to know — no extra capability lookup. The buyer ships a `script` text asset under that slot in the manifest's `assets` map; brand context comes from the manifest's top-level `brand` BrandRef. There is no separate "inputs" map — everything the buyer ships lives in `assets`. The buyer has two flows depending on whether the seller doubles as a creative agent and whether the buyer wants to pre-produce externally.
 
 ### Flow 1 — buyer pre-produces (upstream creative agent)
 

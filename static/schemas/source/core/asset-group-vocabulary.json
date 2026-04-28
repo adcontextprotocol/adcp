@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/asset-group-vocabulary.json",
   "title": "AdCP Asset Group Vocabulary Registry",
-  "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.\n\n**Slots vs inputs**: this registry covers `asset_group_id` slot names (assets the buyer ships in the manifest's `assets` map). It does NOT cover production input names (`script`, `creative_brief`, `voice_id`, `brand`, `offering_ref`, `starter_assets`, `scenes`, `style_reference`, `product_feed`) used on canonical format `inputs` declarations — those are a separate convention not yet canonicalized at the spec level. v2 leaves input names as a per-format convention; future revisions may canonicalize them.",
+  "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.\n\nThe registry covers everything the buyer ships in the manifest's `assets` map — both directly-rendered creative content (image, video, audio) AND content the seller consumes for production (script, creative_brief, scenes). The seller dispatches per the format's slot declaration. There is no separate \"inputs\" map on the manifest; everything is an asset.",
   "version": "1.1.0",
   "lastUpdated": "2026-04-28",
   "vocabulary": {
@@ -164,6 +164,44 @@
       "description": "Externally-hosted Pinterest creative reference.",
       "asset_type": "text",
       "typical_use": "Reference an existing Pin (parallel to youtube_video_id)."
+    },
+    "script": {
+      "description": "Verbatim text the seller's production reads, dubs, or transforms into the rendered output.",
+      "asset_type": "text",
+      "typical_use": "Podcast host-read products (host reads buyer's script verbatim), TTS audio synthesis, video voiceover. Distinct from `creative_brief` (looser talking-points style guidance).",
+      "aliases": ["script_text", "host_script", "voiceover_script"]
+    },
+    "creative_brief": {
+      "description": "Talking points, brand context, and creative direction for seller-side or generative production.",
+      "asset_type": "brief",
+      "typical_use": "Generative AI products (text-to-image, text-to-video), brief-driven podcast host-reads (host has discretion within brief), creative-template platforms. Distinct from `script` (verbatim wording) — `creative_brief` gives the producer creative latitude.",
+      "aliases": ["brief", "creative_direction", "talking_points"]
+    },
+    "scenes": {
+      "description": "Structured scene-by-scene plan for generative video production.",
+      "asset_type": "object",
+      "typical_use": "Generative video products (Veo/Sora/Runway-class). Each scene declares order, duration_ms, description, optional voiceover and caption. See /schemas/creative/scenes.json for the typed structure.",
+      "aliases": ["storyboard"]
+    },
+    "voice_id": {
+      "description": "Voice selection from a format-defined enum or registered voice catalog.",
+      "asset_type": "text",
+      "typical_use": "TTS audio synthesis — buyer selects from the platform's voice library. The exact enum is per-format; the canonical name normalizes the slot key."
+    },
+    "offering_ref": {
+      "description": "Reference to a specific offering (product, service, campaign) within the buyer's brand catalog.",
+      "asset_type": "text",
+      "typical_use": "agent_placement products (focus the AI-surface mention on a specific offering); host-read products (specify which offering is being promoted in the read). Value is an offering_id matched against the buyer's catalog."
+    },
+    "style_reference": {
+      "description": "Reference asset (image, video) providing visual style guidance for generative production.",
+      "asset_type": "image",
+      "typical_use": "Image-to-image variation, style transfer, brand-consistent generative imagery. Buyer supplies a reference; seller produces output in the same visual style."
+    },
+    "starter_assets": {
+      "description": "Pool of reference assets the seller uses as a starting point for transformation or variation.",
+      "asset_type": "object",
+      "typical_use": "Generative platforms that take an existing creative and produce variations (different sizes, orientations, durations). Buyer supplies the starter; seller derives outputs."
     }
   },
   "governance": {

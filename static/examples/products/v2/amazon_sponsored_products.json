@@ -9,15 +9,26 @@
       "selection_type": "all"
     }
   ],
-  "channels": ["retail_media"],
+  "channels": [
+    "retail_media"
+  ],
   "format": {
-    "sponsored_placement": {
-      "supported_catalog_types": ["product"],
+    "format_kind": "sponsored_placement",
+    "params": {
+      "supported_catalog_types": [
+        "product"
+      ],
       "min_items": 1,
       "max_items": 50,
       "fanout_mode": "per_item",
-      "required_catalog_fields": ["title", "image_url", "price"],
-      "supported_id_types": ["asin"],
+      "required_catalog_fields": [
+        "title",
+        "image_url",
+        "price"
+      ],
+      "supported_id_types": [
+        "asin"
+      ],
       "hero_asset_supported": false,
       "composition_model": "deterministic"
     }
@@ -28,15 +39,27 @@
       "pricing_option_id": "cpc_auction",
       "pricing_model": "cpc",
       "currency": "USD",
-      "floor_price": 0.50
+      "floor_price": 0.5
     }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["hourly", "daily"],
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
     "expected_delay_minutes": 60,
     "timezone": "America/Los_Angeles",
     "supports_webhooks": true,
-    "available_metrics": ["impressions", "clicks", "spend", "ctr", "conversions", "conversion_value", "roas", "new_to_brand_rate"],
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "conversions",
+      "conversion_value",
+      "roas",
+      "new_to_brand_rate"
+    ],
     "date_range_support": "date_range"
   }
 }
