@@ -1,6 +1,8 @@
 import type { MemberContext } from '../../../member-context.js';
 import type { PromptRule, PromptRuleContext } from './types.js';
 
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function isMapped(ctx: MemberContext | null): boolean {
@@ -326,6 +328,20 @@ export const MEMBER_RULES: PromptRule[] = [
     matchClick: (msg) =>
       /^Let's keep going with [\w-]+\. Where did we leave off\?$/.test(msg) ||
       msg === 'Pick up where I left off in certification.',
+    digest: {
+      // Each surface keeps its own when clause — the recipient shape has
+      // module counts, the MemberContext shape has track/module/started_at.
+      // Both correctly identify "in progress."
+      priority: 3,
+      when: (r) => r.cert_modules_completed > 0 && r.cert_modules_completed < r.cert_total_modules,
+      text: (r) => {
+        const remaining = r.cert_total_modules - r.cert_modules_completed;
+        const completed = r.cert_modules_completed;
+        return `You're ${completed} module${completed > 1 ? 's' : ''} in — ${remaining} to go for your certification.`;
+      },
+      ctaLabel: 'Continue learning',
+      ctaUrl: `${BASE_URL}/academy`,
+    },
   },
   {
     id: 'profile.incomplete',
@@ -335,6 +351,13 @@ export const MEMBER_RULES: PromptRule[] = [
       (memberContext?.community_profile?.completeness ?? 100) < 80,
     label: 'Complete my profile',
     prompt: 'Help me complete my community profile.',
+    digest: {
+      priority: 6,
+      when: (r) => !r.has_profile && r.is_member,
+      text: 'Complete your profile so other members can find you.',
+      ctaLabel: 'Update your profile',
+      ctaUrl: `${BASE_URL}/dashboard`,
+    },
   },
   {
     id: 'org.owner_solo_invite_team',
@@ -379,6 +402,17 @@ export const MEMBER_RULES: PromptRule[] = [
       isMember(memberContext) && (memberContext?.working_groups?.length ?? 0) === 0,
     label: 'Find a working group',
     prompt: 'What working groups would be relevant for my work?',
+    digest: {
+      // Digest gates on `has_slack` too — without Slack access, joining a
+      // working group is harder. Suggested-prompts doesn't gate on Slack
+      // because the user is already in a chat surface that supports the
+      // join flow.
+      priority: 4,
+      when: (r) => r.has_slack && r.wg_count === 0,
+      text: 'Working groups are where the standards get built. Find one that matches your work.',
+      ctaLabel: 'Browse working groups',
+      ctaUrl: `${BASE_URL}/committees`,
+    },
   },
   {
     id: 'wg.leader_todos',

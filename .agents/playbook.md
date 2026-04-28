@@ -80,6 +80,46 @@ Use **sentence case** for all UI labels, headings, and section headers:
 - ✅ "Brand identity", "Creative assets", "Contact information"
 - ❌ "Brand Identity", "Creative Assets", "Contact Information"
 
+### Addie MemberContext invariant: hydrate once, surface twice
+Adding a field to `MemberContext` (`server/src/addie/member-context.ts`)
+means **you must surface it in two places**, otherwise the data plane
+silently drifts:
+
+1. The hydration path (both Slack `getMemberContext` and web
+   `resolveContextFromLocalDb`) — so the field is populated.
+2. `formatMemberContextForPrompt` — so Addie's system prompt
+   actually sees the signal when reasoning about the user.
+
+If you only do (1), the suggested-prompts engine sees the field but
+Addie's conversational responses don't. We hit this with the
+`certification`, `agent_testing`, `perspectives`, `next_event`, and
+`adoption` blocks — fixed in PR #3377. Don't reintroduce the gap.
+
+`formatMemberContextForPrompt` should render **facts only**. Response
+policy ("gently suggest X", "encourage retry") belongs in
+`server/src/addie/rules/*.md`, not in the user-context block. Otherwise
+each user gets a slightly different policy depending on hydration and
+the prompt-injection surface widens.
+
+### Addie CTA registry: one catalog, per-surface eligibility
+Cross-cut CTAs that fire on multiple surfaces (suggested-prompts +
+newsletter digest, etc.) are co-located in
+`server/src/addie/home/builders/rules/prompt-rules.ts`. Each rule keeps
+its **own `when` clause per surface** (typed against that surface's
+context shape — `MemberContext`, `DigestEmailRecipient`, etc.) — we
+share the *catalog* of CTAs, not the eligibility logic. That keeps
+each surface's gating honest about its own constraints (e.g., the
+digest WG nudge gates on `has_slack` because joining a WG without
+Slack is harder).
+
+Surface-specific facets live alongside the rule's `pull` fields. The
+digest facet is on `PromptRule.digest`; surface-specific lists like
+`DIGEST_ONLY_NUDGES` exist for CTAs with no pull-surface analog.
+
+When adding a new surface that wants to consume the registry, add a
+new facet type (parallel to `DigestNudgeFacet`) — don't try to reshape
+an existing surface's context to fit yours.
+
 ## JSON Schema Guidelines
 
 ### Discriminated Unions
