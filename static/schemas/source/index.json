@@ -1555,7 +1555,8 @@
             "description": "Per-package eligibility — boolean eligible plus optional intent score"
           }
         }
-      }
+      },
+      "implementation-guidance": "Conformance invariants and a reference (non-normative) valkey-backed buyer-side data model are documented in specs/identitymatch-fcap-architecture.md. Storage backend is an implementation choice; conformant services may use any store that satisfies the invariants."
     },
     "brand-protocol": {
       "description": "Brand protocol for identity retrieval, rights discovery, acquisition, and lifecycle management",

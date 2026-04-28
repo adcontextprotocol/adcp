@@ -1,5 +1,11 @@
 # Changelog
 
+## Upcoming
+
+### Deprecation Notices — experimental surfaces
+
+- **TMP `identity-match-response.ttl_sec` is deprecated; replaced by `serve_window_sec`.** Notice published 2026-04-26. The `ttl_sec` field was documented as a router response cache TTL but operationally functioned as a per-package single-shot fcap, conflating two distinct concerns and silently breaking either when tuned. Replacement field `serve_window_sec` (integer, 1–300, default 60) carries the corrected semantic — *after serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again.* This is **not** a router response cache. Multi-impression frequency capping is a separate concern handled by buyer-side exposure records and policies, updated out-of-band via TMPX impression callbacks regardless of this window. During the deprecation period, senders SHOULD populate both `ttl_sec` and `serve_window_sec` with the same value; receivers SHOULD prefer `serve_window_sec` when both are present. Per the [experimental-status contract](docs/reference/experimental-status.mdx), the `ttl_sec` field MAY be removed no earlier than **2026-06-07** (6 weeks after this notice) in a 3.0.x release. `serve_window_sec` lands additively in 3.0.1 alongside this notice. Tracked in `specs/identitymatch-fcap-architecture.md`.
+
 ## 3.0.0
 
 See [release notes](docs/reference/release-notes.mdx) for migration guidance, or [prerelease upgrade notes](docs/reference/migration/prerelease-upgrades.mdx) for rc.3 adopters.

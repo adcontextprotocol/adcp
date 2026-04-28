@@ -85,3 +85,21 @@ New media buys should omit AXE fields entirely. The buyer agent's Context Match 
 - **`sync_creatives`** — Same creative sync
 - **GAM as the ad server** — TMP still sets key-values that GAM evaluates
 - **Geographic and other targeting overlays** — These are media buy fields, not execution-layer concerns
+
+## OpenRTB User.eids cross-walk
+
+For buyers bridging from OpenRTB-shaped pipelines, the TMP Identity Match `identities[]` shape maps to OpenRTB 2.6 `User.eids[]` as follows:
+
+| AdCP TMP `identities[].uid_type` | OpenRTB 2.6 `User.eids[].source` | Notes |
+|---|---|---|
+| `rampid` / `rampid_derived` | `liveramp.com` | `atype: 1` for maintained, `atype: 3` for derived |
+| `id5` | `id5-sync.com` | |
+| `uid2` | `uidapi.com` | `atype: 3` |
+| `euid` | `euid.eu` | |
+| `pairid` | `iabtechlab.com/pair` | |
+| `maid` | `adid` (Android) / `idfa` (iOS) | Atypically carried on `Device.ifa` rather than `User.eids` in OpenRTB |
+| `hashed_email` | `liveintent.com` or buyer-specific | `atype: 3` |
+| `publisher_first_party` | publisher-defined `source` URL | |
+| `other` | buyer-defined `source` URL | |
+
+The TMP `user_token` field corresponds to `User.eids[].uids[].id`. AdCP carries up to 3 identities per Identity Match request (HPKE size budget — see [TMPX size budget](/docs/trusted-match/specification#size-budget)); OpenRTB has no such limit, so a buyer bridging from OpenRTB into TMP must apply a buyer-configured priority order to truncate (typically: deterministic graphs first — UID2, RampID — then probabilistic or publisher-scoped IDs).
