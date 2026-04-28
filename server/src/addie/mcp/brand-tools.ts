@@ -14,7 +14,7 @@ import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } f
 import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.js';
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
-import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions } from '../../services/brand-logo-service.js';
+import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
@@ -129,7 +129,7 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'upload_brand_logo',
-    description: 'Upload a logo file for a brand in the registry. The logo will be pending review.',
+    description: 'Upload a logo file for a brand in the registry. The logo is auto-approved and immediately visible.',
     usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and wants to upload it for a brand.',
     input_schema: {
       type: 'object',
@@ -598,7 +598,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       width,
       height,
       source: 'community',
-      review_status: 'pending',
+      review_status: 'approved',
       uploaded_by_user_id: 'system:addie',
       upload_note: note,
     });
@@ -620,12 +620,18 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       }
     }
 
+    // Rebuild manifest so the logo shows immediately (skip for verified hosted brands).
+    const hosted = await brandDb.getHostedBrandByDomain(domain);
+    if (!hosted || !hosted.domain_verified) {
+      await rebuildManifestLogos(domain, brandLogoDb, brandDb);
+    }
+
     // Exclude upload_note and original_filename from response (prompt injection vector)
     return JSON.stringify({
       success: true,
       domain,
       logo_id: logo.id,
-      review_status: 'pending',
+      review_status: 'approved',
       url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,

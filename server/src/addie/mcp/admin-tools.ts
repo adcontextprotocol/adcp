@@ -18,7 +18,11 @@ import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
-import { invalidateMemberContextCache } from '../member-context.js';
+// invalidateMemberContextCache is imported lazily in the two handlers that
+// call it (see below). Top-level import would pull member-context.ts, which
+// imports middleware/auth.ts, which constructs a WorkOS client at module load
+// time — blowing up any test that imports admin-tools.ts without WORKOS_API_KEY.
+// Matches the pattern from PR #3258 (member-tools.ts).
 import { OrganizationDatabase, resolveMembershipTier } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -7727,6 +7731,7 @@ Use add_committee_leader to assign a leader.`;
           profile,
           logoUrl,
         });
+        const { invalidateMemberContextCache } = await import('../member-context.js');
         invalidateMemberContextCache();
         const action = result.wasUpdate ? 'updated' : 'set';
         logger.info({ profileId: profile.id, brandDomain: result.brandDomain, logoUrl, action }, 'Member logo updated');
@@ -7838,6 +7843,7 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Failed to update profile for **${profile.display_name}**.`;
       }
 
+      const { invalidateMemberContextCache } = await import('../member-context.js');
       invalidateMemberContextCache();
       logger.info({ profileId: profile.id, slug: profile.slug, updatedFields }, 'Member profile updated by admin tool');
 
