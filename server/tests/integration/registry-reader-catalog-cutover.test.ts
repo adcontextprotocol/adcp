@@ -415,6 +415,28 @@ describe('Registry reader catalog cutover — catalog seeds + override layer', (
       expect(phantom).toBeDefined();
       expect(phantom!.source).toBe('adagents_json');
     });
+
+    it('per-property add override does NOT leak into publisher-wide getAgentsForDomain', async () => {
+      // Per-property add override (property_id set on override row).
+      // The view sets property_rid=NULL on all add overrides, so
+      // publisher-wide readers must filter on property_id_slug IS NULL
+      // too — otherwise a per-property add bleeds through as a
+      // publisher-wide auth for an unintended scope.
+      await pool.query(
+        `INSERT INTO adagents_authorization_overrides
+           (host_domain, agent_url, agent_url_canonical, override_type,
+            override_reason, justification, authorized_for, approved_by_user_id,
+            property_id)
+         VALUES ($1, $2, $2, 'add', 'correction',
+                 'test fixture: per-property add', 'display', 'test-user',
+                 'specific-prop-slug')`,
+        [PUB_A, AGENT_OVERRIDE]
+      );
+
+      const auths = await fedDb.getAgentsForDomain(PUB_A);
+      const leaked = auths.find((a) => a.agent_url === AGENT_OVERRIDE);
+      expect(leaked).toBeUndefined();
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────

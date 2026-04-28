@@ -133,6 +133,7 @@ export class FederatedIndexDatabase {
            FROM v_effective_agent_authorizations v
           WHERE v.publisher_domain = $1
             AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
        ), deduped AS (
          SELECT DISTINCT ON (agent_url, publisher_domain, source)
                 agent_url, publisher_domain, authorized_for, property_ids,
@@ -179,8 +180,9 @@ export class FederatedIndexDatabase {
            v.updated_at AS last_validated,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM($1, '/')) END
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
        ), deduped AS (
          SELECT DISTINCT ON (agent_url, publisher_domain, source)
                 agent_url, publisher_domain, authorized_for, property_ids,
@@ -222,10 +224,11 @@ export class FederatedIndexDatabase {
       const canonicalToInput = new Map<string, string>();
       for (const u of batch) {
         let canon: string;
-        if (u === '*') {
+        const trimmed = u.trim();
+        if (trimmed === '*') {
           canon = '*';
         } else {
-          canon = u.toLowerCase();
+          canon = trimmed.toLowerCase();
           while (canon.endsWith('/')) canon = canon.slice(0, -1);
         }
         // First-wins: if multiple inputs share a canonical form, the
@@ -241,7 +244,7 @@ export class FederatedIndexDatabase {
       const result = await query<AgentPublisherAuthorization & { dedup_canonical: string }>(
         `WITH unioned AS (
            SELECT
-             CASE WHEN agent_url = '*' THEN '*' ELSE LOWER(RTRIM(agent_url, '/')) END
+             CASE WHEN agent_url = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
                AS dedup_canonical,
              agent_url, publisher_domain, authorized_for,
              property_ids, source, discovered_at, last_validated, 0 AS src_priority
@@ -266,6 +269,7 @@ export class FederatedIndexDatabase {
              FROM v_effective_agent_authorizations v
             WHERE v.agent_url_canonical = ANY($2)
               AND v.property_rid IS NULL
+              AND v.property_id_slug IS NULL
          )
          SELECT DISTINCT ON (dedup_canonical)
                 dedup_canonical,
@@ -336,19 +340,25 @@ export class FederatedIndexDatabase {
   /**
    * Get all agent→domain pairs in a single query (for bulk snapshots).
    *
-   * UNION over legacy + catalog (publisher-wide rows). UNION (not
-   * UNION ALL) collapses duplicates across arms so a snapshot consumer
-   * sees each pair once even when the same authorization is written to
-   * both tables during the dual-write window.
+   * UNION over legacy + catalog (publisher-wide rows). Both arms emit
+   * the canonical agent_url (lowercased + trailing-slash-stripped, with
+   * '*' preserved literally) so set-dedup collapses cross-arm duplicates
+   * even when one side stored a non-canonical form. Without this the
+   * snapshot consumer in crawler.ts would emit phantom
+   * agent.discovered/removed events for the casing delta.
    */
   async getAllAgentDomainPairs(): Promise<Array<{ agent_url: string; publisher_domain: string }>> {
     const result = await query<{ agent_url: string; publisher_domain: string }>(
-      `SELECT agent_url, publisher_domain
+      `SELECT
+         CASE WHEN agent_url = '*' THEN '*'
+              ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END AS agent_url,
+         publisher_domain
          FROM agent_publisher_authorizations
        UNION
-       SELECT v.agent_url, v.publisher_domain
+       SELECT v.agent_url_canonical AS agent_url, v.publisher_domain
          FROM v_effective_agent_authorizations v
         WHERE v.property_rid IS NULL
+          AND v.property_id_slug IS NULL
         ORDER BY agent_url`
     );
     return result.rows;
@@ -616,8 +626,16 @@ export class FederatedIndexDatabase {
                  THEN pub.adagents_json->'properties'
                  ELSE '[]'::jsonb END
           ) AS prop
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM($1, '/')) END
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.property_rid IS NOT NULL
+            -- Slug-match catalog row to manifest entry. Slugless catalog
+            -- rows (cp.property_id IS NULL) can't be uniquely tied to a
+            -- manifest entry without name+type on catalog_properties (a
+            -- schema gap tracked as a follow-up). They're silently
+            -- dropped from the catalog arm here; the legacy arm still
+            -- surfaces them during the dual-read window.
+            AND prop->>'property_id' IS NOT NULL
+            AND cp.property_id IS NOT NULL
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
@@ -719,7 +737,7 @@ export class FederatedIndexDatabase {
          UNION
          SELECT v.publisher_domain
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM($1, '/')) END
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.property_rid IS NOT NULL
        ) sub
        ORDER BY publisher_domain`,
@@ -789,8 +807,17 @@ export class FederatedIndexDatabase {
                  ELSE '[]'::jsonb END
           ) AS prop
           WHERE ci.identifier_type = $2
+            -- Catalog stores identifier_value lowercase (schema CHECK).
+            -- Legacy discovered_properties.identifiers JSONB containment
+            -- match in arm 1 uses raw $1 — historical legacy data may
+            -- not be lowercase. Asymmetry resolves at PR 5 (legacy drop).
             AND ci.identifier_value = LOWER($3)
             AND v.property_rid IS NOT NULL
+            -- See getPropertiesForAgent: slugless catalog rows can't be
+            -- uniquely tied to a manifest entry today (no name/type on
+            -- catalog_properties). They drop here; legacy still serves.
+            AND prop->>'property_id' IS NOT NULL
+            AND cp.property_id IS NOT NULL
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
@@ -1029,9 +1056,10 @@ export class FederatedIndexDatabase {
            END AS source,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM($1, '/')) END
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.publisher_domain = $2
             AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
        )
        SELECT source FROM unioned
         ORDER BY src_priority,
@@ -1184,7 +1212,7 @@ export class FederatedIndexDatabase {
            JOIN v_effective_agent_authorizations v ON v.property_rid = cp.property_rid
           WHERE ci.identifier_type = $3
             AND ci.identifier_value = LOWER($4)
-            AND v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM($1, '/')) END
+            AND v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.property_rid IS NOT NULL
        )
        SELECT id, publisher_domain FROM unioned LIMIT 1`,
