@@ -145,7 +145,6 @@ phases:
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  categories: ["budget_authority", "brand_policy"]
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_seller_setup_sync_governance"
         validations:
           - check: response_schema

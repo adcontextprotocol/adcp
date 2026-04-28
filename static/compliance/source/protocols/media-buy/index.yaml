@@ -219,7 +219,6 @@ phases:
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  categories: ["budget_authority", "brand_policy"]
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_setup_sync_governance"
           context:
             correlation_id: "media_buy_seller--sync_governance"
