@@ -25,6 +25,7 @@ import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { isValidWorkOSMembershipId } from "../utils/workos-validation.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 import {
@@ -205,19 +206,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -253,19 +250,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.json({ count: 0 }); // Non-admins see 0
       }
@@ -298,19 +291,15 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -472,19 +461,15 @@ export function createOrganizationsRouter(): Router {
       const { reason } = req.body;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -558,12 +543,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -643,19 +624,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -802,19 +779,15 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: adminUser.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, adminUser.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1036,12 +1009,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1554,12 +1523,8 @@ export function createOrganizationsRouter(): Router {
       const trimmedName = name.trim();
 
       // Verify user is member of this organization with owner or admin role
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1567,7 +1532,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can rename
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1626,12 +1591,8 @@ export function createOrganizationsRouter(): Router {
       } = req.body;
 
       // Verify user is member of this organization with owner or admin role
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1639,7 +1600,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can update settings
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1788,12 +1749,8 @@ export function createOrganizationsRouter(): Router {
       const { confirmation } = req.body;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1801,7 +1758,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners can delete
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1909,12 +1866,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1986,12 +1939,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2057,19 +2006,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2123,19 +2068,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -3489,12 +3430,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -3545,12 +3482,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
       const { target_org_id } = req.body;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3617,12 +3550,8 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3686,12 +3615,8 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId, codeId } = req.params;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3736,11 +3661,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is a member of this org
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -3834,18 +3756,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this org
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       const isAdmin = userRole === 'admin' || userRole === 'owner';
 
       // Admins see all pending requests; members see their own
@@ -3867,14 +3786,11 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({ error: 'Only admins and owners can approve seat requests' });
       }
@@ -3961,14 +3877,11 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({ error: 'Only admins and owners can deny seat requests' });
       }
