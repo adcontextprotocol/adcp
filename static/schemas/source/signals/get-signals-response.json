@@ -17,7 +17,7 @@
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Opaque identifier used for activation. This is the signals agent's internal segment ID.",
+            "description": "Opaque activation handle. Pass this string verbatim to activate_signal.signal_agent_segment_id — do not pass the signal_id object.",
             "x-entity": "signal_activation_id"
           },
           "name": {

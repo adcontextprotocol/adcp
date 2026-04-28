@@ -918,16 +918,14 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_agent_segment_id: { type: 'string' },
-        signal_id: { type: 'string', description: 'Alias for signal_agent_segment_id (SDK compatibility)' },
+        idempotency_key: { type: 'string', description: 'UUID v4 for retry safety' },
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
-        destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
-        options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
-      required: [] as const,
+      required: ['signal_agent_segment_id', 'destinations', 'idempotency_key'] as const,
     },
   },
   ...ACCOUNT_TOOLS,
@@ -2757,24 +2755,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ActivateSignalRequest & ToolArgs & {
-    signal_id?: string;
-    destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
-  };
-  // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
-  const segmentId = req.signal_agent_segment_id || req.signal_id || '';
+  const req = args as unknown as ActivateSignalRequest & ToolArgs;
+  const segmentId = req.signal_agent_segment_id || '';
   const action = req.action || 'activate';
-  // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
-  let destinations: Destination[] = req.destinations || [];
-  if (!destinations.length && req.destination) {
-    const dest = req.destination;
-    // SDK sends platform + account_id; normalize to protocol format
-    if (dest.agent_url) {
-      destinations = [{ type: 'agent', agent_url: dest.agent_url, account: dest.account || dest.account_id }];
-    } else {
-      destinations = [{ type: 'platform', platform: dest.platform || '', account: dest.account || dest.account_id }];
-    }
-  }
+  const destinations: Destination[] = req.destinations || [];
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
