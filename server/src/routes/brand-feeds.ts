@@ -11,17 +11,27 @@ import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
-import { validateFetchUrl } from '../utils/url-security.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { validateFetchUrl, safeFetch, sanitizeUrl } from '../utils/url-security.js';
+import { ModelConfig } from '../config/models.js';
 import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
 
 const MAX_PROPERTIES = 500;
 const MAX_COLLECTIONS = 200;
+const MAX_PARSE_INPUT_CHARS = 50_000;
+const MAX_PARSE_FETCH_BYTES = 1_000_000; // 1MB streaming cap
 
 const logger = createLogger('brand-feeds');
 
 const VALID_PROPERTY_TYPES = ['website', 'mobile_app', 'ctv_app', 'desktop_app', 'dooh', 'podcast', 'radio', 'streaming_audio'];
 const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
+
+let anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) anthropicClient = new Anthropic();
+  return anthropicClient;
+}
 
 export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   const router = Router();
@@ -263,6 +273,139 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   });
 
   // ─── Bulk merge endpoints ──────────────────────────────────────────
+
+  // POST /api/brands/:domain/properties/parse — AI-powered property list parsing
+  router.post('/brands/:domain/properties/parse', requireAuth, async (req, res) => {
+    try {
+      const domain = req.params.domain.toLowerCase();
+      const { input, input_type, relationship } = req.body as {
+        input?: string;
+        input_type?: string;
+        relationship?: string;
+      };
+
+      if (!input || typeof input !== 'string' || input.trim().length === 0) {
+        return res.status(400).json({ error: 'input required' });
+      }
+      if (!['text', 'url'].includes(input_type ?? 'text')) {
+        return res.status(400).json({ error: "input_type must be 'text' or 'url'" });
+      }
+      if (relationship !== undefined && !['owned', 'direct', 'delegated', 'ad_network'].includes(relationship)) {
+        return res.status(400).json({ error: "relationship must be one of: owned, direct, delegated, ad_network" });
+      }
+
+      let rawText = input.trim();
+      let truncated = false;
+
+      if (input_type === 'url') {
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(rawText);
+        } catch {
+          return res.status(400).json({ error: 'Invalid URL' });
+        }
+        // safeFetch re-validates internally; validate here only to return an early user-friendly 400
+        // before spending a full fetch round-trip (avoids revealing internal error messages on SSRF paths).
+        try {
+          await validateFetchUrl(parsedUrl);
+        } catch (err) {
+          return res.status(400).json({ error: (err as Error).message || 'URL not allowed' });
+        }
+        let fetchResponse;
+        try {
+          fetchResponse = await safeFetch(sanitizeUrl(parsedUrl), {
+            headers: { 'User-Agent': 'AdCP Brand Builder/1.0' },
+            signal: AbortSignal.timeout(15_000),
+          });
+        } catch (err) {
+          return res.status(400).json({ error: `Could not fetch URL: ${(err as Error).message}` });
+        }
+        if (!fetchResponse.ok) {
+          return res.status(400).json({ error: `URL returned HTTP ${fetchResponse.status}` });
+        }
+        // Stream with a hard byte cap — Content-Length alone is not reliable for chunked responses.
+        const decoder = new TextDecoder();
+        const chunks: string[] = [];
+        let totalBytes = 0;
+        const reader = fetchResponse.body!.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          totalBytes += value.length;
+          chunks.push(decoder.decode(value, { stream: true }));
+          if (totalBytes > MAX_PARSE_FETCH_BYTES) {
+            void reader.cancel();
+            break;
+          }
+        }
+        chunks.push(decoder.decode()); // flush
+        rawText = chunks.join('');
+      }
+
+      if (rawText.length > MAX_PARSE_INPUT_CHARS) {
+        rawText = rawText.slice(0, MAX_PARSE_INPUT_CHARS);
+        truncated = true;
+      }
+
+      const check = await getBrandForEdit(domain, req.user!.id);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
+
+      const message = await getAnthropicClient().messages.create({
+        model: ModelConfig.fast,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            // Content is wrapped in XML tags to reduce prompt-injection surface from
+            // adversarial responses on the URL fetch path. Preview-only endpoint (no write).
+            content: `Extract all publisher domains and app bundle IDs from the content below. Ignore ad tech infrastructure (ad networks, DSPs, SSPs, CDNs, measurement vendors).
+
+For each entry return:
+- "identifier": the bare domain (e.g. "example.com") or app bundle (e.g. "com.example.app")
+- "type": one of: website, mobile_app, ctv_app, desktop_app, podcast, radio, streaming_audio, dooh
+
+Return ONLY valid JSON with no explanation or markdown:
+{"properties":[{"identifier":"...","type":"website"},...]}
+
+If no identifiers found, return: {"properties":[]}
+
+<content>
+${rawText}
+</content>`,
+          },
+        ],
+      });
+
+      const responseText =
+        message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+      let parsed: { properties?: Array<{ identifier?: string; type?: string }> };
+      try {
+        parsed = JSON.parse(responseText);
+      } catch {
+        logger.warn({ domain }, 'Property parse: LLM returned non-JSON response');
+        return res.json({ properties: [], count: 0, warning: 'Could not parse identifiers from input' });
+      }
+
+      const rel = relationship ?? 'delegated';
+
+      const properties = (Array.isArray(parsed.properties) ? parsed.properties : [])
+        .filter(
+          (p) =>
+            p.identifier &&
+            typeof p.identifier === 'string' &&
+            p.identifier.trim().length > 0 &&
+            p.identifier.length <= 253 && // DNS max length
+            VALID_PROPERTY_TYPES.includes(p.type ?? ''),
+        )
+        .map((p) => ({ identifier: p.identifier!.toLowerCase().trim(), type: p.type!, relationship: rel }))
+        .slice(0, MAX_PROPERTIES);
+
+      return res.json({ properties, count: properties.length, truncated: truncated || undefined });
+    } catch (err) {
+      logger.error({ err }, 'Failed to parse property list');
+      return res.status(500).json({ error: 'Failed to parse property list' });
+    }
+  });
 
   // POST /api/brands/:domain/properties — Merge properties by identifier
   router.post('/brands/:domain/properties', requireAuth, async (req, res) => {
