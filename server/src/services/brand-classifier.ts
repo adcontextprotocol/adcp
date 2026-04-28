@@ -3,6 +3,18 @@
  *
  * Uses a single structured Sonnet call to classify a brand's position
  * in a corporate brand architecture (Keller model) given Brandfetch data.
+ *
+ * SECURITY: `house_domain` and `confidence` from this classifier are
+ * authorization-relevant — autoLinkByVerifiedDomain (membership-db.ts) walks
+ * brands.house_domain to inherit child-brand employees into a paying parent
+ * org's WorkOS membership, gated on `confidence='high'`. Today the input
+ * fields (brandData.* below) come from Brandfetch + crawled homepage
+ * metadata, which we treat as trusted-but-third-party. If a less-trusted
+ * source is ever added (user-submitted manifests, scraped competitor sites,
+ * untrusted enrichment APIs), reassess prompt-injection exposure: the
+ * classifier's house_domain output decides which paying org's membership a
+ * new user gets. The brand_html_summary, company.industries, and
+ * raw.links fields are the most attacker-controllable surfaces.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
