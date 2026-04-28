@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
+import { Resend } from 'resend';
+import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
@@ -7,8 +9,24 @@ import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
 import { notifyUser } from '../notifications/notification-service.js';
 import { isUuid } from '../utils/uuid.js';
+import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 
 const logger = createLogger('certification-routes');
+
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
+
+// 3 requests per user per 24 h — prevents inbox flooding via the email relay
+const reviewRequestLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('cert-review-req:'),
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
+  validate: { keyGeneratorIpFallback: false },
+});
 
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
@@ -405,6 +423,55 @@ export function createCertificationRouters() {
       res.json({ status: 'snoozed', snooze_until: result.snooze_until });
     } catch (error) {
       logger.error({ error }, 'Failed to snooze certification expectation');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/me/certification/review-request — learner requests human review of an assessment
+  userRouter.post('/certification/review-request', reviewRequestLimiter, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { module_id } = req.body as { module_id?: unknown };
+
+      if (!module_id || typeof module_id !== 'string' || !/^[A-Z][0-9]{1,2}$/.test(module_id)) {
+        return res.status(400).json({ error: 'module_id is required' });
+      }
+
+      if (!isUuid(userId)) {
+        return res.status(400).json({ error: 'Invalid user identity' });
+      }
+
+      const progress = await certDb.getModuleProgress(userId, module_id);
+      if (!progress || (progress.status !== 'completed' && progress.status !== 'tested_out')) {
+        return res.status(400).json({ error: 'No completed assessment found for this module' });
+      }
+
+      const completedAt = progress.completed_at
+        ? new Date(progress.completed_at).toUTCString()
+        : 'unknown';
+
+      if (resend) {
+        await resend.emails.send({
+          from: 'AgenticAdvertising.org <hello@updates.agenticadvertising.org>',
+          to: 'certification@agenticadvertising.org',
+          subject: `Assessment review request — ${module_id}`,
+          text: [
+            `Learner ID: ${userId}`,
+            `Module: ${module_id}`,
+            `Status: ${progress.status}`,
+            `Completed: ${completedAt}`,
+            '',
+            'Look up this record in the admin portal:',
+            `/admin/certification?user=${userId}&module=${module_id}`,
+          ].join('\n'),
+        });
+      } else {
+        logger.warn({ userId, module_id }, 'Review request received but RESEND_API_KEY not configured');
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      logger.error({ error }, 'Failed to submit review request');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
