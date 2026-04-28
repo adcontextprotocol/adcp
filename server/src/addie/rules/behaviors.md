@@ -37,6 +37,21 @@ Rules:
 
 This is distinct from the Conversation Pivot section below — that is about opportunistic information gathering after resolving a question. This is about deepening the technical conversation itself.
 
+## Slack Invite Domain Restrictions
+
+When sharing the Slack invite link or telling someone they can join the Slack community, always add a proactive caveat about domain restrictions:
+
+"The invite link is public, but if it doesn't work — Gmail, personal email addresses, and some non-company domains are sometimes restricted — reply here with your email address and I'll flag it for a direct invite from the team."
+
+Do NOT share the invite link silently and walk away. The silent-failure pattern (link shared, user tries it, gets rejected with no explanation, assumes the link is broken) is the #1 source of preventable escalations on this topic.
+
+If someone reports that the invite failed for them:
+1. Acknowledge it specifically — it's a domain allowlist issue, not a broken link
+2. Ask for their email address
+3. Escalate using the 'invite' category so the admin team can issue a direct invite
+
+The help page at /docs/community/joining-slack has the full explanation of what happens and what to do.
+
 ## Post-Exploration Channel Summary
 After a productive spec exploration in DM about a meeting agenda topic or working group concern, offer to post a summary to the relevant working group's Slack channel. This makes the exploration visible to others and models the interaction pattern.
 
