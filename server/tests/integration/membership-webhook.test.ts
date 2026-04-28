@@ -745,6 +745,78 @@ describe('Membership webhook DB operations', () => {
         expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
+      it('grandfather: skips users whose users.created_at predates the hierarchy opt-in', async () => {
+        // Parent enabled the flag at T1. A user whose account was created
+        // BEFORE T1 must NOT be auto-linked (would be retroactive backfill).
+        // A user created AFTER T1 (or with no users row yet) IS auto-linked.
+        await seedBrandHierarchy({ hierarchyOptIn: false }); // start opted out
+
+        // Pre-existing user, created before flag flip.
+        await pool.query(
+          `INSERT INTO users (workos_user_id, email, created_at, updated_at)
+           VALUES ($1, $2, NOW() - INTERVAL '1 day', NOW())
+           ON CONFLICT (workos_user_id) DO UPDATE SET created_at = EXCLUDED.created_at`,
+          [AUTOLINK_USER, `mike@${CHILD_DOMAIN}`],
+        );
+
+        // Now flip the flag on. The trigger sets auto_provision_hierarchy_enabled_at = NOW().
+        await pool.query(
+          `UPDATE organizations SET auto_provision_brand_hierarchy_children = true
+             WHERE workos_organization_id = $1`,
+          [TEST_AUTOLINK_ORG_ID],
+        );
+
+        const workos = makeWorkOSMock();
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        // User predates the opt-in → no auto-link (grandfather).
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
+
+        // Cleanup
+        await pool.query('DELETE FROM users WHERE workos_user_id = $1', [AUTOLINK_USER]);
+      });
+
+      it('cohort: still auto-links a NEW user (created after flag flip) via hierarchy', async () => {
+        await seedBrandHierarchy({ hierarchyOptIn: false }); // start opted out
+        // Flip flag at T0 (sets enabled_at = NOW()).
+        await pool.query(
+          `UPDATE organizations SET auto_provision_brand_hierarchy_children = true
+             WHERE workos_organization_id = $1`,
+          [TEST_AUTOLINK_ORG_ID],
+        );
+        // User created AFTER the flip (NOW + a small offset to be safe).
+        await pool.query(
+          `INSERT INTO users (workos_user_id, email, created_at, updated_at)
+           VALUES ($1, $2, NOW() + INTERVAL '1 second', NOW())
+           ON CONFLICT (workos_user_id) DO UPDATE SET created_at = EXCLUDED.created_at`,
+          [AUTOLINK_USER, `mike@${CHILD_DOMAIN}`],
+        );
+
+        const workos = makeWorkOSMock();
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).not.toBeNull();
+        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+
+        await pool.query('DELETE FROM users WHERE workos_user_id = $1', [AUTOLINK_USER]);
+      });
+
+      it('cohort: auto-links when no users row exists yet (just-created via webhook)', async () => {
+        // Webhook race: autoLink fires before user.created webhook lands the
+        // local users row. Don't block on a missing row — treat as new joiner.
+        await seedBrandHierarchy(); // hierarchyOptIn defaults to true
+        const workos = makeWorkOSMock();
+
+        // Confirm no users row exists for this user.
+        await pool.query('DELETE FROM users WHERE workos_user_id = $1', [AUTOLINK_USER]);
+
+        const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
+
+        expect(result).not.toBeNull();
+        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+      });
+
       it('prefers a direct verified-domain match over a hierarchical one when both exist', async () => {
         // Direct match wins: even if the brand registry says child→parent,
         // an explicit organization_domains row on the child takes priority.

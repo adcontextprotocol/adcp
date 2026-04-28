@@ -174,8 +174,23 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * through the brand registry hierarchy (house_domain chain).
  *
  * If the org itself is a paying member, returns direct membership.
- * Otherwise, walks up the house_domain chain (max 5 hops) looking for
- * a paying ancestor org. Only traverses high-confidence classifications.
+ * Otherwise, walks up the house_domain chain looking for a paying ancestor.
+ *
+ * Trust gates on inheritance — same shape as findPayingOrgForDomain so the
+ * pre-link auto-provisioning path and post-link is_member resolution agree
+ * on which edges are trustworthy:
+ *   - max 4 hops up
+ *   - cycle protection via visited-domain array
+ *   - only edges classified at confidence='high' (LLM classifier output)
+ *   - 180-day TTL on the brand classification
+ *   - inherited match only counts if the paying ancestor has opted into
+ *     auto_provision_brand_hierarchy_children (default false). Without
+ *     opt-in, the child org's is_member stays false even if the brand
+ *     registry says it's a subsidiary.
+ *
+ * The opt-in gate at the post-link step matches the auto-provision step:
+ * an admin who hasn't consented to auto-joining children doesn't grant
+ * "you're a member" feature access to those children either.
  */
 export async function resolveEffectiveMembership(orgId: string): Promise<EffectiveMembership> {
   // Check cache
@@ -194,36 +209,43 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       subscription_status: string | null;
       subscription_canceled_at: Date | null;
       membership_tier: string | null;
+      auto_provision_hierarchy: boolean;
       depth: number;
     }>(`
       WITH RECURSIVE org_chain AS (
         -- Start: the org in question
         SELECT o.workos_organization_id, o.email_domain, o.name,
                o.subscription_status, o.subscription_canceled_at,
-               o.membership_tier, 1 as depth,
+               o.membership_tier,
+               COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+               1 as depth,
                ARRAY[o.email_domain]::TEXT[] as visited
         FROM organizations o
         WHERE o.workos_organization_id = $1
 
         UNION ALL
 
-        -- Walk up: join through brands.house_domain
+        -- Walk up: join through brands.house_domain. Same trust gates as
+        -- findPayingOrgForDomain — high-confidence only, 180-day freshness.
         SELECT parent_o.workos_organization_id, parent_o.email_domain, parent_o.name,
                parent_o.subscription_status, parent_o.subscription_canceled_at,
-               parent_o.membership_tier, oc.depth + 1,
+               parent_o.membership_tier,
+               COALESCE(parent_o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+               oc.depth + 1,
                oc.visited || parent_o.email_domain
         FROM org_chain oc
         JOIN brands db ON db.domain = oc.email_domain
         JOIN organizations parent_o ON parent_o.email_domain = db.house_domain
         WHERE db.house_domain IS NOT NULL
           AND oc.depth < 5
-          AND (db.brand_manifest->'classification'->>'confidence' = 'high'
-               OR db.source_type = 'brand_json')
+          AND db.brand_manifest->'classification'->>'confidence' = 'high'
+          AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+              > NOW() - INTERVAL '180 days'
           AND parent_o.email_domain != ALL(oc.visited)
       )
       SELECT workos_organization_id, email_domain, name,
              subscription_status, subscription_canceled_at,
-             membership_tier, depth
+             membership_tier, auto_provision_hierarchy, depth
       FROM org_chain
       ORDER BY depth ASC
     `, [orgId]);
@@ -243,7 +265,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return noResult;
     }
 
-    // Check the org itself first (depth 1)
+    // Check the org itself first (depth 1) — opt-in flag does not apply to
+    // self; an org's own paying subscription always counts.
     const self = rows[0];
     if (self.subscription_status === 'active' && !self.subscription_canceled_at) {
       const directResult: EffectiveMembership = {
@@ -258,9 +281,11 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return directResult;
     }
 
-    // Check ancestors (depth > 1) for paying member
+    // Check ancestors (depth > 1) for a paying member that has opted into
+    // hierarchy inheritance. An ancestor that didn't consent to children
+    // auto-joining doesn't grant is_member to those children either.
     for (const row of rows.slice(1)) {
-      if (row.subscription_status === 'active' && !row.subscription_canceled_at) {
+      if (row.subscription_status === 'active' && !row.subscription_canceled_at && row.auto_provision_hierarchy) {
         const chain = rows
           .filter(r => r.depth <= row.depth)
           .map(r => r.email_domain)
@@ -329,6 +354,12 @@ export interface DomainOwnerOrg {
   auto_provision_direct_allowed: boolean;
   /** Hierarchical (inherited) auto-provisioning is allowed on the resolved org. Default false. */
   auto_provision_hierarchy_allowed: boolean;
+  /**
+   * Timestamp the paying org enabled auto_provision_brand_hierarchy_children.
+   * Cohort gate: callers should only auto-link inherited matches for users
+   * created on or after this time. NULL when the flag is off (no cohort).
+   */
+  auto_provision_hierarchy_enabled_at: Date | null;
 }
 
 /**
@@ -370,6 +401,7 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
       org_name: string;
       auto_provision_direct: boolean;
       auto_provision_hierarchy: boolean;
+      auto_provision_hierarchy_enabled_at: Date | null;
     }>(`
       WITH RECURSIVE domain_chain AS (
         -- Start: the user's email domain
@@ -397,7 +429,8 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
           od.workos_organization_id,
           o.name AS org_name,
           COALESCE(o.auto_provision_verified_domain, true) AS auto_provision_direct,
-          COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy
+          COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
+          o.auto_provision_hierarchy_enabled_at
         FROM domain_chain dc
         JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
         JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
@@ -445,6 +478,7 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
       hierarchy_chain: chainResult.rows.map((r) => r.domain),
       auto_provision_direct_allowed: match.auto_provision_direct,
       auto_provision_hierarchy_allowed: match.auto_provision_hierarchy,
+      auto_provision_hierarchy_enabled_at: match.auto_provision_hierarchy_enabled_at,
     };
   } catch (error) {
     logger.error({ err: error, domain: normalizedDomain }, 'Failed to find paying org for domain');

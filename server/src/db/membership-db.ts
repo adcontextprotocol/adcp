@@ -277,6 +277,34 @@ export async function autoLinkByVerifiedDomain(
   // from the joining user).
   if (owner.is_inherited) {
     if (!owner.auto_provision_hierarchy_allowed) return null;
+
+    // Cohort gate: only auto-join users whose users.created_at is on or
+    // after the moment the parent enabled hierarchical auto-provisioning.
+    // Without this, flipping the flag retroactively grafts the entire
+    // backlog of child-domain users into the parent on their next request.
+    // Grandfather semantics matches the SaaS norm.
+    if (owner.auto_provision_hierarchy_enabled_at) {
+      const userRow = await pool.query<{ created_at: Date | null }>(
+        'SELECT created_at FROM users WHERE workos_user_id = $1',
+        [userId],
+      );
+      const userCreatedAt = userRow.rows[0]?.created_at ?? null;
+      // No user row yet → just-created via webhook; treat as new joiner.
+      // Otherwise require the user's account to post-date the opt-in.
+      if (userCreatedAt && userCreatedAt < owner.auto_provision_hierarchy_enabled_at) {
+        logger.info(
+          {
+            userId,
+            email,
+            orgId: owner.organization_id,
+            userCreatedAt,
+            hierarchyEnabledAt: owner.auto_provision_hierarchy_enabled_at,
+          },
+          'Auto-link skipped: user predates hierarchy opt-in (grandfather semantics)',
+        );
+        return null;
+      }
+    }
   } else {
     if (!owner.auto_provision_direct_allowed) return null;
   }

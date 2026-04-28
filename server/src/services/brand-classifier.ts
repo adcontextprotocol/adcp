@@ -117,13 +117,22 @@ export async function classifyBrand(
       'Brand classified'
     );
 
+    // Whitelist confidence — it's auth-relevant (gates brand-hierarchy
+    // inheritance in autoLinkByVerifiedDomain). A prompt-injected response
+    // setting "confidence": "extreme" or any other unexpected value should
+    // collapse to 'low' rather than be persisted as-is.
+    const validConfidence: ReadonlyArray<'high' | 'medium' | 'low'> = ['high', 'medium', 'low'];
+    const confidence: 'high' | 'medium' | 'low' = validConfidence.includes(parsed.confidence as never)
+      ? (parsed.confidence as 'high' | 'medium' | 'low')
+      : 'low';
+
     return {
       keller_type: parsed.keller_type,
       house_domain: parsed.house_domain || null,
       parent_brand: parsed.parent_brand || null,
       canonical_domain: parsed.canonical_domain || domain,
       related_domains: Array.isArray(parsed.related_domains) ? parsed.related_domains : [],
-      confidence: parsed.confidence || 'low',
+      confidence,
       reasoning: parsed.reasoning || '',
     };
   } catch (err) {

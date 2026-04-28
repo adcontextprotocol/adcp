@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { findPayingOrgForDomain } from '../../src/db/org-filters.js';
+import { findPayingOrgForDomain, resolveEffectiveMembership, invalidateMembershipCache } from '../../src/db/org-filters.js';
 import type { Pool } from 'pg';
 
 const TEST_PARENT_ORG = 'org_paying_parent_test';
@@ -42,19 +42,21 @@ async function seedPayingOrg(pool: Pool, orgId: string, domain: string, opts: {
 } = {}) {
   await pool.query(
     `INSERT INTO organizations (
-       workos_organization_id, name, subscription_status, subscription_canceled_at,
+       workos_organization_id, name, email_domain, subscription_status, subscription_canceled_at,
        auto_provision_verified_domain, auto_provision_brand_hierarchy_children,
        created_at, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
      ON CONFLICT (workos_organization_id) DO UPDATE
-       SET subscription_status = EXCLUDED.subscription_status,
+       SET email_domain = EXCLUDED.email_domain,
+           subscription_status = EXCLUDED.subscription_status,
            subscription_canceled_at = EXCLUDED.subscription_canceled_at,
            auto_provision_verified_domain = EXCLUDED.auto_provision_verified_domain,
            auto_provision_brand_hierarchy_children = EXCLUDED.auto_provision_brand_hierarchy_children`,
     [
       orgId,
       `Org ${orgId}`,
+      domain,
       opts.subscription_status ?? 'active',
       opts.canceled ? new Date() : null,
       opts.auto_provision_direct ?? true,
@@ -283,5 +285,141 @@ describe('findPayingOrgForDomain', () => {
   it('returns null for empty/whitespace input', async () => {
     expect(await findPayingOrgForDomain('')).toBeNull();
     expect(await findPayingOrgForDomain('   ')).toBeNull();
+  });
+
+  it('off-by-one regression guard: hierarchy_chain stops at matched depth', async () => {
+    // Chain: GRANDCHILD → CHILD → PARENT, but only CHILD has the paying org.
+    // The matched depth is 2 (CHILD). hierarchy_chain must be [GRANDCHILD, CHILD]
+    // — NOT include PARENT, which is past the match.
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN);
+    await seedBrandHierarchy(pool, GRANDCHILD_DOMAIN, CHILD_DOMAIN);
+    await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN); // chain continues but PARENT not paying
+
+    const result = await findPayingOrgForDomain(GRANDCHILD_DOMAIN);
+
+    expect(result).not.toBeNull();
+    expect(result!.organization_id).toBe(TEST_DIRECT_ORG);
+    expect(result!.matched_domain).toBe(CHILD_DOMAIN);
+    expect(result!.hierarchy_chain).toEqual([GRANDCHILD_DOMAIN, CHILD_DOMAIN]);
+  });
+});
+
+describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () => {
+  let pool: Pool;
+
+  beforeAll(async () => {
+    pool = initializeDatabase({
+      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+    });
+    await runMigrations();
+  }, 60000);
+
+  afterAll(async () => {
+    await cleanup(pool);
+    await closeDatabase();
+  });
+
+  beforeEach(async () => {
+    await cleanup(pool);
+    invalidateMembershipCache();
+  });
+
+  it('inherited membership requires the parent to opt into auto_provision_brand_hierarchy_children', async () => {
+    // Parent paying, brand hierarchy says child→parent, but parent has NOT
+    // opted in. Pre-fix this would resolve `is_member: true` for the child;
+    // post-fix it must NOT.
+    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, { auto_provision_hierarchy: false });
+    await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN);
+    // Child is its own org with no subscription; needs to inherit.
+    const CHILD_ORG = 'org_inherit_child_test';
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, email_domain, subscription_status, created_at, updated_at)
+       VALUES ($1, $2, $3, NULL, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET email_domain = EXCLUDED.email_domain`,
+      [CHILD_ORG, 'Child Co', CHILD_DOMAIN],
+    );
+
+    try {
+      const result = await resolveEffectiveMembership(CHILD_ORG);
+      expect(result.is_member).toBe(false);
+      expect(result.is_inherited).toBe(false);
+    } finally {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CHILD_ORG]);
+    }
+  });
+
+  it('inherited membership granted when parent has opted in', async () => {
+    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, { auto_provision_hierarchy: true });
+    await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN);
+    const CHILD_ORG = 'org_inherit_child_test_2';
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, email_domain, subscription_status, created_at, updated_at)
+       VALUES ($1, $2, $3, NULL, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET email_domain = EXCLUDED.email_domain`,
+      [CHILD_ORG, 'Child Co', CHILD_DOMAIN],
+    );
+
+    try {
+      const result = await resolveEffectiveMembership(CHILD_ORG);
+      expect(result.is_member).toBe(true);
+      expect(result.is_inherited).toBe(true);
+      expect(result.paying_org_id).toBe(TEST_PARENT_ORG);
+    } finally {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CHILD_ORG]);
+    }
+  });
+
+  it('inherited membership respects 180-day TTL on the brand edge', async () => {
+    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, { auto_provision_hierarchy: true });
+    // Stale edge: validated 200 days ago.
+    const stale = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+    await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN, { last_validated: stale });
+    const CHILD_ORG = 'org_inherit_child_test_3';
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, email_domain, subscription_status, created_at, updated_at)
+       VALUES ($1, $2, $3, NULL, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET email_domain = EXCLUDED.email_domain`,
+      [CHILD_ORG, 'Child Co', CHILD_DOMAIN],
+    );
+
+    try {
+      const result = await resolveEffectiveMembership(CHILD_ORG);
+      expect(result.is_member).toBe(false);
+    } finally {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CHILD_ORG]);
+    }
+  });
+
+  it('the trigger sets auto_provision_hierarchy_enabled_at on flag flip', async () => {
+    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, { auto_provision_hierarchy: false });
+
+    // Initially NULL.
+    const before = await pool.query<{ enabled_at: Date | null }>(
+      'SELECT auto_provision_hierarchy_enabled_at AS enabled_at FROM organizations WHERE workos_organization_id = $1',
+      [TEST_PARENT_ORG],
+    );
+    expect(before.rows[0].enabled_at).toBeNull();
+
+    // Flip to true → trigger sets the timestamp.
+    await pool.query(
+      'UPDATE organizations SET auto_provision_brand_hierarchy_children = true WHERE workos_organization_id = $1',
+      [TEST_PARENT_ORG],
+    );
+    const after = await pool.query<{ enabled_at: Date | null }>(
+      'SELECT auto_provision_hierarchy_enabled_at AS enabled_at FROM organizations WHERE workos_organization_id = $1',
+      [TEST_PARENT_ORG],
+    );
+    expect(after.rows[0].enabled_at).not.toBeNull();
+
+    // Flip back to false → trigger clears the timestamp.
+    await pool.query(
+      'UPDATE organizations SET auto_provision_brand_hierarchy_children = false WHERE workos_organization_id = $1',
+      [TEST_PARENT_ORG],
+    );
+    const cleared = await pool.query<{ enabled_at: Date | null }>(
+      'SELECT auto_provision_hierarchy_enabled_at AS enabled_at FROM organizations WHERE workos_organization_id = $1',
+      [TEST_PARENT_ORG],
+    );
+    expect(cleared.rows[0].enabled_at).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { isBrandfetchConfigured } from '../../services/brandfetch.js';
-import { query } from '../../db/client.js';
+import { query, getClient } from '../../db/client.js';
 import {
   enrichBrand,
   enrichBrands,
@@ -423,98 +423,111 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           return res.status(400).json({ error: `Invalid keller_type. Must be one of: ${VALID_KELLER_TYPES.join(', ')}` });
         }
 
-        const existing = await query<{ domain: string; house_domain: string | null; keller_type: string | null }>(
-          `SELECT domain, house_domain, keller_type FROM brands WHERE domain = $1`,
-          [domain]
-        );
-        if (existing.rows.length === 0) {
-          return res.status(404).json({ error: 'Brand not found in registry' });
-        }
-        const priorRow = existing.rows[0];
-
-        // Update brand fields
-        const setClauses: string[] = [];
-        const params: (string | null)[] = [];
-        let idx = 1;
-
-        if (house_domain !== undefined) {
-          setClauses.push(`house_domain = $${idx++}`);
-          params.push(house_domain || null);
-        }
-        if (keller_type !== undefined) {
-          setClauses.push(`keller_type = $${idx++}`);
-          params.push(keller_type || null);
-        }
-
+        // Wrap snapshot + UPDATE + audit-log INSERT in one transaction so a
+        // concurrent PATCH on the same brand can't produce a torn audit
+        // trail (admin A's audit row recording B's prior value, etc.). The
+        // audit log is the whole point of this endpoint.
+        const client = await getClient();
         let brandRow;
-        if (setClauses.length > 0) {
-          params.push(domain);
-          const result = await query(
-            `UPDATE brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, house_domain, keller_type, brand_name, source_type`,
-            params
-          );
-          brandRow = result.rows[0];
-        } else {
-          const result = await query(
-            `SELECT domain, house_domain, keller_type, brand_name, source_type FROM brands WHERE domain = $1`,
+        let priorRow: { domain: string; house_domain: string | null; keller_type: string | null };
+        try {
+          await client.query('BEGIN');
+
+          const existing = await client.query<{ domain: string; house_domain: string | null; keller_type: string | null }>(
+            `SELECT domain, house_domain, keller_type FROM brands WHERE domain = $1 FOR UPDATE`,
             [domain]
           );
-          brandRow = result.rows[0];
-        }
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Brand not found in registry' });
+          }
+          priorRow = existing.rows[0];
 
-        // Update aliases if provided
-        if (aliases !== undefined || canonical_domain !== undefined) {
-          // Replace all aliases for this brand
-          await query(`DELETE FROM brand_domain_aliases WHERE brand_domain = $1`, [domain]);
-          for (const alias of aliasArray) {
-            await query(
-              `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source) VALUES ($1, $2, 'admin') ON CONFLICT (alias_domain) DO UPDATE SET brand_domain = $2`,
-              [alias, domain]
+          // Update brand fields
+          const setClauses: string[] = [];
+          const params: (string | null)[] = [];
+          let idx = 1;
+
+          if (house_domain !== undefined) {
+            setClauses.push(`house_domain = $${idx++}`);
+            params.push(house_domain || null);
+          }
+          if (keller_type !== undefined) {
+            setClauses.push(`keller_type = $${idx++}`);
+            params.push(keller_type || null);
+          }
+
+          if (setClauses.length > 0) {
+            params.push(domain);
+            const result = await client.query(
+              `UPDATE brands SET ${setClauses.join(', ')} WHERE domain = $${idx} RETURNING domain, house_domain, keller_type, brand_name, source_type`,
+              params
+            );
+            brandRow = result.rows[0];
+          } else {
+            brandRow = priorRow;
+          }
+
+          // Update aliases if provided
+          if (aliases !== undefined || canonical_domain !== undefined) {
+            await client.query(`DELETE FROM brand_domain_aliases WHERE brand_domain = $1`, [domain]);
+            for (const alias of aliasArray) {
+              await client.query(
+                `INSERT INTO brand_domain_aliases (alias_domain, brand_domain, source) VALUES ($1, $2, 'admin') ON CONFLICT (alias_domain) DO UPDATE SET brand_domain = $2`,
+                [alias, domain]
+              );
+            }
+          }
+
+          // Audit log: house_domain feeds the brand-hierarchy auto-link path
+          // (autoLinkByVerifiedDomain via findPayingOrgForDomain), so changes
+          // to it can grant new sets of users access to a paying org. Track
+          // each change so a misbehaving / compromised admin is detectable.
+          if (house_domain !== undefined && (house_domain || null) !== priorRow.house_domain) {
+            // Look up the paying org whose hierarchy is impacted, falling
+            // back to a sentinel. registry_audit_log has no FK on the
+            // workos_organization_id column, so the sentinel is safe.
+            const candidateOrgs = await client.query<{ workos_organization_id: string }>(
+              `SELECT od.workos_organization_id FROM organization_domains od
+               WHERE od.verified = true AND LOWER(od.domain) = ANY($1::text[])
+               LIMIT 1`,
+              [[house_domain, priorRow.house_domain].filter(Boolean).map((d) => (d as string).toLowerCase())]
+            );
+            const auditOrgId = candidateOrgs.rows[0]?.workos_organization_id ?? 'system_brand_registry';
+
+            await client.query(
+              `INSERT INTO registry_audit_log
+               (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [
+                auditOrgId,
+                req.user!.id,
+                'brand_house_domain_changed',
+                'brand',
+                domain,
+                JSON.stringify({
+                  domain,
+                  prior_house_domain: priorRow.house_domain,
+                  new_house_domain: house_domain || null,
+                  admin_email: req.user!.email,
+                }),
+              ]
             );
           }
+
+          await client.query('COMMIT');
+        } catch (txErr) {
+          try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+          throw txErr;
+        } finally {
+          client.release();
         }
 
-        // Fetch current aliases
+        // Fetch current aliases (after commit, fresh read)
         const aliasResult = await query(
           `SELECT alias_domain FROM brand_domain_aliases WHERE brand_domain = $1 ORDER BY alias_domain`,
           [domain]
         );
-
-        // Audit log: house_domain feeds the brand-hierarchy auto-link path
-        // (autoLinkByVerifiedDomain via findPayingOrgForDomain), so changes
-        // to it can grant new sets of users access to a paying org. Track
-        // each change so a misbehaving / compromised admin is detectable.
-        if (house_domain !== undefined && (house_domain || null) !== priorRow.house_domain) {
-          // Look up the paying org whose hierarchy is impacted, falling back
-          // to the prior house's org or a sentinel. The org id is what makes
-          // the audit row queryable from the org-detail page.
-          const candidateOrgs = await query<{ workos_organization_id: string }>(
-            `SELECT od.workos_organization_id FROM organization_domains od
-             WHERE od.verified = true AND LOWER(od.domain) = ANY($1::text[])
-             LIMIT 1`,
-            [[house_domain, priorRow.house_domain].filter(Boolean).map((d) => (d as string).toLowerCase())]
-          );
-          const auditOrgId = candidateOrgs.rows[0]?.workos_organization_id ?? 'system_brand_registry';
-
-          await query(
-            `INSERT INTO registry_audit_log
-             (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-              auditOrgId,
-              req.user!.id,
-              'brand_house_domain_changed',
-              'brand',
-              domain,
-              JSON.stringify({
-                domain,
-                prior_house_domain: priorRow.house_domain,
-                new_house_domain: house_domain || null,
-                admin_email: req.user!.email,
-              }),
-            ]
-          );
-        }
 
         logger.info({ domain, aliases: aliasArray, house_domain, keller_type, priorHouseDomain: priorRow.house_domain }, 'Brand metadata updated');
         res.json({ ...brandRow, aliases: aliasResult.rows.map((r: { alias_domain: string }) => r.alias_domain) });
