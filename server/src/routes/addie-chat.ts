@@ -131,6 +131,8 @@ const __dirname = path.dirname(__filename);
 
 const logger = createLogger("addie-chat-routes");
 
+const VALID_MESSAGE_SOURCES = new Set<string>(['typed', 'cta_chip', 'voice', 'paste', 'unknown']);
+
 let claudeClient: AddieClaudeClient | null = null;
 let initialized = false;
 
@@ -725,8 +727,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Validate client-supplied message_source; fall back to server-side heuristic
-      const VALID_SOURCES = new Set(['typed', 'cta_chip', 'voice', 'paste', 'unknown']);
-      const clientSource = VALID_SOURCES.has(message_source) ? message_source as string : null;
+      const clientSource = VALID_MESSAGE_SOURCES.has(message_source) ? message_source as string : null;
 
       // Sanitize input
       const inputValidation = sanitizeInput(message);
@@ -1019,8 +1020,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Validate client-supplied message_source; fall back to server-side heuristic
-      const STREAM_VALID_SOURCES = new Set(['typed', 'cta_chip', 'voice', 'paste', 'unknown']);
-      const streamClientSource = STREAM_VALID_SOURCES.has(streamMessageSource) ? streamMessageSource as string : null;
+      const streamClientSource = VALID_MESSAGE_SOURCES.has(streamMessageSource) ? streamMessageSource as string : null;
 
       // Sanitize input
       const inputValidation = sanitizeInput(message);
