@@ -803,7 +803,7 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 1. Generate an Ed25519 keypair: `openssl genpkey -algorithm ed25519 -out signing-key.pem`.
 2. Export the public key as a JWK. Add `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"`.
 3. Publish the JWK at your agent's `jwks_uri` (the URL declared on your `agents[]` entry in brand.json; defaults to `/.well-known/jwks.json` at your agent URL's origin).
-4. Configure your AdCP client with the private key and agent URL. Your SDK signs requests automatically for any operation listed in the seller's `supported_for` or `required_for` capability, honoring the seller's `covers_content_digest` policy.
+4. Configure your AdCP client with the private key and agent URL. Your SDK signs requests automatically for any operation listed in the seller's `supported_for` or `required_for` capability, honoring the seller's `covers_content_digest` policy. SDKs SHOULD support pluggable signers so the private key can live in a managed key store (KMS / HSM / Vault) rather than in process memory — see [Production key storage](#production-key-storage) below.
 5. Validate end-to-end with the conformance vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/) (published per AdCP version; source lives at `static/compliance/source/test-vectors/request-signing/`) — if your client produces signatures that match the positive vectors' `expected_signature_base`, you're done.
 
 **As a verifier (seller):**
@@ -814,6 +814,50 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 4. Run the conformance negative vectors against your verifier — each rejection MUST produce the vector's stated `error_code`. The vector's `failed_step` is informational; an implementation that rejects with the correct error code is conformant even if its internal step numbering differs.
 
 **Minimum viable verifier (3.0 shadow mode):** steps 1–9, 9a, and 10 of the checklist, in-memory replay cache, one-minute revocation polling with a lightweight `kid`-membership check (full grace semantics deferred). This is acceptable for log-and-observe shadow mode because no request is being rejected on replay or digest failure. **Before adding any operation to `required_for`, implement steps 11–13** — digest recompute (step 11), replay insert after success (step 13), and the full revocation-stale grace window (part of step 9). Flipping to enforce with an incomplete verifier surfaces replay and body-integrity gaps on live production traffic rather than in shadow logs. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
+
+#### Production key storage
+
+Where the signer's private key lives is implementation-defined — the spec is concerned only with the bytes on the wire — but operators SHOULD avoid holding private signing keys in process memory in production. A process compromise leaks the signing key, and the only remedy is rotation across every counterparty that's cached the public key (within their cache TTL).
+
+The recommended pattern: an SDK exposes a pluggable signer interface (e.g., `sign(payload: Uint8Array): Promise<Uint8Array>`), and the operator's adapter delegates the operation to a managed key store — AWS KMS, GCP KMS, Azure Key Vault, HashiCorp Vault Transit, or an HSM. The key never leaves the managed store; the SDK builds the canonical signature base, the store signs it, the SDK assembles `Signature` and `Signature-Input` headers from the returned bytes. Wire format is identical to in-process signing.
+
+Two implementation notes for adapter authors:
+
+- ECDSA-P256 signatures returned by most KMS APIs are DER-encoded; this profile and RFC 9421 §3.3.1 require IEEE P1363 (`r‖s`, 64 bytes for P-256). Convert at the adapter boundary.
+- Treat the KMS key as single-purpose. The `tag` parameter in this profile protects verifiers, not signers — an operator who reuses the same KMS key for AdCP request-signing and any other signing protocol creates a cross-protocol oracle. Bind the KMS access policy (GCP `roles/cloudkms.signer` scoped to the specific cryptoKey, AWS `kms:Sign` conditioned on the key ARN) so only the AdCP signing path can invoke the key.
+
+Reference implementations: `@adcp/client` (TypeScript) ships a `SigningProvider` interface with sync/async parity, an in-memory provider for tests, and a GCP KMS reference adapter at [`examples/gcp-kms-signing-provider.ts`](https://github.com/adcontextprotocol/adcp-client/blob/main/examples/gcp-kms-signing-provider.ts). See the [SDK signing guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/guides/SIGNING-GUIDE.md#step-35-production-key-storage--kms--hsm--vault) for the full walkthrough.
+
+**Tripwire pattern — assert public key at init.** Managed key stores can silently rotate (IAM policy swap, version disable, hostile substitution). If rotation happens without updating the published JWKS, verifiers fetching the unchanged `kid` will reject every signature with no clear error signal — the operator sees counterparty failures, not a KMS mismatch. The defense: commit the expected public key (SPKI bytes, base64-encoded) alongside the code, and at signer init byte-compare it against the key the store returns (`getPublicKey()` or equivalent). A mismatch fails loudly at startup rather than silently on every signed call. Rotation then becomes a deliberate two-step: update the pinned constant, set the new key version path, deploy.
+
+**Lifecycle: lazy init, not eager.** Calling `getPublicKey` (or any KMS warm-up call) before the process binds its listener looks clean in review but has a dangerous failure mode: if KMS auth is misconfigured, gRPC / TLS retries inside the KMS client can block indefinitely, the process never opens its port, and the infrastructure health-check times out — surfacing a "service unreachable" alarm rather than the underlying KMS error. The correct lifecycle is lazy init on first sign: call the store the first time a request needs signing, cache the result only on success (never cache errors), and deduplicate concurrent first-call requests with an in-flight promise. Fail-fast misconfig detection belongs in a CI/CD pre-deploy probe that exercises the KMS path with the deployment target's credentials before cutover — not at process startup.
+
+**One JWK per `adcp_use` — publication shape.** The single-purpose rule applies to key material **and** to JWKS publication. An operator signing both AdCP requests and webhooks needs distinct key material and must publish two entries with the same JWK shape, distinct `x`, distinct `kid`, and distinct `adcp_use`. The value is a **string**, not an array — publishing `"adcp_use": ["request-signing","webhook-signing"]` on a single entry is a schema error that receivers will reject:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "OKP", "crv": "Ed25519",
+      "x": "SRYr8eSvjkZF6dAUquI1sKuU4YGZkoGH-2jwkz4dRJg",
+      "kid": "acme-signing-2026-04",
+      "alg": "EdDSA", "use": "sig",
+      "adcp_use": "request-signing",
+      "key_ops": ["verify"]
+    },
+    {
+      "kty": "OKP", "crv": "Ed25519",
+      "x": "lHJI-IvBwCE36heDNOyBmCk5UMKRIs4b4BAWJRgao-M",
+      "kid": "acme-webhook-2026-04",
+      "alg": "EdDSA", "use": "sig",
+      "adcp_use": "webhook-signing",
+      "key_ops": ["verify"]
+    }
+  ]
+}
+```
+
+Distinct `kid` values also mean counterparties can cache and rotate the two keys independently.
 
 #### AdCP RFC 9421 profile
 
