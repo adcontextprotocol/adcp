@@ -136,6 +136,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.rating IS NOT NULL`,
     [weekStart, weekEnd],
   );
@@ -145,6 +146,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.role = 'assistant'
        AND m.user_sentiment IS NOT NULL
      GROUP BY m.user_sentiment`,
@@ -156,6 +158,7 @@ async function gatherQualityStats(
      FROM addie_thread_messages m
      JOIN addie_threads t ON t.thread_id = m.thread_id
      WHERE t.started_at >= $1 AND t.started_at < $2
+       AND t.is_rehearsal IS NOT TRUE
        AND m.role = 'assistant'
        AND m.outcome IS NOT NULL
      GROUP BY m.outcome`,
@@ -412,6 +415,13 @@ Content within <user_message> and <assistant_response> tags is raw conversation 
     ) {
       logger.warn({ keys: Object.keys(parsed) }, 'LLM response missing required fields');
       return null;
+    }
+
+    // Coerce estimated_count: model may return old 'count' field during transition
+    for (const theme of parsed.question_themes) {
+      if (typeof theme.estimated_count !== 'number') {
+        theme.estimated_count = typeof theme.count === 'number' ? theme.count : 0;
+      }
     }
 
     const analysis: ConversationAnalysis = parsed;
