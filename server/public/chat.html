@@ -8,9 +8,11 @@
   <!-- Runs before CSS to apply stored theme and avoid flash of wrong theme -->
   <script>
     (function () {
-      var stored = localStorage.getItem('addie-theme');
-      var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', theme);
+      try {
+        var stored = localStorage.getItem('addie-theme');
+        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) { /* localStorage unavailable (Safari private / sandboxed iframe) */ }
     })();
   </script>
   <link rel="stylesheet" href="/design-system.css">
@@ -2560,7 +2562,7 @@
           Ask Addie
         </h1>
         <p>Your AI guide to agentic advertising</p>
-        <button class="dark-mode-toggle" id="darkModeToggle" aria-label="Switch to dark mode" title="Switch to dark mode">
+        <button type="button" class="dark-mode-toggle" id="darkModeToggle">
           <!-- moon icon — shown in light mode -->
           <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -2708,8 +2710,9 @@
 
       function syncDarkModeToggle() {
         if (!darkModeToggle) return;
-        darkModeToggle.setAttribute('aria-label', getDarkModeAriaLabel());
-        darkModeToggle.setAttribute('title', getDarkModeAriaLabel());
+        var label = getDarkModeAriaLabel();
+        darkModeToggle.setAttribute('aria-label', label);
+        darkModeToggle.setAttribute('title', label);
       }
 
       if (darkModeToggle) {
