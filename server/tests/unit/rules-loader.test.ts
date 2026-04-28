@@ -95,6 +95,20 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
   });
 
+  it('catalog lands at the END of the assembled system prompt (claude-client concat order)', () => {
+    // Mirror the concat in claude-client.ts:getSystemPrompt — base rules,
+    // then `\n\n---\n\n`, then ADDIE_TOOL_REFERENCE. The catalog needs to be
+    // the LAST section the model reads so its "treat every listed tool as
+    // available" framing isn't undercut by earlier prose.
+    const assembled = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    const catalogIdx = assembled.indexOf('## Authoritative tool catalog (auto-generated)');
+    expect(catalogIdx).toBeGreaterThan(0);
+    // Nothing of substance after the catalog (allow trailing whitespace).
+    const tail = assembled.slice(catalogIdx);
+    const lastNonEmptyLine = tail.split('\n').reverse().find(l => l.trim().length > 0);
+    expect(lastNonEmptyLine).toMatch(/^[a-z_, ]+$/); // a flat tool list line, not prose
+  });
+
   it('includes the honest-search-report rule', () => {
     const rules = loadRules();
     expect(rules).toContain('## Honest Reporting After Search');
