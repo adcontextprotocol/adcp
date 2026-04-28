@@ -657,6 +657,21 @@ export class CrawlerService {
         }
       }
 
+      // discovered_properties has NOT NULL on property_type, name, and the
+      // (publisher_domain, name, property_type) unique key; an adagents.json
+      // entry missing either column would crash the writer and abort the
+      // whole publisher's crawl. @adcp/client 5.22.0 strips entries with
+      // missing identifiers at parse time, but property_type/name aren't
+      // filtered upstream — drop them here with a warning so one malformed
+      // entry can't take out the rest.
+      if (!prop.property_type || !prop.name) {
+        log.warn(
+          { domain: publisherDomain, agent: agentUrl, name: prop.name, property_type: prop.property_type },
+          'Skipping property in adagents.json: missing property_type or name',
+        );
+        continue;
+      }
+
       await this.federatedIndex.recordProperty(
         {
           property_id: prop.property_id,
