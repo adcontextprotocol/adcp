@@ -287,7 +287,7 @@ SHOULD include a substitution-safety phase covering the rule set at
 **Start from the template, don't copy-paste from a sibling specialism.** The
 canonical three-step phase (`sync_*_probe_catalog` → `build_*_probe_creative`
 → `expect_substitution_safe`) lives as a `phase_template:` comment block in
-[`static/compliance/source/test-kits/substitution-observer-runner.yaml`](../../../../static/compliance/source/test-kits/substitution-observer-runner.yaml).
+[`static/compliance/source/test-kits/substitution-observer-runner.yaml`](https://github.com/adcontextprotocol/adcp/blob/v3.0.1/static/compliance/source/test-kits/substitution-observer-runner.yaml).
 The block uses `<<PLACEHOLDER>>` tokens for the specialism-specific bits
 (brand domain, catalog_id prefix, idempotency prefix) so you can materialize a
 new phase by doing a simple text substitution against those tokens.

@@ -16,7 +16,7 @@ export interface ConversationStats {
 
 export interface QuestionTheme {
   theme: string;
-  count: number;
+  estimated_count: number;
   description: string;
   example_questions: string[];
 }

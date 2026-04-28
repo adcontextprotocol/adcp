@@ -21,6 +21,7 @@ import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/client/auth';
 import type { AddieTool } from '../types.js';
 import type { AgentConfig } from '@adcp/client/types';
 import { createLogger } from '../../logger.js';
+import { sanitizeUrl, validateFetchUrl } from '../../utils/url-security.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +44,88 @@ const ADCP_CLIENT_BIN = (() => {
 })();
 
 const logger = createLogger('addie-auth-grader-tools');
+
+type ContentDigestMode = 'either' | 'required' | 'forbidden';
+
+/** Cap response body size at 64 KiB — capabilities responses are tiny; anything
+ * larger is either a misbehaving agent or an attempted memory-exhaustion against
+ * the prod server. Mirrors `@adcp/client`'s `ssrfSafeFetch` default. */
+const PROBE_BODY_CAP_BYTES = 64 * 1024;
+
+/**
+ * Probe the agent's `request_signing.covers_content_digest` mode via a
+ * JSON-RPC `tools/call` of `get_adcp_capabilities`. Lets us pre-skip the
+ * mode-mismatch vectors the grader would otherwise report as failures —
+ * `agentCapability` does this in-process, but the CLI doesn't expose it.
+ *
+ * Returns null (skip nothing) on any probe failure: better to over-report
+ * than to silently swallow a real verifier bug.
+ *
+ * SSRF defense: `validateFetchUrl` resolves the hostname and rejects any URL
+ * whose A/AAAA records land on private/link-local/loopback addresses before
+ * we issue the fetch. Body is capped at PROBE_BODY_CAP_BYTES.
+ */
+async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMode | null> {
+  try {
+    const url = new URL(agentUrl);
+    await validateFetchUrl(url);
+    const res = await fetch(sanitizeUrl(url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: { name: 'get_adcp_capabilities', arguments: {} },
+        id: 'addie-capability-probe',
+      }),
+      signal: AbortSignal.timeout(10_000),
+      redirect: 'manual',
+    });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    if (declared > PROBE_BODY_CAP_BYTES) return null;
+    const text = await res.text();
+    if (text.length > PROBE_BODY_CAP_BYTES) return null;
+    const body = JSON.parse(text) as {
+      result?: { content?: Array<{ text?: string }> };
+    };
+    const inner = body.result?.content?.[0]?.text;
+    if (!inner) return null;
+    const cap = JSON.parse(inner) as {
+      request_signing?: { covers_content_digest?: string };
+    };
+    const mode = cap.request_signing?.covers_content_digest;
+    if (mode === 'either' || mode === 'required' || mode === 'forbidden') return mode;
+    return null;
+  } catch (err) {
+    logger.debug(
+      { err: err instanceof Error ? err.message : String(err) },
+      'capability probe failed; grader will run without auto-skip'
+    );
+    return null;
+  }
+}
+
+/**
+ * Vectors whose `verifier_capability.covers_content_digest` clashes with
+ * the declared agent mode. Hardcoded against `@adcp/client`@5.21.x test
+ * vectors — extend when new content-digest vectors land. The grader's
+ * in-process `agentCapability` option does this comparison automatically;
+ * this is the CLI-side reimplementation.
+ *
+ * Exported for unit testing.
+ */
+export function contentDigestSkipsForMode(mode: ContentDigestMode | null): string[] {
+  if (!mode) return [];
+  const skip: string[] = [];
+  // Vector 007 expects a `required` agent to reject a digest-less signature.
+  // Skip when the agent declares `either` (ambivalent) or `forbidden`.
+  if (mode === 'either' || mode === 'forbidden') skip.push('007-missing-content-digest');
+  // Vector 018 expects a `forbidden` agent to reject a digest-covering signature.
+  // Skip when the agent declares `either` or `required`.
+  if (mode === 'either' || mode === 'required') skip.push('018-digest-covered-when-forbidden');
+  return skip;
+}
 
 function validateAgentUrl(url: string): string | null {
   let parsed: URL;
@@ -92,6 +175,11 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
           type: 'string',
           enum: ['mcp', 'raw'],
           description: 'Transport mode. `mcp` (default) wraps each vector body in a JSON-RPC tools/call envelope and posts to the agent\'s MCP mount — right for AdCP MCP servers. `raw` posts to per-operation AdCP endpoints — for agents that expose a raw HTTP surface.',
+        },
+        content_digest_mode: {
+          type: 'string',
+          enum: ['either', 'required', 'forbidden'],
+          description: 'The agent\'s declared `request_signing.covers_content_digest` mode. When set, vectors that test the inverse modes auto-skip (mirrors the in-process grader\'s `agentCapability` option, which the CLI doesn\'t expose). Leave unset to probe `get_adcp_capabilities` anonymously; the probe falls back to no-skip on auth-gated routes.',
         },
       },
       required: ['agent_url'],
@@ -143,11 +231,28 @@ export function createAuthGraderToolHandlers(): Map<
     // every Addie-grade-able agent today is MCP-style (JSON-RPC tools/call),
     // and `raw` against an MCP mount returns 404 on every probe. Operators
     // who genuinely have a raw AdCP endpoint can pass `transport: 'raw'`.
+    // Pre-flight `get_adcp_capabilities` so we can pre-skip vectors whose
+    // verifier_capability profile doesn't match what the agent advertises
+    // (the in-process grader does this via `agentCapability`; the CLI
+    // doesn't expose that option). The caller can short-circuit via
+    // `content_digest_mode` — useful when the route requires auth and the
+    // anonymous probe can't read the capability declaration.
+    const explicitMode =
+      input.content_digest_mode === 'either' ||
+      input.content_digest_mode === 'required' ||
+      input.content_digest_mode === 'forbidden'
+        ? (input.content_digest_mode as ContentDigestMode)
+        : null;
+    const probedMode =
+      explicitMode ?? (rawTransport ? null : await probeContentDigestMode(agentUrl));
+    const autoSkip = contentDigestSkipsForMode(probedMode);
+
     const args = [ADCP_CLIENT_BIN, 'grade', 'request-signing', agentUrl, '--json'];
     args.push('--transport', rawTransport ? 'raw' : 'mcp');
     if (allowLive) args.push('--allow-live-side-effects');
     else args.push('--skip-rate-abuse');
     if (allowHttp) args.push('--allow-http');
+    if (autoSkip.length > 0) args.push('--skip', autoSkip.join(','));
 
     try {
       // 90s is enough for the safe-default path (rate-abuse skipped, ~25

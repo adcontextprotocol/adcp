@@ -627,7 +627,7 @@ const result = await testAgent.createMediaBuy({
       credentials: 'secret_token_xyz_minimum_32_chars'
     },
     reporting_frequency: 'daily',
-    requested_metrics: ['impressions', 'spend', 'video_completions']
+    requested_metrics: ['impressions', 'spend', 'completed_views']
   }
 });
 
@@ -678,7 +678,7 @@ async def create_with_reporting():
                 'credentials': 'secret_token_xyz_minimum_32_chars'
             },
             'reporting_frequency': 'daily',
-            'requested_metrics': ['impressions', 'spend', 'video_completions']
+            'requested_metrics': ['impressions', 'spend', 'completed_views']
         }
     )
 
