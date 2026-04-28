@@ -4,5 +4,34 @@
   "initialVersions": {
     "adcontextprotocol": "3.0.1"
   },
-  "changesets": []
+  "changesets": [
+    "aao-verified-mark",
+    "account-authorization-and-rbac-errors",
+    "adagents-per-property-validation-guidance",
+    "add-enum-const-platform-agnostic-lint",
+    "addie-canonical-url-reference",
+    "auto-link-brand-hierarchy",
+    "brand-viewer-agent-sections",
+    "cert-failure-mode-scope",
+    "csrf-exempt-mcp-strict-routes",
+    "dark-mode-addie-chat",
+    "expose-auto-provision-toggles",
+    "faq-iab-tech-lab-aamp",
+    "fix-broken-links-snapshot-skill",
+    "fix-hitl-submitted-oneof-3392",
+    "fix-weekly-insights-cta-contamination",
+    "governance-multi-agent-envelope",
+    "grader-capability-auto-skip",
+    "grader-default-mcp-transport",
+    "primary-org-fallback-and-invariant",
+    "reconcile-available-metric-enum",
+    "regression-tests-2569-proposer-coauthor",
+    "release-train-setup",
+    "schema-publication-at-merge-policy",
+    "show-org-brand-hierarchy",
+    "tasks-get-result-field",
+    "triage-stack-trace-gate",
+    "universal-dev-mode-org-membership",
+    "wg-operational-charter"
+  ]
 }

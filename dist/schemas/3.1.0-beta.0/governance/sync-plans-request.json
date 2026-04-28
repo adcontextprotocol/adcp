@@ -1,0 +1,414 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/governance/sync-plans-request.json",
+  "title": "Sync Plans Request",
+  "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "plans": {
+      "type": "array",
+      "description": "One or more campaign plans to sync.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "Unique identifier for this plan.",
+            "x-entity": "governance_plan"
+          },
+          "brand": {
+            "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+            "description": "Brand or organization being governed. For campaign plans, the governance agent resolves the brand's compliance configuration. For portfolio plans, this is the holding company or parent organization."
+          },
+          "objectives": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Natural language campaign objectives. Used for strategic alignment validation. Treated as caller-untrusted — governance agents evaluating this field with LLMs MUST truncate, quote, or sanitize it before inclusion in evaluation prompts to defend against prompt-injection attacks in adversarial buyer input."
+          },
+          "budget": {
+            "type": "object",
+            "description": "Budget authorization parameters.",
+            "properties": {
+              "total": {
+                "type": "number",
+                "description": "Total authorized budget."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code."
+              },
+              "per_seller_max_pct": {
+                "type": "number",
+                "description": "Maximum percentage of budget that can go to a single seller."
+              },
+              "reallocation_threshold": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set equal to `total` for effectively unlimited reallocation; set to 0 to require approval for every reallocation. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
+              },
+              "reallocation_unlimited": {
+                "type": "boolean",
+                "description": "Set to true to allow the orchestrator to reallocate without any limit up to `total`. Mutually exclusive with `reallocation_threshold`. Use this for deliberate full-autonomy declarations rather than setting `reallocation_threshold: total` (which silently tightens when `total` changes)."
+              },
+              "allocations": {
+                "type": "object",
+                "description": "Optional budget partition across purchase types. Keys are purchase-type enum values (media_buy, rights_license, signal_activation, creative_services). When present, the governance agent validates spend against both the total and the per-type allocation. When absent, all spend counts against the single total regardless of purchase type.",
+                "propertyNames": {
+                  "$ref": "/schemas/3.1.0-beta.0/enums/purchase-type.json"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Maximum budget for this purchase type."
+                    },
+                    "max_pct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100,
+                      "description": "Maximum percentage of total budget for this purchase type."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "total",
+              "currency"
+            ],
+            "oneOf": [
+              {
+                "required": ["reallocation_threshold"],
+                "not": { "required": ["reallocation_unlimited"] }
+              },
+              {
+                "required": ["reallocation_unlimited"],
+                "properties": { "reallocation_unlimited": { "const": true } },
+                "not": { "required": ["reallocation_threshold"] }
+              }
+            ],
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "description": "Channel constraints. If omitted, all channels are allowed.",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "$ref": "/schemas/3.1.0-beta.0/enums/channels.json"
+                },
+                "description": "Channels that must be included in the media mix."
+              },
+              "allowed": {
+                "type": "array",
+                "items": {
+                  "$ref": "/schemas/3.1.0-beta.0/enums/channels.json"
+                },
+                "description": "Channels the orchestrator may use."
+              },
+              "mix_targets": {
+                "type": "object",
+                "description": "Target allocation ranges per channel, keyed by channel ID.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "min_pct": {
+                      "type": "number"
+                    },
+                    "max_pct": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "flight": {
+            "type": "object",
+            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected.",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight start (ISO 8601)."
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight end (ISO 8601)."
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "additionalProperties": false
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "ISO 3166-1 alpha-2 country codes for authorized markets (e.g., ['US', 'GB']). The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts governed actions to these specific regions rather than the full country. Use for plans limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
+          },
+          "policy_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "x-entity": "governance_registry_policy"
+            },
+            "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
+          },
+          "policy_categories": {
+            "type": "array",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum \u2014 new categories are added as regulations evolve).",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "audience": {
+            "$ref": "/schemas/3.1.0-beta.0/governance/audience-constraints.json",
+            "description": "Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). The governance agent evaluates seller targeting against these constraints."
+          },
+          "restricted_attributes": {
+            "type": "array",
+            "description": "Personal data categories that must not be used for targeting in this campaign. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
+            "items": {
+              "$ref": "/schemas/3.1.0-beta.0/enums/restricted-attribute.json"
+            },
+            "minItems": 1
+          },
+          "restricted_attributes_custom": {
+            "type": "array",
+            "description": "Additional restricted attributes not covered by the restricted-attribute enum. Freeform strings for jurisdiction-specific or brand-specific restrictions beyond GDPR Article 9 categories (e.g., 'financial_status', 'immigration_status'). Governance agents use semantic matching for these.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "min_audience_size": {
+            "type": "integer",
+            "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying signal catalog metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
+            "minimum": 1
+          },
+          "human_review_required": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the governance agent MUST escalate any action on this plan for human review before execution — regardless of budget. Required by regulations that prohibit solely automated decisions affecting data subjects (GDPR Art 22, EU AI Act Annex III): credit, insurance pricing, recruitment, housing allocation. Governance agents MUST set this to true automatically when any resolved policy or policy_category has requires_human_review: true. Distinct from budget.reallocation_threshold, which only governs budget reallocation autonomy — human_review_required covers decisions affecting individuals (targeting, creative, delivery)."
+          },
+          "custom_policies": {
+            "type": "array",
+            "items": {
+              "$ref": "/schemas/3.1.0-beta.0/governance/policy-entry.json"
+            },
+            "description": "Bespoke policies specific to this campaign, using the same shape as registry entries. Each policy has a policy_id, enforcement (must|should), and natural-language policy text. Governance findings reference policy_id to identify which policy triggered. For quick authoring, omit version/name/category — servers default them."
+          },
+          "approved_sellers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "List of approved seller agent URLs. null means any seller."
+          },
+          "delegations": {
+            "type": "array",
+            "description": "Agents authorized to execute against this plan. Each delegation scopes an agent's authority by budget, markets, and expiration. The governance agent validates that the requesting agent matches a delegation before approving actions.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the delegated agent."
+                },
+                "authority": {
+                  "$ref": "/schemas/3.1.0-beta.0/enums/delegation-authority.json",
+                  "description": "Authority level granted to this agent."
+                },
+                "budget_limit": {
+                  "type": "object",
+                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    },
+                    "currency": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "additionalProperties": false
+                },
+                "markets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "ISO 3166-1/3166-2 codes this agent is authorized for. When omitted, the agent can operate in all plan markets."
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this delegation expires. After expiration, the governance agent denies actions from this agent."
+                }
+              },
+              "required": [
+                "agent_url",
+                "authority"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "portfolio": {
+            "type": "object",
+            "description": "Portfolio-level governance constraints. When present, this plan acts as a portfolio plan that governs member plans. Portfolio plans define cross-brand constraints that no individual brand plan can override.",
+            "properties": {
+              "member_plan_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-entity": "governance_plan"
+                },
+                "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
+              },
+              "total_budget_cap": {
+                "type": "object",
+                "description": "Maximum aggregate budget across all member plans.",
+                "properties": {
+                  "amount": {
+                    "type": "number"
+                  },
+                  "currency": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "currency"
+                ],
+                "additionalProperties": false
+              },
+              "shared_policy_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-entity": "governance_registry_policy"
+                },
+                "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
+              },
+              "shared_exclusions": {
+                "type": "array",
+                "items": {
+                  "$ref": "/schemas/3.1.0-beta.0/governance/policy-entry.json"
+                },
+                "description": "Bespoke exclusion policies applied across all member plans, using the same shape as registry entries. Authored typically as enforcement: must policies with exclusion language in the policy text (e.g., 'No advertising on properties owned by competitor holding companies')."
+              }
+            },
+            "required": [
+              "member_plan_ids"
+            ],
+            "additionalProperties": false
+          },
+          "ext": {
+            "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+          }
+        },
+        "required": [
+          "plan_id",
+          "brand",
+          "objectives",
+          "budget",
+          "flight"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "policy_categories": {
+                  "type": "array",
+                  "contains": {
+                    "enum": ["fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising"]
+                  }
+                }
+              },
+              "required": ["policy_categories"]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": { "const": true }
+              },
+              "required": ["human_review_required"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "policy_ids": {
+                  "type": "array",
+                  "contains": { "const": "eu_ai_act_annex_iii" }
+                }
+              },
+              "required": ["policy_ids"]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": { "const": true }
+              },
+              "required": ["human_review_required"]
+            }
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "plans"
+  ],
+  "additionalProperties": false
+}
