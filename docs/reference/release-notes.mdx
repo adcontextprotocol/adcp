@@ -9,6 +9,66 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.1
+
+**Status:** Patch release — stable-surface no-op for 3.0-conformant agents
+
+**3.0.1 is a maintenance release.** It ships the protocol skills bundle through the canonical tarball, formalises a handful of normative clauses left underspecified in 3.0.0, and adds small additive fields on experimental surfaces (governance, TMP) and the conformance harness. The stable wire surface is unchanged.
+
+<Info>
+**Upgrading from 3.0.0?** No code changes required for 3.0-conformant agents. SDK consumers bump `ADCP_VERSION` from `3.0.0` to `3.0.1` to receive the canonical skills via their existing sync flow.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Stable schemas are unchanged. |
+| An SDK consumer | Bump `ADCP_VERSION` from `3.0.0` to `3.0.1`. JS wiring in [adcp-client#965](https://github.com/adcontextprotocol/adcp-client/pull/965); Python and Go follow-ups in [adcp-client-python#274](https://github.com/adcontextprotocol/adcp-client-python/issues/274) and [adcp-go#91](https://github.com/adcontextprotocol/adcp-go/issues/91). |
+| Implementing governance or TMP | Review the experimental-surface additions below. Per the [experimental-status contract](/docs/reference/experimental-status), additive changes are permitted within a patch release. |
+| Calling `get_signals` with top-level `max_results` | Migrate to `pagination.max_results`. Top-level field still works through 3.x; removed in 4.0. |
+
+### Why 3.0.1 exists
+
+The `skills/` directory was hoisted into the protocol root after the 3.0.0 tarball was already cosign-signed. Re-cutting at the same version would have invalidated the supply-chain attestations bound to the original 3.0.0 SHA-256. 3.0.1 ships the bundle through the normal release path. (#3116, #3117)
+
+### Spec polish — no wire change
+
+Normative clarifications and docs corrections. None of these add new fields to stable schemas; they document behaviour the spec already implied.
+
+- **`acquire_rights` request validation** — Brand agents MUST reject expired campaign windows (`campaign.end_date` in the past) with `INVALID_REQUEST`. CPM-priced rights under a governed plan must include `campaign.estimated_impressions`. Closes implementer disagreement on identical requests. (#2680, #2681)
+- **`get_signals` pagination precedence** — When both top-level `max_results` and `pagination.max_results` are present, agents MUST honor `pagination.max_results`. Top-level `max_results` deprecated; removed in 4.0.
+- **URL canonicalization** — Now applies uniformly to brand.json agent URLs (`brand_agent_entry.url`, `brand_agent.url`, `rights_agent.url`). Two URLs differing only in case, default port, or percent-encoded unreserved characters compare equal during agent resolution. New reference page at [URL canonicalization](/docs/reference/url-canonicalization).
+- **v3 envelope integrity** — Schema-level constraint on `protocol-envelope.json` formally prohibits legacy v2 `task_status` / `response_status` field names. The prose MUST NOT was already in 3.0.0; the constraint is now machine-detectable by validators. Companion universal storyboard `v3-envelope-integrity` exercises the assertion. Conformant 3.0 implementations are unaffected. (#3041)
+- **Format asset codegen** — Title annotations on `format.json` `oneOf` branches enable codegen tools (json-schema-to-typescript, datamodel-code-generator, oapi-codegen) to emit named per-asset-type interfaces instead of untyped unions. Annotation-only.
+- **Inline-enum hoisting** — Source schemas now `$ref` shared enum files for `payment-terms`, `audio-channel-layout`, `media-buy-valid-action`, `match-type`, `governance-decision`, `billing-party`, and 11 others. Bundled wire format unchanged in all cases.
+
+### Experimental surfaces — additive only
+
+Per the [experimental-surface contract](/docs/reference/experimental-status), these surfaces accept additive changes within a patch release. Changes here do not affect agents that don't implement these protocols.
+
+- **Governance** — `mode` field added to `check-governance-response.json` and `get_plan_audit_logs` audit entries. Records the enforcement posture (enforce/advisory/audit) active at check time. Closes a gap where audit and enforce modes produced identical-looking trails.
+- **Trusted Match Protocol (TMP)** — `seller_agent: { agent_url, id? }` added to `AvailablePackage`, making seller identity explicit on every package cached by a TMP provider. New `seller_not_authorized` error code for sync-time rejection when the seller's `agent_url` is not present in the property publisher's `adagents.json`. All TMP schemas now carry `x-status: experimental`.
+
+### Conformance harness — sandbox-only
+
+`comply_test_controller` is conformance-harness scaffolding, not a normative protocol task. Changes here only affect sandbox testing.
+
+- **`force_task_completion`** — Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. Closes the loop on the async `create_media_buy` submitted → completed roundtrip. Result is delivered via the seller's webhook (canonical 3.0 path); a typed result projection on the polling response is tracked for 3.1 in #3123.
+- **`seed_creative_format`** — Pre-populates a deterministic set of creative formats for pagination-integrity storyboards. Companion: `list_creative_formats` now applies cursor-based pagination matching the `list_creatives` pattern.
+
+### Release mechanics
+
+- Cosign signing on private packages so future Version Packages merges auto-tag and `changesets/action` auto-creates the GitHub Release with artifacts.
+- `dist/protocol/` retained in the Fly.io image so cosign-signed versioned tarballs ship and `/protocol/{version}.tgz` actually serves end-to-end.
+- Skills bundled at `/protocol/3.0.1.tgz`: `call-adcp-agent` plus the per-protocol `adcp-{brand,creative,governance,media-buy,si,signals}`.
+
+### Detailed changelog
+
+For the full per-PR change list, see [CHANGELOG.md § 3.0.1](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#301).
+
+---
+
 ## Version 3.0.0
 
 **Status:** General Availability | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
