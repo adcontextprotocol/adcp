@@ -286,14 +286,19 @@ Real-world latency adds the network round-trip to valkey for the user-data MGet.
 - **Realistic Scope3-shape**: ~7–10 ms
 - **Pathological tail**: ~60 ms (outside the 30 ms p95 latency budget — heavy users on busy publishers are the risk)
 
-### Algorithmic optimization opportunity
+### Algorithmic optimization (landed)
 
-Current impl rescans the exposure log per candidate package: `O(packages × log_entries × identities)`. A pre-aggregation pass — scan each identity's log once, build `map[fcap_key]count` for the relevant window, then lookup per-package — drops complexity to `O(log_entries × identities + packages)`. Expected impact:
+Original impl rescanned the exposure log per candidate package: `O(packages × log_entries × identities)`. The optimization pre-buckets the log by filter hash once per request; per-package check walks only the matching bucket. Heuristic-gated at `numPackages > 50` so small-package requests stay on the naive path (avoids regression on small requests with heavy logs).
 
-- Realistic Scope3 case (1000 pkg × 1000 log × 3 ids): ~7.5 ms → ~1 ms
-- Pathological case (1000 pkg × 10K log × 3 ids): ~58 ms → ~10 ms
+Tracked at [adcp-go#103](https://github.com/adcontextprotocol/adcp-go/pull/103). Measured speedups vs the original implementation:
 
-This is a buyer-side impl optimization, not a protocol concern. Tracked as a follow-up in the rollout plan.
+| packages | log entries | identities | Before    | After    | Speedup |
+|----------|------------:|-----------:|----------:|---------:|--------:|
+| 1000     | 100         | 3          | 784 µs    | 71 µs    | 11.0×   |
+| 1000     | 1000        | 3          | 7,566 µs  | 287 µs   | 26.4×   |
+| 1000     | 10000       | 3          | 57,861 µs | 1,500 µs | ~38×    |
+
+The pathological tail drops from 58ms to 1.5ms, well within the latency budget. Below the threshold (≤50 packages), the naive path is preserved.
 
 ### What hasn't been measured
 
