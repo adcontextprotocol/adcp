@@ -1504,6 +1504,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
 
   // Certification — surface in-progress attempts so Addie can route the
   // conversation back to the right module without a tool round-trip.
+  // Only facts here; response policy lives in server/src/addie/rules/*.md.
   if (context.certification) {
     const cert = context.certification;
     const id = cert.module_id ?? cert.track_id;
@@ -1515,44 +1516,40 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (cert.status === 'in_progress') {
       lines.push(`Currently working on: ${id} (in progress, started ${startedDays} days ago).`);
       if (startedDays > 45) {
-        lines.push('Note: this attempt is older than 45 days — the user may have moved on.');
+        lines.push('This attempt is older than 45 days (stale).');
       }
     } else if (cert.status === 'passed') {
       lines.push(`Most recent attempt: ${id} — passed.`);
     } else if (cert.status === 'failed') {
-      lines.push(`Most recent attempt: ${id} — failed. Be encouraging if they want to retry.`);
+      lines.push(`Most recent attempt: ${id} — failed.`);
     }
   }
 
-  // Agent testing — surface stale-test signal for builders so Addie can
-  // suggest a fresh evaluation without re-querying agent_test_history.
+  // Agent testing — last-run signal for builders. Facts only.
   if (context.agent_testing) {
     const at = context.agent_testing;
+    lines.push('');
+    lines.push('### Agent Testing');
     if (at.last_test_at) {
       const days = Math.floor(
         (Date.now() - at.last_test_at.getTime()) / (24 * 60 * 60 * 1000)
       );
-      lines.push('');
-      lines.push('### Agent Testing');
       lines.push(`Last agent test: ${days} days ago (${at.last_outcome ?? 'unknown'}).`);
       if (days > 14) {
-        lines.push('Note: tests older than 14 days are stale — gently suggest a fresh evaluation if the conversation goes near agent setup.');
+        lines.push('Last test is older than 14 days (stale).');
       }
     } else {
-      lines.push('');
-      lines.push('### Agent Testing');
-      lines.push('No agent tests on record. If they discuss building or running an agent, suggest `evaluate_agent_quality` to verify it works.');
+      lines.push('No agent tests on record.');
     }
   }
 
-  // Perspectives — surface zero-or-many footprint so Addie can encourage
-  // contribution without re-querying.
+  // Perspectives — published-count footprint. Facts only.
   if (context.perspectives) {
     const p = context.perspectives;
     lines.push('');
     lines.push('### Perspectives');
     if (p.published_count === 0) {
-      lines.push('Has not published any perspectives yet. If they share interesting ideas, gently offer to help them turn one into a perspective.');
+      lines.push('Has not published any perspectives yet.');
     } else {
       lines.push(`Has published ${p.published_count} perspective(s).`);
       if (p.last_published_at) {
