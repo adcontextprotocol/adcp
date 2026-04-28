@@ -48,7 +48,9 @@ vi.mock('@workos-inc/node', () => ({
     userManagement = {
       listOrganizationMemberships: workosMocks.listOrganizationMemberships,
     };
-    organizations = {};
+    organizations = {
+      listOrganizations: vi.fn().mockResolvedValue({ data: [] }),
+    };
   },
 }));
 
@@ -344,6 +346,51 @@ describe('org auto-provisioning toggles', () => {
     );
     expect(after.rows[0].auto_provision_brand_hierarchy_children).toBe(false);
     expect(after.rows[0].auto_provision_hierarchy_enabled_at).toBeNull();
+  });
+
+  it('member POST /brand-classification-report records audit row, validates kind', async () => {
+    await seedTestOrg(pool);
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'member' }, status: 'active' }],
+    });
+
+    // Happy path: parent kind, valid domain
+    const ok = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'parent', subject_domain: 'reported-parent.test' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.success).toBe(true);
+
+    // Audit log row exists
+    const audit = await pool.query<{ action: string; details: any }>(
+      `SELECT action, details FROM registry_audit_log
+       WHERE workos_organization_id = $1 AND action = 'brand_classification_report_filed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [TEST_ORG]
+    );
+    expect(audit.rows[0].action).toBe('brand_classification_report_filed');
+    expect(audit.rows[0].details).toMatchObject({
+      kind: 'parent',
+      subject_domain: 'reported-parent.test',
+    });
+
+    // Invalid kind
+    const badKind = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'spouse', subject_domain: 'x.test' });
+    expect(badKind.status).toBe(400);
+
+    // Invalid domain
+    const badDomain = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'parent', subject_domain: '' });
+    expect(badDomain.status).toBe(400);
+
+    // Cleanup audit rows we wrote
+    await pool.query(
+      `DELETE FROM registry_audit_log WHERE workos_organization_id = $1 AND action = 'brand_classification_report_filed'`,
+      [TEST_ORG]
+    );
   });
 
   it('rejects non-boolean auto_provision_brand_hierarchy_children', async () => {
