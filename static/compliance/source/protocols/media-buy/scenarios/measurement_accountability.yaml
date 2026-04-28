@@ -235,3 +235,7 @@ phases:
           - check: field_present
             path: "media_buy_deliveries[0].by_package[0].completed_views"
             description: "completed_views is populated — the discovery contract was honored"
+          - check: field_value_or_absent
+            path: "media_buy_deliveries[0].by_package[0].missing_metrics"
+            value: []
+            description: "missing_metrics is empty (or absent) — every declared metric was reported, no accountability breach"

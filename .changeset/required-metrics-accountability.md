@@ -19,18 +19,18 @@ capability-level metric discovery.
 - `core/product-filters.json`: new `required_metrics` field on `get_products`
   filters. Sellers MUST silently exclude products whose
   `reporting_capabilities.available_metrics` is not a superset
-  (filter-not-fail; do not return an error). Derived ratio metrics
-  (`completion_rate`, `ctr`, `roas`, `cost_per_acquisition`, `cost_per_click`,
-  `engagement_rate`, `new_to_brand_rate`, `viewable_rate`) are satisfied when
-  their underlying scalars are supported — buyers should list the underlying
-  scalars rather than the ratio.
+  (filter-not-fail; do not return an error). The product's declared
+  `available_metrics` becomes the binding reporting contract carried into
+  the resulting media buy — the same vocabulary computes `missing_metrics`
+  on `get_media_buy_delivery`.
 - `media-buy/get-media-buy-delivery-response.json`: new `missing_metrics`
   field on each `by_package[]` entry. Lists metrics from the product's
   `available_metrics` that are NOT populated in this report. Empty array (or
   absent) indicates clean delivery; non-empty signals an accountability
-  breach. Derived ratios MUST NOT appear in this list. Sellers should also
-  exclude metrics not yet measurable for the current `measurement_window`
-  (e.g., post-IVT counts during the live window).
+  breach. Sellers MUST exclude metrics not yet measurable for the current
+  `measurement_window` (e.g., post-IVT counts during the live window) —
+  those will appear (or not) when a wider window supersedes this report
+  via `supersedes_window`.
 - `docs/media-buy/task-reference/get_products.mdx`: documents the new filter,
   filter-not-fail semantics, and the derived-ratio carve-out.
 - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: documents the

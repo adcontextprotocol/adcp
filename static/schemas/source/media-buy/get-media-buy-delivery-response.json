@@ -282,7 +282,7 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the product's `reporting_capabilities.available_metrics` declared but that are NOT populated in this report. Empty array (or absent) indicates clean delivery against the declared contract. Non-empty signals an accountability breach — the seller advertised the capability at discovery but did not produce the value here. Derived ratio metrics (`completion_rate`, `ctr`, `roas`, `cost_per_acquisition`, `cost_per_click`, `engagement_rate`, `new_to_brand_rate`, `viewable_rate`) are derivable from their underlying scalars and MUST NOT appear in this list. Sellers should also exclude metrics that are not yet measurable for this `measurement_window` (e.g., post-IVT counts during the live window) — those resolve when the final window closes.",
+                      "description": "Metrics that the product's `reporting_capabilities.available_metrics` declared but that are NOT populated in this report. Empty array (or absent) indicates clean delivery against the declared contract. Non-empty signals an accountability breach — the seller advertised the capability at discovery but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
                       "items": {
                         "$ref": "/schemas/enums/available-metric.json"
                       },
