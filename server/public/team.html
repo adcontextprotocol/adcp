@@ -476,6 +476,15 @@
         <div id="domainsContent">
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">Loading domains...</div>
         </div>
+
+        <div id="brandHierarchyRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <h3 style="margin: 0 0 var(--space-2) 0; font-size: var(--text-base); color: var(--color-text-heading);">Brand registry classification</h3>
+          <div style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-3);">
+            How the brand registry classifies your organization. This drives which employees can auto-join via subsidiary relationships and how your org appears in the network. If anything below is wrong, please report it &mdash; we'll review and fix.
+          </div>
+          <div id="brandHierarchyContent"></div>
+        </div>
+
         <div id="autoProvisionRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
           <label style="display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;">
             <input type="checkbox" id="autoProvisionToggle" style="margin-top: 4px;">
@@ -1261,6 +1270,7 @@
         // Render the auto-provision toggle whenever there is at least one
         // verified domain. With no verified domain the toggle is a no-op
         // (autoLinkByVerifiedDomain has nothing to match), so we hide it.
+        renderBrandHierarchy(data);
         renderAutoProvisionToggle(orgId, data);
         renderAutoProvisionHierarchyToggle(orgId, data);
       } catch (error) {
@@ -1271,6 +1281,94 @@
           </p>
         `;
       }
+    }
+
+    function renderBrandHierarchy(data) {
+      const row = document.getElementById('brandHierarchyRow');
+      const content = document.getElementById('brandHierarchyContent');
+      const classification = data.hierarchy_classification;
+      const inferred = data.inferred_subsidiaries || [];
+
+      // Hide the section if we have no classification at all AND no
+      // children — there's nothing useful to show.
+      if (!classification && inferred.length === 0) {
+        row.style.display = 'none';
+        return;
+      }
+      row.style.display = 'block';
+
+      const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '—';
+      const reportLink = (kind, domain) => {
+        const subject = encodeURIComponent(`Brand registry correction: ${domain}`);
+        const body = encodeURIComponent(
+          `Org: ${data.org_name || ''}\n` +
+          `Issue: ${kind} classification of ${domain} appears wrong.\n\n` +
+          `Please describe the correct classification:\n\n`
+        );
+        return `mailto:hello@agenticadvertising.org?subject=${subject}&body=${body}`;
+      };
+
+      const parts = [];
+
+      // Parent (if classified as a child of someone else)
+      if (classification && classification.parent) {
+        const p = classification.parent;
+        parts.push(`
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
+            <span style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Parent</span>
+            <strong style="color: var(--color-text-heading);">${escapeHtml(p.brand_name || p.domain)}</strong>
+            <span style="color: var(--color-text-tertiary);">— ${escapeHtml(p.domain)}</span>
+            <a href="${reportLink('parent', p.domain)}" style="margin-left: auto; color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+          </div>
+          <div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>
+        `);
+      }
+
+      // Self (always shown when classification exists)
+      if (classification && classification.self) {
+        const s = classification.self;
+        const confidenceBadge = s.confidence
+          ? `<span style="margin-left: var(--space-2); padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: ${s.confidence === 'high' ? 'var(--color-success-50)' : 'var(--color-warning-50)'}; color: ${s.confidence === 'high' ? 'var(--color-success-700)' : 'var(--color-warning-700)'};">${escapeHtml(s.confidence)} confidence</span>`
+          : '';
+        parts.push(`
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-primary-50, var(--color-gray-100)); border: 1px solid var(--color-primary-200, var(--color-gray-200)); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
+            <span style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">You</span>
+            <strong style="color: var(--color-text-heading);">${escapeHtml(s.brand_name || s.domain)}</strong>
+            <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
+            ${confidenceBadge}
+            <span style="margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs);">last validated ${fmtDate(s.last_validated)}</span>
+          </div>
+        `);
+      }
+
+      // Children
+      if (inferred.length > 0) {
+        parts.push(`<div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>`);
+        parts.push(`
+          <div style="padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2);">
+            <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-2);">Subsidiary brands (${inferred.length})</div>
+            <ul style="list-style: none; margin: 0; padding: 0;">
+              ${inferred.map(s => `
+                <li style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0;">
+                  <strong style="color: var(--color-text-heading);">${escapeHtml(s.brand_name || s.domain)}</strong>
+                  <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
+                  <span style="margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs);">last validated ${fmtDate(s.last_validated)}</span>
+                  <a href="${reportLink('child', s.domain)}" style="color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        `);
+      } else if (classification) {
+        // Self exists but no children — say so explicitly.
+        parts.push(`
+          <div style="padding: var(--space-2) var(--space-3); color: var(--color-text-tertiary); font-size: var(--text-sm); font-style: italic;">
+            No subsidiary brands classified.
+          </div>
+        `);
+      }
+
+      content.innerHTML = parts.join('');
     }
 
     function renderAutoProvisionToggle(orgId, data) {
@@ -1355,28 +1453,18 @@
       status.style.display = 'none';
       status.textContent = '';
 
-      // Render the inferred-subsidiaries panel so the owner can see what
-      // brands the registry has classified as theirs before flipping on.
+      // The subsidiaries themselves are listed in the brand-hierarchy
+      // section above (renderBrandHierarchy). Just show enabled-at + a
+      // pointer up.
+      const enabledAt = data.auto_provision_hierarchy_enabled_at
+        ? new Date(data.auto_provision_hierarchy_enabled_at).toLocaleDateString()
+        : null;
       if (inferred.length > 0) {
-        const enabledAt = data.auto_provision_hierarchy_enabled_at
-          ? new Date(data.auto_provision_hierarchy_enabled_at).toLocaleDateString()
-          : null;
         subsidiariesList.innerHTML = `
-          <div style="font-weight: 500; margin-bottom: var(--space-2); color: var(--color-text-heading);">
-            Subsidiary brands the registry has classified as yours (${inferred.length})
+          <div style="color: var(--color-text-secondary); font-size: var(--text-sm);">
+            Subsidiaries that would be auto-added are listed in the <em>Brand registry classification</em> section above (${inferred.length}).
           </div>
-          <ul style="margin: 0; padding-left: var(--space-5); color: var(--color-text-secondary);">
-            ${inferred.map(s => `
-              <li>
-                <strong>${escapeHtml(s.brand_name || s.domain)}</strong>
-                <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
-              </li>
-            `).join('')}
-          </ul>
           ${enabledAt ? `<div style="margin-top: var(--space-2); color: var(--color-text-tertiary); font-size: var(--text-xs);">Enabled on ${enabledAt}. New sign-ups from these domains after that date are auto-added.</div>` : ''}
-          <div style="margin-top: var(--space-2); color: var(--color-text-tertiary); font-size: var(--text-xs);">
-            See a brand here that shouldn't be? <a href="/admin/escalations" style="color: var(--color-primary-600);">Report a registry error</a>.
-          </div>
         `;
       } else {
         subsidiariesList.innerHTML = `

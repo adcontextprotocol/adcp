@@ -557,8 +557,14 @@ export function createOrganizationsRouter(): Router {
       // this org's verified domains — are what an owner gives access to
       // when they enable hierarchical auto-provisioning, so the UI shows
       // them in the same surface as the toggle.
+      //
+      // Hierarchy classification (parent + self) is also returned so owners
+      // can see how the brand registry has classified their org and dispute
+      // it if wrong. Without visibility, the auto-provision toggle is a
+      // black box: an owner can't tell whether enabling it would inherit
+      // employees from the right parent or grant access via a stale edge.
       const pool = getPool();
-      const [domainsResult, settingResult, subsidiariesResult] = await Promise.all([
+      const [domainsResult, settingResult, subsidiariesResult, selfBrandResult] = await Promise.all([
         pool.query(
           `SELECT domain, verified, is_primary
            FROM organization_domains
@@ -591,9 +597,60 @@ export function createOrganizationsRouter(): Router {
            ORDER BY db.domain ASC`,
           [orgId]
         ),
+        // Self + parent classification: pull the brands row whose domain is
+        // any of this org's verified domains, plus the parent (if house_domain
+        // is set) in one query via LATERAL.
+        pool.query<{
+          self_domain: string;
+          self_brand_name: string | null;
+          self_house_domain: string | null;
+          self_confidence: string | null;
+          self_last_validated: Date | null;
+          parent_domain: string | null;
+          parent_brand_name: string | null;
+          parent_last_validated: Date | null;
+        }>(
+          `SELECT
+             db.domain AS self_domain,
+             db.brand_name AS self_brand_name,
+             db.house_domain AS self_house_domain,
+             db.brand_manifest->'classification'->>'confidence' AS self_confidence,
+             db.last_validated AS self_last_validated,
+             parent.domain AS parent_domain,
+             parent.brand_name AS parent_brand_name,
+             parent.last_validated AS parent_last_validated
+           FROM brands db
+           LEFT JOIN brands parent ON parent.domain = db.house_domain
+           WHERE db.domain IN (
+                   SELECT od.domain FROM organization_domains od
+                   WHERE od.workos_organization_id = $1 AND od.verified = true
+                 )
+           ORDER BY (SELECT is_primary FROM organization_domains od WHERE od.domain = db.domain LIMIT 1) DESC NULLS LAST
+           LIMIT 1`,
+          [orgId]
+        ),
       ]);
 
       const setting = settingResult.rows[0];
+      const selfRow = selfBrandResult.rows[0];
+      const hierarchyClassification = selfRow
+        ? {
+            self: {
+              domain: selfRow.self_domain,
+              brand_name: selfRow.self_brand_name,
+              confidence: selfRow.self_confidence,
+              last_validated: selfRow.self_last_validated,
+            },
+            parent: selfRow.parent_domain
+              ? {
+                  domain: selfRow.parent_domain,
+                  brand_name: selfRow.parent_brand_name,
+                  last_validated: selfRow.parent_last_validated,
+                }
+              : null,
+          }
+        : null;
+
       res.json({
         domains: domainsResult.rows.map(r => ({
           domain: r.domain,
@@ -603,6 +660,7 @@ export function createOrganizationsRouter(): Router {
         auto_provision_verified_domain: setting?.auto_provision_verified_domain ?? true,
         auto_provision_brand_hierarchy_children: setting?.auto_provision_brand_hierarchy_children ?? false,
         auto_provision_hierarchy_enabled_at: setting?.auto_provision_hierarchy_enabled_at ?? null,
+        hierarchy_classification: hierarchyClassification,
         inferred_subsidiaries: subsidiariesResult.rows.map(r => ({
           domain: r.domain,
           brand_name: r.brand_name,

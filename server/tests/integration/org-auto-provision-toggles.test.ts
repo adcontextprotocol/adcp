@@ -102,6 +102,76 @@ describe('org auto-provisioning toggles', () => {
     expect(domains).toEqual([SUB_DOMAIN_A, SUB_DOMAIN_B]);
   });
 
+  it('hierarchy_classification surfaces self + parent so owners can see and dispute the registry', async () => {
+    await seedTestOrg(pool);
+    // Seed self brand row pointing up to a parent.
+    await pool.query(
+      `INSERT INTO brands (domain, brand_name, house_domain, source_type, brand_manifest, last_validated, created_at, updated_at)
+       VALUES ($1, $2, $3, 'enriched', $4, NOW(), NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET house_domain = EXCLUDED.house_domain, brand_manifest = EXCLUDED.brand_manifest`,
+      [TEST_DOMAIN, 'APT Test Co', 'parent-of-apt.test', JSON.stringify({ classification: { confidence: 'high' } })]
+    );
+    // Seed the parent brand row.
+    await pool.query(
+      `INSERT INTO brands (domain, brand_name, source_type, brand_manifest, last_validated, created_at, updated_at)
+       VALUES ($1, 'Parent Holding', 'enriched', $2, NOW(), NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET brand_name = EXCLUDED.brand_name`,
+      ['parent-of-apt.test', JSON.stringify({ classification: { confidence: 'high' } })]
+    );
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'owner' }, status: 'active' }],
+    });
+
+    const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.hierarchy_classification).not.toBeNull();
+    expect(res.body.hierarchy_classification.self).toMatchObject({
+      domain: TEST_DOMAIN,
+      brand_name: 'APT Test Co',
+      confidence: 'high',
+    });
+    expect(res.body.hierarchy_classification.parent).toMatchObject({
+      domain: 'parent-of-apt.test',
+      brand_name: 'Parent Holding',
+    });
+
+    // Cleanup: remove the seeded brand rows so other tests aren't affected.
+    await pool.query('DELETE FROM brands WHERE domain = ANY($1)', [[TEST_DOMAIN, 'parent-of-apt.test']]);
+  });
+
+  it('hierarchy_classification.parent is null when self has no house_domain', async () => {
+    await seedTestOrg(pool);
+    await pool.query(
+      `INSERT INTO brands (domain, brand_name, source_type, brand_manifest, last_validated, created_at, updated_at)
+       VALUES ($1, 'APT Test Co', 'enriched', $2, NOW(), NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET brand_name = EXCLUDED.brand_name`,
+      [TEST_DOMAIN, JSON.stringify({ classification: { confidence: 'high' } })]
+    );
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'owner' }, status: 'active' }],
+    });
+
+    const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
+
+    expect(res.body.hierarchy_classification.self.domain).toBe(TEST_DOMAIN);
+    expect(res.body.hierarchy_classification.parent).toBeNull();
+
+    await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_DOMAIN]);
+  });
+
+  it('hierarchy_classification is null when no brand-registry row exists for the org domain', async () => {
+    await seedTestOrg(pool);
+    // No brands row for TEST_DOMAIN.
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'owner' }, status: 'active' }],
+    });
+
+    const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
+
+    expect(res.body.hierarchy_classification).toBeNull();
+  });
+
   it('inferred_subsidiaries excludes low-confidence and stale brand-registry rows', async () => {
     await seedTestOrg(pool);
     // Low confidence — must NOT appear.
