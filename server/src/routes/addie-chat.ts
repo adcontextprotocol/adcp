@@ -807,6 +807,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: matchedRuleId ? 'cta_chip' : 'typed',
       });
 
       // Record inbound message in the relationship system
@@ -1089,6 +1090,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: matchedRuleId ? 'cta_chip' : 'typed',
       });
 
       // Record inbound message in the relationship system

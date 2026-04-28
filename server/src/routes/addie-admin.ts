@@ -1529,6 +1529,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
         router_decision: routerDecision,
+        message_source: 'typed',
       });
 
       logger.info({

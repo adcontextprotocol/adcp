@@ -1561,6 +1561,7 @@ async function handleUserMessage({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleId ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -2188,6 +2189,7 @@ async function handleAppMention({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3167,6 +3169,7 @@ async function handleDirectMessage(
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchRuleIdFromMessage(messageText) ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3530,6 +3533,7 @@ async function handleActiveThreadReply({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -4016,6 +4020,7 @@ async function handleChannelMessage({
         router_decision: buildRouterDecision(plan),
         user_id: userId,
         user_display_name: resolveSpeakerDisplayName(memberContext),
+        message_source: 'typed',
       });
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -4915,6 +4920,7 @@ async function handleReactionAdded({
       content_sanitized: userInput,
       user_id: reactingUserId,
       user_display_name: resolveSpeakerDisplayName(reactingMemberContext),
+      message_source: 'unknown',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save reaction message');

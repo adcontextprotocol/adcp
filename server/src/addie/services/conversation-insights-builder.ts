@@ -232,6 +232,10 @@ async function gatherConversationSamples(
          (SELECT LEFT(content, $3) FROM addie_thread_messages
           WHERE thread_id = t.thread_id AND role = 'user'
           ORDER BY sequence_number ASC LIMIT 1) AS user_message,
+         -- message_source of first user message (for CTA chip filtering)
+         (SELECT message_source FROM addie_thread_messages
+          WHERE thread_id = t.thread_id AND role = 'user'
+          ORDER BY sequence_number ASC LIMIT 1) AS first_msg_source,
          -- First assistant response
          (SELECT LEFT(content, $4) FROM addie_thread_messages
           WHERE thread_id = t.thread_id AND role = 'assistant'
@@ -257,19 +261,7 @@ async function gatherConversationSamples(
      )
      SELECT * FROM thread_samples
      WHERE user_message IS NOT NULL AND assistant_response IS NOT NULL
-       -- STOPGAP(#3408): exclude known CTA-chip strings until message_source column ships.
-       -- When message_source tagging lands, replace this with: AND first_msg_source != 'cta_chip'
-       AND user_message NOT IN (
-         'What can you do? What kinds of things can I ask you about?',
-         'What is AdCP and how does it work?',
-         'How do I set up a sales agent with AdCP?',
-         'How is agentic advertising different from programmatic, and why does it matter?',
-         'Start module A1',
-         'Start module A2',
-         'Start module A3',
-         'Start module B1',
-         'I''d like to start learning AdCP in the Academy…'
-       )
+       AND (first_msg_source IS NULL OR first_msg_source != 'cta_chip')
      ORDER BY
        has_escalation DESC,
        rating ASC NULLS LAST,
