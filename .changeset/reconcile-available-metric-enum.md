@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Reconcile `available-metric` enum with `delivery-metrics.json` so every
@@ -29,17 +29,25 @@ drifted from the property set:
 - `docs/media-buy/media-buys/optimization-reporting.mdx`: metric list rewritten
   to match the reconciled enum (drops the stale `video_completions` entry,
   adds `engagements` / `follows` / `saves` / `profile_visits` /
-  `new_to_brand_rate`).
+  `new_to_brand_rate`). Notes platform variance for `saves`
+  (Pinterest "repins", TikTok "video_saves").
 - `docs/media-buy/task-reference/create_media_buy.mdx`: `requested_metrics`
   examples updated to `completed_views`.
 - `server/src/training-agent/publishers.ts`: training-agent fixture
   `reportingMetrics` arrays use `completed_views`.
 
-**Backwards compatibility.** Any seller that had populated
-`available_metrics: ["video_completions"]` was already non-functional — there
-is no `video_completions` field in delivery responses to populate, only
-`completed_views`. Buyers that filtered against `video_completions` on the
-discovery side should switch to `completed_views`.
+**Vocabulary provenance.** `completed_views` and `engagements` follow IAB/MRC
+and VAST 4 conventions. `follows`, `saves`, and `profile_visits` are
+platform-native names (Meta/TikTok/Pinterest); AdCP is setting these as the
+canonical aliases for cross-platform reporting since IAB does not define
+social-platform engagement scalars.
+
+**Backwards compatibility.** Removing `video_completions` from the enum is a
+validation-constraint change — minor-bumped per the schema-publication-at-merge
+policy. Any seller that had populated `available_metrics: ["video_completions"]`
+was already non-functional (no `video_completions` field in delivery responses
+to populate, only `completed_views`). Buyers that filtered against
+`video_completions` on the discovery side should switch to `completed_views`.
 
 This unblocks a follow-up that adds `required_metrics` to `get_products` and
 `missing_metrics` to `get_media_buy_delivery` for end-to-end metric
