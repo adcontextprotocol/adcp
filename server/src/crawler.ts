@@ -1,6 +1,6 @@
 import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
-import { hardenPropertyIndex } from "./discovery/property-index-guard.js";
+import { hardenPropertyIndex, sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
@@ -649,7 +649,10 @@ export class CrawlerService {
     authorizedFor?: string,
     limitToPropertyIds?: string[]
   ): Promise<void> {
-    for (const prop of properties) {
+    for (const rawProp of properties) {
+      const prop = sanitizeAdagentsProperty(rawProp, { publisherDomain, agentUrl });
+      if (!prop) continue;
+
       // If agent has specific property_ids, only record those
       if (limitToPropertyIds && limitToPropertyIds.length > 0) {
         if (!prop.property_id || !limitToPropertyIds.includes(prop.property_id)) {
