@@ -112,7 +112,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "inventory-list-targeting-create-v1"
+          idempotency_key: "$generate:uuid_v4#inventory_list_targeting_create_with_both_lists_create_buy_with_lists"
           start_time: "2026-07-01T00:00:00Z"
           end_time: "2026-09-30T23:59:59Z"
           packages:
