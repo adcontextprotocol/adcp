@@ -199,6 +199,35 @@ Normative requirements:
 
 **About `recovery: correctable` on authorization errors.** All four authz codes classify as `correctable`, meaning *the request can be fixed and re-sent*. This does NOT mean the agent can fix the request autonomously — the "correction" for `SCOPE_INSUFFICIENT` and `READ_ONLY_SCOPE` is an out-of-band scope grant from the operator, which the agent cannot perform on its own. Agents SHOULD surface authz errors to the operator rather than auto-retrying against the same credential; a retry loop against a fixed scope is a bug, not defensive posture. Only `FIELD_NOT_PERMITTED` has an agent-autonomous recovery path (strip the disallowed field and resubmit).
 
+**`FIELD_NOT_PERMITTED` — example envelope and payload populating both layers:**
+
+```json
+{
+  "adcp_error": {
+    "code": "FIELD_NOT_PERMITTED",
+    "message": "Caller's field_scopes for update_media_buy does not include this field",
+    "recovery": "correctable",
+    "field": "packages[0].budget"
+  },
+  "payload": {
+    "errors": [
+      {
+        "code": "FIELD_NOT_PERMITTED",
+        "message": "Caller's field_scopes for update_media_buy does not include this field",
+        "recovery": "correctable",
+        "field": "packages[0].budget",
+        "details": {
+          "task": "update_media_buy",
+          "permitted_fields": ["reporting_webhook"]
+        }
+      }
+    ]
+  }
+}
+```
+
+The `field` value identifies exactly what to strip; `details.permitted_fields` (optional, advisory) lists the allowlist for the offending task so an agent can verify before retrying. For `SCOPE_INSUFFICIENT`, populate `details.introspection_hint: { "task": "list_accounts", "account": { ... } }` to point the caller at where to rediscover scope.
+
 ### Request Validation
 
 | Code | Recovery | Description | Resolution |
