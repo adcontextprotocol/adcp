@@ -219,7 +219,8 @@ async def _poll_for_completion(self, operation_id, task_id, interval=60):
             poll_count += 1
 
             task_response = await self.adcp.call('tasks/get', {
-                'task_id': task_id
+                'task_id': task_id,
+                'include_result': True
             })
 
             await self.handle_operation_response(operation_id, task_response)

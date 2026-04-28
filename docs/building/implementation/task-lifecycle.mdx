@@ -191,21 +191,22 @@ input-required → → → → →
 
 Don't poll for `working` — the server delivers the result on the open connection. Polling is a backup for `submitted` operations (webhooks are preferred).
 
-:::note Completion payload retrieval in 3.0
-The 3.0 `tasks/get` schema returns task status, timing, history, and (optionally) progress and error details. It does not specify a typed field for the terminal payload of a completed task — for `create_media_buy` and similar operations, the `media_buy_id`, `packages`, and other task-specific fields are delivered to the buyer's webhook URL configured via `push_notification_config` on the original request. Buyers that need the completion payload MUST configure a webhook in 3.0; polling alone reports terminal status. A typed `include_result` request flag and response projection are tracked for 3.1 in [#3123](https://github.com/adcontextprotocol/adcp/issues/3123).
-:::
+Send `include_result: true` to receive the terminal task payload on the polled response once the task reaches `status: completed`. The `result` object on the response carries the same shape the original task would have returned synchronously — for example, polling a `create_media_buy` task returns `result: { media_buy_id, packages, status }`. For `failed` tasks, read the existing `error` field instead. Webhooks remain the supported delivery mechanism (see [Push Notifications](/docs/building/implementation/webhooks)); `include_result` is the typed polling alternative for buyers that prefer pull over push.
 
 ```javascript
-// Polling tracks status; the completion payload arrives via webhook.
-async function pollUntilTerminal(taskId, pollInterval = 30_000) {
+// Polling is only for 'submitted' operations
+async function pollForResult(taskId, pollInterval = 30_000) {
   while (true) {
     await sleep(pollInterval);
 
     const response = await adcp.call('tasks/get', {
-      task_id: taskId
+      task_id: taskId,
+      include_result: true
     });
 
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      // response.result carries the terminal payload when status === 'completed'
+      // response.error carries error details when status === 'failed'
       return response;
     }
   }
