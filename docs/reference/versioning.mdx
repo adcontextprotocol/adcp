@@ -133,6 +133,16 @@ Any change that requires an implementation to adapt — renamed field, required-
 - A section in the [migration guide](/docs/reference/migration) or a dedicated deep-dive page
 - Where possible, an alias accepting both old and new names in the release that introduces the change
 
+### Schema publication at merge
+
+The latest published tag must always reflect the same required-field set as source HEAD. A PR that changes any `required` array, changes a discriminator `const`, or tightens a validation constraint must be accompanied by a new tag cut before the change becomes the active implementation target for external consumers. This is in addition to any upstream obligations — for example, the deprecation requirement for optional→required transitions described in the stability guarantees above.
+
+**Why:** Implementors validate against a published tag (whether pinned to an exact version or resolved through the [version alias](/docs/building/schemas-and-sdks#schema-versioning)). If source HEAD's required fields grow beyond what that tag declares, an evaluator reading source and the implementor's validator reading the published tag will disagree — not because either is wrong, but because the published contract hasn't caught up. The implementor cannot reconcile the gap without reading source history.
+
+**During RC cycles:** The same invariant applies between RC tags. A schema change that lands between `rc.N` and `rc.N+1` requires cutting `rc.N+1` before the new required-field set is treated as active.
+
+**Until CI enforcement is in place:** The PR author is responsible for cutting the new release or RC tag before the change propagates to evaluators. Reviewers should not approve a PR that changes a `required` array, a discriminator `const`, or a validation constraint without confirming a new tag is ready to publish.
+
 ---
 
 ## Release cadence
