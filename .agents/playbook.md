@@ -256,14 +256,30 @@ Default flow when a fix is needed in both lines:
 
 #### Patch eligibility
 
-A change is patch-eligible (lands on `3.0.x`) if **all** of:
+For each surface a PR touches, the corresponding rule must hold. A PR touching multiple surfaces must satisfy all relevant rules.
 
-- **Stable schemas:** no new fields, no renamed fields, no new enum values, no new normative requirements. Clarifying underspecified behavior is OK.
-- **Experimental surfaces** (governance, TMP, anything `x-status: experimental`): additive changes always permitted per the experimental-surface contract — see `docs/reference/experimental-status.mdx`.
-- **Conformance harness** (`comply_test_controller`, storyboards): additive scenarios always permitted.
-- **Docs and release tooling:** always patch-eligible.
+**Stable schemas** — no new fields, no renamed fields, no new enum values, no new error codes, no new normative requirements. Clarifications are patch-eligible only when both:
+1. The prior spec was demonstrably silent or ambiguous on the input (not just unstated), AND
+2. Any conformant 3.0.0 implementation of the surrounding behavior would already satisfy the new MUST.
 
-If unsure, default to a `--empty` changeset and discuss whether the change belongs on `3.0.x` at all. Many fixes are stable-only and ship in `3.1.x` only.
+If a previously-conformant implementation could fail the clause, it's a new requirement and ships in `3.1.x` only. (This is the IETF errata vs. bis test.)
+
+**Experimental surfaces** (governance, TMP, anything `x-status: experimental`) — additive changes are always patch-eligible without notice. Breaking changes follow the 6-week notice rule in `docs/reference/experimental-status.mdx` and therefore ship in the next minor, not a patch.
+
+**Conformance harness** (`comply_test_controller`, storyboards, `runner-output.json`) — additive scenarios, additive `comply_test_controller` enum values, new universal storyboards, and additive `runner-output.json` step kinds are patch-eligible. Renaming or repurposing existing step kinds is not.
+
+**Non-normative docs and release tooling** — always patch-eligible. Includes typo fixes, link corrections, example updates, runbook changes.
+
+**Normative docs** (security guidance, idempotency rules, error semantics, signing/transport behavior, `.well-known` files like `adagents.json`/`brand.json` schemas) — follow the stable-schemas rule above. "It's just docs" doesn't apply when the docs change required behavior.
+
+**Never patch-eligible** (per `docs/reference/experimental-status.mdx`):
+- Transport-layer changes (MCP, A2A, REST envelope semantics)
+- Auth profile changes (RFC 9728, OAuth scopes)
+- Signing profile changes (RFC 9421 covered components, JWS algorithms)
+
+These are version-level concerns. Security fixes ship as out-of-band advisories or in the next minor.
+
+If unsure, default to `--empty` and discuss whether the change belongs on `3.0.x` at all. Many fixes are stable-only and ship in `3.1.x` only.
 
 #### Pre mode (beta releases)
 

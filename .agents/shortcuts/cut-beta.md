@@ -2,22 +2,30 @@
 
 Runbook for cutting beta releases while `main` is in pre mode, and for exiting pre mode when 3.1.0 stable is ready.
 
+> **Until #3417 lands:** several steps below require manual intervention because GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. Steps marked _§3417_ won't be needed once the App-token swap lands. Remove those steps in this runbook when #3417 closes.
+
 ## Pre mode
 
 `main` is in pre mode while `.changeset/pre.json` exists. Every Version Packages cut produces `3.1.0-beta.N` instead of `3.1.0`. This is a deliberate safety net: if a `minor` changeset slips into `main` accidentally, it ships as a beta drop, not as 3.1.0 stable.
 
 ## Cutting a 3.1.0-beta.N
 
-Routine — same flow as a normal release, just with the beta version number.
+### Preconditions
+
+- `main` is in pre mode (`.changeset/pre.json` exists)
+- Patch eligibility doesn't apply here — this is the minor line, so any `patch`/`minor` changeset is fine
+
+### Steps
 
 1. Land minor (or patch) changesets on `main` via normal PR flow.
 2. `release.yml` updates the Version Packages PR. Title shows `Version Packages` and body lists `adcontextprotocol@3.1.0-beta.N`.
-3. Required CI checks may not fire (see #3417). Push from a human identity or admin-merge.
+3. Required CI checks may not fire _§3417_. Push from a human identity or admin-merge.
 4. Merging tags `v3.1.0-beta.N`, creates the GitHub Release, publishes `/protocol/3.1.0-beta.N.tgz`.
-5. Trigger `release-docs.yml` manually until #3417 lands:
+5. Trigger `release-docs.yml` manually _§3417_:
    ```bash
+   VERSION=3.1.0-beta.N
    gh api repos/adcontextprotocol/adcp/actions/workflows/release-docs.yml/dispatches \
-     -X POST -f ref=main -f 'inputs[version]=3.1.0-beta.N'
+     -X POST -f ref=main -f "inputs[version]=$VERSION"
    ```
 
 `release-docs.yml`'s docs.json updater collapses prerelease versions into a single `3.1-beta` label, so the live docs site shows the latest beta at the `3.1-beta` version selector. The `dist/docs/3.1.0-beta.{N-1}/` directory accumulates in git but isn't linked — periodic cleanup is fine.
@@ -30,7 +38,22 @@ While in beta, that section can carry a `**Status:** Beta — in development` ba
 
 ## Exiting pre mode for 3.1.0 stable
 
-When 3.1.0 is feature-complete:
+### Preconditions
+
+- 3.1.0 is feature-complete; no further `minor` changesets should land before the stable cut
+- Curated 3.1.0 release notes drafted in `docs/reference/release-notes.mdx`
+
+### Freeze main first
+
+**Critical race condition.** Between the exit PR opening and the `v3.1.0` tag landing, any `minor` changeset that merges to `main` ships in 3.1.0 stable directly — no further beta drop.
+
+Either:
+1. **Freeze `main` for new `minor` PRs** from "exit PR opened" through "v3.1.0 tag pushed". Patch and `--empty` PRs are fine. Communicate the freeze in #engineering or via a `release-freeze` GitHub label, OR
+2. **Accept** that minor changesets merged in that window ship in 3.1.0 stable directly. Document explicitly in the exit PR description if you choose this path.
+
+The freeze is shorter than it sounds — typically 30 minutes from exit-PR-merge to tag.
+
+### Exit
 
 ```bash
 git checkout -b bokelley/exit-pre-3-1-0 origin/main
@@ -38,10 +61,14 @@ npx changeset pre exit       # deletes .changeset/pre.json
 git add -A
 git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
 git push -u origin bokelley/exit-pre-3-1-0
-gh pr create --base main --title "chore(release): exit pre mode for 3.1.0 stable" --body "Exits pre mode. Next Version Packages cut produces 3.1.0 stable. See \`.agents/shortcuts/cut-beta.md\` § Exiting pre mode."
+gh pr create --base main \
+  --title "chore(release): exit pre mode for 3.1.0 stable" \
+  --body "Exits pre mode. Next Version Packages cut produces 3.1.0 stable. See \`.agents/shortcuts/cut-beta.md\` § Exiting pre mode."
 ```
 
 Land the exit PR. The next Version Packages cut (any new changesets on main, or a manual workflow_dispatch on `release.yml`) produces `3.1.0` stable.
+
+If the Release workflow fails after merge, recover manually following the same fallback pattern as `cut-major.md` § 4 (manual `git tag` + `gh release create`).
 
 ### CHANGELOG.md at exit time
 
@@ -71,7 +98,7 @@ The `3.1.0` block doesn't aggregate everything since `3.0.0` — each beta consu
 - [ ] `https://adcontextprotocol.org/protocol/` listing shows `3.1.0` in `versions[]`
 - [ ] `release-notes.mdx` curated `## Version 3.1.0` section written
 - [ ] No duplicate `## 3.1.0` header in CHANGELOG.md
-- [ ] Forward-merge from `3.0.x` to `main` is current (no pending forward-merge PR)
+- [ ] Forward-merge from `3.0.x` to `main` is current (`git log v3.0.X..origin/3.0.x` is empty after the most recent forward-merge PR landed)
 
 ## Announcements (3.1.0 stable cut)
 
