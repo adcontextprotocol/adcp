@@ -1841,7 +1841,14 @@ export function createOrganizationsRouter(): Router {
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
-        details: updates,
+        // ip and user_agent are stored here for forensic use. registry_audit_log.details
+        // is exposed only via /api/admin/audit-logs (requireAdmin). Do not widen that
+        // endpoint without reviewing PII exposure for these fields.
+        details: {
+          ip: req.ip ?? null,
+          user_agent: req.get('User-Agent') ?? null,
+          ...updates,
+        },
       });
 
       logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');

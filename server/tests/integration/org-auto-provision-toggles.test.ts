@@ -317,7 +317,7 @@ describe('org auto-provisioning toggles', () => {
     currentMockEmail = 'owner@apt-co.test';
   });
 
-  it('flipping the flag back to false clears the enabled_at timestamp', async () => {
+  it('flipping the flag back to false preserves enabled_at and sets disabled_at', async () => {
     await seedTestOrg(pool, { hierarchyOptIn: true });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
       data: [{ role: { slug: 'owner' }, status: 'active' }],
@@ -339,13 +339,59 @@ describe('org auto-provisioning toggles', () => {
     const after = await pool.query<{
       auto_provision_brand_hierarchy_children: boolean;
       auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
     }>(
-      `SELECT auto_provision_brand_hierarchy_children, auto_provision_hierarchy_enabled_at
+      `SELECT auto_provision_brand_hierarchy_children,
+              auto_provision_hierarchy_enabled_at,
+              auto_provision_hierarchy_disabled_at
        FROM organizations WHERE workos_organization_id = $1`,
       [TEST_ORG]
     );
     expect(after.rows[0].auto_provision_brand_hierarchy_children).toBe(false);
-    expect(after.rows[0].auto_provision_hierarchy_enabled_at).toBeNull();
+    // enabled_at is preserved — cohort gate remains for re-enable audits
+    expect(after.rows[0].auto_provision_hierarchy_enabled_at).not.toBeNull();
+    // disabled_at is set — forensic record of when it was turned off
+    expect(after.rows[0].auto_provision_hierarchy_disabled_at).not.toBeNull();
+  });
+
+  it('enable→disable cycle preserves both timestamps', async () => {
+    await seedTestOrg(pool, { hierarchyOptIn: false });
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'owner' }, status: 'active' }],
+    });
+
+    // Enable
+    await request(app)
+      .patch(`/api/organizations/${TEST_ORG}/settings`)
+      .send({ auto_provision_brand_hierarchy_children: true });
+
+    const afterEnable = await pool.query<{
+      auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
+    }>(
+      `SELECT auto_provision_hierarchy_enabled_at, auto_provision_hierarchy_disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG]
+    );
+    expect(afterEnable.rows[0].auto_provision_hierarchy_enabled_at).not.toBeNull();
+    expect(afterEnable.rows[0].auto_provision_hierarchy_disabled_at).toBeNull();
+
+    // Disable
+    await request(app)
+      .patch(`/api/organizations/${TEST_ORG}/settings`)
+      .send({ auto_provision_brand_hierarchy_children: false });
+
+    const afterDisable = await pool.query<{
+      auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
+    }>(
+      `SELECT auto_provision_hierarchy_enabled_at, auto_provision_hierarchy_disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG]
+    );
+    // Both timestamps survive the full cycle
+    expect(afterDisable.rows[0].auto_provision_hierarchy_enabled_at).not.toBeNull();
+    expect(afterDisable.rows[0].auto_provision_hierarchy_disabled_at).not.toBeNull();
   });
 
   it('member POST /brand-classification-report records audit row, validates kind', async () => {
@@ -424,7 +470,8 @@ async function seedTestOrg(pool: Pool, opts: { hierarchyOptIn?: boolean } = {}) 
      ) VALUES ($1, 'APT Test Co', $2, 'active', false, NOW(), NOW())
      ON CONFLICT (workos_organization_id) DO UPDATE
        SET auto_provision_brand_hierarchy_children = false,
-           auto_provision_hierarchy_enabled_at = NULL`,
+           auto_provision_hierarchy_enabled_at = NULL,
+           auto_provision_hierarchy_disabled_at = NULL`,
     [TEST_ORG, TEST_DOMAIN]
   );
   if (opts.hierarchyOptIn === true) {
