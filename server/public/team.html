@@ -488,6 +488,24 @@
           </label>
           <div id="autoProvisionStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
         </div>
+
+        <div id="autoProvisionHierarchyRow" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-100);">
+          <label style="display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;">
+            <input type="checkbox" id="autoProvisionHierarchyToggle" style="margin-top: 4px;">
+            <span>
+              <strong style="display: block; color: var(--color-text-heading); margin-bottom: var(--space-1);">Auto-add employees of subsidiary brands</strong>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-sm); display: block;">
+                When on, employees signing in from a subsidiary brand's domain are auto-added to your organization. Off by default. <strong>Lower trust than verified-domain</strong> &mdash; subsidiary relationships come from our brand registry's classification, which can be wrong or stale (especially after divestitures), so review the list below before turning this on.
+              </span>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-xs); display: block; margin-top: var(--space-2);">
+                Existing employees aren't retroactively added &mdash; only new sign-ups after you flip this on.
+              </span>
+            </span>
+          </label>
+          <div id="autoProvisionHierarchyStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
+          <div id="inferredSubsidiariesList" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); font-size: var(--text-sm);"></div>
+        </div>
+
         <div style="margin-top: 16px;">
           <button class="btn btn-secondary" onclick="openDomainVerification()">Manage Domains</button>
         </div>
@@ -1244,6 +1262,7 @@
         // verified domain. With no verified domain the toggle is a no-op
         // (autoLinkByVerifiedDomain has nothing to match), so we hide it.
         renderAutoProvisionToggle(orgId, data);
+        renderAutoProvisionHierarchyToggle(orgId, data);
       } catch (error) {
         console.error('Error loading domains:', error);
         domainsContent.innerHTML = `
@@ -1308,6 +1327,96 @@
         }
       });
     }
+
+    function renderAutoProvisionHierarchyToggle(orgId, data) {
+      const row = document.getElementById('autoProvisionHierarchyRow');
+      const toggle = document.getElementById('autoProvisionHierarchyToggle');
+      const status = document.getElementById('autoProvisionHierarchyStatus');
+      const subsidiariesList = document.getElementById('inferredSubsidiariesList');
+      const inferred = data.inferred_subsidiaries || [];
+      const isOwner = currentUserRole === 'owner';
+      const enabled = data.auto_provision_brand_hierarchy_children === true;
+
+      // Hide entirely when (a) the brand registry has no high-confidence
+      // children for this org AND the flag isn't already on (no use case),
+      // or (b) the user isn't an owner. Owners see the row even with zero
+      // children if they've already opted in, so they can turn it back off.
+      if (!isOwner) {
+        row.style.display = 'none';
+        return;
+      }
+      if (inferred.length === 0 && !enabled) {
+        row.style.display = 'none';
+        return;
+      }
+
+      row.style.display = 'block';
+      toggle.checked = enabled;
+      status.style.display = 'none';
+      status.textContent = '';
+
+      // Render the inferred-subsidiaries panel so the owner can see what
+      // brands the registry has classified as theirs before flipping on.
+      if (inferred.length > 0) {
+        const enabledAt = data.auto_provision_hierarchy_enabled_at
+          ? new Date(data.auto_provision_hierarchy_enabled_at).toLocaleDateString()
+          : null;
+        subsidiariesList.innerHTML = `
+          <div style="font-weight: 500; margin-bottom: var(--space-2); color: var(--color-text-heading);">
+            Subsidiary brands the registry has classified as yours (${inferred.length})
+          </div>
+          <ul style="margin: 0; padding-left: var(--space-5); color: var(--color-text-secondary);">
+            ${inferred.map(s => `
+              <li>
+                <strong>${escapeHtml(s.brand_name || s.domain)}</strong>
+                <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
+              </li>
+            `).join('')}
+          </ul>
+          ${enabledAt ? `<div style="margin-top: var(--space-2); color: var(--color-text-tertiary); font-size: var(--text-xs);">Enabled on ${enabledAt}. New sign-ups from these domains after that date are auto-added.</div>` : ''}
+          <div style="margin-top: var(--space-2); color: var(--color-text-tertiary); font-size: var(--text-xs);">
+            See a brand here that shouldn't be? <a href="/admin/escalations" style="color: var(--color-primary-600);">Report a registry error</a>.
+          </div>
+        `;
+      } else {
+        subsidiariesList.innerHTML = `
+          <span style="color: var(--color-text-secondary);">No subsidiary brands classified to your domain right now. The toggle is currently on, but it has nothing to match — turn it off if you don't expect this to change.</span>
+        `;
+      }
+
+      const fresh = toggle.cloneNode(true);
+      toggle.parentNode.replaceChild(fresh, toggle);
+      fresh.addEventListener('change', async (e) => {
+        const desired = e.target.checked;
+        e.target.disabled = true;
+        try {
+          const response = await fetch(`/api/organizations/${orgId}/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ auto_provision_brand_hierarchy_children: desired }),
+          });
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.message || 'Failed to update setting');
+          }
+          status.style.display = 'block';
+          status.style.color = 'var(--color-success-700)';
+          status.textContent = desired
+            ? 'On. New sign-ups from subsidiary brands will be auto-added.'
+            : 'Off. Subsidiary-brand sign-ups will not be auto-added.';
+        } catch (err) {
+          console.error('Error updating auto_provision_brand_hierarchy_children:', err);
+          e.target.checked = !desired;
+          status.style.display = 'block';
+          status.style.color = 'var(--color-danger-700)';
+          status.textContent = 'Could not update — please try again.';
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    }
+
 
     // Store domain users for batch add
     let domainUsersList = [];
