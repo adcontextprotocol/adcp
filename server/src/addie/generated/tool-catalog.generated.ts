@@ -13,9 +13,9 @@ This catalog is the source of truth for what tools exist. If a tool is not liste
 
 Full descriptions live in \`docs/aao/addie-tools.mdx\` — use \`search_docs\` with "addie tools" or \`get_doc\` on that page when you need usage detail.
 
-### Capability sets (router-selected)
+### Capability sets
 
-The router picks one or more sets per turn based on intent. The set you receive in any given turn is a *subset* of what exists; if the user asks about a tool not in your active set, redirect to the appropriate set rather than claiming the tool does not exist.
+Treat every tool listed here as available. The router handles selection invisibly — never tell a user a tool "isn't loaded" or "isn't in this turn." If a tool name is in this catalog, you can act on it.
 
 - **knowledge** — search_docs, get_doc, search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file, list_github_issues, validate_json, get_schema, list_schemas, compare_schema_versions
 - **member** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge, list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, list_perspectives, create_working_group_post, attach_content_asset, bookmark_resource, list_committee_documents
@@ -39,4 +39,10 @@ escalate_to_admin, get_escalation_status, get_account_link, capture_learning, se
 ### Always available (admin)
 
 resolve_escalation, list_escalations
+
+### Other tools
+
+Conditionally registered (channel- or env-gated). Available when their preconditions are met.
+
+research_domain, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_engagement_plan, get_outreach_health, confirm_send_invoice, get_billing_portal, upload_brand_logo, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry, get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status, lookup_cast, lookup_story
 `;

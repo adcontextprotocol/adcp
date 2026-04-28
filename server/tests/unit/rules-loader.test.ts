@@ -100,4 +100,21 @@ describe('Addie tool reference', () => {
     expect(rules).toContain('## Honest Reporting After Search');
     expect(rules).toContain("aren't loaded in this conversation");
   });
+
+  it('every tool in the public docs page is also referenced in the prompt catalog', async () => {
+    // The two outputs of build-addie-tool-reference share a registration
+    // source but use different render paths (`render` for the docs page,
+    // `renderCatalog` for the prompt). A silent filter divergence would let
+    // one omit a tool the other includes. Invariant: every tool the docs
+    // page renders as a heading must appear by name in the prompt catalog.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const mdx = fs.readFileSync(path.join(repoRoot, 'docs/aao/addie-tools.mdx'), 'utf8');
+    const catalog = fs.readFileSync(path.join(repoRoot, 'server/src/addie/generated/tool-catalog.generated.ts'), 'utf8');
+    const mdxTools = Array.from(mdx.matchAll(/^### `([a-z_][a-z_0-9]*)`/gm)).map(m => m[1]);
+    expect(mdxTools.length).toBeGreaterThan(50);
+    const missing = mdxTools.filter(name => !new RegExp(`\\b${name}\\b`).test(catalog));
+    expect(missing).toEqual([]);
+  });
 });

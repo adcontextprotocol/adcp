@@ -288,9 +288,9 @@ function renderCatalog(
     '',
     'Full descriptions live in `docs/aao/addie-tools.mdx` — use `search_docs` with "addie tools" or `get_doc` on that page when you need usage detail.',
     '',
-    '### Capability sets (router-selected)',
+    '### Capability sets',
     '',
-    'The router picks one or more sets per turn based on intent. The set you receive in any given turn is a *subset* of what exists; if the user asks about a tool not in your active set, redirect to the appropriate set rather than claiming the tool does not exist.',
+    'Treat every tool listed here as available. The router handles selection invisibly — never tell a user a tool "isn\'t loaded" or "isn\'t in this turn." If a tool name is in this catalog, you can act on it.',
     '',
   ];
 
@@ -313,6 +313,22 @@ function renderCatalog(
     if (visible.length > 0) {
       lines.push('', '### Always available (admin)', '', `${visible.join(', ')}`);
     }
+  }
+
+  // Tools registered but not in any TOOL_SETS group or always-available list.
+  // These typically register conditionally (channel-gated, env-gated) and
+  // would otherwise be invisible to the catalog. We surface them so Addie's
+  // catalog stays a complete inventory, matching the docs page's "Other"
+  // section. See render() for the parallel logic.
+  const grouped = new Set<string>();
+  for (const set of toolSets) {
+    for (const t of set.tools) grouped.add(t);
+  }
+  for (const t of alwaysAvailable) grouped.add(t);
+  for (const t of alwaysAvailableAdmin) grouped.add(t);
+  const ungrouped = tools.filter(t => !grouped.has(t.name)).map(t => t.name);
+  if (ungrouped.length > 0) {
+    lines.push('', '### Other tools', '', 'Conditionally registered (channel- or env-gated). Available when their preconditions are met.', '', ungrouped.join(', '));
   }
 
   return lines.join('\n') + '\n';
@@ -359,8 +375,12 @@ function main() {
   if (checkMode) {
     const existing = fs.existsSync(OUTPUT_FILE) ? fs.readFileSync(OUTPUT_FILE, 'utf8') : '';
     const existingCatalog = fs.existsSync(CATALOG_OUTPUT_FILE) ? fs.readFileSync(CATALOG_OUTPUT_FILE, 'utf8') : '';
-    if (existing !== rendered || existingCatalog !== catalogModule) {
-      console.error(`Addie tool reference is stale. Run: npx tsx scripts/build-addie-tool-reference.ts`);
+    const stale: string[] = [];
+    if (existing !== rendered) stale.push(OUTPUT_FILE);
+    if (existingCatalog !== catalogModule) stale.push(CATALOG_OUTPUT_FILE);
+    if (stale.length > 0) {
+      console.error(`Stale: ${stale.join(', ')}`);
+      console.error(`Run: npx tsx scripts/build-addie-tool-reference.ts`);
       process.exit(1);
     }
     console.log(`✓ Addie tool reference up to date (${allTools.length} tools, ${toolSets.length} sets).`);
