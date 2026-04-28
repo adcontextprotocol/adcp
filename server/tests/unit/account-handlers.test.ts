@@ -322,7 +322,7 @@ describe('sync_governance', () => {
     expect(agents[0].url).toBe('https://gov-b.example.com/mcp');
   });
 
-  it('rejects payloads carrying more than one governance agent (maxItems: 1)', async () => {
+  it('rejects payloads carrying more than one governance agent at the request-shape layer (maxItems: 1)', async () => {
     await createSandboxAccount();
 
     const { result } = await simulateCallTool(server, 'sync_governance', {
@@ -341,11 +341,14 @@ describe('sync_governance', () => {
       }],
     });
 
-    const govResult = (result.accounts as Record<string, unknown>[])[0];
-    expect(govResult.status).toBe('failed');
-    const errors = govResult.errors as Array<{ code: string; message: string }>;
+    // Schema-shape violation → top-level errors[] envelope; runner reads
+    // success=false off this. Per-account errors[] would leave success=true
+    // and the runner's expect_error step would fail to detect the rejection.
+    const errors = result.errors as Array<{ code: string; message: string }>;
+    expect(errors).toBeDefined();
     expect(errors[0].code).toBe('INVALID_REQUEST');
     expect(errors[0].message).toContain('exactly 1 entry');
+    expect(result.accounts).toBeUndefined();
   });
 
   it('returns ACCOUNT_NOT_FOUND when account does not exist', async () => {

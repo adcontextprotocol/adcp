@@ -108,7 +108,7 @@ phases:
         validations:
           - check: error_code
             allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
-            description: "Seller rejects two-agent payload — governance_agents maxItems: 1 violated. INVALID_REQUEST (malformed request) or VALIDATION_ERROR (constraint violation) are both compliant."
+            description: "Seller rejects two-agent payload at the request-shape layer — governance_agents maxItems: 1 violated. Returns a top-level error envelope (errors[]) rather than per-account failure status; schema-shape violations are not per-account business failures. INVALID_REQUEST or VALIDATION_ERROR are both compliant."
           - check: field_present
             path: "context"
             description: "Response echoes back the context object on errors"

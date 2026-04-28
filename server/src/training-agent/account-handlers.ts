@@ -504,6 +504,23 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  // Schema-shape invariant: governance_agents has maxItems: 1 (#3015). A
+  // multi-agent payload is a request-shape violation, not a per-account
+  // business failure — return a top-level error envelope so the runner sees
+  // success=false. Per-account errors[] are reserved for valid-shape but
+  // business-fail cases (account-not-found, business-rule violations).
+  const multiAgentAccounts = req.accounts.filter(
+    a => Array.isArray(a.governance_agents) && a.governance_agents.length !== 1,
+  );
+  if (multiAgentAccounts.length > 0) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: `governance_agents must contain exactly 1 entry per account; ${multiAgentAccounts.length} account(s) violated this constraint. An account binds to a single governance agent that owns the full lifecycle (purchase / modification / delivery phases). Specialist review composes inside the agent, not across multiple registrations.`,
+      }],
+    };
+  }
+
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const accounts = getAccountMap(sessionKey);
   const results: Record<string, unknown>[] = [];
@@ -523,20 +540,6 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
         errors: [{
           code: 'ACCOUNT_NOT_FOUND',
           message: `Account ${refDesc} does not exist. Call sync_accounts first to establish the account relationship.`,
-        }],
-      });
-      continue;
-    }
-
-    // Enforce maxItems: 1 — sync_governance binds an account to exactly one governance agent.
-    // See docs/governance/campaign/specification#one-governance-agent-per-account.
-    if (input.governance_agents.length !== 1) {
-      results.push({
-        account: acctRef,
-        status: 'failed',
-        errors: [{
-          code: 'INVALID_REQUEST',
-          message: `governance_agents must contain exactly 1 entry; got ${input.governance_agents.length}. An account binds to a single governance agent that owns the full lifecycle (purchase / modification / delivery phases). Specialist review composes inside the agent, not across multiple registrations.`,
         }],
       });
       continue;
