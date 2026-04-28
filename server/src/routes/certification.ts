@@ -453,10 +453,11 @@ export function createCertificationRouters() {
       if (resend) {
         await resend.emails.send({
           from: 'AgenticAdvertising.org <hello@updates.agenticadvertising.org>',
-          to: 'certification@agenticadvertising.org',
+          to: 'addie+certification@updates.agenticadvertising.org',
           subject: `Assessment review request — ${module_id}`,
           text: [
             `Learner ID: ${userId}`,
+            `Learner Email: ${req.user!.email}`,
             `Module: ${module_id}`,
             `Status: ${progress.status}`,
             `Completed: ${completedAt}`,
