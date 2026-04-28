@@ -1,0 +1,50 @@
+---
+title: AdCP vs OpenRTB — One-Minute Explainer
+sidebarTitle: AdCP vs RTB
+description: "AdCP vs RTB: how Ad Context Protocol and OpenRTB differ and work together. One-minute explainer for anyone familiar with real-time bidding."
+"og:title": "AdCP — How AdCP and RTB Fit Together"
+---
+
+RTB runs in milliseconds inside the auction. AdCP runs before and after — how agents find inventory, agree on terms, move creative, and read back results. They solve different problems.
+
+Neither replaces the other. A platform that already uses OpenRTB can add AdCP without touching the auction layer. A platform with no auction at all (a direct-sold publisher, a commerce media network) can use AdCP on its own.
+
+## What each one does
+
+| | OpenRTB | AdCP |
+|---|---|---|
+| **What it handles** | Single impression auctions | End-to-end campaign workflows |
+| **Participants** | DSPs and SSPs | AI agents and advertising platforms |
+| **Timing** | Real-time (milliseconds) | Asynchronous (seconds to days) |
+| **Maintained by** | IAB Tech Lab | AgenticAdvertising.org |
+
+## How they fit together
+
+An AI buyer agent uses AdCP to plan and execute the campaign — brief, negotiation, budget, creatives, governance. The publisher's ad server can use OpenRTB internally to run the impression-level auction. Both run on the same platform — AdCP before and after the auction, OpenRTB inside it.
+
+Three signals that clarify this:
+
+- AdCP's `create_media_buy` might generate thousands of OpenRTB bid requests over the campaign's lifetime. AdCP owns the deal; OpenRTB owns each auction.
+- Publishers without real-time bidding (direct-sold, commerce media, AI assistants) use AdCP alone. No OpenRTB required.
+- The [Trusted Match Protocol](/docs/trusted-match) is AdCP's real-time bridge when impression-time decisions matter — contextual and identity matching without turning AdCP into an auction.
+
+## Three questions people ask
+
+**Does AdCP replace OpenRTB?** No. They handle different parts of the workflow and are complementary. AdCP runs around the auction; OpenRTB runs inside it.
+
+**Do I need OpenRTB to use AdCP?** No. AdCP works independently. Publishers and platforms that don't use real-time bidding can implement AdCP on their own.
+
+**Can a platform implement both?** Yes, and most will. AdCP handles the buyer/seller workflow; OpenRTB handles impression-level execution where applicable.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="Academy Basics (free)" icon="graduation-cap" href="/docs/learning/overview">
+    Three modules, no prerequisites. Start understanding AdCP through hands-on chat with Addie.
+  </Card>
+  <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
+    Ask any follow-up question about AdCP and how it fits your platform.
+  </Card>
+</CardGroup>
+
+For the technical details — TMP integration, full comparison table, and how OpenRTB and AdCP share the serving layer — see [AdCP and OpenRTB](/docs/building/understanding/adcp-vs-openrtb).

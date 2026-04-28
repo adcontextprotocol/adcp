@@ -5,6 +5,10 @@ description: "AdCP vs OpenRTB: how they differ and work together. AdCP handles a
 "og:title": "AdCP — AdCP and OpenRTB"
 ---
 
+<Note>
+New to AdCP? [AdCP vs RTB — One-Minute Explainer](/docs/adcp-vs-rtb) is written for readers coming from real-time bidding. This page is the technical deep dive for implementers.
+</Note>
+
 AdCP and OpenRTB are complementary standards that operate at different layers of the advertising stack. They are not competing — a platform can (and often will) implement both.
 
 One of the most important connection points is **cross-publisher frequency capping**. AdCP enables it the same way OpenRTB enables programmatic buying: by exposing each impression to a buyer-controlled real-time decision layer before the ad server serves. In AdCP, that integration point is the **[Trusted Match Protocol (TMP)](/docs/trusted-match)**.
