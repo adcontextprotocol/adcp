@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 Deprecates top-level `max_results` on `get_signals` and pins `pagination.max_results` precedence.

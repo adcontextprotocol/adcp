@@ -19,9 +19,9 @@ narrative: |
   (asserting task_status and response_status are absent) require `field_absent`
   runner support in @adcp/client — those checks are marked TODO below and are not
   executed until the runner ships that check type. The schema-level constraint
-  (protocol-envelope.json marking both fields as `not: {}`) is the immediately
-  effective enforcement path for any schema-aware validator operating on the full
-  protocol envelope.
+  (protocol-envelope.json's top-level `not: { anyOf: [{ required: [task_status] },
+  { required: [response_status] }] }`) is the immediately effective enforcement
+  path for any schema-aware validator operating on the full protocol envelope.
 
   Scope: envelope top-level only. Domain data inside `payload` (e.g., a reporting
   row carrying a field named task_status) is outside this prohibition and is not
@@ -57,8 +57,9 @@ phases:
           get_adcp_capabilities is the lightest call every agent supports and
           requires no credentials. The response envelope must carry the canonical
           v3 `status` field and must not carry task_status or response_status.
-          The protocol-envelope.json schema marks both fields as forbidden
-          (`not: {}`) to make this constraint detectable by schema-aware validators.
+          The protocol-envelope.json schema's top-level `not: { anyOf: [...] }`
+          constraint forbids either field, making this constraint detectable by
+          any schema-aware validator without runner-specific primitives.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -70,9 +71,9 @@ phases:
           - MUST contain status (the v3 canonical field)
           - MUST NOT contain task_status (v2 legacy, no v3 semantics)
           - MUST NOT contain response_status (v2 legacy, no v3 semantics)
-          Both forbidden fields are marked not: {} in protocol-envelope.json so
-          any schema-aware validator that validates the full protocol envelope
-          will detect violations.
+          Both forbidden fields are blocked by the top-level `not: { anyOf: [...] }`
+          constraint in protocol-envelope.json, so any schema-aware validator that
+          validates the full protocol envelope will detect violations.
 
         sample_request:
           context:
