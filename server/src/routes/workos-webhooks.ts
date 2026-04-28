@@ -166,10 +166,16 @@ async function upsertMembership(
     }
   }
 
-  // Set primary_organization_id if not already set (prefer paying orgs)
-  const preferredOrg = await resolvePreferredOrganization(membership.user_id);
-  if (preferredOrg) {
-    await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+  // Set primary_organization_id if not already set (prefer paying orgs).
+  // Best-effort — same rationale as upsertUser: a transient backfill failure
+  // shouldn't fail the membership webhook. Integrity invariant catches drift.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(membership.user_id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
 }
 
@@ -308,6 +314,24 @@ async function upsertUser(user: UserData): Promise<void> {
       user.updated_at,
     ]
   );
+
+  // Close the user.created vs organization_membership.created race: if a
+  // membership webhook fired first, its backfill UPDATE was a no-op because
+  // this row didn't exist yet. Set the pointer now from whatever memberships
+  // are already on file. No-op when the user has no memberships yet — the
+  // membership webhook will handle that case when it fires.
+  //
+  // Failures here don't fail the user upsert — the integrity invariant
+  // surfaces any pointer that doesn't get set, and the next authenticated
+  // request opportunistically backfills via resolvePrimaryOrganization.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(user.id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(user.id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'primary_organization_id backfill failed during user upsert');
+  }
 
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');
 }

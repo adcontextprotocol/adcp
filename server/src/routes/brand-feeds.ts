@@ -10,6 +10,7 @@ import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
+import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
 import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
@@ -38,11 +39,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
     if (brand.manifest_orphaned) return { error: 'This brand is awaiting adoption — claim it through the brand identity flow first', status: 409 };
 
     // Verify the user's org owns this brand (via primary_brand_domain or organization_domains)
-    const userOrg = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userOrg.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return { error: 'No organization associated with your account', status: 403 };
     }
