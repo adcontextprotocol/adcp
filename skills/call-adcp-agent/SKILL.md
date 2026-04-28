@@ -115,11 +115,15 @@ Every validation failure produces:
 }
 ```
 
+- `field` — legacy single-path summary for the first error found; uses the older field-path notation and remains for compatibility while clients transition to `issues[]`.
 - `issues[].pointer` — RFC 6901 JSON Pointer to the field.
-- `issues[].keyword` — AJV keyword (`required`, `type`, `oneOf`, `anyOf`, `additionalProperties`, `format`, `enum`).
-- `issues[].variants` — when the keyword is `oneOf` or `anyOf`, each entry lists one variant's `required` + declared `properties`. **Pick ONE variant**, send only its `required` fields. This is the fastest recovery path when you didn't know the field was a union.
+- `issues[].keyword` — optional AJV-style keyword (`required`, `type`, `oneOf`, `anyOf`, `additionalProperties`, `format`, `enum`) when the implementation can provide one.
+- `issues[].schemaPath` — optional schema-internal path. Sellers should normally omit it in production responses.
+- `issues[].variants` — optional implementation-specific extension. When present for `oneOf` or `anyOf`, each entry can list one variant's `required` + declared `properties`. **Pick ONE variant** only when the seller provides this extension.
 
-Patch the pointers, don't re-guess what the skill or the `variants` already told you, resend. Three attempts should cover every field.
+`issues[]` may be present on any error code and may be empty when structured issue details do not apply.
+
+Patch the pointers, don't re-guess what the issue list already told you, resend. If `variants[]` is present, use it as an extension hint. Three attempts should cover every field.
 
 ## Minimal working examples
 
@@ -224,7 +228,7 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 
 | Symptom | What it means | Fix |
 |---|---|---|
-| `keyword: 'oneOf'` with `variants[]` | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
+| `keyword: 'oneOf'` with `variants[]` present | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants ({account_id, brand, operator, …}) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
