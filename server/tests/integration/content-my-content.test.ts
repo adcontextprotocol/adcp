@@ -564,6 +564,213 @@ describe('My Content — body, admin scope, status, delete', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // #2569 — proposer relationship in GET /api/me/content (edit-button fix)
+  //
+  // After saving, a user's relationship can resolve to only `proposer` (no
+  // content_authors row). The canEdit check in admin-content.html must see
+  // `relationships.includes('proposer')` or the Edit button disappears.
+  // ---------------------------------------------------------------------------
+
+  describe('GET /api/me/content — proposer relationship (#2569)', () => {
+    it('includes "proposer" in relationships when user is only the proposer (no content_authors row)', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-proposer-rel',
+        title: 'Proposer only',
+        proposerUserId: USER_ID,
+      });
+
+      const response = await request(app).get('/api/me/content').expect(200);
+      const item = response.body.items.find((i: any) => i.id === id);
+      expect(item).toBeDefined();
+      // Positive exhaustive assertion: a proposer-only user has exactly ['proposer']
+      expect(item.relationships).toEqual(['proposer']);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // #2569 — co-author add/remove via POST/DELETE /api/me/content/:id/authors
+  //
+  // Original bug: the form POSTed { display_name } only; the endpoint requires
+  // both user_id and display_name and returned 400. Fixed in PR #2241.
+  // ---------------------------------------------------------------------------
+
+  describe('POST /api/me/content/:id/authors (#2569)', () => {
+    it('adds a co-author and persists the DB row when user_id + display_name provided', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-add',
+        title: 'Co-author add',
+        proposerUserId: USER_ID,
+      });
+
+      const response = await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: OTHER_USER_ID, display_name: 'Other User' })
+        .expect(201);
+
+      expect(response.body.user_id).toBe(OTHER_USER_ID);
+      expect(response.body.display_name).toBe('Other User');
+
+      const db = await pool.query(
+        `SELECT user_id, display_name FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+        [id, OTHER_USER_ID]
+      );
+      expect(db.rows).toHaveLength(1);
+      expect(db.rows[0].display_name).toBe('Other User');
+    });
+
+    it('returns 400 with a message naming user_id when user_id is missing (regression for original bug)', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-no-userid',
+        title: 'Co-author missing user_id',
+        proposerUserId: USER_ID,
+      });
+
+      const response = await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ display_name: 'Name Only' })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/user_id/i);
+    });
+
+    it('returns 400 when display_name is missing', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-no-displayname',
+        title: 'Co-author missing display_name',
+        proposerUserId: USER_ID,
+      });
+
+      const response = await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: OTHER_USER_ID })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/display_name/i);
+    });
+
+    it('returns 403 when the requester is neither proposer nor lead nor admin', async () => {
+      // OTHER_USER_ID owns this perspective; USER_ID is unrelated (not proposer, not lead, not admin)
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-forbidden',
+        title: 'Co-author forbidden',
+        proposerUserId: OTHER_USER_ID,
+      });
+
+      // authState defaults to USER_ID from beforeEach — confirmed neither proposer nor lead
+      adminState.isAdmin = false;
+      await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: USER_ID, display_name: 'Mary Content' })
+        .expect(403);
+    });
+
+    it('upserts cleanly: adding the same user_id twice results in one row with the latest display_name', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-upsert',
+        title: 'Co-author upsert',
+        proposerUserId: USER_ID,
+      });
+
+      await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: OTHER_USER_ID, display_name: 'First Name' })
+        .expect(201);
+
+      await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: OTHER_USER_ID, display_name: 'Updated Name' })
+        .expect(201);
+
+      const db = await pool.query(
+        `SELECT display_name, display_order FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+        [id, OTHER_USER_ID]
+      );
+      expect(db.rows).toHaveLength(1);
+      expect(db.rows[0].display_name).toBe('Updated Name');
+      // display_order is set on insert only — upsert must not reset it to the incremented value
+      expect(db.rows[0].display_order).toBe(0);
+    });
+
+    it('returns 400 when user_id is not a known account (prevents FK 500)', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-unknown-user',
+        title: 'Co-author unknown user',
+        proposerUserId: USER_ID,
+      });
+
+      const response = await request(app)
+        .post(`/api/me/content/${id}/authors`)
+        .send({ user_id: 'nonexistent-workos-user-xyz', display_name: 'Ghost' })
+        .expect(400);
+
+      expect(response.body.error).toBe('User not found');
+      expect(response.body.message).toMatch(/No account found/i);
+    });
+  });
+
+  describe('DELETE /api/me/content/:id/authors/:authorId (#2569)', () => {
+    it('removes the co-author row and returns deleted user_id when called by the proposer', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-remove',
+        title: 'Co-author remove',
+        proposerUserId: USER_ID,
+      });
+
+      // Seed a co-author row directly so we can test deletion independently of POST
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name, display_order)
+         VALUES ($1, $2, 'To Remove', 0)`,
+        [id, OTHER_USER_ID]
+      );
+
+      const response = await request(app)
+        .delete(`/api/me/content/${id}/authors/${OTHER_USER_ID}`)
+        .expect(200);
+
+      expect(response.body.deleted).toBe(OTHER_USER_ID);
+
+      const db = await pool.query(
+        `SELECT user_id FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+        [id, OTHER_USER_ID]
+      );
+      expect(db.rows).toHaveLength(0);
+    });
+
+    it('returns 403 when a co-author (not the proposer) tries to remove someone', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-delete-forbidden',
+        title: 'Co-author delete forbidden',
+        proposerUserId: OTHER_USER_ID, // OTHER_USER is proposer
+      });
+
+      // USER_ID is just a co-author, not the proposer
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name, display_order)
+         VALUES ($1, $2, 'Mary Content', 0)`,
+        [id, USER_ID]
+      );
+
+      // authState is USER_ID per beforeEach; USER_ID is NOT proposer/lead/admin here
+      adminState.isAdmin = false;
+      await request(app)
+        .delete(`/api/me/content/${id}/authors/${OTHER_USER_ID}`)
+        .expect(403);
+    });
+
+    it('returns 404 when the authorId does not exist on the content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-coauthor-delete-missing',
+        title: 'Co-author delete missing',
+        proposerUserId: USER_ID,
+      });
+
+      await request(app)
+        .delete(`/api/me/content/${id}/authors/nonexistent-user-id`)
+        .expect(404);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // #2539 — review modal needs enough fields to actually review a submission
   // ---------------------------------------------------------------------------
 
