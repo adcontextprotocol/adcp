@@ -36,6 +36,14 @@
   --color-brand-light: var(--color-primary-300);
   --color-brand-bg: var(--color-primary-50);
 
+  /* Semantic tag/badge color pairs (adapt in dark mode) */
+  --color-success-bg: var(--color-success-100);
+  --color-success-fg: var(--color-success-700);
+  --color-warning-bg: var(--color-warning-100);
+  --color-warning-fg: var(--color-warning-700);
+  --color-error-bg: var(--color-error-100);
+  --color-error-fg: var(--color-error-700);
+
   /* -----------------------------------------------------------------------------
      1.2 Neutral Colors (Gray Scale)
      ----------------------------------------------------------------------------- */
@@ -567,8 +575,8 @@ body {
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
   color: var(--color-text-secondary);
-  background: var(--color-gray-100);
-  border: 1px solid var(--color-gray-300);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
   cursor: pointer;
   white-space: nowrap;
   transition: var(--transition-all);
@@ -576,11 +584,11 @@ body {
 }
 .ds-pill:hover {
   color: var(--color-text-heading);
-  background: var(--color-gray-200);
+  background: var(--color-surface-raised);
 }
 .ds-pill.active {
-  color: var(--color-warning-700);
-  background: var(--color-warning-100);
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
   border-color: var(--color-warning-500);
 }
 
@@ -995,7 +1003,7 @@ body {
 
 /* Clean hero — white background, dark text (matches homepage feel) */
 .hero--clean {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--color-text-heading);
   padding: var(--space-8) var(--space-8) var(--space-10);
 }
@@ -2169,6 +2177,12 @@ body {
     --color-brand: #6b8cef;
     --color-brand-hover: #8aa3f4;
     --color-brand-bg: rgba(107, 140, 239, 0.1);
+    --color-success-bg: rgba(16, 185, 129, 0.18);
+    --color-success-fg: #6ee7b7;
+    --color-warning-bg: rgba(245, 158, 11, 0.18);
+    --color-warning-fg: #fcd34d;
+    --color-error-bg: rgba(239, 68, 68, 0.18);
+    --color-error-fg: #fca5a5;
   }
 }
 
@@ -2189,6 +2203,12 @@ html[data-theme="dark"] {
   --color-brand: #6b8cef;
   --color-brand-hover: #8aa3f4;
   --color-brand-bg: rgba(107, 140, 239, 0.1);
+  --color-success-bg: rgba(16, 185, 129, 0.18);
+  --color-success-fg: #6ee7b7;
+  --color-warning-bg: rgba(245, 158, 11, 0.18);
+  --color-warning-fg: #fcd34d;
+  --color-error-bg: rgba(239, 68, 68, 0.18);
+  --color-error-fg: #fca5a5;
 }
 
 html[data-theme="light"] {
@@ -2206,4 +2226,10 @@ html[data-theme="light"] {
   --color-brand: #1a36b4;
   --color-brand-hover: #2d4fd6;
   --color-brand-bg: #eef4fc;
+  --color-success-bg: #d1fae5;
+  --color-success-fg: #047857;
+  --color-warning-bg: #fef3c7;
+  --color-warning-fg: #b45309;
+  --color-error-bg: #fee2e2;
+  --color-error-fg: #b91c1c;
 }
