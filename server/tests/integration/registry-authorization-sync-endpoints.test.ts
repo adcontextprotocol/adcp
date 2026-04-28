@@ -201,7 +201,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(result.rows).toEqual([]);
       // cursor is either the all-zero sentinel (no events) or a real
       // UUIDv7 from a sibling test. Both are valid; just assert format.
-      expect(result.cursor).toMatch(/^[0-9a-f-]{36}$/);
+      expect(result.cursor).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     });
 
     it('returns rows for the requested agent only', async () => {
@@ -371,7 +371,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       // adagents_json rows under their own publisher_domain).
       const ours = rows.filter(r => r.publisher_domain === PUB_A);
       expect(ours).toHaveLength(50);
-      expect(cursor).toMatch(/^[0-9a-f-]{36}$/);
+      expect(cursor).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     });
 
     it('cursor matches the most recent authorization event_id', async () => {
@@ -455,7 +455,7 @@ describe('AuthorizationSnapshotDatabase', () => {
 import express from 'express';
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
 
-function buildTestApp() {
+function buildTestApp(asAdmin = false) {
   const app = express();
   app.use(express.json());
 
@@ -464,7 +464,16 @@ function buildTestApp() {
   // minimal stand-ins to satisfy the type. This is intentionally NOT
   // mocking the auth middleware; we want the real wiring through the
   // route's authMiddleware-gate, just bypassed.
-  const passAuth: import('express').RequestHandler = (_req, _res, next) => next();
+  //
+  // Admin tests (for the include=raw gate) build with `asAdmin=true`,
+  // which sets `req.isStaticAdminApiKey` the same way the real auth
+  // middleware does on a valid ADMIN_API_KEY bearer.
+  const passAuth: import('express').RequestHandler = (req, _res, next) => {
+    if (asAdmin) {
+      (req as import('express').Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    }
+    next();
+  };
 
   const config: RegistryApiConfig = {
     // Route handlers we exercise touch none of these. Cast through
@@ -546,7 +555,7 @@ describe('Authorization sync HTTP endpoints', () => {
         .get('/api/registry/authorizations')
         .query({ agent_url: AGENT_X });
       expect(res.status).toBe(200);
-      expect(res.headers['x-sync-cursor']).toMatch(/^[0-9a-f-]{36}$/);
+      expect(res.headers['x-sync-cursor']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
       expect(res.body.agent_url).toBe(AGENT_X);
       expect(res.body.evidence).toEqual(['adagents_json']);
       expect(res.body.include).toBe('effective');
@@ -565,6 +574,26 @@ describe('Authorization sync HTTP endpoints', () => {
       expect(res.status).toBe(200);
       expect(res.body.count).toBe(1);
       expect(res.body.agent_url).toBe(AGENT_X);
+    });
+
+    it('returns 403 when non-admin requests include=raw', async () => {
+      await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A });
+      const res = await request(app)
+        .get('/api/registry/authorizations')
+        .query({ agent_url: AGENT_X, include: 'raw' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/admin/i);
+    });
+
+    it('admin caller can request include=raw', async () => {
+      const adminApp = buildTestApp(true);
+      await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A });
+      const res = await request(adminApp)
+        .get('/api/registry/authorizations')
+        .query({ agent_url: AGENT_X, include: 'raw' });
+      expect(res.status).toBe(200);
+      expect(res.body.include).toBe('raw');
+      expect(res.body.count).toBe(1);
     });
   });
 
@@ -624,7 +653,7 @@ describe('Authorization sync HTTP endpoints', () => {
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/application\/x-ndjson/);
       expect(res.headers['content-encoding']).toBe('gzip');
-      expect(res.headers['x-sync-cursor']).toMatch(/^[0-9a-f-]{36}$/);
+      expect(res.headers['x-sync-cursor']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
       expect(res.headers.etag).toMatch(/^"[0-9a-f]{32}"$/);
 
       // supertest may or may not auto-decompress depending on

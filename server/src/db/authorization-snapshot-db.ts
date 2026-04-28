@@ -32,6 +32,9 @@
 
 import type { PoolClient } from 'pg';
 import { getClient, query } from './client.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('authorization-snapshot-db');
 
 /** Empty-feed sentinel — UUIDv7 with all-zero fields. */
 const EMPTY_CURSOR = '00000000-0000-7000-8000-000000000000';
@@ -206,14 +209,16 @@ function whereConnector(include: IncludeMode): 'WHERE' | 'AND' {
  * Returns the all-zero UUIDv7 sentinel when zero authorization events
  * exist so the cursor is always a string the feed endpoint accepts.
  */
+const SYNC_CURSOR_SQL = `
+  SELECT event_id
+    FROM catalog_events
+   WHERE entity_type = 'authorization'
+   ORDER BY event_id DESC
+   LIMIT 1
+`;
+
 async function readSyncCursor(client: PoolClient): Promise<string> {
-  const { rows } = await client.query<{ event_id: string }>(
-    `SELECT event_id
-       FROM catalog_events
-      WHERE entity_type = 'authorization'
-      ORDER BY event_id DESC
-      LIMIT 1`,
-  );
+  const { rows } = await client.query<{ event_id: string }>(SYNC_CURSOR_SQL);
   return rows[0]?.event_id ?? EMPTY_CURSOR;
 }
 
@@ -295,7 +300,14 @@ export class AuthorizationSnapshotDatabase {
       // alive across commit, but that materializes the result on the
       // server — defeats the streaming. Plain DECLARE inside BEGIN/COMMIT
       // is the right shape.
-      await client.query('BEGIN');
+      //
+      // REPEATABLE READ pins the snapshot to the cursor's read time:
+      // every FETCH sees the same MVCC snapshot, so the rows the
+      // consumer receives match the X-Sync-Cursor exactly. Without it,
+      // a write committed mid-stream is visible to later FETCHes —
+      // consumers still recover via at-least-once feed delivery, but
+      // the snapshot wouldn't be a true point-in-time view.
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
       const declareSql = `
         DECLARE auth_snapshot_cursor NO SCROLL CURSOR FOR
         ${selectClause(opts.include)}
@@ -304,7 +316,14 @@ export class AuthorizationSnapshotDatabase {
       `;
       await client.query(declareSql, [[...opts.evidence]]);
     } catch (err) {
-      try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        // Log rather than silent — a rollback failure indicates the
+        // pool client is in a bad state and the connection is about to
+        // be evicted. Surface for incident triage.
+        log.warn({ rollbackErr }, 'snapshot rollback failed after open error');
+      }
       client.release();
       throw err;
     }
@@ -390,12 +409,6 @@ export async function getNarrowAuthorizations(opts: NarrowOpts): Promise<NarrowR
  * (DESC LIMIT 1 — Postgres has no MAX(uuid)).
  */
 export async function readAuthorizationFeedCursor(): Promise<string> {
-  const { rows } = await query<{ event_id: string }>(
-    `SELECT event_id
-       FROM catalog_events
-      WHERE entity_type = 'authorization'
-      ORDER BY event_id DESC
-      LIMIT 1`,
-  );
+  const { rows } = await query<{ event_id: string }>(SYNC_CURSOR_SQL);
   return rows[0]?.event_id ?? EMPTY_CURSOR;
 }

@@ -95,7 +95,7 @@ import {
   parseIncludeParam,
 } from "../db/authorization-snapshot-db.js";
 import { createHash } from "crypto";
-import { createGzip } from "zlib";
+import { createGzip, constants as zlibConstants } from "zlib";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -5649,7 +5649,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   //
   // Auth: gated by the same authMiddleware as /registry/feed — admin
   // API key + member tokens both flow through. No new permissions.
-  if (authMiddleware) {
+  // Match the /registry/feed pattern (line ~5604) of throwing on missing
+  // auth rather than silently skipping route registration; this surfaces
+  // misconfiguration at startup instead of at first request.
+  if (!authMiddleware) {
+    throw new Error('requireAuth middleware is required for /registry/authorizations endpoints');
+  }
+  {
     const authSnapshotDb = new AuthorizationSnapshotDatabase();
 
     /**
@@ -5667,6 +5673,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return true;
       }
       return false;
+    }
+
+    // include=raw bypasses v_effective_agent_authorizations and can surface
+    // moderator-suppressed rows (e.g. takedown of a phishing relationship).
+    // Per spec line 471 raw mode is an audit path; gate it on admin to
+    // prevent any-member exfiltration of moderation state.
+    function isAdminRequest(req: import('express').Request): boolean {
+      return Boolean((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey);
     }
 
     router.get("/registry/authorizations", authMiddleware, async (req, res) => {
@@ -5695,6 +5709,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           throw err;
         }
 
+        if (include === 'raw' && !isAdminRequest(req)) {
+          return res.status(403).json({ error: "include=raw requires admin access" });
+        }
+
         const { rows, cursor } = await authSnapshotDb.getNarrow({
           agentUrlCanonical,
           evidence,
@@ -5715,7 +5733,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
     });
 
-    router.get("/registry/authorizations/snapshot", authMiddleware, async (req, res) => {
+    router.get("/registry/authorizations/snapshot", bulkResolveRateLimiter, authMiddleware, async (req, res) => {
       let evidence: ReadonlyArray<string>;
       let include: 'raw' | 'effective';
       try {
@@ -5724,6 +5742,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       } catch (err) {
         if (handleParseError(err, res)) return;
         throw err;
+      }
+
+      if (include === 'raw' && !isAdminRequest(req)) {
+        return res.status(403).json({ error: "include=raw requires admin access" });
       }
 
       // Open the snapshot transaction — captures the X-Sync-Cursor
@@ -5739,7 +5761,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const { cursor, rows } = snapshot;
-      const etag = `"${createHash('sha256').update(cursor).digest('hex').slice(0, 32)}"`;
+      // ETag must change with the response body. Two clients passing
+      // different evidence/include filters get different bodies — hash
+      // the cursor + filters so If-None-Match doesn't return 304 for a
+      // payload the client hasn't actually seen.
+      const etagInput = `${cursor}|${[...evidence].sort().join(',')}|${include}`;
+      const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
       const ifNoneMatch = req.headers['if-none-match'];
       if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
         try { await rows.return?.(undefined as never); } catch { /* ignored */ }
@@ -5756,16 +5783,37 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const gzip = createGzip();
       gzip.pipe(res);
 
+      // Release the cursor/transaction the moment the client disconnects.
+      // Without this, the gzip pipe only learns of the closed socket on
+      // the next write — a holding pattern that pins one pooled DB
+      // connection per aborted request and can DoS the pool when many
+      // clients abort.
+      let aborted = false;
+      const onClose = (): void => {
+        if (aborted) return;
+        aborted = true;
+        rows.return?.(undefined as never).catch(() => { /* iterator already closed */ });
+      };
+      req.on('close', onClose);
+
+      // Z_SYNC_FLUSH after each chunk so the gzip layer emits bytes
+      // incrementally — without it, the deflate buffer holds the
+      // response server-side until .end() and the consumer can't parse
+      // NDJSON line-by-line as advertised.
       const writeRows = (chunk: import("../db/authorization-snapshot-db.js").AuthRow[]): Promise<void> => {
         return new Promise((resolve, reject) => {
           const buf: string[] = [];
           for (const row of chunk) buf.push(JSON.stringify(row) + '\n');
-          gzip.write(buf.join(''), (err) => (err ? reject(err) : resolve()));
+          gzip.write(buf.join(''), (writeErr) => {
+            if (writeErr) return reject(writeErr);
+            gzip.flush(zlibConstants.Z_SYNC_FLUSH, () => resolve());
+          });
         });
       };
 
       try {
         for await (const chunk of rows) {
+          if (aborted) break;
           await writeRows(chunk);
         }
         gzip.end();
@@ -5777,6 +5825,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // least gets a clean EOF and surfaces a parse error rather than
         // a hang.
         gzip.end();
+      } finally {
+        req.removeListener('close', onClose);
       }
     });
   }
