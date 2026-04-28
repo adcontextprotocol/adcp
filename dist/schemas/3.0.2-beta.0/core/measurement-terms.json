@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/core/measurement-terms.json",
+  "title": "Measurement Terms",
+  "description": "Billing measurement and makegood terms for media buys. Declares who counts the billing metric and what remedies apply when thresholds are breached. Appears on products (seller defaults), package requests (buyer proposals), and confirmed packages (agreed terms). All fields are optional — presence indicates the term is declared or proposed.",
+  "type": "object",
+  "properties": {
+    "billing_measurement": {
+      "type": "object",
+      "description": "Which vendor's count of the billing metric governs invoicing. The billing metric is determined by the pricing_model on the selected pricing_option (e.g., impressions for CPM, completed views for CPCV).",
+      "properties": {
+        "vendor": {
+          "$ref": "/schemas/3.0.2-beta.0/core/brand-ref.json",
+          "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
+        },
+        "max_variance_percent": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "Maximum acceptable variance between the billing vendor's count and the other party's count before resolution is triggered (e.g., 10 means a 10% divergence triggers review)."
+        },
+        "measurement_window": {
+          "type": "string",
+          "description": "Which measurement maturation stage the billing metric is reconciled against. References a window_id from the product's reporting_capabilities.measurement_windows. Examples: 'c7' for broadcast TV guarantees (live + 7 days DVR), 'final' for DOOH after IVT/fraud-check processing, 'post_sivt' for digital after sophisticated invalid-traffic filtering, 'downloads_30d' for podcast. When absent, billing is based on the seller's standard reporting without windowed maturation.",
+          "examples": [
+            "live",
+            "c3",
+            "c7",
+            "tentative",
+            "final",
+            "post_ivt",
+            "post_sivt",
+            "downloads_30d"
+          ]
+        }
+      },
+      "required": ["vendor"],
+      "additionalProperties": true
+    },
+    "makegood_policy": {
+      "type": "object",
+      "description": "Remedies available when a performance standard or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
+      "properties": {
+        "available_remedies": {
+          "type": "array",
+          "description": "Remedy types the seller supports. Ordered by seller preference (first = preferred). Seller proposes from this list when a breach occurs; buyer accepts or disputes.",
+          "items": {
+            "$ref": "/schemas/3.0.2-beta.0/enums/makegood-remedy.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["available_remedies"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

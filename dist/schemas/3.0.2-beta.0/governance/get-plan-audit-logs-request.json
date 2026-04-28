@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/governance/get-plan-audit-logs-request.json",
+  "title": "Get Plan Audit Logs Request",
+  "description": "Retrieve governance state and audit trail for one or more plans.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "plan_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "x-entity": "governance_plan"
+      },
+      "minItems": 1,
+      "description": "Plan IDs to retrieve. For a single plan, pass a one-element array. Plans uniquely scope account and operator; do not include a separate `account` field — the governance agent resolves account from each plan. Including `account` is rejected by `additionalProperties: false`."
+    },
+    "portfolio_plan_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "x-entity": "governance_plan"
+      },
+      "minItems": 1,
+      "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."
+    },
+    "governance_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "Filter audit entries by governance context. Returns only checks and outcomes that share these governance contexts, enabling lifecycle tracing across purchase types."
+    },
+    "purchase_types": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.2-beta.0/enums/purchase-type.json"
+      },
+      "minItems": 1,
+      "description": "Filter audit entries by purchase type. Returns only checks and outcomes matching these purchase types (e.g., ['rights_license'] to see all rights activity)."
+    },
+    "include_entries": {
+      "type": "boolean",
+      "description": "Include the full audit trail. Default: false.",
+      "default": false
+    },
+    "context": {
+      "$ref": "/schemas/3.0.2-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2-beta.0/core/ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "portfolio_plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "governance_contexts"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

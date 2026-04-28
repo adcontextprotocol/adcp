@@ -4,5 +4,17 @@
   "initialVersions": {
     "adcontextprotocol": "3.0.1"
   },
-  "changesets": []
+  "changesets": [
+    "auto-link-brand-hierarchy",
+    "brand-viewer-agent-sections",
+    "csrf-exempt-mcp-strict-routes",
+    "envelope-field-present-check-type",
+    "expose-auto-provision-toggles",
+    "faq-iab-tech-lab-aamp",
+    "fix-asset-union-dedup",
+    "fix-inventory-list-targeting-idempotency-key",
+    "grader-default-mcp-transport",
+    "primary-org-fallback-and-invariant",
+    "release-train-setup"
+  ]
 }

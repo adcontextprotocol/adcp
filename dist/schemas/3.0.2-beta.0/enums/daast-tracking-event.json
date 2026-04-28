@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/enums/daast-tracking-event.json",
+  "title": "DAAST Tracking Event",
+  "description": "Tracking events for audio ads. Includes DAAST-applicable events from IAB VAST/DAAST conventions, plus flattened Impression, Error, and ViewableImpression elements. creativeView included for companion ad tracking. measurableImpression is an AdCP extension.",
+  "type": "string",
+  "enum": [
+    "impression",
+    "creativeView",
+    "loaded",
+    "start",
+    "firstQuartile",
+    "midpoint",
+    "thirdQuartile",
+    "complete",
+    "mute",
+    "unmute",
+    "pause",
+    "resume",
+    "skip",
+    "progress",
+    "clickTracking",
+    "customClick",
+    "close",
+    "error",
+    "viewable",
+    "notViewable",
+    "viewUndetermined",
+    "measurableImpression",
+    "viewableImpression"
+  ]
+}

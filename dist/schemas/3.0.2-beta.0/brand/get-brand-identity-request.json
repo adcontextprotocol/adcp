@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/brand/get-brand-identity-request.json",
+  "title": "Get Brand Identity Request",
+  "description": "Request brand identity data from a brand agent. Core identity (house, names, description, logos) is always public. Linked accounts get deeper data: high-res assets, voice configs, tone guidelines, and rights availability.",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Brand identifier from brand.json brands array",
+      "x-entity": "advertiser_brand"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Optional identity sections to include in the response. When omitted, all sections the caller is authorized to see are returned. Core fields (brand_id, house, names) are always returned and do not need to be requested.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "description",
+          "industries",
+          "keller_type",
+          "logos",
+          "colors",
+          "fonts",
+          "visual_guidelines",
+          "tone",
+          "tagline",
+          "voice_synthesis",
+          "assets",
+          "rights"
+        ]
+      }
+    },
+    "use_case": {
+      "type": "string",
+      "description": "Intended use case, so the agent can tailor the response. A 'voice_synthesis' use case returns voice configs; a 'likeness' use case returns high-res photos and appearance guidelines."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.2-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "brand_id"
+  ],
+  "additionalProperties": true
+}

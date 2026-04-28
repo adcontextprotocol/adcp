@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/account/sync-accounts-request.json",
+  "title": "Sync Accounts Request",
+  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "accounts": {
+      "type": "array",
+      "description": "Advertiser accounts to sync",
+      "items": {
+        "type": "object",
+        "description": "An advertiser account the agent wants to operate on the seller",
+        "properties": {
+          "brand": {
+            "$ref": "/schemas/3.0.2-beta.0/core/brand-ref.json",
+            "description": "Brand reference identifying the advertiser. Uses the brand's house domain and optional brand_id from brand.json."
+          },
+          "operator": {
+            "type": "string",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "billing": {
+            "$ref": "/schemas/3.0.2-beta.0/enums/billing-party.json",
+            "description": "Who should be invoiced. The seller must either accept this billing model or reject the request."
+          },
+          "billing_entity": {
+            "$ref": "/schemas/3.0.2-beta.0/core/business-entity.json",
+            "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing."
+          },
+          "payment_terms": {
+            "$ref": "/schemas/3.0.2-beta.0/enums/payment-terms.json",
+            "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms."
+          },
+          "sandbox": {
+            "type": "boolean",
+            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
+          },
+          "preferred_reporting_protocol": {
+            "$ref": "/schemas/3.0.2-beta.0/enums/cloud-storage-protocol.json",
+            "description": "Buyer's preferred cloud storage protocol for offline reporting delivery. The seller provisions the account's reporting_bucket using this protocol if supported. When omitted, the seller chooses from its supported offline_delivery_protocols. Only meaningful when the seller's reporting_delivery_methods includes 'offline'."
+          }
+        },
+        "required": [
+          "brand",
+          "operator",
+          "billing"
+        ],
+        "additionalProperties": true
+      },
+      "maxItems": 1000
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, accounts previously synced by this agent but not included in this request will be deactivated. Scoped to the authenticated agent — does not affect accounts managed by other agents. Use with caution."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview what would change without applying. Returns what would be created/updated/deactivated."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.2-beta.0/core/push-notification-config.json",
+      "description": "Webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.2-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "accounts"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency syncing multiple advertisers with different billing",
+      "data": {
+        "idempotency_key": "a7f9c2e4-1234-4567-89ab-cdef01234567",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            "operator": "pinnacle-media.com",
+            "billing": "operator"
+          },
+          {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
+            "operator": "pinnacle-media.com",
+            "billing": "agent"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Brand buying direct with payment terms",
+      "data": {
+        "idempotency_key": "b8e0d3f5-2345-4678-9abc-def012345678",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "acme-corp.com"
+            },
+            "operator": "acme-corp.com",
+            "billing": "operator",
+            "payment_terms": "net_30"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Agent consolidating billing with net-60 terms",
+      "data": {
+        "idempotency_key": "c9f1e4a6-3456-4789-abcd-ef0123456789",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            "operator": "pinnacle-media.com",
+            "billing": "agent",
+            "payment_terms": "net_60"
+          },
+          {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
+            "operator": "pinnacle-media.com",
+            "billing": "agent",
+            "payment_terms": "net_60"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Advertiser billed directly with structured billing entity (DACH B2B)",
+      "data": {
+        "idempotency_key": "d0a2f5b7-4567-489a-bcde-f01234567890",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "acme-corp.com"
+            },
+            "operator": "pinnacle-media.com",
+            "billing": "advertiser",
+            "billing_entity": {
+              "legal_name": "Acme Corporation GmbH",
+              "vat_id": "DE987654321",
+              "registration_number": "HRB 67890",
+              "address": {
+                "street": "Hauptstrasse 42",
+                "city": "Munich",
+                "postal_code": "80331",
+                "country": "DE"
+              },
+              "contacts": [
+                {
+                  "role": "billing",
+                  "name": "AP Department",
+                  "email": "billing@acme-corp.com"
+                }
+              ],
+              "bank": {
+                "account_holder": "Acme Corporation GmbH",
+                "iban": "DE75512108001245126199",
+                "bic": "SOLADEST600"
+              }
+            },
+            "payment_terms": "net_30"
+          }
+        ]
+      }
+    }
+  ]
+}

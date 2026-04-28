@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2-beta.0/core/creative-manifest.json",
+  "title": "Creative Manifest",
+  "description": "Complete specification of a creative: format_id + assets. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map, declared by the format. Each asset is typed according to its asset_type from the format specification.",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "$ref": "/schemas/3.0.2-beta.0/core/format-id.json",
+      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier this manifest is for. Can be a template format (id only) or a deterministic format (id + dimensions/duration). For dimension-specific creatives, include width/height in the format_id to create a unique identifier (e.g., {id: 'display_static', width: 300, height: 250})."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nEach asset value carries an `asset_type` discriminator (image, video, audio, vast, daast, text, markdown, url, html, css, webhook, javascript, brief, catalog) that selects the matching asset schema. Validators with OpenAPI-style discriminator support use `asset_type` to report errors against only the selected branch instead of all branches.",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "$ref": "/schemas/3.0.2-beta.0/core/assets/asset-union.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "rights": {
+      "type": "array",
+      "description": "Rights constraints attached to this creative. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",
+      "items": {
+        "$ref": "/schemas/3.0.2-beta.0/core/rights-constraint.json"
+      }
+    },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Clearcast clock number). When present, overrides creative-level identifiers. Use when different format versions of the same source creative have distinct Ad-IDs (e.g., the :15 and :30 cuts).",
+      "items": {
+        "$ref": "/schemas/3.0.2-beta.0/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.2-beta.0/core/provenance.json",
+      "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "format_id",
+    "assets"
+  ],
+  "additionalProperties": true
+}
