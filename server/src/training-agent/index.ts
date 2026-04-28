@@ -119,10 +119,11 @@ function buildBearerAuthenticator(): Authenticator | null {
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
-// Per-route lazy signing authenticators. Each route MUST own its own
-// `InMemoryReplayStore` — sharing one store lets a nonce consumed on
-// one route falsely fire `request_signature_replayed` on another (#3338).
-// Lazy so the compliance test JWKS isn't read at module import time.
+// Per-route lazy signing authenticators. Built on first signed request, cached
+// thereafter. In production each authenticator shares the singleton Postgres
+// replay store (scope-keyed by @target-uri, so routes are isolated). In CI
+// (no DB) each gets its own InMemoryReplayStore, preserving the same isolation
+// guarantee. Lazy so the compliance test JWKS isn't read at module import time.
 let _signingAuth: Authenticator | null = null;
 function lazySigningAuth(): Authenticator {
   return (req) => {

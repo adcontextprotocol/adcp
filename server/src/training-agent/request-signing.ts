@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import {
   StaticJwksResolver,
+  InMemoryReplayStore,
   InMemoryRevocationStore,
   RequestSignatureError,
 } from '@adcp/client/signing';
@@ -38,7 +39,7 @@ import { PostgresReplayStore, sweepExpiredReplays } from '@adcp/client/signing/s
 import type { Authenticator } from '@adcp/client/server';
 import { getComplianceCacheDir } from '@adcp/client/testing';
 import { createLogger } from '../logger.js';
-import { getPool } from '../db/client.js';
+import { getPool, isDatabaseInitialized } from '../db/client.js';
 import { MUTATING_TOOLS } from './idempotency.js';
 
 const logger = createLogger('training-agent-request-signing');
@@ -159,15 +160,14 @@ export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'e
 }
 
 /**
- * Replay store backed by Postgres so all training-agent instances share
- * one cache. Per-process `InMemoryReplayStore` can't catch cross-instance
- * replays — Fly's load balancer routes consecutive probes to different
- * machines, and the second machine has no record of the first nonce
- * (#3338, grader vector neg/016).
+ * Shared Postgres replay store for production. Singleton across all per-route
+ * authenticators — the `adcp_replay_cache` table's (keyid, scope, nonce) PK
+ * partitions by route via the `@target-uri`-derived scope, so sharing one
+ * pool connection is safe and avoids four separate pool entries.
  *
- * Singleton across all per-route authenticators so they all hit the same
- * `adcp_replay_cache` table; the (keyid, scope, nonce) primary key
- * partitions by route automatically via the `@target-uri`-derived scope.
+ * Not used when the database has not been initialized (CI/storyboard runner).
+ * In that case `buildAuthenticatorWithCapability` creates a per-authenticator
+ * `InMemoryReplayStore` instead — see below.
  */
 let _replayStore: ReplayStore | null = null;
 function getReplayStore(): ReplayStore {
@@ -186,6 +186,7 @@ let _sweepInterval: NodeJS.Timeout | null = null;
 export function startReplayCacheSweeper(): void {
   if (_sweepInterval) return;
   _sweepInterval = setInterval(() => {
+    if (!isDatabaseInitialized()) return;
     sweepExpiredReplays(getPool())
       .then((result: { deleted: number }) => {
         if (result.deleted > 0) logger.info({ deleted: result.deleted }, 'Swept expired replay-cache rows');
@@ -206,7 +207,11 @@ export function stopReplayCacheSweeper(): void {
 function buildAuthenticatorWithCapability(capability: VerifierCapability): Authenticator {
   const keys = loadTestJwks();
   const jwks = new StaticJwksResolver(keys);
-  const replayStore = getReplayStore();
+  // In production (DB initialized): shared Postgres store catches cross-instance replays.
+  // In CI/storyboard runner (no DB): per-authenticator InMemoryReplayStore restores the
+  // pre-#3351 behavior; each route owns its own store so cross-route false positives
+  // can't occur (#3338).
+  const replayStore = isDatabaseInitialized() ? getReplayStore() : new InMemoryReplayStore();
 
   // Pre-revoke the test-kit's revocation vector key so vector 017 fires
   // the expected `request_signature_revoked` error instead of passing.
