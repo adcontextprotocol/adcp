@@ -263,7 +263,7 @@
           "description": "Agentic checkout endpoint configuration",
           "properties": {
             "endpoint": { "type": "string", "format": "uri", "description": "Base URL for checkout session API" },
-            "spec": { "type": "string", "enum": ["openai_agentic_checkout_v1"], "description": "Checkout API specification" },
+            "spec": { "type": "string", "description": "Checkout API specification identifier. Use a namespaced string to identify the checkout protocol (e.g., vendor-prefixed or custom). Vendor-specific values belong under ext.{vendor}." },
             "supported_payment_providers": {
               "type": "array",
               "description": "Payment providers supported by this checkout endpoint",
