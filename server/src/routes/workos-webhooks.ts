@@ -309,6 +309,16 @@ async function upsertUser(user: UserData): Promise<void> {
     ]
   );
 
+  // Close the user.created vs organization_membership.created race: if a
+  // membership webhook fired first, its backfill UPDATE was a no-op because
+  // this row didn't exist yet. Set the pointer now from whatever memberships
+  // are already on file. No-op when the user has no memberships yet — the
+  // membership webhook will handle that case when it fires.
+  const preferredOrg = await resolvePreferredOrganization(user.id);
+  if (preferredOrg) {
+    await backfillPrimaryOrganization(user.id, preferredOrg);
+  }
+
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');
 }
 

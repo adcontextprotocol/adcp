@@ -4,7 +4,7 @@ import { getReferralCode, acceptReferralCode, getAcceptedReferralForOrg } from '
 import { MemberDatabase } from '../db/member-db.js';
 import { BrandDatabase, resolveBrandFromJson } from '../db/brand-db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { query } from '../db/client.js';
+import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { emailPrefsDb } from '../db/email-preferences-db.js';
 
 const logger = createLogger('referral-routes');
@@ -91,12 +91,7 @@ export function createReferralsRouter(): Router {
       const { marketing_opt_in } = req.body || {};
       const userId = req.user!.id;
 
-      // Look up the user's primary org
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [userId]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(userId);
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with your account' });
       }
@@ -165,11 +160,7 @@ export function createReferralsRouter(): Router {
     try {
       const userId = req.user!.id;
 
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [userId]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(userId);
       if (!orgId) {
         return res.json({ referral: null });
       }

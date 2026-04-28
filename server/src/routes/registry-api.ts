@@ -14,6 +14,7 @@ import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
@@ -5135,11 +5136,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       // Look up the user's primary org once — used for both hosted brand creation and profile linking
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(req.user!.id);
 
       // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
       // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.

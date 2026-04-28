@@ -1,5 +1,5 @@
 /**
- * Tests for the five Phase-1 integrity invariants.
+ * Tests for the registered integrity invariants.
  *
  * Each test covers the happy path (no violations) and the failure mode the
  * invariant exists to detect. Mocks the DB pool, Stripe, and WorkOS through
@@ -13,6 +13,8 @@ import { orgRowMatchesLiveStripeSubInvariant } from '../../../src/audit/integrit
 import { workosMembershipRowExistsInWorkosInvariant } from '../../../src/audit/integrity/invariants/workos-membership-row-exists-in-workos.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
+
+const EXPECTED_INVARIANT_COUNT = 6;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
@@ -51,10 +53,10 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe('invariants registry', () => {
-  it('registers all five Phase-1 invariants under unique names', () => {
-    expect(ALL_INVARIANTS).toHaveLength(5);
+  it('registers all invariants under unique names', () => {
+    expect(ALL_INVARIANTS).toHaveLength(EXPECTED_INVARIANT_COUNT);
     const names = ALL_INVARIANTS.map((i) => i.name);
-    expect(new Set(names).size).toBe(5);
+    expect(new Set(names).size).toBe(EXPECTED_INVARIANT_COUNT);
   });
 
   it('resolves invariants by name', () => {
