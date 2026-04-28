@@ -87,8 +87,13 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
  * (lowercase, no trailing slash, wildcard '*' is the sentinel).
  * Returns null when the input is not a usable URL — callers skip those
  * rows rather than fail the whole projection.
+ *
+ * Exported so the agent-side sync endpoints
+ * (server/src/db/authorization-snapshot-db.ts) canonicalize the
+ * agent_url query parameter through the same function the writer uses
+ * for stored rows. Drift between the two would silently miss matches.
  */
-function canonicalizeAgentUrl(raw: string): string | null {
+export function canonicalizeAgentUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
   if (trimmed === '*') return '*';
