@@ -1264,6 +1264,88 @@ export async function getChannelHistory(
 }
 
 // =====================================================
+// PROFILE PHOTO API
+// getSlackUserProfile requires users.profile:read (or users:read) scope
+// setSlackUserPhoto requires an admin user token with users:write scope
+// (SLACK_ADMIN_USER_TOKEN env var — separate from the bot token)
+// =====================================================
+
+export interface SlackUserProfileFull {
+  image_512?: string;
+  image_192?: string;
+  image_72?: string;
+  image_48?: string;
+  display_name?: string;
+  real_name?: string;
+  email?: string;
+}
+
+/**
+ * Fetch a user's full profile (including original-size photo URL).
+ * Requires users.profile:read scope on the bot token.
+ */
+export async function getSlackUserProfile(userId: string): Promise<SlackUserProfileFull | null> {
+  try {
+    const response = await slackRequest<{ profile: SlackUserProfileFull }>('users.profile.get', {
+      user: userId,
+    });
+    return response.profile;
+  } catch (error) {
+    logger.warn({ error, userId }, 'Failed to fetch Slack user profile');
+    return null;
+  }
+}
+
+/**
+ * Upload a new profile photo for a user via `users.setPhoto`.
+ *
+ * Requires a user-level OAuth token with `users:write` scope stored in
+ * SLACK_ADMIN_USER_TOKEN. This is distinct from the bot token because Slack
+ * only allows user tokens (not bot tokens) to set another user's photo when
+ * the caller has workspace admin privileges.
+ *
+ * Returns `{ ok: true }` on success, `{ ok: false, error }` otherwise.
+ */
+export async function setSlackUserPhoto(
+  userId: string,
+  imageBuffer: Buffer,
+): Promise<{ ok: boolean; error?: string }> {
+  const adminToken = process.env.SLACK_ADMIN_USER_TOKEN;
+  if (!adminToken) {
+    return { ok: false, error: 'SLACK_ADMIN_USER_TOKEN not configured' };
+  }
+
+  try {
+    const form = new FormData();
+    form.append('user', userId);
+    form.append(
+      'image',
+      new Blob([imageBuffer], { type: 'image/jpeg' }),
+      'profile.jpg',
+    );
+
+    const response = await fetch(`${SLACK_API_BASE}/users.setPhoto`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: form,
+    });
+
+    const data = (await response.json()) as { ok: boolean; error?: string };
+    if (!data.ok) {
+      logger.warn({ userId, error: data.error }, 'Slack users.setPhoto failed');
+      return { ok: false, error: data.error };
+    }
+    return { ok: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error({ error, userId }, 'Failed to set Slack user photo');
+    return { ok: false, error: msg };
+  }
+}
+
+// =====================================================
 // USER GROUP (BADGE) API
 // Requires usergroups:read + usergroups:write scopes
 // =====================================================

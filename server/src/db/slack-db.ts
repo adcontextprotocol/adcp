@@ -959,4 +959,82 @@ export class SlackDatabase {
     );
   }
 
+  // ============== Photo Badge State ==============
+
+  /**
+   * Save the user's original (pre-badge) photo URL, the badge-applied URL, and
+   * mark badge as applied. badge_applied_photo_url is the Slack CDN URL of the
+   * composited photo after upload — used by the reconcile job to detect when a
+   * user changes their own photo.
+   */
+  async setBadgeApplied(slackUserId: string, originalPhotoUrl: string, badgeAppliedPhotoUrl: string | null): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET original_photo_url = $1,
+           badge_applied_photo_url = $2,
+           badge_photo_applied_at = NOW(),
+           updated_at = NOW()
+       WHERE slack_user_id = $3`,
+      [originalPhotoUrl, badgeAppliedPhotoUrl, slackUserId]
+    );
+  }
+
+  /**
+   * Clear badge state after a successful revert (original photo restored).
+   */
+  async clearBadgeApplied(slackUserId: string): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET original_photo_url = NULL,
+           badge_applied_photo_url = NULL,
+           badge_photo_applied_at = NULL,
+           updated_at = NOW()
+       WHERE slack_user_id = $1`,
+      [slackUserId]
+    );
+  }
+
+  /**
+   * Set per-user badge opt-out.
+   */
+  async setBadgeOptOut(slackUserId: string, optOut: boolean): Promise<void> {
+    await query(
+      `UPDATE slack_user_mappings
+       SET badge_opt_out = $1, updated_at = NOW()
+       WHERE slack_user_id = $2`,
+      [optOut, slackUserId]
+    );
+  }
+
+  /**
+   * Get all mapped, non-deleted, non-bot users with a badge currently applied.
+   * Used by the daily reconcile job.
+   */
+  async getMembersWithBadgeApplied(): Promise<SlackUserMapping[]> {
+    const result = await query<SlackUserMapping>(
+      `SELECT * FROM slack_user_mappings
+       WHERE badge_photo_applied_at IS NOT NULL
+         AND workos_user_id IS NOT NULL
+         AND slack_is_bot = false
+         AND slack_is_deleted = false
+         AND badge_opt_out = false`,
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get mapped members without an active badge who haven't opted out.
+   * Used for the "apply to all" backfill action.
+   */
+  async getMembersEligibleForBadge(): Promise<SlackUserMapping[]> {
+    const result = await query<SlackUserMapping>(
+      `SELECT * FROM slack_user_mappings
+       WHERE workos_user_id IS NOT NULL
+         AND slack_is_bot = false
+         AND slack_is_deleted = false
+         AND badge_opt_out = false
+         AND badge_photo_applied_at IS NULL`,
+    );
+    return result.rows;
+  }
 }

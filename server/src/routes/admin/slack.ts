@@ -13,7 +13,17 @@ import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { isSlackConfigured, testSlackConnection } from '../../slack/client.js';
-import { syncSlackUsers, getSyncStatus, syncUserToChaptersFromSlackChannels, buildAaoEmailToUserIdMap, checkAndAssignOrganizationByDomain, autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
+import {
+  syncSlackUsers,
+  getSyncStatus,
+  syncUserToChaptersFromSlackChannels,
+  buildAaoEmailToUserIdMap,
+  checkAndAssignOrganizationByDomain,
+  autoLinkUnmappedSlackUsers,
+  applyMemberPhotoBadge,
+  revertMemberPhotoBadge,
+} from '../../slack/sync.js';
+import { getAutoApplyAaoBadge } from '../../db/system-settings-db.js';
 import { invalidateUnifiedUsersCache } from '../../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
 
@@ -300,6 +310,82 @@ export function createAdminSlackRouter(): Router {
       res.status(500).json({
         error: 'Failed to auto-link suggested matches',
       });
+    }
+  });
+
+  // POST /api/admin/slack/apply-member-badge-backfill
+  // Apply the member photo badge to all eligible mapped members.
+  // Requires auto_apply_aao_badge toggle to be ON and SLACK_ADMIN_USER_TOKEN configured.
+  // Pass `?dry_run=true` to count eligible members without applying.
+  router.post('/apply-member-badge-backfill', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const dryRun = req.query.dry_run === 'true';
+
+      const toggleEnabled = await getAutoApplyAaoBadge();
+      if (!toggleEnabled && !dryRun) {
+        return res.status(400).json({ error: 'auto_apply_aao_badge toggle is OFF — enable it first' });
+      }
+
+      const eligible = await slackDb.getMembersEligibleForBadge();
+
+      if (dryRun) {
+        return res.json({ dry_run: true, eligible_count: eligible.length });
+      }
+
+      let applied = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const member of eligible) {
+        if (!member.workos_user_id) {
+          skipped++;
+          continue;
+        }
+        try {
+          await applyMemberPhotoBadge(member.workos_user_id);
+          applied++;
+        } catch (err) {
+          logger.warn({ err, slackUserId: member.slack_user_id }, 'Badge backfill: error applying badge');
+          errors++;
+        }
+      }
+
+      logger.info({ applied, skipped, errors }, 'Member badge backfill complete');
+      res.json({ applied, skipped, errors });
+    } catch (error) {
+      logger.error({ err: error }, 'Apply member badge backfill error');
+      res.status(500).json({ error: 'Failed to apply member badge backfill' });
+    }
+  });
+
+  // POST /api/admin/slack/:slackUserId/badge-opt-out
+  // Set per-user badge opt-out. Body: `{ opt_out: boolean }`.
+  // If opt_out is true and the user currently has the badge applied, reverts their photo.
+  router.post('/:slackUserId/badge-opt-out', requireAuth, requireAdmin, async (req, res) => {
+    const { slackUserId } = req.params;
+    const optOut = Boolean(req.body?.opt_out);
+
+    try {
+      const mapping = await slackDb.getBySlackUserId(slackUserId);
+      if (!mapping) {
+        return res.status(404).json({ error: 'Slack user not found' });
+      }
+
+      await slackDb.setBadgeOptOut(slackUserId, optOut);
+
+      // If opting out and the badge is currently applied, revert the photo
+      if (optOut && mapping.badge_photo_applied_at && mapping.workos_user_id) {
+        try {
+          await revertMemberPhotoBadge(mapping.workos_user_id);
+        } catch (revertErr) {
+          logger.warn({ err: revertErr, slackUserId }, 'badge-opt-out: could not revert photo');
+        }
+      }
+
+      res.json({ ok: true, slack_user_id: slackUserId, badge_opt_out: optOut });
+    } catch (error) {
+      logger.error({ err: error, slackUserId }, 'Badge opt-out error');
+      res.status(500).json({ error: 'Failed to update badge opt-out' });
     }
   });
 

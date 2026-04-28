@@ -70,6 +70,7 @@ export const SETTING_KEYS = {
   ERROR_SLACK_CHANNEL: 'error_slack_channel',
   EDITORIAL_SLACK_CHANNEL: 'editorial_slack_channel',
   ANNOUNCEMENT_SLACK_CHANNEL: 'announcement_slack_channel',
+  AUTO_APPLY_AAO_BADGE: 'auto_apply_aao_badge',
 } as const;
 
 // ============== Generic Operations ==============
@@ -343,4 +344,19 @@ export async function setAnnouncementChannel(
     { channel_id: channelId, channel_name: channelName },
     updatedBy
   );
+}
+
+// ============== Photo Badge Toggle ==============
+
+/**
+ * Returns true when the admin has enabled automatic photo-badge application.
+ * Defaults to false (OFF) — no production effect until explicitly enabled.
+ */
+export async function getAutoApplyAaoBadge(): Promise<boolean> {
+  const result = await getSetting<boolean>(SETTING_KEYS.AUTO_APPLY_AAO_BADGE);
+  return result ?? false;
+}
+
+export async function setAutoApplyAaoBadge(enabled: boolean, updatedBy?: string): Promise<void> {
+  await setSetting<boolean>(SETTING_KEYS.AUTO_APPLY_AAO_BADGE, enabled, updatedBy);
 }

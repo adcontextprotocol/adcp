@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
 import type { SlackSlashCommand } from './types.js';
+import { applyMemberPhotoBadge, revertMemberPhotoBadge } from './sync.js';
 
 // Initialize WorkOS client for user membership lookups
 const workos = process.env.WORKOS_API_KEY ? new WorkOS(process.env.WORKOS_API_KEY) : null;
@@ -44,6 +45,8 @@ export async function handleSlashCommand(command: SlackSlashCommand): Promise<Co
       return handleWhoamiCommand(command);
     case 'link':
       return handleLinkCommand(command);
+    case 'badge':
+      return handleBadgeCommand(command);
     case 'help':
     default:
       return handleHelpCommand(command);
@@ -92,6 +95,13 @@ async function handleHelpCommand(_command: SlackSlashCommand): Promise<CommandRe
         text: {
           type: 'mrkdwn',
           text: '*`/aao link`*\nGet instructions to link your Slack account to AAO',
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '*`/aao badge [on|off]`*\nOpt in or out of the AgenticAdvertising.org profile photo badge',
         },
       },
       {
@@ -507,4 +517,60 @@ async function getOrganizationsForUser(workosUserId: string): Promise<OrgInfo[]>
     logger.error({ error, workosUserId }, 'Error getting organization info');
     return [];
   }
+}
+
+/**
+ * /aao badge [on|off] - Opt in or out of the AgenticAdvertising.org photo badge.
+ *
+ * `off` — removes the badge from the user's Slack profile photo and sets opt-out.
+ * `on`  — clears opt-out and re-applies the badge if auto_apply_aao_badge is enabled.
+ */
+async function handleBadgeCommand(command: SlackSlashCommand): Promise<CommandResponse> {
+  const args = command.text.trim().toLowerCase().split(/\s+/);
+  const action = args[1]; // "badge on" or "badge off"
+
+  const mapping = await slackDb.getBySlackUserId(command.user_id);
+  if (!mapping) {
+    return {
+      response_type: 'ephemeral',
+      text: 'Your Slack account is not linked to an AgenticAdvertising.org account. Use `/aao link` to connect.',
+    };
+  }
+
+  if (action === 'off') {
+    await slackDb.setBadgeOptOut(command.user_id, true);
+    if (mapping.workos_user_id) {
+      try {
+        await revertMemberPhotoBadge(mapping.workos_user_id);
+      } catch (err) {
+        logger.warn({ err, slackUserId: command.user_id }, 'badge off: could not revert photo');
+      }
+    }
+    return {
+      response_type: 'ephemeral',
+      text: 'Profile badge removed. Your original photo has been restored.',
+    };
+  }
+
+  if (action === 'on') {
+    await slackDb.setBadgeOptOut(command.user_id, false);
+    if (mapping.workos_user_id) {
+      try {
+        await applyMemberPhotoBadge(mapping.workos_user_id);
+      } catch (err) {
+        logger.warn({ err, slackUserId: command.user_id }, 'badge on: could not apply badge');
+      }
+    }
+    return {
+      response_type: 'ephemeral',
+      text: 'Profile badge opt-in saved. The badge will be applied to your Slack photo when the feature is active.',
+    };
+  }
+
+  // No valid action — show current state and usage
+  const state = mapping.badge_opt_out ? 'opted out' : (mapping.badge_photo_applied_at ? 'active' : 'not applied');
+  return {
+    response_type: 'ephemeral',
+    text: `*AgenticAdvertising.org profile badge* — current state: *${state}*\n\n• \`/aao badge off\` — remove badge and opt out\n• \`/aao badge on\` — opt back in`,
+  };
 }
