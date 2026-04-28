@@ -12,6 +12,7 @@ const RULE_FILES_BEFORE_CONTEXT = [
   'identity.md',
   'behaviors.md',
   'knowledge.md',
+  'urls.md',
 ];
 
 const RULE_FILES_AFTER_CONTEXT = [
