@@ -2,6 +2,8 @@
 
 ## 3.0.1
 
+See [release notes](docs/reference/release-notes.mdx#version-301) for the curated narrative — 3.0.1 is a stable-surface no-op for 3.0-conformant agents. Skills bundle in `/protocol/3.0.1.tgz`, normative clarifications, additive fields on experimental surfaces (governance, TMP) per the experimental-status contract, and one docs-level deprecation (`get_signals` top-level `max_results`).
+
 ### Patch Changes
 
 - 10aa2b3: Cut **3.0.1** to ship `skills/` in the protocol tarball and fix path drift in `skills/call-adcp-agent/SKILL.md`. Closes #3116, #3117.
