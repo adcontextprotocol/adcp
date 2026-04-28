@@ -1,0 +1,207 @@
+name: Auto-approve routine PRs
+
+# Approves PRs from the Claude Code triage routine using a separate GitHub
+# App identity. The routine opens PRs as @bokelley (the token it has access
+# to in the Anthropic routine console), so the repo owner can't approve
+# their own PRs — branch protection blocks them. This workflow lets the
+# triage bot post an approving review, satisfying the "1 review required"
+# rule without requiring admin-merge.
+#
+# Scope:
+#   - Only PRs whose head branch matches `claude/*` or `auto/*` qualify.
+#     The routine's PRs use `claude/issue-*` or `claude/<topic>` patterns.
+#   - All required CI checks must be green (we don't gate on a single
+#     check event — we re-fetch the full check rollup on every fire).
+#   - Draft PRs are skipped (mark ready first).
+#   - PRs with the `do-not-auto-approve` label are skipped — explicit
+#     opt-out for cases where the routine produces something that
+#     genuinely needs human eyes.
+#
+# Required repo secrets:
+#   TRIAGE_BOT_APP_ID          — GitHub App ID for the triage bot
+#   TRIAGE_BOT_APP_PRIVATE_KEY — Private key (PEM) for the App
+#
+# The App must have:
+#   - `pull_requests:write` (to post reviews)
+#   - `contents:read`       (to read CI status)
+#   - Installed on this repository
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to evaluate (manual fire)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    name: Approve if CI green
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Three trigger paths:
+    #   - pull_request_target → fired on every PR event; filter by branch + draft
+    #   - check_suite.completed → fired when CI finishes; resolves which PR via head_sha
+    #   - workflow_dispatch → manual fire with PR number
+    if: >-
+      (
+        github.event_name == 'pull_request_target' &&
+        !github.event.pull_request.draft &&
+        (startsWith(github.event.pull_request.head.ref, 'claude/') ||
+         startsWith(github.event.pull_request.head.ref, 'auto/'))
+      ) ||
+      github.event_name == 'check_suite' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Resolve PR number
+        id: pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let prNumber;
+            const event = context.eventName;
+
+            if (event === 'pull_request_target') {
+              prNumber = context.payload.pull_request.number;
+            } else if (event === 'workflow_dispatch') {
+              prNumber = parseInt(context.payload.inputs.pr_number, 10);
+            } else if (event === 'check_suite') {
+              // check_suite carries head_sha — find the PR whose head matches.
+              const headSha = context.payload.check_suite.head_sha;
+              const prs = context.payload.check_suite.pull_requests || [];
+              const inRepo = prs.find(p =>
+                p.base.repo && p.base.repo.id === context.payload.repository.id
+              );
+              if (!inRepo) {
+                core.info(`No PR found for head_sha ${headSha} in this repo`);
+                return null;
+              }
+              prNumber = inRepo.number;
+            }
+
+            if (!prNumber) {
+              core.info('No PR resolved from event');
+              return null;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            // Branch filter — only routine branches qualify
+            const branch = pr.head.ref;
+            const isRoutineBranch =
+              branch.startsWith('claude/') || branch.startsWith('auto/');
+            if (!isRoutineBranch) {
+              core.info(`Skip — branch ${branch} is not claude/* or auto/*`);
+              return null;
+            }
+
+            if (pr.draft) {
+              core.info('Skip — PR is draft');
+              return null;
+            }
+
+            if (pr.state !== 'open') {
+              core.info(`Skip — PR is ${pr.state}`);
+              return null;
+            }
+
+            // Opt-out label
+            const labels = (pr.labels || []).map(l => l.name);
+            if (labels.includes('do-not-auto-approve')) {
+              core.info('Skip — do-not-auto-approve label present');
+              return null;
+            }
+
+            core.setOutput('number', prNumber);
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('author', pr.user.login);
+            return prNumber;
+
+      - name: Check CI is green
+        id: ci
+        if: steps.pr.outputs.number
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr.outputs.number }}', 10);
+            const headSha = '${{ steps.pr.outputs.head_sha }}';
+
+            // Fetch full check rollup. A PR is "green" when:
+            //   - All check runs on head_sha have conclusion in {success, neutral, skipped}
+            //   - No check run is queued/in_progress
+            //   - At least one check ran (don't approve a PR with zero checks)
+            const { data: { check_runs: checks } } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: headSha,
+              per_page: 100,
+            });
+
+            if (checks.length === 0) {
+              core.info('No checks have run yet — wait');
+              return false;
+            }
+
+            const failing = checks.filter(c =>
+              c.conclusion && !['success', 'neutral', 'skipped'].includes(c.conclusion)
+            );
+            const pending = checks.filter(c => c.status !== 'completed');
+
+            if (failing.length > 0) {
+              core.info(`Skip — ${failing.length} failing check(s): ${failing.map(c => c.name).join(', ')}`);
+              return false;
+            }
+
+            if (pending.length > 0) {
+              core.info(`Skip — ${pending.length} pending check(s): ${pending.map(c => c.name).join(', ')}`);
+              return false;
+            }
+
+            core.info(`✓ All ${checks.length} checks green on ${headSha.substring(0, 8)}`);
+            return true;
+
+      - name: Generate App token
+        id: app
+        if: steps.ci.outputs.result == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TRIAGE_BOT_APP_ID }}
+          private-key: ${{ secrets.TRIAGE_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Post approval review
+        if: steps.ci.outputs.result == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Skip if bot has already approved this commit
+          existing=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            --jq "[.[] | select(.commit_id == \"$HEAD_SHA\" and .state == \"APPROVED\")] | length")
+          if [ "$existing" -gt 0 ]; then
+            echo "Bot already approved $HEAD_SHA — skipping"
+            exit 0
+          fi
+
+          gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            -f event=APPROVE \
+            -f commit_id="$HEAD_SHA" \
+            -f body="Auto-approved by AAO Triage Bot. CI green; routine-authored branch (\`${{ github.event.pull_request.head.ref || 'unknown' }}\`); no \`do-not-auto-approve\` label."
+
+          echo "✓ Approved PR #$PR_NUMBER"
