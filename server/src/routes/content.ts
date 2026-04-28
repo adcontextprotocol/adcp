@@ -1803,6 +1803,18 @@ export function createMyContentRouter(): Router {
         });
       }
 
+      // Verify the target user exists — prevents FK violation from surfacing as 500
+      const userCheck = await pool.query(
+        `SELECT 1 FROM users WHERE workos_user_id = $1`,
+        [user_id]
+      );
+      if (userCheck.rows.length === 0) {
+        return res.status(400).json({
+          error: 'User not found',
+          message: `No account found for user_id: ${user_id}. Only people with a public AAO profile can be added as co-authors.`,
+        });
+      }
+
       // Get current max display_order
       const orderResult = await pool.query(
         `SELECT COALESCE(MAX(display_order), -1) + 1 as next_order
