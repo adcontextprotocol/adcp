@@ -1,4 +1,0 @@
----
----
-
-Teaches Addie to handle two redteam failure modes that stuck after the Sonnet bump in PR #3273: length blow-out on short questions (Sonnet's instinct toward thoroughness produces 250–350-word essays for 7–12-word challenges) and "cryptographic guarantee" overclaim on TMP privacy questions. Both are addressed by strengthening the positive frame in the rules (response-style.md and knowledge.md) rather than adding more to the banned-phrase stripper. The length rule now explains *why* verbosity reads as defensiveness, adds a self-check ("count the user's words; calibrate yours"), and gives concrete word-count targets per question shape with a contrasting anti-example. The TMP privacy rule names the precise terms to use ("architectural separation," "data minimization," "two-endpoint design") and explicitly enumerates the cryptographic overclaims to avoid alongside *why* — TMP doesn't ship cryptographic primitives today.

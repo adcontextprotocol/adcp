@@ -1,0 +1,143 @@
+id: media_buy_seller/inventory_list_no_match
+version: "1.0.0"
+title: "Seller handles property_list / collection_list references that match zero inventory"
+category: media_buy_seller
+summary: "Verifies a seller returns a zero-forecast product or a clear error — not a crash — when a buyer references inventory lists that resolve to nothing in the seller's catalog."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  Not every buyer list matches every seller's inventory. A buyer may point at a
+  property_list of domains this seller does not carry, or a collection_list of
+  programs this seller does not syndicate. The seller must handle that gracefully:
+
+  - Return a product with a zero forecast and explain the mismatch, OR
+  - Return an informative error on create_media_buy (INSUFFICIENT_INVENTORY or
+    similar) with findings the buyer can act on.
+
+  What the seller must NOT do: crash, return a misleading non-zero forecast, or
+  silently drop the targeting and deliver against unintended inventory. Each of
+  those is a real failure mode we've seen in adapter integrations.
+
+  This scenario exercises the no-match path using the test kit's pre-populated
+  no_match_properties and no_match_collections lists.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_property_list_targeting
+    - supports_collection_list_targeting
+  examples:
+    - "Sellers that validate inventory against buyer-supplied lists"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must resolve PropertyListReference / CollectionListReference against
+    its own inventory and report a truthful outcome when nothing matches.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover
+    title: "Discover products"
+    steps:
+      - id: get_products_brief
+        title: "Discover products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products the seller carries.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Video inventory on outdoor lifestyle programming. Q3 flight."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "inventory_list_no_match--get_products_brief"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+
+  - id: no_match_attempt
+    title: "Create buy with lists that match no inventory"
+    narrative: |
+      The buyer references the no-match property list and the no-match collection
+      list. Neither list resolves to anything in the seller's catalog. The seller
+      must either (a) accept the buy and surface a zero-delivery expectation, or
+      (b) reject it with an informative error. Silent success with undefined
+      delivery behaviour is not acceptable.
+
+    steps:
+      - id: create_buy_no_match
+        title: "create_media_buy against empty intersections"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          One of two acceptable outcomes:
+
+          1. Buy accepted with zero-forecast reporting — status may be
+             pending_creatives/pending_start/active, but the seller returns
+             packages with forecast indicating zero deliverable inventory and
+             a message explaining the list mismatch.
+
+          2. Buy rejected with an informative error — typically
+             INSUFFICIENT_INVENTORY or INVALID_TARGETING — including findings
+             that identify which list(s) matched nothing.
+
+          What is NOT acceptable: a silently-successful buy with normal forecast
+          numbers, or a crash / non-AdCP error shape.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "inventory-list-no-match-v1"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 10000
+              pricing_option_id: "$context.pricing_option_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_collections_v1"
+
+          context:
+            correlation_id: "inventory_list_no_match--create_buy_no_match"
+        validations:
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object (success or error)"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inventory_list_no_match--create_buy_no_match"
+            description: "Context correlation_id returned unchanged"

@@ -1,0 +1,270 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.1/creative/sync-creatives-response.json",
+  "title": "Sync Creatives Response",
+  "description": "Response from creative sync operation. Exactly one of three shapes: (1) synchronous success — per-creative results in the creatives array (best-effort processing with per-item status/failures); (2) terminal failure — errors array with no creatives processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (batch ingestion, async review that must settle before per-item results can be issued). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-item results land on the task completion artifact, not this envelope. These three shapes are mutually exclusive — a response has exactly one.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncCreativesSuccess",
+      "description": "Success response - sync operation processed creatives (may include per-item failures)",
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean",
+          "description": "Whether this was a dry run (no actual changes made)"
+        },
+        "creatives": {
+          "type": "array",
+          "description": "Results for each creative processed. Items with action='failed' indicate per-item validation/processing failures, not operation-level failures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "creative_id": {
+                "type": "string",
+                "description": "Creative ID from the request",
+                "x-entity": "creative"
+              },
+              "account": {
+                "$ref": "/schemas/3.0.1/core/account.json",
+                "description": "Account that owns this creative"
+              },
+              "action": {
+                "$ref": "/schemas/3.0.1/enums/creative-action.json",
+                "description": "Action taken for this creative during this sync operation (lifecycle operation, not approval state)."
+              },
+              "status": {
+                "$ref": "/schemas/3.0.1/enums/creative-status.json",
+                "description": "Advisory review-lifecycle state of the creative after this sync — a UI hint and polling-scheduling signal, NOT a spend-authorization gate. Orthogonal to action — action says what the sync did (created, updated, ...); status says where the creative sits in review. Values come from CreativeStatus only (processing, pending_review, approved, rejected, archived) — never from CreativeAction. Sellers with async review return processing or pending_review; sellers with synchronous review MAY return a terminal value (approved, rejected). Buyers MUST NOT gate downstream spend or package activation on status: approved from this response — a compromised or buggy seller could declare approved while bypassing content-policy review. Reconcile via list_creatives or a signed review webhook before committing spend. Authoritative state is always via list_creatives. MUST be omitted when action is failed or deleted (the creative has no meaningful review state — failure details belong in the errors array; deleted creatives are gone from the library). Omit entirely when the seller has no review lifecycle at all."
+              },
+              "platform_id": {
+                "type": "string",
+                "description": "Platform-specific ID assigned to the creative"
+              },
+              "changes": {
+                "type": "array",
+                "description": "Field names that were modified (only present when action='updated')",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Validation or processing errors (only present when action='failed')",
+                "items": {
+                  "$ref": "/schemas/3.0.1/core/error.json"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "description": "Non-fatal warnings about this creative",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "preview_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Preview URL for generative creatives (only present for generative formats)"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when preview link expires (only present when preview_url exists)"
+              },
+              "assigned_to": {
+                "type": "array",
+                "description": "Package IDs this creative was successfully assigned to (only present when assignments were requested)",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "assignment_errors": {
+                "type": "object",
+                "description": "Assignment errors by package ID (only present when assignment failures occurred)",
+                "patternProperties": {
+                  "^[a-zA-Z0-9_-]+$": {
+                    "type": "string",
+                    "description": "Error message for this package assignment"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "creative_id",
+              "action"
+            ],
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "failed",
+                        "deleted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "status"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "/schemas/3.0.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.1/core/ext.json"
+        }
+      },
+      "required": [
+        "creatives"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "SyncCreativesError",
+      "description": "Error response - operation failed completely, no creatives were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing any creatives (e.g., authentication failure, service unavailable, invalid request format)",
+          "items": {
+            "$ref": "/schemas/3.0.1/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.1/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creatives"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "SyncCreativesSubmitted",
+      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion, when async review must settle before per-item results can be issued, or when governance review gates the sync. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creatives array with per-item action/status lands on the completion artifact, not this envelope. Per-item async review (an item in pending_review while the rest of the sync resolves synchronously) belongs on the SyncCreativesSuccess branch with status: pending_review, not here.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose creatives array carries per-item approval state via CreativeStatus. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The creatives array is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "/schemas/3.0.1/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/3.0.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.1/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "creatives"
+        ]
+      }
+    }
+  ]
+}

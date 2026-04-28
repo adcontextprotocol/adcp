@@ -1,4 +1,0 @@
----
----
-
-Adds a deterministic length post-processor that fires on responses to short user questions. Sonnet's instinct toward thoroughness produces 250–350 word answers to 7–12 word challenges (priv-1, acct-1, acct-2, gap-1 in the redteam suite) even with response-style.md teaching it to match the conversational register. The teaching reduces mean length but doesn't enforce a ceiling — this is the floor. Fires when the user's question is ≤15 words AND the assistant response is >160 words; truncates at the nearest sentence boundary at or before 130 words and appends *"Happy to go deeper on any of this if useful."* Code blocks are kept whole, never cut mid-fence. Same shape as the existing `stripBannedRituals` post-processor — applied at the same four return sites in `claude-client.ts`. Idempotent.
