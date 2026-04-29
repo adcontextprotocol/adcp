@@ -153,7 +153,12 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard). Separates MRC and GroupM standards.
 - **`quartile_data`**: Video quartile completion data (q1-q4)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
-- **`cost_per_click`**: Cost per click
+- **`cost_per_click`**: Cost per click (`spend / clicks`)
+- **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
+- **`cost_per_thousand`**: CPM (`spend / impressions × 1000`); universal pricing scalar across CTV, display, audio, and DOOH
+- **`downloads`**: Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines methodology); distinct from `views`
+- **`units_sold`**: Items sold attributed to delivery (retail-media; distinct from `conversions` — one transaction may carry multiple units)
+- **`new_to_brand_units`**: Units sold to first-time brand buyers (count parallel to `new_to_brand_rate`)
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 
