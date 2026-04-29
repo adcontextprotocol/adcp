@@ -320,7 +320,45 @@
       background: var(--color-gray-100, #f3f4f6);
       padding: 1px 6px;
       border-radius: 3px;
-      margin-right: 4px;
+    }
+    .verification-spec-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .verification-spec-chip code {
+      margin-right: 0;
+    }
+    .verification-spec-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      line-height: 1;
+    }
+    .verification-spec-passing .verification-spec-mark {
+      background: var(--color-success-100, #d1fae5);
+      color: var(--color-success-700, #047857);
+    }
+    .verification-spec-failing .verification-spec-mark {
+      background: var(--color-error-100, #fee2e2);
+      color: var(--color-error-700, #b91c1c);
+    }
+    .verification-spec-failing code {
+      text-decoration: line-through;
+      text-decoration-color: var(--color-error-500, #ef4444);
+      text-decoration-thickness: 1px;
+    }
+    .verification-spec-untested .verification-spec-mark,
+    .verification-spec-unknown .verification-spec-mark {
+      background: var(--color-gray-200, #e5e7eb);
+      color: var(--color-text-muted);
     }
     .history-run {
       display: flex;
@@ -1484,6 +1522,12 @@
       };
 
       const declaredSpecialisms = Array.isArray(cs?.declared_specialisms) ? cs.declared_specialisms : [];
+      const specialismStatus = (cs && typeof cs.specialism_status === 'object' && cs.specialism_status) ? cs.specialism_status : {};
+      const checkIntervalHours = Number.isFinite(cs?.check_interval_hours) ? cs.check_interval_hours : 12;
+
+      // "On the next heartbeat" is jargon; surface the actual interval so
+      // the developer knows what window they're waiting for.
+      const nextCheckCopy = `within the next check cycle (${checkIntervalHours}h)`;
 
       // No badges yet — show diagnostic hint scoped to the actual situation.
       // The branch order here mirrors pickVerificationHint() in
@@ -1493,23 +1537,36 @@
         const status = cs?.status;
         let hint;
         if (!hasAuth) {
-          hint = 'Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you\'ll earn AAO Verified (Spec) automatically.';
+          hint = `Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you'll earn AAO Verified (Spec) automatically.`;
         } else if (status === 'opted_out') {
           hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
         } else if (status === 'passing' && declaredSpecialisms.length === 0) {
           hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
         } else if (status === 'passing') {
-          hint = 'Storyboards are passing — your badge should issue on the next heartbeat. If it doesn\'t, check that your AAO membership is on an API-access tier.';
+          hint = `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
         } else if (status === 'failing' || status === 'degraded') {
           hint = declaredSpecialisms.length === 0
             ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
             : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         } else {
-          hint = 'Compliance check will run on the next heartbeat. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
+          hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
+
+        const renderSpecialismChip = (s) => {
+          const st = specialismStatus[s] || 'untested';
+          const className = `verification-spec-chip verification-spec-${st}`;
+          const symbol = st === 'passing' ? '<span class="verification-spec-mark" aria-hidden="true">✓</span>'
+            : st === 'failing' ? '<span class="verification-spec-mark" aria-hidden="true">✕</span>'
+            : '<span class="verification-spec-mark" aria-hidden="true">·</span>';
+          const title = st === 'passing' ? 'Storyboard passing'
+            : st === 'failing' ? 'Storyboard failing'
+            : st === 'unknown' ? 'Not in storyboard catalog'
+            : 'Not yet tested';
+          return `<span class="${className}" title="${escapeHtml(title)}">${symbol}<code>${escapeHtml(s)}</code></span>`;
+        };
         const declaredHtml = declaredSpecialisms.length
           ? '<div class="verification-declared-row"><span class="verification-declared-label">Declared specialisms:</span> ' +
-            declaredSpecialisms.slice().sort().map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') +
+            declaredSpecialisms.slice().sort().map(renderSpecialismChip).join(' ') +
             '</div>'
           : '';
         return `

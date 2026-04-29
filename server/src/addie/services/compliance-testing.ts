@@ -358,6 +358,51 @@ export interface VerificationResult {
   }>;
 }
 
+export type SpecialismStatus = 'passing' | 'failing' | 'untested' | 'unknown';
+
+/**
+ * Map declared specialisms to per-specialism pass/fail/untested status by
+ * looking up each specialism's storyboard in the latest run's storyboard
+ * statuses. Used by the dashboard to mark which declared specialisms are
+ * the cause of a `failing` overall status without forcing the user to
+ * cross-reference the storyboard track pills.
+ *
+ * `unknown` is returned for specialisms not in `SPECIALISM_CATALOG` (e.g.
+ * preview-status specialisms that the agent declared but the catalog
+ * doesn't recognize as stable).
+ */
+export function computeSpecialismStatus(
+  declaredSpecialisms: string[],
+  storyboardStatuses: StoryboardStatusEntry[],
+): Record<string, SpecialismStatus> {
+  const statusMap = new Map<string, StoryboardStatusEntry>();
+  for (const entry of storyboardStatuses) {
+    statusMap.set(entry.storyboard_id, entry);
+  }
+
+  const result: Record<string, SpecialismStatus> = {};
+  for (const specialism of declaredSpecialisms) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) {
+      result[specialism] = 'unknown';
+      continue;
+    }
+    const sbStatus = statusMap.get(info.storyboard_id);
+    if (!sbStatus) {
+      result[specialism] = 'untested';
+      continue;
+    }
+    if (sbStatus.status === 'passing') {
+      result[specialism] = 'passing';
+    } else if (sbStatus.status === 'failing' || sbStatus.status === 'partial') {
+      result[specialism] = 'failing';
+    } else {
+      result[specialism] = 'untested';
+    }
+  }
+  return result;
+}
+
 /**
  * Determine which badge roles an agent qualifies for based on its
  * declared specialisms and their pass/fail status.

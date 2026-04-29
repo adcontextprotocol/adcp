@@ -25,6 +25,7 @@ import {
   complianceResultToDbInput,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  computeSpecialismStatus,
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
@@ -3800,6 +3801,28 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.warn({ err, agentUrl }, "Latest declared specialisms query failed");
       }
 
+      // Per-specialism status — the dashboard renders pass/fail/untested
+      // dots so the developer can see which declared specialism is the
+      // cause of an overall `failing` status without cross-referencing
+      // the storyboard track pills.
+      let specialismStatus: Record<string, string> = {};
+      if (declaredSpecialisms.length > 0) {
+        try {
+          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl);
+          specialismStatus = computeSpecialismStatus(
+            declaredSpecialisms,
+            sbStatuses.map(s => ({
+              storyboard_id: s.storyboard_id,
+              status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
+              steps_passed: s.steps_passed,
+              steps_total: s.steps_total,
+            })),
+          );
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Per-specialism status query failed");
+        }
+      }
+
       const encodedUrl = encodeURIComponent(agentUrl);
 
       res.json({
@@ -3816,7 +3839,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         status_changed_at: status.status_changed_at?.toISOString() || null,
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
+        check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
+        specialism_status: specialismStatus,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
