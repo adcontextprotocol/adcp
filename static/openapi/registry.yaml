@@ -2469,6 +2469,16 @@ paths:
         - schema:
             type: string
             enum:
+              - registered
+              - discovered
+            description: Filter agents by registration source. Omit to receive both.
+          required: false
+          description: Filter agents by registration source. Omit to receive both.
+          name: source
+          in: query
+        - schema:
+            type: string
+            enum:
               - "true"
           required: false
           name: health
@@ -2522,6 +2532,12 @@ paths:
                   - agents
                   - count
                   - sources
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publishers:
     get:
       operationId: listPublishers
