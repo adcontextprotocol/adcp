@@ -8522,7 +8522,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Initialize database
     const { initializeDatabase, onPoolError } = await import("./db/client.js");
-    const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
@@ -8535,7 +8534,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       notifySystemError({ source: 'database-pool', errorMessage: 'Database pool error — check application logs' });
     });
 
-    await runMigrations();
+    // Migrations run once per deploy via fly.toml `release_command`, and
+    // for local/docker via RUN_MIGRATIONS=true in index.ts. Don't run them
+    // here — every machine doing it during a rolling deploy exhausts pg
+    // connection slots.
 
     // Validate the idempotency backend can actually query its table — fails
     // fast on a stale pool, missing migration, or wrong-credentials boot
