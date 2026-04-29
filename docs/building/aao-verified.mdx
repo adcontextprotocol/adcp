@@ -284,6 +284,45 @@ The agent registry surfaces filters on either axis independently:
 
 Both queries are valid. Buyers comparing options use (Live); orchestrator developers integrating new agents use (Spec).
 
+## How to claim each qualifier
+
+### To claim **(Spec)**
+
+1. Hold an active AAO membership with API-access tier.
+2. Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities`.
+3. Pass the storyboards your declarations obligate (universal + protocol baselines + specialism baselines) at a specific AdCP major version.
+4. The AAO compliance heartbeat issues **AAO Verified (Spec)** automatically and re-verifies on each heartbeat cycle.
+
+### To claim **(Live)** *(lights up in 3.1)*
+
+1. Hold **(Spec)** — (Live) presumes (Spec).
+2. Designate a compliance account in your tenant containing real live campaigns. PSA, remnant, house, or genuine revenue all qualify — the only requirement is that real impressions serve on real inventory and reporting flows through AdCP.
+3. Grant the [`attestation_verifier`](/docs/accounts/overview#standard-named-scope-attestation_verifier) scope to the AAO compliance engine's identity via the [`authorization`](/docs/accounts/overview#caller-authorization) object on `sync_accounts` / `list_accounts` responses for that account.
+4. *(Optional)* Declare maintenance windows on the compliance account if your inventory has expected quiet periods (cap: 14 days per window, 30 days cumulative per rolling 90-day window).
+5. The AAO compliance engine watches the eight checks above over a 7–14 day rolling window and issues **(Live)** when signals are healthy. The qualifier expires automatically if signal degrades.
+
+No report uploads, no admin credentials, no ground-truth exports, no parallel verification flow.
+
+## What AAO Verified is not
+
+- **Not a regulatory or financial attestation.** SOC 2, ISO 27001, ISAE 3402 and similar frameworks address operational and financial-control posture — distinct questions, with their own audit paths. AAO Verified is wire-and-delivery correctness for AdCP.
+- **Not hard ground-truth reconciliation in v1.** The eight (Live) checks observe internal consistency of AdCP responses against real delivery; they do not reconcile AdCP-reported numbers against the seller's internal ad-server dashboard. Hard reconciliation is deferrable to a future opt-in upgrade — buyer attestation, or seller-exported reports — without affecting the v1 mark.
+- **Not certification beyond AAO membership.** The [AgenticAdvertising.org certification program](/docs/learning/overview) composes with AAO Verified — verification is necessary input to certification, but verification is not certification itself.
+- **Not a SLA.** AAO Verified does not guarantee uptime, latency, or commercial outcomes. It attests that the seller's AdCP surface continuously reflects real delivery; commercial reliability is between buyer and seller.
+- **Not a substitute for due diligence.** Buyers SHOULD still vet sellers' contractual terms, billing posture, governance practices, and incident-response posture independently. AAO Verified is one input, not the whole picture.
+
+## Relationship to supporting specs
+
+AAO Verified (Live) depends on three normative pieces of the AdCP spec, each tracked on the issue tracker:
+
+- **[`get_media_buys` account-ownership scope (#2963)](https://github.com/adcontextprotocol/adcp/issues/2963)** — `get_media_buys` MUST return all account-owned media buys regardless of how they were created, so the brownfield Path B can discover non-AdCP-created campaigns. Without this, (Live) cannot observe campaigns trafficked outside AdCP.
+- **[Per-account `authorization` envelope + `attestation_verifier` scope + RBAC error codes (#2964)](https://github.com/adcontextprotocol/adcp/issues/2964)** — the narrow-scope grant the AAO compliance engine holds on the seller's compliance account, plus the introspection mechanism that backs check 7 (introspection consistency).
+- **[Behavioral filter assertions (#2902)](https://github.com/adcontextprotocol/adcp/issues/2902)** — the (Spec) axis runs filter-behavior assertions against `simulate_delivery`; (Live) re-runs them against real data to close the "filtering silently no-ops" gap.
+
+A fourth supporting issue tracks 4.0:
+
+- **[Multi-subscriber `reporting_webhook` (#3009)](https://github.com/adcontextprotocol/adcp/issues/3009)** — in 3.x, `reporting_webhook` is single-slot, which is why brownfield (Live) requires a dedicated compliance tenant. 4.0 relaxes this so the engine can attach without disturbing the seller's existing webhook subscriber.
+
 ## Relationship to other surfaces
 
 - [Conformance Specification](/docs/building/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
