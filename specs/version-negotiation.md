@@ -118,6 +118,7 @@ A server MUST honor `adcp_version` when present, falling back to `adcp_major_ver
 | Client request | Server action |
 |---|---|
 | `adcp_version` present, exact match in `supported_versions` | Serve in that release. Echo on response. |
+| `adcp_version` present, same major, server advertises both pre-release and release for the same `MAJOR.MINOR` (e.g. `["3.1-beta", "3.1"]`), buyer pins the release | Exact match wins; server MUST NOT silently downshift onto the pre-release. Serve `"3.1"`. |
 | `adcp_version` present, same major, server's max release < client's pin | Serve highest supported release ≤ client's pin. Echo actual release. |
 | `adcp_version` present, same major, no server release ≤ client's pin (gap or sub-min) | `VERSION_UNSUPPORTED`. The seller is not obligated to maintain validators for releases below its supported window. |
 | `adcp_version` present, different major | `VERSION_UNSUPPORTED`. |

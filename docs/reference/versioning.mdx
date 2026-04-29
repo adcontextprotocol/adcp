@@ -30,7 +30,9 @@ Implementations built against 3.0 will continue to function against any 3.x rele
 
 ## Version negotiation
 
-Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Released-precision pinning lets buyer SDKs select which schemas they validate against, and lets sellers return responses shaped to the contract the buyer expects (Stripe model).
+Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Release-precision pinning lets buyer SDKs select which schemas they validate against, and lets sellers return responses shaped to the contract the buyer expects (Stripe model).
+
+> In-house clients implementing the wire directly can stay on `adcp_major_version` through all of 3.x; `adcp_version` is opt-in until 4.0. See [Migration timeline](#migration-timeline) for the cadence.
 
 ### Bidirectional negotiation (3.1+)
 
@@ -39,16 +41,19 @@ Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3
 3. **Server resolves**:
    - Exact match → serve in that release.
    - Same major, server's max release < buyer's pin → downshift to the highest supported release ≤ the pin.
+   - Same major, both pre-release and release present, buyer pins the release → exact match wins; server MUST NOT silently downshift onto the pre-release. (Server `["3.1-beta", "3.1"]` + pin `"3.1"` → serve `"3.1"`.)
    - Same major, no server release ≤ buyer's pin (gap or sub-min) → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Different major → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Omitted → server uses its default release (or, if only `adcp_major_version` was sent, the highest supported release in that major).
 4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. The echoed value is the **release served**, never the seller's own latest release — a 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against that release's schema, not against their pin.
 
+When the response omits `adcp_version` (a legacy 3.0 seller that doesn't read the field — `additionalProperties: true` makes it invisible there), buyers SHOULD validate against their own pin and treat the seller as 3.0-only for capability inference. The buyer's SDK falls back to its constructor pin in this case.
+
 This lets buyers and sellers upgrade independently — sellers can declare multi-release support, and buyers can pin to a specific release without coordinating their migration.
 
 #### Pre-release pins
 
-Pre-release tags (`"3.1-beta"`, `"3.1-rc.1"`) are matched **exactly** against `supported_versions`. They are not range-resolved: a buyer pinning `"3.1-beta"` against a server that lists `["3.0", "3.1"]` (no beta in the list) gets `VERSION_UNSUPPORTED`, not a downshift to `"3.0"`. Servers MUST NOT downshift a release pin onto a pre-release (`"3.1"` → `"3.1-beta"`).
+Pre-release tags (`"3.1-beta"`, `"3.1-rc.1"`) are matched **exactly** against `supported_versions`. They are not range-resolved: a buyer pinning `"3.1-beta"` against a server that lists `["3.0", "3.1"]` (no beta in the list) gets `VERSION_UNSUPPORTED`, not a downshift to `"3.0"`. Servers MUST NOT downshift a release pin onto a pre-release (`"3.1"` → `"3.1-beta"`); when both are advertised, the release wins exact match.
 
 #### `VERSION_UNSUPPORTED` error data
 
