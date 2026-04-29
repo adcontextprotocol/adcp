@@ -29,9 +29,36 @@
       "minimum": 1,
       "maximum": 3600
     },
+    "issues": {
+      "type": "array",
+      "description": "Structured list of validation failures. Primary use is `VALIDATION_ERROR`, where multi-field rejections are common and `field` (singular) cannot carry the full pointer map. MAY appear on other error codes that reject multiple fields at once. When present alongside `field`, sellers SHOULD set `field` to `issues[0].pointer` for backward compatibility with consumers that read only `field`.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "RFC 6901 JSON Pointer to the offending field in the request payload (e.g., '/packages/0/targeting/geo_countries/2')."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable description of why this specific field was rejected."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Schema keyword that rejected the payload (e.g., 'required', 'type', 'format', 'enum', 'pattern'). Lets agents pattern-match on the rejection class without parsing message text."
+          },
+          "schemaPath": {
+            "type": "string",
+            "description": "Optional. Path inside the schema that rejected the payload (e.g., '#/properties/packages/items/properties/targeting/oneOf/1'). Sellers MAY omit in production to avoid fingerprinting `oneOf` branch selection on adversarial payloads."
+          }
+        },
+        "required": ["pointer", "message", "keyword"],
+        "additionalProperties": true
+      }
+    },
     "details": {
       "type": "object",
-      "description": "Additional task-specific error details",
+      "description": "Additional task-specific error details. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers reading from `details`; new consumers SHOULD prefer the top-level `issues` field.",
       "additionalProperties": true
     },
     "recovery": {

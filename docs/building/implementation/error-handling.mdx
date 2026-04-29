@@ -131,9 +131,10 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 | `message` | string | Yes | Human-readable error description |
 | `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal` |
 | `retry_after` | number | No | Seconds to wait before retrying (transient errors) |
-| `field` | string | No | Field path that caused the error (e.g., `packages[0].targeting`) |
+| `field` | string | No | Field path that caused the error (e.g., `packages[0].targeting`). For multi-field validation rejections, sellers SHOULD set this to `issues[0].pointer`. |
+| `issues` | array | No | Structured list of validation failures. Each entry carries `pointer` (RFC 6901), `message`, `keyword` (the schema keyword that rejected, e.g. `required` / `type` / `format`), and optional `schemaPath`. Use on `VALIDATION_ERROR` and any other code where multiple fields were rejected at once. Lets agents recover the full pointer map without parsing `message` text. |
 | `suggestion` | string | No | Suggested fix for the error |
-| `details` | object | No | Additional context-specific information |
+| `details` | object | No | Additional context-specific information. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers; new consumers SHOULD prefer the top-level `issues` field. |
 
 ## Standard Error Codes
 
