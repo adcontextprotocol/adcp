@@ -9,7 +9,7 @@ Adds **AAO Verified** as the public trust mark for AdCP agents, with two composa
 - **AAO Verified (Spec)** — your AdCP wire format matches the spec. Storyboards run against your test-mode endpoint on AAO's compliance heartbeat. Issued automatically when storyboards pass for the agent's declared specialisms + active AAO membership.
 - **AAO Verified (Live)** — AAO has observed real production traffic flowing through your agent. The compliance engine continuously watches delivery against your live ad-server integration over a 7–14 day rolling window. Lights up in 3.1 once the canonical-campaign runner is operational; the eight-check observability machinery already ships.
 
-(Spec) is a prerequisite for (Live) because a broken protocol implementation makes live observation unmeasurable. The two qualifiers share one brand mark — buyers learn one name, the qualifier in parens names which axis was earned.
+**(Spec) and (Live) are independent.** Each axis demonstrates conformance through different evidence — (Spec) via simulated interactions against a test endpoint, (Live) via observed real traffic that exercises wire format, filters, lifecycle, and scope through the eight checks. Sellers without a test-mode endpoint (SDK-built agents, production-only platforms) can earn (Live) directly. The two qualifiers share one brand mark — buyers learn one name, the qualifier in parens names which axis was earned.
 
 Earlier drafts used "AdCP Conformant" + "AAO Verified" as two distinct mark names (and earlier still, "Tier 1 / Tier 2"). The single-brand-with-qualifiers framing is cleaner: a test agent earning **Verified (Spec)** is a complete claim, not a "junior" tier.
 
