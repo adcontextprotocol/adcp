@@ -577,7 +577,7 @@ export class CrawlerService {
             this.snapshotDb.upsertHealth(agent.url, health, stats),
           ]);
 
-          if (!knownTypes.has(agent.url) && inferredType !== 'unknown') {
+          if (inferredType !== 'unknown' && inferredType !== knownTypes.get(agent.url)) {
             await this.federatedIndex.updateAgentMetadata(agent.url, {
               agent_type: inferredType,
               protocol: profile.protocol,

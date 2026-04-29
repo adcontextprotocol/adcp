@@ -2579,7 +2579,7 @@ paths:
       summary: Domain lookup
       description: Find all agents authorized for a given publisher domain.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2600,7 +2600,7 @@ paths:
       summary: Property identifier lookup
       description: Find agents that hold a specific property identifier.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2640,7 +2640,7 @@ paths:
       summary: Agent domain lookup
       description: Get all publisher domains associated with an agent.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2673,7 +2673,7 @@ paths:
       summary: Operator lookup
       description: Given a domain, returns the agents this entity operates and which publishers trust them.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2700,7 +2700,7 @@ paths:
       summary: Publisher lookup
       description: Given a domain, returns the inventory this entity publishes and which agents it authorizes.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2727,7 +2727,7 @@ paths:
       summary: Validate product authorization
       description: Check whether an agent is authorized to sell a product based on its publisher_properties.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       requestBody:
         content:
           application/json:
@@ -2768,7 +2768,7 @@ paths:
       summary: Expand product identifiers
       description: Expand publisher_properties selectors into concrete property identifiers for caching.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       requestBody:
         content:
           application/json:
@@ -2834,7 +2834,7 @@ paths:
       summary: Property authorization check
       description: Quick check if a property identifier is authorized for an agent. Optimized for real-time ad request validation.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -6000,7 +6000,7 @@ tags:
     description: Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.
   - name: Change Feed
     description: Poll cursor-based registry change events for local sync.
-  - name: Lookups & Authorization
+  - name: Authorization Lookups
     description: Look up agents by domain or property, and validate ad-serving authorization.
   - name: Validation Tools
     description: Validate publisher adagents.json files and generate compliant configurations.

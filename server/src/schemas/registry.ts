@@ -353,9 +353,23 @@ export const FederatedAgentWithDetailsSchema = z
       })
       .optional(),
     added_date: z.string().optional(),
-    source: z.enum(["registered", "discovered"]).optional(),
-    member: MemberRefSchema.optional(),
-    discovered_from: DiscoveredFromSchema.optional(),
+    source: z
+      .enum(["registered", "discovered"])
+      .optional()
+      .openapi({
+        description:
+          "How this agent entered the registry. 'registered' means the operator directly enrolled " +
+          "via AgenticAdvertising.org and has accepted its terms. 'discovered' means the agent was " +
+          "found in a member publisher's adagents.json and has not explicitly opted in.",
+      }),
+    member: MemberRefSchema.optional().openapi({
+      description:
+        "AgenticAdvertising.org member organization that registered this agent. Present only when source='registered'.",
+    }),
+    discovered_from: DiscoveredFromSchema.optional().openapi({
+      description:
+        "The member publisher whose adagents.json referenced this agent. Present only when source='discovered'.",
+    }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),

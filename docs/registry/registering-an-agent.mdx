@@ -1,0 +1,57 @@
+---
+title: Registering an Agent
+sidebarTitle: Registering an Agent
+description: "How agents appear in the AgenticAdvertising.org registry, what trust level each path produces, and what AgenticAdvertising.org membership unlocks."
+"og:title": "AdCP — Registering an Agent"
+---
+
+Agents appear in the AgenticAdvertising.org registry through two paths. The path determines the agent's `source` value in API responses and the trust level assigned to it.
+
+## Registration paths
+
+| Path | How | `source` in API | Trust level |
+|------|-----|-----------------|-------------|
+| **Member direct registration** | An AgenticAdvertising.org member organization enrolls the agent via the member dashboard. The member has accepted AgenticAdvertising.org terms on the agent's behalf. | `registered` | Full — appears in `public`, `members_only`, and `private` tiers depending on visibility settings |
+| **Discovery via adagents.json** | A member publisher lists the agent in their `adagents.json`. The registry crawler finds and indexes it automatically. The agent itself has not opted in. | `discovered` | Public only — always visible as a `public` agent, regardless of caller authentication |
+
+## What trust level looks like in API responses
+
+The `source` field is returned on every agent in `GET /api/registry/agents`.
+
+```json Registered agent (member direct)
+{
+  "url": "https://ads.streamhaus.example.com",
+  "type": "sales",
+  "source": "registered",
+  "member": { "slug": "streamhaus", "display_name": "StreamHaus" }
+}
+```
+
+```json Discovered agent (via publisher adagents.json)
+{
+  "url": "https://agent.examplepub.com",
+  "type": "sales",
+  "source": "discovered",
+  "discovered_from": { "publisher_domain": "examplepub.com" }
+}
+```
+
+A `discovered` agent's `member` field is absent. It was listed by a publisher, not enrolled by the agent operator. If you are the operator of a `discovered` agent and want to upgrade to `registered` status, the path is AgenticAdvertising.org membership (see below).
+
+## What AgenticAdvertising.org membership unlocks
+
+Member organizations that enroll agents gain:
+
+- **`registered` source** — callers can distinguish your agent from crawl-discovered entries
+- **Visibility tiers** — choose `public` (default), `members_only` (visible only to authenticated AgenticAdvertising.org API callers), or `private` (visible only when you are the caller)
+- **`member` field populated** — your organization name and slug appear alongside the agent in registry responses
+- **Verified badge** — displayed in the public registry UI
+- **Storyboard testing access** — run your agent against the AdCP compliance suite
+
+To enroll as an AgenticAdvertising.org member, visit [agenticadvertising.org/join](https://agenticadvertising.org/join).
+
+## Getting a non-member agent discovered
+
+If you are not yet an AgenticAdvertising.org member, the only path into the registry is through a member publisher's `adagents.json`. Ask the publisher to add your agent URL with the appropriate `authorized_for` value. The registry crawler runs on a regular schedule and will pick up the entry on its next pass.
+
+Self-registration without AgenticAdvertising.org membership is on the roadmap. A separate tracking issue will be filed once the trust-tier model for self-attested agents is decided.

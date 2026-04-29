@@ -89,7 +89,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
   "Agent Discovery": "Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.",
   "Change Feed": "Poll cursor-based registry change events for local sync.",
-  "Lookups & Authorization": "Look up agents by domain or property, and validate ad-serving authorization.",
+  "Authorization Lookups": "Look up agents by domain or property, and validate ad-serving authorization.",
   "Validation Tools": "Validate publisher adagents.json files and generate compliant configurations.",
   "Search": "Cross-entity search across brands, publishers, agents, and properties.",
   "Agent Probing": "Connect to live agents and inspect their capabilities, formats, and inventory.",
