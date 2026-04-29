@@ -3687,6 +3687,9 @@ export function createMemberToolHandlers(
     } catch (err) {
       logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
+    // Read legacy `adcp_version` here — `@adcp/client.ComplianceIndex`
+    // still types this field. Build emits both `adcp_version` and
+    // `published_version`; switch this consumer when @adcp/client updates.
     const docsVersion = index?.adcp_version || 'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 

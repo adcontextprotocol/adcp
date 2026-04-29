@@ -112,6 +112,20 @@ For operational visibility — "which build patch is this server on" — servers
 
 SDKs that internally key bundles using the full semver patch-precision string (e.g. `"3.1.0-beta.1"` as a bundle key) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting on the wire. Internal keying can stay exact; the wire is release-only by construction.
 
+#### `adcp_version` is overloaded — three layers
+
+The string `adcp_version` appears in three distinct places with three different meanings. Implementers MUST keep them straight:
+
+| Where | Field name | Precision | Example value | Source of truth |
+|---|---|---|---|---|
+| Per-request / per-response wire field | `adcp_version` | release-precision | `"3.1"`, `"3.1-beta"` | `core/version-envelope.json` |
+| Schema-registry / tarball-manifest / compliance-index meta-fields | `adcp_version` (legacy alias) and `published_version` (preferred) | full semver with patch | `"3.1.0-beta.1"` | npm `package.json`; written by `scripts/build-*.cjs` |
+| `extensions.adcp.adcp_version` (capability-only) | `adcp_version` | string | `"2.6.0"` | legacy pre-3.1 capability declaration; **deprecated**, removed in 4.0 |
+
+The wire field uses release-precision and is the only one that participates in negotiation. The meta-fields carry full semver because they describe *artifacts* (bundles, manifests, npm packages) that are versioned at full-semver precision. Reading a meta-field value and emitting it on the wire is a category error — normalize first.
+
+The `adcp_version` aliases on meta-objects are kept through 3.x for SDK compatibility (e.g. `@adcp/client.ComplianceIndex.adcp_version`); `published_version` is the preferred name. Both meta-aliases sunset in 4.0.
+
 #### `build_version` canonical format
 
 `build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9):

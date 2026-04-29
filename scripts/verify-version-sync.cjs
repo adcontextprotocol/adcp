@@ -19,11 +19,11 @@ const packageVersion = packageJson.version;
 // Read schema registry version
 const registryPath = path.join(__dirname, '../static/schemas/source/index.json');
 const schemaRegistry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-const schemaVersion = schemaRegistry.adcp_version;
+const schemaVersion = schemaRegistry.published_version;
 
 console.log('\n🔍 Verifying version synchronization...\n');
-console.log(`  package.json version:         ${packageVersion}`);
-console.log(`  schema registry adcp_version: ${schemaVersion}`);
+console.log(`  package.json version:               ${packageVersion}`);
+console.log(`  schema registry published_version:  ${schemaVersion}`);
 
 if (packageVersion !== schemaVersion) {
   console.error('\n❌ Version mismatch detected!\n');
