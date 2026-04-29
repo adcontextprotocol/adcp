@@ -442,6 +442,12 @@
                           "docs/brand-protocol/tasks/acquire_rights",
                           "docs/brand-protocol/tasks/update_rights"
                         ]
+                      },
+                      {
+                        "group": "Proposals",
+                        "pages": [
+                          "docs/brand-protocol/proposals/distributed-brand-json-rfc"
+                        ]
                       }
                     ]
                   },
