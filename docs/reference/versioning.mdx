@@ -30,13 +30,33 @@ Implementations built against 3.0 will continue to function against any 3.x rele
 
 ## Version negotiation
 
-When a seller supports multiple major versions simultaneously (e.g., during a v2→v3 migration), buyers and sellers negotiate using `get_adcp_capabilities`:
+Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Released-precision pinning lets buyer SDKs select which schemas they validate against, and lets sellers return responses shaped to the contract the buyer expects (Stripe model).
 
-1. **Seller advertises**: `adcp.major_versions` in the `get_adcp_capabilities` response lists all supported major versions (e.g., `[2, 3]`).
-2. **Buyer declares**: `adcp_major_version` on every request tells the seller which version the buyer's payloads conform to. The field is optional on all AdCP request schemas.
-3. **Seller validates**: If the declared version is outside the supported range, the seller returns `VERSION_UNSUPPORTED`. If omitted, the seller assumes its highest supported version.
+### Bidirectional negotiation (3.1+)
 
-This lets sellers upgrade first — declare multi-version support, and let buyers migrate on their own schedule.
+1. **Seller advertises**: `adcp.supported_versions` on the `get_adcp_capabilities` response lists all release-precision versions the seller speaks (e.g. `["3.0", "3.1"]`). `adcp.build_version` (e.g. `"3.1.2"`) is optional advisory metadata for incident triage — not part of the wire contract.
+2. **Buyer declares**: `adcp_version` (release-precision string) on every request tells the seller which release the buyer's payloads conform to. The field is optional on every AdCP request.
+3. **Server resolves**:
+   - Exact match → serve in that release.
+   - Same major, server's max release < buyer's pin → downshift to the highest supported release ≤ the pin.
+   - Same major, server's min release > buyer's pin → serve the buyer's pin (server downshifts to the buyer's contract).
+   - Different major → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
+   - Omitted → server uses its default release.
+4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. Buyers SHOULD validate the response against that release's schema, not against their pin.
+
+This lets buyers and sellers upgrade independently — sellers can declare multi-release support, and buyers can pin to a specific release without coordinating their migration.
+
+### Patches are not negotiated
+
+Per the three-tier model, patches by definition introduce no contract change — they're bug fixes. The wire negotiation field (`adcp_version`) uses release precision only. Servers MAY surface their build patch via the optional `build_version` capability for operational visibility, but buyers MUST NOT use it for negotiation.
+
+### Major-precision negotiation (deprecated, kept through 3.x)
+
+The legacy `adcp_major_version` (integer per-request) and `adcp.major_versions` (integer array on capabilities) remain functional through 3.x for backwards compatibility. New buyers and sellers SHOULD prefer release-precision negotiation. Both legacy fields are removed in 4.0.
+
+When only major-precision is provided:
+- Buyer sends `adcp_major_version: 3` → server serves the highest supported release in major 3.
+- Server emits `adcp.major_versions: [3]` → buyer can negotiate at major precision but loses release-level information.
 
 ### Features over versions
 

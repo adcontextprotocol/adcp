@@ -5,6 +5,17 @@
   "description": "Response payload for get_media_buy_delivery task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
     "notification_type": {
       "type": "string",
       "enum": [
@@ -132,7 +143,11 @@
           "minimum": 0
         },
         "reach_unit": {
-          "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/enums/reach-unit.json"
+            }
+          ],
           "description": "Unit of measurement for reach. Only present when all aggregated media buys use the same reach_unit."
         },
         "frequency": {
@@ -272,13 +287,20 @@
                       "type": "string",
                       "maxLength": 50,
                       "description": "Which measurement window this data represents, referencing a window_id from the product's reporting_capabilities.measurement_windows. For broadcast: 'live', 'c3', 'c7'. When absent, the data is not windowed (standard digital reporting). When present with is_final: false, a later report for the same period will provide a wider window or more complete data.",
-                      "examples": ["live", "c3", "c7"]
+                      "examples": [
+                        "live",
+                        "c3",
+                        "c7"
+                      ]
                     },
                     "supersedes_window": {
                       "type": "string",
                       "maxLength": 50,
                       "description": "Which measurement window this data replaces. Present on window_update notifications to indicate progression (e.g., 'live' when reporting C3 data that supersedes live-only numbers). Absent on the first report for a period. Buyers should replace stored data for the superseded window with this report's data.",
-                      "examples": ["live", "c3"]
+                      "examples": [
+                        "live",
+                        "c3"
+                      ]
                     },
                     "missing_metrics": {
                       "type": "array",
@@ -289,8 +311,13 @@
                       "uniqueItems": true,
                       "examples": [
                         [],
-                        ["completed_views"],
-                        ["completed_views", "engagements"]
+                        [
+                          "completed_views"
+                        ],
+                        [
+                          "completed_views",
+                          "engagements"
+                        ]
                       ]
                     },
                     "by_catalog_item": {
@@ -356,7 +383,7 @@
                     },
                     "by_keyword": {
                       "type": "array",
-                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair \u2014 the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
+                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
                         "allOf": [
                           {

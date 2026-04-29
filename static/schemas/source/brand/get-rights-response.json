@@ -45,12 +45,16 @@
               "match_reasons": {
                 "type": "array",
                 "description": "Human-readable reasons for the match",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               },
               "available_uses": {
                 "type": "array",
                 "description": "Rights uses available for licensing",
-                "items": { "$ref": "/schemas/enums/right-use.json" }
+                "items": {
+                  "$ref": "/schemas/enums/right-use.json"
+                }
               },
               "countries": {
                 "type": "array",
@@ -79,7 +83,9 @@
                   "existing_exclusives": {
                     "type": "array",
                     "description": "Active exclusivity commitments that may affect availability. Implementers should use vague descriptions ('exclusive commitment in this category') rather than specific deal terms to protect confidential business relationships.",
-                    "items": { "type": "string" }
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": true
@@ -95,7 +101,9 @@
               "content_restrictions": {
                 "type": "array",
                 "description": "Content restrictions or approval requirements",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               },
               "preview_assets": {
                 "type": "array",
@@ -103,15 +111,28 @@
                 "items": {
                   "type": "object",
                   "properties": {
-                    "url": { "type": "string", "format": "uri" },
-                    "usage": { "type": "string" }
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "usage": {
+                      "type": "string"
+                    }
                   },
-                  "required": ["url"],
+                  "required": [
+                    "url"
+                  ],
                   "additionalProperties": true
                 }
               }
             },
-            "required": ["rights_id", "brand_id", "name", "available_uses", "pricing_options"],
+            "required": [
+              "rights_id",
+              "brand_id",
+              "name",
+              "available_uses",
+              "pricing_options"
+            ],
             "additionalProperties": true
           }
         },
@@ -121,8 +142,13 @@
           "items": {
             "type": "object",
             "properties": {
-              "brand_id": { "type": "string", "x-entity": "rights_holder_brand" },
-              "name": { "type": "string" },
+              "brand_id": {
+                "type": "string",
+                "x-entity": "rights_holder_brand"
+              },
+              "name": {
+                "type": "string"
+              },
               "reason": {
                 "type": "string",
                 "description": "Why this result was excluded. May be sanitized to protect confidential brand rules."
@@ -130,10 +156,15 @@
               "suggestions": {
                 "type": "array",
                 "description": "Actionable alternatives if the exclusion is fixable (e.g., 'Available in BE and DE markets'). Absent if the exclusion is final.",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               }
             },
-            "required": ["brand_id", "reason"],
+            "required": [
+              "brand_id",
+              "reason"
+            ],
             "additionalProperties": true
           }
         },
@@ -144,16 +175,24 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights"],
+      "required": [
+        "rights"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "GetRightsError",
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "minItems": 1
         },
         "context": {
@@ -163,13 +202,32 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["rights"] }
+          {
+            "required": [
+              "rights"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    }
+  }
 }

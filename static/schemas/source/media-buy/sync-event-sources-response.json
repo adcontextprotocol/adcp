@@ -42,7 +42,10 @@
               },
               "managed_by": {
                 "type": "string",
-                "enum": ["buyer", "seller"],
+                "enum": [
+                  "buyer",
+                  "seller"
+                ],
                 "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {
@@ -55,7 +58,12 @@
                   },
                   "snippet_type": {
                     "type": "string",
-                    "enum": ["javascript", "html", "pixel_url", "server_only"],
+                    "enum": [
+                      "javascript",
+                      "html",
+                      "pixel_url",
+                      "server_only"
+                    ],
                     "description": "Type of implementation. 'server_only' means no client-side tag is needed."
                   },
                   "instructions": {
@@ -67,7 +75,13 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["created", "updated", "unchanged", "deleted", "failed"],
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "deleted",
+                  "failed"
+                ],
                 "description": "Action taken for this event source"
               },
               "health": {
@@ -82,7 +96,10 @@
                 }
               }
             },
-            "required": ["event_source_id", "action"],
+            "required": [
+              "event_source_id",
+              "action"
+            ],
             "additionalProperties": true
           }
         },
@@ -97,10 +114,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["event_sources"],
+      "required": [
+        "event_sources"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -123,14 +144,37 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["event_sources"] },
-          { "required": ["sandbox"] }
+          {
+            "required": [
+              "event_sources"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    }
+  }
 }
