@@ -31,7 +31,7 @@
     "dooh_metrics",
     "cost_per_click",
     "cost_per_completed_view",
-    "cost_per_thousand",
+    "cpm",
     "downloads",
     "units_sold",
     "new_to_brand_units"
