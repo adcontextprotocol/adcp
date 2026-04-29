@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/creative-rejected.json",
-  "title": "CreativeRejectedDetails",
+  "title": "Creative Rejected Details",
   "description": "Recommended details shape for CREATIVE_REJECTED errors. Provides policy reference and rejection reasons so agents can revise.",
   "type": "object",
   "properties": {

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/budget-too-low.json",
-  "title": "BudgetTooLowDetails",
+  "title": "Budget Too Low Details",
   "description": "Recommended details shape for BUDGET_TOO_LOW errors. Provides the seller's minimum budget so agents can adjust.",
   "type": "object",
   "properties": {

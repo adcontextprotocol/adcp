@@ -1,21 +1,23 @@
 ---
 ---
 
-spec(schemas): PascalCase titles on error-details schemas (partial fix for #3145)
+spec(schemas): Title Case titles on error-details schemas (partial fix for #3145)
 
-Six `static/schemas/source/error-details/*.json` files carry SCREAMING_SNAKE titles that propagate awkwardly through `json-schema-to-typescript` into `@adcp/client`'s public type surface (e.g., `RATE_LIMITEDDetails_ScopeValues`). Renames to PascalCase:
+Six `static/schemas/source/error-details/*.json` files carry SCREAMING_SNAKE titles that propagate awkwardly through `json-schema-to-typescript` into `@adcp/client`'s public type surface (e.g., `RATE_LIMITEDDetails_ScopeValues`). Renames to Title Case with spaces, matching the precedent set by PR #3149 for `rate-limited.json`:
 
 | File | Old title | New title |
 |---|---|---|
-| `account-setup-required.json` | `ACCOUNT_SETUP_REQUIRED Details` | `AccountSetupRequiredDetails` |
-| `audience-too-small.json` | `AUDIENCE_TOO_SMALL Details` | `AudienceTooSmallDetails` |
-| `budget-too-low.json` | `BUDGET_TOO_LOW Details` | `BudgetTooLowDetails` |
-| `conflict.json` | `CONFLICT Details` | `ConflictDetails` |
-| `creative-rejected.json` | `CREATIVE_REJECTED Details` | `CreativeRejectedDetails` |
-| `policy-violation.json` | `POLICY_VIOLATION Details` | `PolicyViolationDetails` |
+| `account-setup-required.json` | `ACCOUNT_SETUP_REQUIRED Details` | `Account Setup Required Details` |
+| `audience-too-small.json` | `AUDIENCE_TOO_SMALL Details` | `Audience Too Small Details` |
+| `budget-too-low.json` | `BUDGET_TOO_LOW Details` | `Budget Too Low Details` |
+| `conflict.json` | `CONFLICT Details` | `Conflict Details` |
+| `creative-rejected.json` | `CREATIVE_REJECTED Details` | `Creative Rejected Details` |
+| `policy-violation.json` | `POLICY_VIOLATION Details` | `Policy Violation Details` |
 
-`rate-limited.json` already had PascalCase (`Rate Limited Details`) so no change there.
+`rate-limited.json` (`Rate Limited Details`) and `vendor-error-codes.json` (`Vendor Error Code Registry`) already used this style.
 
-Schema `$id` values (the wire identifiers) are unchanged — `$id` keeps using kebab-case file paths. The `title` field affects only generated TypeScript names. No wire-format change.
+`json-schema-to-typescript` strips whitespace when generating TypeScript identifiers, so codegen output is `AccountSetupRequiredDetails` etc. — same as the no-spaces form would produce. The spaces are kept in source so the directory's 8 files share one style (precedent set by #3149).
 
-**Partial fix**: this addresses the SCREAMING_SNAKE half of #3145. The other half — `Foo1`-suffixed enum dupes (`AgeVerificationMethod1`, `BriefAsset1`, `VASTAsset1`, `DAASTAsset1`, `CatalogAsset1`) — is downstream codegen behavior in `json-schema-to-typescript` reaching the same enum through different schema paths. The shared `$ref` is already in place upstream (e.g., both `targeting.json` and `get-adcp-capabilities-response.json` use `$ref: /schemas/enums/age-verification-method.json` to reach the same `$id`), so the dedup needs SDK-side post-process renaming. Tracked SDK-side in adcp-client#942.
+Schema `$id` values (the wire identifiers) are unchanged. The `title` field is non-normative per JSON Schema draft-07 §10.1 — it controls only docgen / codegen output. No wire-format change.
+
+**Partial fix**: this addresses the SCREAMING_SNAKE half of #3145. The other half — `Foo1`-suffixed enum dupes (`AgeVerificationMethod1`, `BriefAsset1`, `VASTAsset1`, `DAASTAsset1`, `CatalogAsset1`) — is downstream codegen behavior in `json-schema-to-typescript` reaching the same enum through different schema paths. The shared `$ref` is already in place upstream, so the dedup needs SDK-side post-process renaming. Tracked SDK-side (will be opened as a follow-up after this and the related VALIDATION_ERROR `issues[]` PR land).
