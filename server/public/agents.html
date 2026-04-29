@@ -488,6 +488,7 @@
                 <div class="filter-group">
                     <label>Type:</label>
                     <button class="filter-btn active" data-type="all" onclick="setTypeFilter('all')">All</button>
+                    <button class="filter-btn" data-type="sales" onclick="setTypeFilter('sales')">Sales</button>
                     <button class="filter-btn" data-type="buying" onclick="setTypeFilter('buying')">Buying</button>
                     <button class="filter-btn" data-type="creative" onclick="setTypeFilter('creative')">Creative</button>
                     <button class="filter-btn" data-type="signals" onclick="setTypeFilter('signals')">Signals</button>
@@ -604,10 +605,18 @@
     }
 
     function typeLabel(type) {
+        if (type === 'sales') return 'Sales';
         if (type === 'buying') return 'Buying';
         if (type === 'creative') return 'Creative';
         if (type === 'signals') return 'Signals';
         return 'Unclassified';
+    }
+
+    // Sales agents (sell-side, expose get_products / create_media_buy) and
+    // buying agents (buy-side) share the same commerce-tool surface — publishers,
+    // properties, products, AdCP spec checks all apply to both.
+    function isCommerceType(type) {
+        return type === 'sales' || type === 'buying';
     }
 
     function renderAgents() {
@@ -685,7 +694,7 @@
                 `;
             }
 
-            if (agent.type === 'buying' && agent.properties.length > 0) {
+            if (isCommerceType(agent.type) && agent.properties.length > 0) {
                 metaHtml += `
                     <div class="meta-item">
                         <span class="meta-value">${agent.properties.length}</span> properties
@@ -737,7 +746,7 @@
 
             let extrasHtml = '';
 
-            if (agent.type === 'buying' && agent.properties.length > 0) {
+            if (isCommerceType(agent.type) && agent.properties.length > 0) {
                 extrasHtml = `
                     <div class="agent-properties">
                         <div class="property-section-small">
@@ -913,7 +922,7 @@
             if (agentWithCaps?.capabilities) {
                 const caps = agentWithCaps.capabilities;
 
-                if (agent.type === 'buying' && caps.tools) {
+                if (isCommerceType(agent.type) && caps.tools) {
                     const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
                     const coreTools = ['get_products', 'create_media_buy', 'update_media_buy', 'get_media_buy_delivery'];
                     const optionalTools = ['sync_creatives', 'list_authorized_properties', 'list_creative_formats', 'build_creative'];
@@ -1001,7 +1010,7 @@
             }
 
             // Type-specific sections
-            if (agent.type === 'buying') {
+            if (isCommerceType(agent.type)) {
                 html += `
                     <div class="detail-section">
                         <h3>Publishers &amp; properties</h3>
@@ -1078,7 +1087,7 @@
 
             // Fetch tools and additional data
             fetchTools(agent);
-            if (agent.type === 'buying') {
+            if (isCommerceType(agent.type)) {
                 fetchPublishers(agent);
 
                 const productsDetails = document.querySelector('#products-section').closest('details');
