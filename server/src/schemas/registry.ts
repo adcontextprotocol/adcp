@@ -166,8 +166,12 @@ const DiscoveredFromSchema = z.object({
  */
 const EndorsedByPublisherMemberSchema = z
   .object({
-    slug: z.string().optional(),
-    display_name: z.string().optional(),
+    slug: z
+      .string()
+      .openapi({ description: "Member organization slug — stable URL-safe identifier for the publisher member." }),
+    display_name: z
+      .string()
+      .openapi({ description: "Member organization display name — render-ready label for the publisher member." }),
     publisher_domain: z
       .string()
       .openapi({ description: "Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal)." }),
