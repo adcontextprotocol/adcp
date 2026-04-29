@@ -11,9 +11,12 @@ import {
   type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
 
-// These tests require a running PostgreSQL instance (integration tests).
-// Skip in unit test context; run with DATABASE_URL set in integration test env.
-describe.skipIf(!process.env.DATABASE_URL)('ThreadService Unit Tests', () => {
+// These tests require a running PostgreSQL instance. Lives in integration/
+// so the build-check.yml server-integration job picks them up; the skipIf
+// stays as defense-in-depth so a developer running this file outside the
+// integration job without DATABASE_URL set sees a clean skip rather than
+// a connection error.
+describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', () => {
   let pool: Pool;
   let threadService: ThreadService;
   const TEST_THREAD_EXTERNAL_ID = 'test-channel:test-thread-ts';
