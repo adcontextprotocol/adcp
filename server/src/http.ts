@@ -49,7 +49,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -108,6 +108,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
@@ -1011,6 +1012,12 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+
+    // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.json(getPublicJwks());
+    });
 
     // Mount property catalog API routes (resolve, browse, sync, disputes)
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
@@ -6066,8 +6073,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         safeReturnTo = return_to;
       }
 
-      // Set dev session cookie
-      res.cookie(getDevSessionCookieName(), user, {
+      // Set dev session cookie. Value is HMAC-signed with a per-process
+      // secret so a cookie minted on someone else's box (or set by an
+      // attacker via XSS / sibling-subdomain) is rejected on read.
+      res.cookie(getDevSessionCookieName(), encodeDevSessionCookie(user), {
         httpOnly: true,
         secure: false, // Dev mode is always HTTP on localhost
         sameSite: 'lax',
@@ -8522,7 +8531,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Initialize database
     const { initializeDatabase, onPoolError } = await import("./db/client.js");
-    const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
@@ -8535,7 +8543,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       notifySystemError({ source: 'database-pool', errorMessage: 'Database pool error — check application logs' });
     });
 
-    await runMigrations();
+    // Migrations run once per deploy via fly.toml `release_command`, and
+    // for local/docker via RUN_MIGRATIONS=true in index.ts. Don't run them
+    // here — every machine doing it during a rolling deploy exhausts pg
+    // connection slots.
 
     // Validate the idempotency backend can actually query its table — fails
     // fast on a stale pool, missing migration, or wrong-credentials boot

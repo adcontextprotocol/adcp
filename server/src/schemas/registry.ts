@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { ADCP_PROTOCOLS, ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
@@ -260,8 +261,25 @@ export const AgentComplianceSchema = z
     headline: z.string().nullable(),
     monitoring_paused: z.boolean().optional(),
     check_interval_hours: z.number().int().optional(),
+    verified: z.boolean().optional(),
+    verified_roles: z.array(z.enum(ADCP_PROTOCOLS as [string, ...string[]])).optional()
+      .openapi({ description: "AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json." }),
   })
   .openapi("AgentCompliance");
+
+export const VerificationBadgeSchema = z
+  .object({
+    role: z.enum(ADCP_PROTOCOLS as [string, ...string[]])
+      .openapi({ description: "AdCP protocol this badge covers (enums/adcp-protocol.json)." }),
+    verified_at: z.string(),
+    verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
+      .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
+    verification_modes: z.array(z.enum(VERIFICATION_MODES as readonly [string, ...string[]])).min(1)
+      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
+    verified_protocol_version: z.string().nullable(),
+    badge_url: z.string().optional(),
+  })
+  .openapi("VerificationBadge");
 
 export const AgentComplianceDetailSchema = z
   .object({
@@ -278,8 +296,19 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    verified: z.boolean().optional(),
+    verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
   .openapi("AgentComplianceDetail");
+
+export const AgentVerificationSchema = z
+  .object({
+    agent_url: z.string(),
+    verified: z.boolean(),
+    badges: z.array(VerificationBadgeSchema),
+    registry_url: z.string().optional(),
+  })
+  .openapi("AgentVerification");
 
 export const StoryboardStatusSchema = z
   .object({

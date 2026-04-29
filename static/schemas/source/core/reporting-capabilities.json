@@ -59,6 +59,25 @@
         ]
       ]
     },
+    "vendor_metrics": {
+      "type": "array",
+      "description": "Vendor-defined metrics this product can report, beyond the closed `available_metrics` enum. Each entry is a pointer (`{ vendor, metric_id }`) into the vendor's metric catalog — category, standard alignment, methodology, and human-readable documentation live on the vendor's `brand.json` (`agents[type='measurement']`), queried once per vendor when needed. Use this for proprietary metrics like attention scores, emissions, panel-based demographics, or platform-native social metrics not yet in the standard enum. Sellers populate values in delivery via `delivery-metrics.json#/properties/vendor_metric_values`. The metric is identified by the tuple `(vendor, metric_id)`; identifiers are namespaced by the vendor, so the same `metric_id` may mean different things in different vendors' vocabularies. Semantic uniqueness key is `(vendor.domain, vendor.brand_id, metric_id)`; sellers MUST de-duplicate before emission and MUST NOT declare the same vendor metric twice. Buyers MAY treat duplicate `(vendor, metric_id)` rows as a seller-side conformance bug. (JSON Schema `uniqueItems` is not used here because BrandRef carries optional fields whose absence/presence would defeat deep-equal — uniqueness is on the semantic key, enforced at build/validation time on the seller side.) Promotion path: when the industry converges on a metric via a published standard, the spec adds it to the closed `available_metrics` enum and the vendor extensions become historical aliases.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Vendor that defines and computes this metric. The vendor's `brand.json` is the discovery anchor for the measurement agent (entry with `type: 'measurement'` in the `agents[]` array), the metric's category and standard alignment, and methodology — none of those are duplicated inline here."
+          },
+          "metric_id": {
+            "$ref": "/schemas/core/vendor-metric-id.json",
+            "description": "Identifier for the metric within the vendor's vocabulary (e.g., `attention_units`, `gco2e_per_impression`, `demographic_reach`)."
+          }
+        },
+        "required": ["vendor", "metric_id"],
+        "additionalProperties": false
+      }
+    },
     "supports_creative_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
