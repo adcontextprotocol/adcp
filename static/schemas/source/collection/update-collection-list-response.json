@@ -4,6 +4,11 @@
   "title": "Update Collection List Response",
   "description": "Response payload for update_collection_list task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "list": {
       "$ref": "/schemas/collection/collection-list.json",

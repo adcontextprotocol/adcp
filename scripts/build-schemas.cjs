@@ -470,6 +470,12 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       // Update baseUrl and metadata in registry
       if (entry.name === 'index.json') {
         const schema = JSON.parse(content);
+        // published_version: full semver of the bundle at this URL.
+        // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility;
+        // semantically the same as published_version on this meta-object.
+        // DISTINCT from the per-request/response wire `adcp_version` field defined
+        // in core/version-envelope.json, which uses release-precision.
+        schema.published_version = version;
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
@@ -488,7 +494,8 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
 function updateSourceRegistry(version) {
   const registryPath = path.join(SOURCE_DIR, 'index.json');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  registry.adcp_version = version;
+  registry.published_version = version;
+  registry.adcp_version = version; // legacy alias through 3.x; sunset at 4.0
   fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   console.log(`✏️  Updated source registry: ${registryPath}`);
 }

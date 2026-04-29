@@ -4,6 +4,11 @@
   "title": "List Creative Formats Response",
   "description": "Response payload for list_creative_formats task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "formats": {
       "type": "array",

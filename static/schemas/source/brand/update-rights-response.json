@@ -3,8 +3,13 @@
   "$id": "/schemas/brand/update-rights-response.json",
   "title": "Update Rights Response",
   "description": "Result of a rights update request. Returns updated terms and re-issued credentials on success, or errors if the update cannot be applied.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "oneOf": [
     {
       "title": "UpdateRightsSuccess",
@@ -34,7 +39,10 @@
           "description": "Whether the grant is currently paused. Included when the update changes pause state."
         },
         "implementation_date": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "format": "date-time",
           "description": "When changes take effect (null if pending approval from rights holder)"
         },
@@ -45,16 +53,25 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights_id", "terms"],
+      "required": [
+        "rights_id",
+        "terms"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "UpdateRightsError",
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "minItems": 1
         },
         "context": {
@@ -64,14 +81,25 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["rights_id"] },
-          { "required": ["terms"] }
+          {
+            "required": [
+              "rights_id"
+            ]
+          },
+          {
+            "required": [
+              "terms"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

@@ -379,7 +379,12 @@ function generateIndex(version, sourceDir) {
     path: d.path.replace(/^protocols\//, 'domains/'),
   }));
 
+  // published_version: full semver of this compliance bundle.
+  // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility
+  // (ComplianceIndex.adcp_version). Both carry full semver; distinct from the
+  // wire field in core/version-envelope.json (release-precision).
   return {
+    published_version: version,
     adcp_version: version,
     generated_at: new Date().toISOString(),
     universal,
