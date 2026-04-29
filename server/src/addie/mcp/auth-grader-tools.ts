@@ -2,7 +2,7 @@
  * Addie auth grader tools.
  *
  * `diagnose_agent_auth` wraps the public `runAuthDiagnosis` export from
- * `@adcp/client/auth`. `grade_agent_signing` shells out to the CLI's
+ * `@adcp/sdk/auth`. `grade_agent_signing` shells out to the CLI's
  * `grade request-signing` subcommand because the underlying
  * `gradeRequestSigning` function isn't yet on the package's public export
  * surface — follow-up issue tracks promoting it. The same CLI is what users
@@ -17,28 +17,28 @@ import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/client/auth';
+import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/sdk/auth';
 import type { AddieTool } from '../types.js';
-import type { AgentConfig } from '@adcp/client/types';
+import type { AgentConfig } from '@adcp/sdk/types';
 import { createLogger } from '../../logger.js';
 import { sanitizeUrl, validateFetchUrl } from '../../utils/url-security.js';
 
 const execFileAsync = promisify(execFile);
 
-// Resolve the bundled @adcp/client CLI from node_modules so the grader runs
-// the same version the server depends on. Avoids `npx @adcp/client@latest`,
+// Resolve the bundled @adcp/sdk CLI from node_modules so the grader runs
+// the same version the server depends on. Avoids `npx @adcp/sdk@latest`,
 // which would pull a fresh tarball from the registry on every call — a
 // live supply-chain hole if a malicious release ever shipped.
 //
-// The package's `exports` map blocks importing `@adcp/client/package.json`,
+// The package's `exports` map blocks importing `@adcp/sdk/package.json`,
 // so we resolve the main entry (which IS in exports) and walk up to the
 // package root. Tied to the package layout (main = `dist/lib/index.js`);
 // upstream changing that requires a major bump per semver, so the walk-up
 // distance is stable enough for now.
 const requireFromHere = createRequire(import.meta.url);
 const ADCP_CLIENT_BIN = (() => {
-  const mainEntry = requireFromHere.resolve('@adcp/client');
-  // .../node_modules/@adcp/client/dist/lib/index.js → .../node_modules/@adcp/client
+  const mainEntry = requireFromHere.resolve('@adcp/sdk');
+  // .../node_modules/@adcp/sdk/dist/lib/index.js → .../node_modules/@adcp/sdk
   const pkgRoot = path.resolve(mainEntry, '..', '..', '..');
   return path.join(pkgRoot, 'bin', 'adcp.js');
 })();
@@ -49,7 +49,7 @@ type ContentDigestMode = 'either' | 'required' | 'forbidden';
 
 /** Cap response body size at 64 KiB — capabilities responses are tiny; anything
  * larger is either a misbehaving agent or an attempted memory-exhaustion against
- * the prod server. Mirrors `@adcp/client`'s `ssrfSafeFetch` default. */
+ * the prod server. Mirrors `@adcp/sdk`'s `ssrfSafeFetch` default. */
 const PROBE_BODY_CAP_BYTES = 64 * 1024;
 
 /**
@@ -108,7 +108,7 @@ async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMo
 
 /**
  * Vectors whose `verifier_capability.covers_content_digest` clashes with
- * the declared agent mode. Hardcoded against `@adcp/client`@5.21.x test
+ * the declared agent mode. Hardcoded against `@adcp/sdk`@5.21.x test
  * vectors — extend when new content-digest vectors land. The grader's
  * in-process `agentCapability` option does this comparison automatically;
  * this is the CLI-side reimplementation.
@@ -190,7 +190,7 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
     description:
       "Diagnose an agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works.",
     usage_hints:
-      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token the user can run `npx @adcp/client diagnose-auth <alias>` locally — point them there if a token-aware probe is needed.',
+      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token the user can run `npx @adcp/sdk diagnose-auth <alias>` locally — point them there if a token-aware probe is needed.',
     input_schema: {
       type: 'object',
       properties: {
@@ -220,7 +220,7 @@ export function createAuthGraderToolHandlers(): Map<
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    // Run the bundled @adcp/client CLI's `grade request-signing --json`.
+    // Run the bundled @adcp/sdk CLI's `grade request-signing --json`.
     // The underlying `gradeRequestSigning` isn't on the package's public
     // export surface yet, so we shell out — but we shell out to the CLI
     // installed in node_modules under the version pinned by package.json,
@@ -325,12 +325,12 @@ export function createAuthGraderToolHandlers(): Map<
 }
 
 /**
- * Mirror of `@adcp/client`'s `GradeReport` / `VectorGradeResult` types. We
+ * Mirror of `@adcp/sdk`'s `GradeReport` / `VectorGradeResult` types. We
  * parse the CLI's `--json` stdout into this shape rather than importing the
  * upstream type because the type lives behind the same internal subpath the
  * runtime export does. Keep field names in sync with
- * `@adcp/client/dist/lib/testing/storyboard/request-signing/grader.d.ts`.
- * Verified against @adcp/client@5.21.x; will move to a public type import
+ * `@adcp/sdk/dist/lib/testing/storyboard/request-signing/grader.d.ts`.
+ * Verified against @adcp/sdk@5.21.x; will move to a public type import
  * once the upstream PR promotes it.
  */
 interface VectorGradeResult {
@@ -451,7 +451,7 @@ function formatAuthDiagnosisReport(report: AuthDiagnosisReport): string {
 
   lines.push(
     '',
-    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `npx @adcp/client diagnose-auth <alias>` locally.'
+    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `npx @adcp/sdk diagnose-auth <alias>` locally.'
   );
   return lines.join('\n');
 }

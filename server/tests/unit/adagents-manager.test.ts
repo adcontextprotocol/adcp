@@ -721,11 +721,11 @@ describe('AdAgentsManager', () => {
       });
 
       // vi.doMock does not intercept dynamic imports inside the SUT.
-      // The MCP path tries to use the real @adcp/client which will fail.
+      // The MCP path tries to use the real @adcp/sdk which will fail.
       // This test validates that combined error reporting works when both A2A and MCP fail.
       const results = await manager.validateAgentCards(agents);
 
-      // With the real @adcp/client unable to connect, MCP validation will fail
+      // With the real @adcp/sdk unable to connect, MCP validation will fail
       // and the result captures errors from both protocols
       expect(results[0].valid).toBe(false);
       expect(results[0].errors.some((e) => e.includes('A2A') || e.includes('agent card'))).toBe(true);

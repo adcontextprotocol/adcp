@@ -1,7 +1,7 @@
 /**
  * Storyboard service
  *
- * Thin wrapper around @adcp/client's compliance cache.
+ * Thin wrapper around @adcp/sdk's compliance cache.
  * Storyboard YAML definitions live under `compliance/cache/{version}/`
  * after `npm run sync-schemas`; this module reads from there and adds
  * test-kit loading (test kits sit alongside the storyboards in the cache).
@@ -14,20 +14,20 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   getComplianceCacheDir,
-} from '@adcp/client/testing';
-import type { Storyboard } from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
+import type { Storyboard } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('storyboards');
 
-// ── Re-export types from @adcp/client ───────────────────────────
+// ── Re-export types from @adcp/sdk ───────────────────────────
 
 export type {
   Storyboard,
   StoryboardPhase,
   StoryboardStep,
   StoryboardValidation,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 
 // ── Test Kit types & loading ────────────────────────────────────
 

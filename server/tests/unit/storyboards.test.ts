@@ -12,7 +12,7 @@ import {
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
  * (which storyboards exist, their tasks, phases, etc.) is owned upstream by
- * @adcp/client's compliance cache; upstream has its own catalog tests.
+ * @adcp/sdk's compliance cache; upstream has its own catalog tests.
  */
 
 describe('listStoryboards', () => {

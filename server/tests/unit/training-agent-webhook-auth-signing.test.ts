@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { enforceSigningWhenWebhookAuthPresent } from '../../src/training-agent/request-signing.js';
-import { AuthError } from '@adcp/client/server';
-import { RequestSignatureError } from '@adcp/client/signing';
-import type { Authenticator } from '@adcp/client/server';
+import { AuthError } from '@adcp/sdk/server';
+import { RequestSignatureError } from '@adcp/sdk/signing';
+import type { Authenticator } from '@adcp/sdk/server';
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}): Parameters<Authenticator>[0] {
   const raw = typeof body === 'string' ? body : JSON.stringify(body);

@@ -13,7 +13,7 @@
  *   - "(root): Invalid input"
  */
 import { describe, it, expect } from 'vitest';
-import { unwrapProtocolResponse, isAdcpError } from '@adcp/client';
+import { unwrapProtocolResponse, isAdcpError } from '@adcp/sdk';
 
 /**
  * Wrap AdCP data in an MCP CallToolResult envelope (content[0].text).
@@ -26,7 +26,7 @@ function wrapInMCPEnvelope(data: object) {
 }
 
 /**
- * Behavioral spec for TaskExecutor.extractResponseData in @adcp/client.
+ * Behavioral spec for TaskExecutor.extractResponseData in @adcp/sdk.
  * Defined here (not imported) because extractResponseData is a private method.
  * Guards the retry-without-toolName contract: if schema validation fails,
  * the envelope should still be stripped before returning data.

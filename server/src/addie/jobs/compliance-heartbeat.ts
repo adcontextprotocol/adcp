@@ -1,7 +1,7 @@
 /**
  * Compliance Heartbeat Job
  *
- * Runs comply() from @adcp/client against registered agents on a schedule.
+ * Runs comply() from @adcp/sdk against registered agents on a schedule.
  * Updates compliance status and triggers notifications on status transitions.
  */
 
