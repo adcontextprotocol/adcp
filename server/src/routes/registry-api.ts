@@ -29,7 +29,7 @@ import {
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
-import { isApiAccessTier, isActiveSubscriptionStatus, tierLabel } from "../services/membership-tiers.js";
+import { resolveOwnerMembership } from "../services/membership-tiers.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -3739,7 +3739,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Agent Compliance Endpoints ──────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, optAuth, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
@@ -3828,39 +3828,33 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       // Owner-only diagnostic: surface the agent owner's membership tier so
       // the dashboard can render "Your tier: X — eligible/not eligible"
-      // instead of asking the developer to guess. Only populated when the
-      // request is authenticated AND the user owns the agent — cross-org
-      // viewers (or anonymous registry browsers) see neither field.
-      let ownerMembership: {
-        membership_tier: string | null;
-        membership_tier_label: string | null;
-        subscription_status: string | null;
-        is_api_access_tier: boolean;
-      } | null = null;
+      // instead of asking the developer to guess. The four fields are
+      // always emitted (with `null`/`false` defaults) so a non-owner can't
+      // detect ownership via `Object.keys()` shape comparison.
       const userId = req.user?.id;
-      if (userId) {
-        try {
-          const ownerOrgId = await resolveAgentOwnerOrg(userId, agentUrl);
-          if (ownerOrgId) {
+      let ownerMembership;
+      try {
+        ownerMembership = await resolveOwnerMembership(userId, agentUrl, {
+          resolveOwnerOrgId: resolveAgentOwnerOrg,
+          fetchOrgMembership: async (orgId) => {
             const orgRow = await query<{ membership_tier: string | null; subscription_status: string | null }>(
               `SELECT membership_tier, subscription_status
                FROM organizations
                WHERE workos_organization_id = $1
                LIMIT 1`,
-              [ownerOrgId],
+              [orgId],
             );
-            const tier = orgRow.rows[0]?.membership_tier ?? null;
-            const subStatus = orgRow.rows[0]?.subscription_status ?? null;
-            ownerMembership = {
-              membership_tier: tier,
-              membership_tier_label: tierLabel(tier),
-              subscription_status: subStatus,
-              is_api_access_tier: isApiAccessTier(tier) && isActiveSubscriptionStatus(subStatus),
-            };
-          }
-        } catch (err) {
-          logger.warn({ err, agentUrl }, "Owner membership lookup failed");
-        }
+            return orgRow.rows[0] ?? null;
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, agentUrl, userId }, "Owner membership lookup failed");
+        ownerMembership = {
+          membership_tier: null,
+          membership_tier_label: null,
+          subscription_status: null,
+          is_api_access_tier: false,
+        };
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
@@ -3882,15 +3876,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
-        // Membership tier fields are owner-scoped — only present when the
-        // authenticated viewer owns the agent. Anonymous and cross-org
-        // viewers see neither field.
-        ...(ownerMembership && {
-          membership_tier: ownerMembership.membership_tier,
-          membership_tier_label: ownerMembership.membership_tier_label,
-          subscription_status: ownerMembership.subscription_status,
-          is_api_access_tier: ownerMembership.is_api_access_tier,
-        }),
+        // Owner-scoped: content is null/false for anonymous and cross-org
+        // viewers, populated only when the authenticated viewer owns the
+        // agent. Keys are always present so non-owners can't detect
+        // ownership via response shape. See `resolveOwnerMembership`.
+        membership_tier: ownerMembership.membership_tier,
+        membership_tier_label: ownerMembership.membership_tier_label,
+        subscription_status: ownerMembership.subscription_status,
+        is_api_access_tier: ownerMembership.is_api_access_tier,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,

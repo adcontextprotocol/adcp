@@ -63,3 +63,60 @@ export function tierLabel(tier: string | null | undefined): string | null {
   if (!tier) return null;
   return TIER_LABELS[tier] ?? tier;
 }
+
+export interface OwnerMembership {
+  membership_tier: string | null;
+  membership_tier_label: string | null;
+  subscription_status: string | null;
+  is_api_access_tier: boolean;
+}
+
+const EMPTY_OWNER_MEMBERSHIP: OwnerMembership = {
+  membership_tier: null,
+  membership_tier_label: null,
+  subscription_status: null,
+  is_api_access_tier: false,
+};
+
+export interface ResolveOwnerMembershipDeps {
+  resolveOwnerOrgId: (userId: string, agentUrl: string) => Promise<string | null>;
+  fetchOrgMembership: (orgId: string) => Promise<{ membership_tier: string | null; subscription_status: string | null } | null>;
+}
+
+/**
+ * The security boundary for the verification panel's tier inline display:
+ * given a user id (or none, for anonymous) and an agent url, resolve the
+ * owner-scoped membership shape — populated only when the caller actually
+ * owns the agent.
+ *
+ * Pure dispatcher; the two DB lookups are injected so this can be unit-tested
+ * without spinning up Postgres. Returns the EMPTY_OWNER_MEMBERSHIP shape
+ * (constant keys, null/false values) on every miss path so the eventual
+ * JSON response has the same `Object.keys()` for owners and non-owners — a
+ * non-owner cannot detect ownership by comparing response shape.
+ */
+export async function resolveOwnerMembership(
+  userId: string | undefined,
+  agentUrl: string,
+  deps: ResolveOwnerMembershipDeps,
+): Promise<OwnerMembership> {
+  if (!userId) return EMPTY_OWNER_MEMBERSHIP;
+  const ownerOrgId = await deps.resolveOwnerOrgId(userId, agentUrl);
+  if (!ownerOrgId) return EMPTY_OWNER_MEMBERSHIP;
+  const orgRow = await deps.fetchOrgMembership(ownerOrgId);
+  // A missing org row means the org_id resolved (so the user did own the
+  // agent) but the organizations table doesn't have it — most likely a hard
+  // delete that left member_profiles dangling. Treat that the same as
+  // "ownership resolution failed" rather than as a logged-in owner of a
+  // downgraded org. Otherwise the dashboard would silently leak the
+  // deletion via "Your tier: —, ineligible".
+  if (!orgRow) return EMPTY_OWNER_MEMBERSHIP;
+  const tier = orgRow.membership_tier ?? null;
+  const subStatus = orgRow.subscription_status ?? null;
+  return {
+    membership_tier: tier,
+    membership_tier_label: tierLabel(tier),
+    subscription_status: subStatus,
+    is_api_access_tier: isApiAccessTier(tier) && isActiveSubscriptionStatus(subStatus),
+  };
+}
