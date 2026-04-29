@@ -4001,7 +4001,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // period is invisible to the public. Revocation only happens after 48h.
       let modes: string[] = [];
       try {
-        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         if (badge) modes = badge.verification_modes;
       } catch {
         // Table may not exist yet
@@ -4037,7 +4037,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       let verified = false;
       try {
-        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
       } catch {
         // Table may not exist yet

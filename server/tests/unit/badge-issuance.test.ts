@@ -12,10 +12,12 @@ function makeBadge(
   status: AgentVerificationBadge['status'] = 'active',
   updatedAgo = 0,
   modes: string[] = ['spec'],
+  majorVersion = '3.0',
 ): AgentVerificationBadge {
   return {
     agent_url: 'https://example.com/mcp',
     role,
+    major_version: majorVersion,
     verified_at: new Date(Date.now() - 86_400_000),
     verified_protocol_version: null,
     verified_specialisms: ['sales-broadcast-tv'],
@@ -176,5 +178,95 @@ describe('processAgentBadges — membership gating', () => {
 
     expect(result.unchanged).toHaveLength(1);
     expect(result.revoked).toHaveLength(0);
+  });
+});
+
+describe('processAgentBadges — per-major-version isolation (#3524 stage 1)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('only touches badges at the major version under test', async () => {
+    // Agent holds badges at both 3.0 and 3.1. A 3.0 run with a failing
+    // specialism must NOT touch the 3.1 badge.
+    const existing = [
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.0'),
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.1'),
+    ];
+    const db = makeMockDb(existing);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'failing')],
+      false,
+      'org_test',
+      '3.0',
+    );
+
+    // Only the 3.0 badge should be touched. Confirm by checking that
+    // every degradeBadge call was scoped to '3.0' and 3.1 was never
+    // a target.
+    const degradeCalls = (db.degradeBadge as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(degradeCalls).toHaveLength(1);
+    expect(degradeCalls[0][2]).toBe('3.0');
+  });
+
+  it('passes the major version to upsertBadge on issuance', async () => {
+    const db = makeMockDb([]);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'passing')],
+      true,
+      'org_test',
+      '3.1',
+    );
+
+    const upsertCalls = (db.upsertBadge as unknown as { mock: { calls: Array<[Record<string, unknown>]> } }).mock.calls;
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0][0]).toMatchObject({ major_version: '3.1' });
+  });
+
+  it('defaults to DEFAULT_BADGE_MAJOR_VERSION when not passed (Stage 1 backward compat)', async () => {
+    const db = makeMockDb([]);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'passing')],
+      true,
+      'org_test',
+      // majorVersion omitted — defaults to '3.0'
+    );
+
+    const upsertCalls = (db.upsertBadge as unknown as { mock: { calls: Array<[Record<string, unknown>]> } }).mock.calls;
+    expect(upsertCalls[0][0]).toMatchObject({ major_version: '3.0' });
+  });
+
+  it('membership lapse only revokes badges at the version under test', async () => {
+    const existing = [
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.0'),
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.1'),
+    ];
+    const db = makeMockDb(existing);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'passing')],
+      true,
+      undefined, // membership lapsed
+      '3.0',
+    );
+
+    // Only 3.0 should be revoked under this run; 3.1 stays untouched.
+    // Stage 2 will issue a separate per-version run for 3.1.
+    const revokeCalls = (db.revokeBadge as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(revokeCalls).toHaveLength(1);
+    expect(revokeCalls[0][2]).toBe('3.0');
   });
 });
