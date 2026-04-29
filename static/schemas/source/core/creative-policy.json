@@ -23,15 +23,15 @@
     },
     "provenance_requirements": {
       "type": "object",
-      "description": "Structured provenance requirements for creatives. Expands on the provenance_required boolean with specific field-level requirements. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. Note: provenance_requirements in this version is a declaration framework, not an enforcement guarantee. If a buyer sets require_digital_source_type to true and the creative passes through a seller that does not enforce it, the requirement is silently unmet. The should-verify tier (receiver-obligation RFC) is intended to close this enforcement gap in a future version.",
+      "description": "Structured provenance requirements for creatives. Expands on the provenance_required boolean with specific field-level requirements. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. This is a visibility surface, not a prevention surface: provenance_requirements declares what the seller expects, but does not block delivery if requirements are unmet. A non-enforcing seller silently accepts non-compliant creative. The should-verify tier (receiver-obligation RFC) is intended to close this enforcement gap by adding task-level error signals that make unmet requirements visible to the buyer.",
       "properties": {
         "require_digital_source_type": {
           "type": "boolean",
-          "description": "When true, the seller requires creatives to declare a digital_source_type in their provenance. Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
+          "description": "When true, the seller requires creatives to include a digital_source_type field in their provenance, set to a valid value from the digital-source-type enum (not null or absent). Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
         },
         "require_disclosure_metadata": {
           "type": "boolean",
-          "description": "When true, the seller requires creatives to include disclosure metadata (disclosure.required and, where applicable, disclosure.jurisdictions) in their provenance."
+          "description": "When true, the seller requires creatives to include a disclosure object in their provenance with disclosure.required set to a boolean value (true or false). When disclosure.required is true, at least one entry in disclosure.jurisdictions is expected."
         },
         "require_embedded_provenance": {
           "type": "boolean",
