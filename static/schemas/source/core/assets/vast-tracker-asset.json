@@ -21,12 +21,17 @@
               "impression",
               "clickTracking",
               "customClick",
-              "error"
+              "error",
+              "viewable",
+              "notViewable",
+              "viewUndetermined",
+              "measurableImpression",
+              "viewableImpression"
             ]
           }
         }
       ],
-      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (that belongs in the VAST `Impression` element \u2014 model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (those belong in `VideoClicks`), or `error` (VAST `Error` element)."
+      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (belongs in the VAST `Impression` element \u2014 model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (belong in `VideoClicks`), `error` (VAST `Error` element), or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (children of the VAST `ViewableImpression` element, not `TrackingEvents`)."
     },
     "url": {
       "type": "string",
@@ -35,8 +40,8 @@
     },
     "offset": {
       "type": "string",
-      "description": "VAST `offset` attribute for `vast_event: \"progress\"`. Format matches VAST: `HH:MM:SS[.mmm]` for absolute time, or an integer percentage suffixed with `%`. Ignored for other events.",
-      "pattern": "^-?\\d+:\\d{2}:\\d{2}(\\.\\d{3})?$|^(100|\\d{1,2})%$"
+      "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00\u201359, seconds 00\u201359), or an integer percentage 0\u2013100 suffixed with `%`. Negative offsets are NOT permitted \u2014 the VAST 4.2 XSD pattern does not allow a leading minus.",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
@@ -47,6 +52,17 @@
     "asset_type",
     "vast_event",
     "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "progress" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
   ],
   "additionalProperties": true
 }

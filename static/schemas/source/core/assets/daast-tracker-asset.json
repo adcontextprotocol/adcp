@@ -21,12 +21,17 @@
               "impression",
               "clickTracking",
               "customClick",
-              "error"
+              "error",
+              "viewable",
+              "notViewable",
+              "viewUndetermined",
+              "measurableImpression",
+              "viewableImpression"
             ]
           }
         }
       ],
-      "description": "The DAAST tracking event this URL fires on. MUST NOT be `impression` (model as `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (click-tracking trackers go on their own URL asset), or `error`."
+      "description": "The DAAST tracking event this URL fires on. MUST NOT be `impression` (model as `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (click-tracking trackers go on their own URL asset), `error`, or any of the `ViewableImpression`-element children (`viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`)."
     },
     "url": {
       "type": "string",
@@ -35,8 +40,8 @@
     },
     "offset": {
       "type": "string",
-      "description": "DAAST `offset` attribute for `daast_event: \"progress\"`. Format: `HH:MM:SS[.mmm]` for absolute time, or an integer percentage suffixed with `%`. Ignored for other events.",
-      "pattern": "^-?\\d+:\\d{2}:\\d{2}(\\.\\d{3})?$|^(100|\\d{1,2})%$"
+      "description": "DAAST `offset` attribute. Required when `daast_event` is `progress`; ignored otherwise. Same format as VAST 4.2 `Tracking@offset`: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted.",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
@@ -47,6 +52,17 @@
     "asset_type",
     "daast_event",
     "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "daast_event": { "const": "progress" } },
+        "required": ["daast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
   ],
   "additionalProperties": true
 }

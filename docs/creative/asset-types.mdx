@@ -270,9 +270,9 @@ A single URL bound to a VAST `TrackingEvents` event. Use this when the creative 
 ```
 
 **Properties:**
-- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` — those live in other VAST elements (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `viewableImpression`.
+- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` — those live in dedicated VAST elements (`Impression`, `VideoClicks`, `Error`, `ViewableImpression`), not under `TrackingEvents` (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `progress`.
 - `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
-- `offset`: Required for `vast_event: "progress"`. VAST 4.x offset format: `HH:MM:SS` or `HH:MM:SS.mmm` (exactly 3 fractional digits) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative time offsets (measured from end of ad) are allowed per VAST 4.x.
+- `offset`: Required for `vast_event: "progress"`. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
 
 ### DAAST Asset
 
@@ -335,9 +335,9 @@ Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEv
 ```
 
 **Properties:**
-- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` (same routing rule as `vast_tracker`).
+- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (same element-routing rule as `vast_tracker` — those values belong in `Impression` / `VideoClicks` / `Error` / `ViewableImpression`, not `TrackingEvents`).
 - `url`: Tracker URL. Supports AdCP universal macros.
-- `offset`: Required for `daast_event: "progress"`. Same format as VAST offset.
+- `offset`: Required for `daast_event: "progress"`. Same format as VAST 4.2 `Tracking@offset`. Negative offsets are NOT permitted.
 
 ## Creative / Sales Agent Boundary (VAST Assembly)
 
