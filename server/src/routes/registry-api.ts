@@ -3813,6 +3813,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             declaredSpecialisms,
             sbStatuses.map(s => ({
               storyboard_id: s.storyboard_id,
+              // Cast is bounded by the `valid_storyboard_status` CHECK
+              // constraint in agent_storyboard_status (migration 390).
               status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
               steps_passed: s.steps_passed,
               steps_total: s.steps_total,
