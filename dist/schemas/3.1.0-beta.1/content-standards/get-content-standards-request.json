@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/content-standards/get-content-standards-request.json",
+  "title": "Get Content Standards Request",
+  "description": "Request parameters for retrieving content safety policies",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "standards_id": {
+      "type": "string",
+      "description": "Identifier for the standards configuration to retrieve"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "standards_id"
+  ]
+}

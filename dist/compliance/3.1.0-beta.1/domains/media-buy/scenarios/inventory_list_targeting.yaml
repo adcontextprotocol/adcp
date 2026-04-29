@@ -1,0 +1,266 @@
+id: media_buy_seller/inventory_list_targeting
+version: "1.0.0"
+title: "Seller honors property_list and collection_list targeting on create and update"
+category: media_buy_seller
+summary: "Verifies that a seller accepts PropertyListReference and CollectionListReference in package targeting on create_media_buy AND update_media_buy, with parity between both paths."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - update_media_buy
+
+narrative: |
+  AdCP 3.0 targets inventory through agent-hosted reference lists rather than inline
+  property arrays. Buyers point a package's targeting at a `PropertyListReference`
+  and/or `CollectionListReference`; the seller resolves the list against its own
+  inventory at serve time.
+
+  A common integration regression is create/update parity: a seller accepts list
+  references on create_media_buy but silently drops them on update_media_buy, so a
+  buyer who edits a live buy loses their list targeting. This scenario writes both
+  list types on create, then swaps both on update, and finally reads the buy back
+  to confirm the updated references are what the seller persisted.
+
+  The buyer references pre-populated inventory lists from the test kit — one for
+  matching properties and one for matching collections — so the seller's test
+  engine can resolve them without needing a live governance/inventory agent.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_property_list_targeting
+    - supports_collection_list_targeting
+  examples:
+    - "Sellers that accept PropertyListReference / CollectionListReference in package targeting"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must accept PropertyListReference and CollectionListReference in
+    package targeting on both create_media_buy and update_media_buy. List contents
+    come from test-kits/acme-outdoor.yaml → inventory_targets.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_product
+    title: "Discover a product that supports list targeting"
+    steps:
+      - id: get_products_brief
+        title: "Discover product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product whose targeting supports property_list and
+          collection_list references.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Video inventory on outdoor lifestyle programming. Q3 flight, $30K budget."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "inventory_list_targeting--get_products_brief"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Product has a product_id"
+
+  - id: create_with_both_lists
+    title: "Create media buy with property_list AND collection_list targeting"
+    narrative: |
+      The buyer references the matching-property list and the matching-collection
+      list from the test kit. The seller accepts both references, creates the buy,
+      and echoes the resolved targeting back on the package.
+
+    steps:
+      - id: create_buy_with_lists
+        title: "create_media_buy with both list references"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The seller accepts the list references without error. The response
+          includes a media_buy_id and the package retains both the property_list
+          and collection_list targeting fields so subsequent get / update calls
+          can read them back.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "inventory-list-targeting-create-v1"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 20000
+              pricing_option_id: "$context.pricing_option_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+
+          context:
+            correlation_id: "inventory_list_targeting--create_buy_with_lists"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+
+  - id: verify_create_persisted
+    title: "Verify list targeting persisted after create"
+    narrative: |
+      Read the buy back to confirm the seller stored both list references — not just
+      echoed them back in the create response. This catches sellers that parse list
+      references on create but never persist them to their internal package model.
+
+    steps:
+      - id: get_after_create
+        title: "get_media_buys after create"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the media buy with packages[0].targeting_overlay.property_list
+          and .collection_list populated with the list_id values sent on create.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+
+          context:
+            correlation_id: "inventory_list_targeting--get_after_create"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_allowlist_v1"
+            description: "property_list.list_id persisted after create"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_collections_v1"
+            description: "collection_list.list_id persisted after create"
+
+  - id: update_swap_lists
+    title: "Swap property_list and collection_list via update_media_buy"
+    narrative: |
+      The buyer swaps both list references. This is the create/update parity check:
+      a seller that accepts list references on create but silently drops them on
+      update would fail to update the persisted targeting. We exercise update
+      explicitly to catch that class of regression.
+
+    steps:
+      - id: update_buy_swap_lists
+        title: "update_media_buy replaces both list references"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The seller acknowledges the updated targeting. Both property_list and
+          collection_list are replaced (not merged) with the new list_id values.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_collections_v1"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inventory_list_targeting_update_swap_lists_update_buy_swap_lists"
+          context:
+            correlation_id: "inventory_list_targeting--update_buy_swap_lists"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: get_after_update
+        title: "Confirm swap persisted"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The persisted package targeting reflects the new list_id values. This is
+          the create/update parity guarantee: edits through update_media_buy land
+          in persistent state just like fields on create_media_buy.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+
+          context:
+            correlation_id: "inventory_list_targeting--get_after_update"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_no_match_v1"
+            description: "property_list.list_id updated after update_media_buy"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_no_match_collections_v1"
+            description: "collection_list.list_id updated after update_media_buy"
