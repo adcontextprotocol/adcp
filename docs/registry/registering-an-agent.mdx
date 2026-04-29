@@ -16,7 +16,7 @@ Agents appear in the AgenticAdvertising.org registry through two paths. The path
 
 ## What trust level looks like in API responses
 
-The `source` field is returned on every agent in `GET /api/registry/agents` and on the `operators` list in `GET /api/registry/operator`.
+The `source` field is returned on every agent in `GET /api/registry/agents`.
 
 ```json Registered agent (member direct)
 {
@@ -54,4 +54,4 @@ To enroll as an AgenticAdvertising.org member, visit [agenticadvertising.org/joi
 
 If you are not yet an AgenticAdvertising.org member, the only path into the registry is through a member publisher's `adagents.json`. Ask the publisher to add your agent URL with the appropriate `authorized_for` value. The registry crawler runs on a regular schedule and will pick up the entry on its next pass.
 
-Self-registration without AgenticAdvertising.org membership is on the roadmap — follow [#3538](https://github.com/adcontextprotocol/adcp/issues/3538) for status.
+Self-registration without AgenticAdvertising.org membership is on the roadmap. A separate tracking issue will be filed once the trust-tier model for self-attested agents is decided.
