@@ -24,8 +24,12 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-// Mock Stripe client to control subscription checks
-vi.mock('../../src/billing/stripe-client.js', () => ({
+// Mock Stripe client to control subscription checks. Use importOriginal so
+// any unmocked exports (e.g. listCustomersWithOrgIds called from
+// OrganizationDatabase.syncStripeCustomers during HTTPServer.start) flow
+// through to the real implementation instead of throwing.
+vi.mock('../../src/billing/stripe-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/billing/stripe-client.js')>()),
   stripe: null,
   getSubscriptionInfo: vi.fn().mockResolvedValue(null),
   createStripeCustomer: vi.fn().mockResolvedValue(null),
