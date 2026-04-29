@@ -6,8 +6,9 @@ import { join } from 'path';
 const outDir = mkdtempSync(join(tmpdir(), 'aao-badges-'));
 
 for (const role of VALID_BADGE_ROLES) {
-  writeFileSync(join(outDir, `badge-verified-${role}.svg`), renderBadgeSvg(role, true));
+  writeFileSync(join(outDir, `badge-${role}-spec.svg`), renderBadgeSvg(role, ['spec']));
+  writeFileSync(join(outDir, `badge-${role}-spec-live.svg`), renderBadgeSvg(role, ['spec', 'live']));
 }
-writeFileSync(join(outDir, 'badge-not-verified.svg'), renderBadgeSvg('media-buy', false));
+writeFileSync(join(outDir, 'badge-not-verified.svg'), renderBadgeSvg('media-buy', []));
 
 console.log(`All SVGs written to ${outDir}/`);

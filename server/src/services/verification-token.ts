@@ -14,6 +14,12 @@ export interface VerificationTokenPayload {
   agent_url: string;
   role: string;
   verified_specialisms: string[];
+  /**
+   * Verification axes earned. ['spec'] = protocol storyboards pass;
+   * ['spec', 'live'] = also observed via canonical campaigns. Always
+   * includes at least 'spec'. See VERIFICATION_MODES in services/badge-svg.ts.
+   */
+  verification_modes: string[];
   protocol_version?: string;
 }
 
@@ -81,6 +87,7 @@ export async function signVerificationToken(
     agent_url: payload.agent_url,
     role: payload.role,
     verified_specialisms: payload.verified_specialisms,
+    verification_modes: payload.verification_modes,
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })

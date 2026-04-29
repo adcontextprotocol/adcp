@@ -1,11 +1,20 @@
 /**
  * SVG badge rendering for AAO Verified agents.
  *
- * Generates shields.io-style badges: "AAO Verified | Media Buy Agent"
+ * Generates shields.io-style badges: "AAO Verified | Media Buy Agent (Spec)"
  * with the AAO teal color scheme.
+ *
+ * The qualifier in parens conveys *which axes of verification* the agent has
+ * earned: (Spec) means protocol storyboards pass, (Live) means AAO has observed
+ * real production traffic via canonical campaigns. An agent can have either or
+ * both, e.g. "(Spec + Live)". An empty modes array renders "Not Verified".
  */
 
 import { ADCP_PROTOCOLS } from './adcp-taxonomy.js';
+
+/** Verification axes. Spec is current-PR; Live ships with the canonical-campaign runner. */
+export const VERIFICATION_MODES = ['spec', 'live'] as const;
+export type VerificationMode = typeof VERIFICATION_MODES[number];
 
 const AAO_TEAL = '#076D63'; // WCAG AA contrast ≥ 4.5:1 against white
 const LABEL_BG = '#555';
@@ -61,11 +70,35 @@ function escapeXml(str: string): string {
   });
 }
 
-export function renderBadgeSvg(role: string, verified: boolean): string {
+/**
+ * Format verification modes for badge display.
+ * Always renders Spec before Live; unknown modes append alphabetically.
+ *
+ *   formatModes(['spec'])         → 'Spec'
+ *   formatModes(['spec', 'live']) → 'Spec + Live'
+ *   formatModes([])               → ''
+ */
+function formatModes(modes: readonly string[]): string {
+  const ordered: string[] = [];
+  for (const known of VERIFICATION_MODES) {
+    if (modes.includes(known)) ordered.push(known);
+  }
+  const unknown = [...modes].filter(m => !VERIFICATION_MODES.includes(m as VerificationMode)).sort();
+  return [...ordered, ...unknown]
+    .map(m => m.charAt(0).toUpperCase() + m.slice(1))
+    .join(' + ');
+}
+
+export function renderBadgeSvg(role: string, modes: readonly string[] = []): string {
   const label = 'AAO Verified';
-  const message = verified ? (ROLE_LABELS[role] || escapeXml(role)) : 'Not Verified';
-  const messageBg = verified ? AAO_TEAL : NOT_VERIFIED_BG;
-  const idSuffix = `${escapeXml(role)}-${verified ? 'v' : 'nv'}`;
+  const isVerified = modes.length > 0;
+  const roleLabel = ROLE_LABELS[role] || escapeXml(role);
+  const qualifier = formatModes(modes);
+  const message = isVerified
+    ? (qualifier ? `${roleLabel} (${qualifier})` : roleLabel)
+    : 'Not Verified';
+  const messageBg = isVerified ? AAO_TEAL : NOT_VERIFIED_BG;
+  const idSuffix = `${escapeXml(role)}-${isVerified ? 'v' : 'nv'}`;
 
   const labelWidth = measureText(label);
   const msgWidth = measureText(message);

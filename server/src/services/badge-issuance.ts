@@ -61,6 +61,11 @@ export async function processAgentBadges(
     const existing = existingByRole.get(roleResult.role);
 
     if (roleResult.verified) {
+      // Spec-only issuance for now. The 'live' axis lights up later when the
+      // canonical-campaign runner ships; an existing 'live' mode on a badge
+      // is preserved (we only add 'spec' here, never remove 'live').
+      const existingModes = existing?.verification_modes ?? [];
+      const modes = Array.from(new Set(['spec', ...existingModes]));
 
       let token: string | undefined;
       let tokenExpiresAt: Date | undefined;
@@ -69,6 +74,7 @@ export async function processAgentBadges(
           agent_url: agentUrl,
           role: roleResult.role,
           verified_specialisms: roleResult.specialisms,
+          verification_modes: modes,
         });
         if (signed) {
           token = signed.token;
@@ -80,6 +86,7 @@ export async function processAgentBadges(
         agent_url: agentUrl,
         role: roleResult.role,
         verified_specialisms: roleResult.specialisms,
+        verification_modes: modes,
         verification_token: token,
         token_expires_at: tokenExpiresAt,
         membership_org_id: membershipOrgId,

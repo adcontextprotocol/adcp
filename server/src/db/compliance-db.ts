@@ -134,6 +134,10 @@ export interface AgentVerificationBadge {
   verified_at: Date;
   verified_protocol_version: string | null;
   verified_specialisms: string[];
+  // Verification axes earned: ['spec'] (storyboards pass), ['spec', 'live']
+  // (also observed via canonical campaigns), etc. See VERIFICATION_MODES in
+  // services/badge-svg.ts. Stored as TEXT[] in agent_verification_badges.
+  verification_modes: string[];
   verification_token: string | null;
   token_expires_at: Date | null;
   membership_org_id: string | null;
@@ -758,23 +762,26 @@ export class ComplianceDatabase {
     agent_url: string;
     role: BadgeRole;
     verified_specialisms: string[];
+    verification_modes?: string[];
     verified_protocol_version?: string;
     verification_token?: string;
     token_expires_at?: Date;
     membership_org_id?: string;
   }): Promise<AgentVerificationBadge> {
+    const modes = badge.verification_modes ?? ['spec'];
     const result = await query(
       `INSERT INTO agent_verification_badges (
-        agent_url, role, verified_specialisms, verified_protocol_version,
+        agent_url, role, verified_specialisms, verification_modes, verified_protocol_version,
         verification_token, token_expires_at, membership_org_id,
         status, verified_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', NOW(), NOW())
       ON CONFLICT (agent_url, role) DO UPDATE SET
         verified_specialisms = $3,
-        verified_protocol_version = COALESCE($4, agent_verification_badges.verified_protocol_version),
-        verification_token = COALESCE($5, agent_verification_badges.verification_token),
-        token_expires_at = COALESCE($6, agent_verification_badges.token_expires_at),
-        membership_org_id = COALESCE($7, agent_verification_badges.membership_org_id),
+        verification_modes = $4,
+        verified_protocol_version = COALESCE($5, agent_verification_badges.verified_protocol_version),
+        verification_token = COALESCE($6, agent_verification_badges.verification_token),
+        token_expires_at = COALESCE($7, agent_verification_badges.token_expires_at),
+        membership_org_id = COALESCE($8, agent_verification_badges.membership_org_id),
         status = 'active',
         verified_at = CASE WHEN agent_verification_badges.status = 'degraded' THEN NOW() ELSE agent_verification_badges.verified_at END,
         revoked_at = NULL,
@@ -785,6 +792,7 @@ export class ComplianceDatabase {
         badge.agent_url,
         badge.role,
         badge.verified_specialisms,
+        modes,
         badge.verified_protocol_version ?? null,
         badge.verification_token ?? null,
         badge.token_expires_at ?? null,

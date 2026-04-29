@@ -239,6 +239,8 @@ export const VerificationBadgeSchema = z
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
+    verification_modes: z.array(z.enum(['spec', 'live']))
+      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. An agent may earn either or both." }),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional(),
   })

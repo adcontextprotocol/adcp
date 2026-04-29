@@ -11,6 +11,7 @@ function makeBadge(
   role: BadgeRole,
   status: AgentVerificationBadge['status'] = 'active',
   updatedAgo = 0,
+  modes: string[] = ['spec'],
 ): AgentVerificationBadge {
   return {
     agent_url: 'https://example.com/mcp',
@@ -18,6 +19,7 @@ function makeBadge(
     verified_at: new Date(Date.now() - 86_400_000),
     verified_protocol_version: null,
     verified_specialisms: ['sales-broadcast-tv'],
+    verification_modes: modes,
     verification_token: null,
     token_expires_at: null,
     membership_org_id: 'org_test',
@@ -99,6 +101,28 @@ describe('processAgentBadges — membership gating', () => {
     expect(result.issued[0].role).toBe('media-buy');
     expect(result.issued[0].specialisms).toEqual(['sales-broadcast-tv']);
     expect(db.upsertBadge).toHaveBeenCalledTimes(1);
+    // New badges issue with verification_modes: ['spec'] by default
+    const upsertCall = (db.upsertBadge as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(upsertCall.verification_modes).toEqual(['spec']);
+  });
+
+  it('preserves an existing live mode when re-asserting spec', async () => {
+    // Simulate an agent that earned (Spec + Live) earlier; storyboards still
+    // pass — the upsert must not strip 'live' off the badge.
+    const existing = [makeBadge('media-buy', 'active', 0, ['spec', 'live'])];
+    const db = makeMockDb(existing);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'passing')],
+      true,
+      'org_test',
+    );
+
+    const upsertCall = (db.upsertBadge as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(upsertCall.verification_modes.sort()).toEqual(['live', 'spec']);
   });
 
   it('degrades an active badge when a declared specialism starts failing', async () => {

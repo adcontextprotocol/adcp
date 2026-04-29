@@ -20,6 +20,7 @@ describe('verification-token', () => {
         agent_url: 'https://example.com/mcp',
         role: 'sales',
         verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
       });
       expect(result).toBeNull();
     });
@@ -65,6 +66,7 @@ describe('verification-token', () => {
         agent_url: 'https://example.com/mcp',
         role: 'sales',
         verified_specialisms: ['media_buy_seller', 'media_buy_non_guaranteed'],
+        verification_modes: ['spec'],
         protocol_version: '3.0.0',
       });
 
@@ -78,8 +80,21 @@ describe('verification-token', () => {
       expect(claims!.agent_url).toBe('https://example.com/mcp');
       expect(claims!.role).toBe('sales');
       expect(claims!.verified_specialisms).toEqual(['media_buy_seller', 'media_buy_non_guaranteed']);
+      expect(claims!.verification_modes).toEqual(['spec']);
       expect(claims!.protocol_version).toBe('3.0.0');
       expect(claims!.iss).toBe('https://aao.org');
+    });
+
+    it('round-trips a token with both spec and live modes', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec', 'live'],
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect(claims!.verification_modes).toEqual(['spec', 'live']);
     });
 
     it('rejects a tampered token', async () => {
@@ -87,6 +102,7 @@ describe('verification-token', () => {
         agent_url: 'https://example.com/mcp',
         role: 'sales',
         verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
       });
 
       // Tamper with the token payload

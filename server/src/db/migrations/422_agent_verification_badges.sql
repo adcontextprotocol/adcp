@@ -8,6 +8,12 @@ CREATE TABLE IF NOT EXISTS agent_verification_badges (
   verified_protocol_version TEXT,
   verified_specialisms    TEXT[] NOT NULL DEFAULT '{}',
 
+  -- Verification axes. 'spec' = agent passes the AdCP storyboard suite for
+  -- the declared specialisms. 'live' = AAO has observed real production
+  -- traffic via canonical campaigns (lights up later — runner ships in 3.1).
+  -- Spec is a prerequisite for measuring Live; both can be earned.
+  verification_modes      TEXT[] NOT NULL DEFAULT ARRAY['spec'],
+
   -- JWT token issued by AAO for decentralized verification
   verification_token      TEXT,
   token_expires_at        TIMESTAMPTZ,

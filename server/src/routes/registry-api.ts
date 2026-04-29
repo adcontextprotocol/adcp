@@ -3628,6 +3628,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           role: b.role,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
+          verification_modes: b.verification_modes,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -3709,6 +3710,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           role: b.role,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
+          verification_modes: b.verification_modes,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -3736,20 +3738,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // getActiveBadge returns active + degraded badges. A degraded badge
       // (within 48-hour grace period) still renders as verified -- the grace
       // period is invisible to the public. Revocation only happens after 48h.
-      let verified = false;
+      let modes: string[] = [];
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
-        verified = !!badge;
+        if (badge) modes = badge.verification_modes;
       } catch {
         // Table may not exist yet
       }
 
-      const svg = renderBadgeSvg(role, verified);
+      const svg = renderBadgeSvg(role, modes);
       res.setHeader("Content-Type", "image/svg+xml");
       res.setHeader("Content-Security-Policy", "script-src 'none'");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
-      res.setHeader("ETag", `"${role}-${verified ? '1' : '0'}"`);
+      // ETag covers both role and the mode set so a transition (e.g. add 'live')
+      // invalidates caches for the badge URL.
+      res.setHeader("ETag", `"${role}-${modes.slice().sort().join('-') || 'nv'}"`);
       res.send(svg);
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to render badge SVG");
