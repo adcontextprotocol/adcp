@@ -312,20 +312,22 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 
 ### filter_diagnostics
 
-When the seller can attribute exclusions to specific filters, the response MAY include a `filter_diagnostics` block. This is observability — not error reporting; sellers still silently exclude unmatched products per the filter-not-fail convention. Buyers use this to triage empty/small results without depending on its presence.
+When the seller can attribute exclusions to specific filters, the response MAY include a `filter_diagnostics` block. This is observability — not error reporting; sellers still silently exclude unmatched products per the filter-not-fail convention. Buyers use this to triage empty/small results without depending on its presence. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped at large catalogs. |
+| `semantics` | string | `"only"` (deterministic; counts products that would have been included if not for *this* filter alone — recommended for triage), `"any"` (counts products excluded by any filter; counts may overlap), or `"approximate"` (seller can't cleanly attribute exclusions to a single filter). Buyers SHOULD inspect `semantics` before doing arithmetic on counts. |
+| `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped at large catalogs. Optional. |
 | `excluded_by` | object | Keys are filter property names from the request (`required_metrics`, `required_geo_targeting`, `budget_range`, etc.). Each value is `{ count, values?, notes? }`. Only filters that meaningfully narrowed the set need appear. |
-| `excluded_by.<filter>.count` | integer | Approximate count of products excluded by this filter. Counting semantics vary across sellers — treat as triage signal, not exact accounting. |
-| `excluded_by.<filter>.values` | array | Optional list of the specific filter values that contributed to exclusions (e.g., `["completed_views"]` for `required_metrics`). Free-form; opaque without filter-specific knowledge. |
+| `excluded_by.<filter>.count` | integer | Count of products excluded by this filter, interpreted per the parent `semantics` field. |
+| `excluded_by.<filter>.values` | array | Optional list of the specific filter values that contributed to exclusions (e.g., `["completed_views"]` for `required_metrics`). Items are strings or objects depending on filter shape; opaque without filter-specific knowledge. |
 | `excluded_by.<filter>.notes` | string | Optional human-readable note about the narrowing. |
 
 ```json
 {
   "products": [],
   "filter_diagnostics": {
+    "semantics": "only",
     "total_candidates": 47,
     "excluded_by": {
       "required_metrics": { "count": 31, "values": ["completed_views"] },
