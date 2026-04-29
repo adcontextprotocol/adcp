@@ -157,6 +157,22 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 
+#### Vendor-Defined Metrics
+
+The standard `available_metrics` enum is the closed protocol vocabulary. Vendor-defined metrics — proprietary attention scores, emissions per impression, panel-based demographics, brand-lift surveys, in-flight attention panels, custom viewability variants — live in a parallel structured surface:
+
+- **Declaration** (`reporting_capabilities.vendor_metrics`): each entry is a pointer (`{ vendor: BrandRef, metric_id }`) into the vendor's metric catalog. Sellers say "I support this vendor's metric"; everything else (category, methodology, standard alignment, human-readable documentation) lives at the vendor. Identifiers are namespaced by the vendor — the same `metric_id` may mean different things in different vendors' vocabularies.
+
+- **Discovery anchor**: the vendor's `brand.json` `agents[type='measurement']` is the canonical place to find the measurement agent's URL, capability profile, the methodology, the standards each metric implements, and per-metric documentation. AdCP does not duplicate that metadata on every seller's per-product extension; buyers resolve it once per vendor (cacheable) when they need it.
+
+- **Filter** (`get_products` `filters.required_vendor_metrics`): each entry pins `vendor` and/or `metric_id` — at least one. Cross-vendor queries (e.g., "any attention measurement from a vendor that supports it") are the buyer agent's responsibility: the agent resolves which vendors offer a category via their `brand.json` records, then enumerates them as filter entries. Same filter-not-fail convention as the other `required_*` filters.
+
+- **Reporting** (`vendor_metric_values` on each `by_package` delivery row): each value carries `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`. `measurable_impressions` is the coverage denominator — vendor measurement is rarely 100% of delivered impressions. When the field is present, buyers compute coverage as `measurable_impressions / impressions`; when absent, coverage is unspecified (do not compute a rate or assume full coverage). The `breakdown` slot is the place vendors put structured payloads beyond a single scalar (panel demographics, co-view ratios, incremental decompositions); it is the only escape hatch — the rest of the value envelope is closed.
+
+- **Promotion path**: when the industry converges on a metric via a published standard, the spec adds it to the closed `available_metrics` enum and the vendor extensions become historical aliases. Promotion is anchored on standards-body publication, not on ad-hoc vendor convergence counts.
+
+- **v1 accountability scope**: standard `available_metrics` are subject to the `missing_metrics` contract on `get_media_buy_delivery`. Vendor metrics are advisory in v1 — buyers verify out-of-band via `measurable_impressions` coverage and direct calls to the vendor's measurement agent. The asymmetry reflects what the seller can credibly attest to: SSPs typically don't have proprietary measurement numbers in their delivery pipeline; those flow from the vendor's own infrastructure.
+
 #### Publisher Commitment
 
 When a reporting webhook is configured, publishers commit to sending:
