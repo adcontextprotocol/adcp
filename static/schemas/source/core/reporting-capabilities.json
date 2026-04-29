@@ -59,6 +59,14 @@
         ]
       ]
     },
+    "vendor_metrics": {
+      "type": "array",
+      "description": "Vendor-defined metrics this product can report, beyond the closed `available_metrics` enum. Each entry identifies the vendor (BrandRef anchored on the vendor's `brand.json`) and the metric name within that vendor's vocabulary. Use this for proprietary metrics like Adelaide `attention_units`, Scope3 emissions, Nielsen DAR demographics, or platform-native social metrics not yet standardized. Sellers populate values in delivery via `delivery-metrics.json#/properties/vendor_metric_values`. The vendor's `brand.json` `agents[type='measurement']` array is the canonical anchor for measurement-agent capabilities — agent_url is NOT inlined here.",
+      "items": {
+        "$ref": "/schemas/core/vendor-metric.json"
+      },
+      "uniqueItems": true
+    },
     "supports_creative_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"

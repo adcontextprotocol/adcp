@@ -364,6 +364,42 @@
         ["impressions", "spend", "engagements"]
       ]
     },
+    "required_vendor_metrics": {
+      "type": "array",
+      "description": "Filter to products whose `reporting_capabilities.vendor_metrics` matches these criteria. Each entry can pin a `vendor` (matches any metric from that vendor), a `metric_name` (matches the metric across any vendor), a `metric_category` (cross-vendor match by IAB-style classification — the recommended path since vendors rarely converge on `metric_name` strings before standardization), or any combination. A product matches if its declared `vendor_metrics` covers ALL listed entries (AND across entries; pins within an entry are conjunctive). Sellers MUST silently exclude non-matching products (filter-not-fail; do not return an error) — same convention as the other `required_*` filters.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Pin to a specific vendor. Optional — omit to match any vendor that satisfies the other pins."
+          },
+          "metric_name": {
+            "type": "string",
+            "description": "Pin to an exact metric name within a vendor's vocabulary. Optional — omit to match any metric. Use `metric_category` instead for cross-vendor discovery before standardization.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "metric_category": {
+            "$ref": "/schemas/enums/measurement-category.json",
+            "description": "Pin to a measurement category. Optional — the recommended path for cross-vendor queries (e.g., 'I need attention measurement from any vendor') because vendors rarely converge on metric_name strings before standardization."
+          }
+        },
+        "anyOf": [
+          { "required": ["vendor"] },
+          { "required": ["metric_name"] },
+          { "required": ["metric_category"] }
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "examples": [
+        [{ "metric_category": "attention" }],
+        [{ "vendor": { "domain": "adelaide.com" } }],
+        [{ "vendor": { "domain": "scope3.com" }, "metric_category": "emissions" }],
+        [{ "metric_category": "attention" }, { "metric_category": "emissions" }]
+      ]
+    },
     "keywords": {
       "type": "array",
       "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-category.json",
+  "title": "Measurement Category",
+  "description": "Coarse-grained classification of vendor-defined metrics. Buyers query by category for cross-vendor discovery (e.g., 'I need attention measurement from any vendor') because vendors do not converge on `metric_name` strings before standardization. Categories track the established measurement-vendor space (IAB Attention Task Force, MRC viewability, GARM/Ad Net Zero emissions, brand-lift / incrementality / audience verticals).",
+  "type": "string",
+  "enum": [
+    "attention",
+    "brand_lift",
+    "incrementality",
+    "audience",
+    "reach",
+    "creative_quality",
+    "emissions",
+    "outcomes",
+    "other"
+  ]
+}

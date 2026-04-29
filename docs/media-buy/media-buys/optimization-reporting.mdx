@@ -157,6 +157,22 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 
+#### Vendor-Defined Metrics
+
+The standard `available_metrics` enum is the closed protocol vocabulary. Vendor-defined metrics — Adelaide attention, Scope3 emissions, Nielsen DAR demographics, IAS/DV proprietary quality scores, brand-lift surveys, in-flight attention panels — live in a parallel structured surface:
+
+- **Declaration** (`reporting_capabilities.vendor_metrics`): each entry identifies the vendor by `BrandRef` (`{ domain, brand_id? }` anchored on the vendor's `brand.json`), the metric name within the vendor's vocabulary, an optional `metric_category` for cross-vendor classification (`attention`, `brand_lift`, `incrementality`, `audience`, `reach`, `creative_quality`, `emissions`, `outcomes`, `other`), and an optional `standard_reference` URI to a published industry standard (IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions).
+
+- **Discovery** (`get_products` `filters.required_vendor_metrics`): each entry pins `vendor`, `metric_name`, `metric_category`, or any combination — at least one of the three. Use `metric_category` for cross-vendor queries (`{ "metric_category": "attention" }` matches any vendor's attention metric); use `vendor` to pin to a specific measurement provider; combine for "Adelaide's attention" specificity. Sellers silently exclude non-matching products (filter-not-fail).
+
+- **Reporting** (`vendor_metric_values` on each `by_package` delivery row): each value carries `{ vendor, metric_name, value, unit?, measurable_impressions?, breakdown? }`. `measurable_impressions` is the coverage denominator — vendor measurement is rarely 100% of delivered impressions, and the buyer computes coverage rate from this field divided by parent `impressions`. The `breakdown` slot accommodates structured payloads (Nielsen demographics, TVision co-view ratios, iSpot incremental decomposition).
+
+- **Discovery anchor**: the vendor's `brand.json` `agents[type='measurement']` is the canonical place to find the measurement agent's URL, capability profile, and methodology documentation. AdCP does not inline `agent_url` on each metric extension; buyers resolve it once per vendor (cacheable) when they need to call the measurement agent directly.
+
+- **Promotion path**: when the industry converges on a metric via a published standard (IAB Attention Task Force outputs, MRC viewability variants, GARM emissions framework), the spec adds it to the closed `available_metrics` enum and the vendor extensions become historical aliases. The `standard_reference` field on each vendor metric anchors that promotion to standards-body publications, not to ad-hoc vendor convergence counts.
+
+- **v1 accountability scope**: standard `available_metrics` are subject to the `missing_metrics` accountability contract. Vendor metrics are advisory in v1 — buyers verify out-of-band via `measurable_impressions` coverage and direct calls to the vendor's measurement agent. The asymmetry reflects what the seller can credibly attest to: SSPs typically don't have Adelaide/Scope3 numbers in their delivery pipeline; those flow from the vendor's own infrastructure.
+
 #### Publisher Commitment
 
 When a reporting webhook is configured, publishers commit to sending:

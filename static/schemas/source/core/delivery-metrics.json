@@ -312,6 +312,13 @@
         ],
         "additionalProperties": true
       }
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "description": "Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared. Each entry carries the vendor (BrandRef), metric name within the vendor's vocabulary, the value, optional unit, and `measurable_impressions` as the coverage denominator (vendor measurement is rarely 100% — Adelaide only scores impressions where their SDK fires, Nielsen DAR only matches panel-resolved impressions, IAS/DV only measure where their tag is present). When a declared vendor metric is omitted from this array, buyers infer no measurement happened (zero coverage). The structured `vendor_metric_values` array is the recommended path for vendor metrics; `additionalProperties: true` on this parent object is preserved so existing free-form vendor emissions remain conformant during migration.",
+      "items": {
+        "$ref": "/schemas/core/vendor-metric-value.json"
+      }
     }
   },
   "dependencies": {
