@@ -13,11 +13,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('adcp-tools');
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
-import { AuthenticationRequiredError } from '@adcp/client';
+import { AuthenticationRequiredError } from '@adcp/sdk';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
@@ -678,7 +680,7 @@ export function createAdcpToolHandlers(
     logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.authType, debug }, `AdCP: executing ${task}`);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
 
       // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
@@ -751,7 +753,7 @@ export function createAdcpToolHandlers(
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Handle AuthenticationRequiredError from @adcp/client (includes OAuth metadata)
+      // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
       if (error instanceof AuthenticationRequiredError) {
         const organizationId = memberContext?.organization?.workos_organization_id;
         if (organizationId && error.hasOAuth) {

@@ -1,6 +1,6 @@
 /**
  * Narrow `ResolvedOwnerAuth` (server's internal auth union) down to the
- * shape `@adcp/client`'s `ComplyOptions.auth` / `TestOptions.auth`
+ * shape `@adcp/sdk`'s `ComplyOptions.auth` / `TestOptions.auth`
  * accepts (bearer | basic | oauth).
  *
  * The server supports an `oauth_client_credentials` variant (#2800)
@@ -10,7 +10,7 @@
  * `undefined` so the compliance / test path proceeds unauthenticated
  * with a warning log — the alternative is dropping the entire check.
  *
- * Remove this bridge when @adcp/client learns native
+ * Remove this bridge when @adcp/sdk learns native
  * client_credentials with 401-triggered refresh.
  */
 
@@ -22,7 +22,7 @@ const logger = createLogger('sdk-auth-adapter');
 
 /**
  * The subset of `ResolvedOwnerAuth` the SDK accepts. Kept as a
- * structural type so we aren't importing @adcp/client's internal types
+ * structural type so we aren't importing @adcp/sdk's internal types
  * across the boundary.
  */
 export type SdkAuth =

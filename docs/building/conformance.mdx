@@ -13,14 +13,14 @@ description: "What 'AdCP-conformant' means, defined by the storyboards that veri
 AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
 
 - **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
-- **Verified** — AAO has tested the agent recently against those storyboards and issued a signed attestation ([AAO Verified badge](/docs/building/compliance-catalog)). Gated on active membership and a live heartbeat.
+- **Verified** — AAO has tested the agent recently and issued a signed attestation. Gated on active membership and a live heartbeat. The [AAO Verified badge](/docs/building/aao-verified) carries one of two qualifiers: **(Spec)** for storyboard-conformance against a test-mode endpoint, **(Live)** for AAO-observed real production traffic via canonical campaigns. An agent can earn either or both.
 - **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
 
 Put differently:
 
 - Conformance is a property of the agent's wire behavior.
-- Verification is a time-bounded third-party attestation that an agent is conformant.
-- Verified ⊆ Conformant. You can be conformant without being verified; you cannot be verified without being conformant.
+- Verification is a time-bounded third-party attestation. **(Spec)** verifies conformance; **(Live)** verifies the underlying production capability that conformance presumes.
+- Verified (Spec) ⊆ Conformant. You can be conformant without being Verified; you cannot be Verified (Spec) without being conformant. Verified (Live) presumes Verified (Spec) — a broken protocol implementation makes live observation unmeasurable.
 
 ## Two marks: AdCP Conformant and AAO Verified
 

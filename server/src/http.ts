@@ -22,7 +22,7 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import { CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -108,6 +108,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
@@ -1011,6 +1012,12 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+
+    // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.json(getPublicJwks());
+    });
 
     // Mount property catalog API routes (resolve, browse, sync, disputes)
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });

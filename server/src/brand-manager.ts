@@ -847,7 +847,7 @@ export class BrandManager {
     const MCP_TIMEOUT_MS = 5000;
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const multiClient = new AdCPClient([
         {
           id: 'brand-agent-check',

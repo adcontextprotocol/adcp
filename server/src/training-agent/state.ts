@@ -2,7 +2,7 @@
  * Session state for the training agent.
  *
  * Sessions are keyed by account identifier (open mode) or userId+moduleId
- * (training mode). Backed by @adcp/client's AdcpStateStore so state survives
+ * (training mode). Backed by @adcp/sdk's AdcpStateStore so state survives
  * across Fly.io machines (in production, via PostgresStateStore).
  *
  * Per request we cache loaded sessions in AsyncLocalStorage so multiple
@@ -16,7 +16,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { SessionState, AccountRef, BrandRef, CreativeState } from './types.js';
-import { cleanupExpiredTasks } from '@adcp/client';
+import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
   InMemoryStateStore,
   PostgresStateStore,
@@ -24,7 +24,7 @@ import {
   structuredDeserialize,
   cleanupExpiredIdempotency,
   type AdcpStateStore,
-} from '@adcp/client/server';
+} from '@adcp/sdk/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { getAgentUrl } from './config.js';
@@ -101,7 +101,7 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
  * Known limitation: concurrent requests against the same session key use
  * last-writer-wins semantics. Acceptable for the sandbox training agent where
  * storyboards are sequential. Production sellers should use per-entity
- * collections via @adcp/client's createAdcpServer instead.
+ * collections via @adcp/sdk's createAdcpServer instead.
  */
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
@@ -353,7 +353,7 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
  *
  * Open mode preference order: brand.domain (when present) > account.account_id
  * > plans[0].brand.domain > 'default'. Brand-domain-first matches what the
- * @adcp/client storyboard runner injects via `applyBrandInvariant` on every
+ * @adcp/sdk storyboard runner injects via `applyBrandInvariant` on every
  * request — so a chain like `create_media_buy(account.account_id+brand)`
  * → `get_media_buys(brand only)` stays in one session instead of writing
  * to `open:<account_id>` and then reading from `open:<brand.domain>`.

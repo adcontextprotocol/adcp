@@ -781,7 +781,7 @@ describe('session state', () => {
 
     it('read-only access does not flush (lastAccessedAt touch is excluded from diff)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
-      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
       const key = 'readonly-test';
@@ -813,7 +813,7 @@ describe('session state', () => {
 
     it('snapshot matches round-trip serialization (first flush on unchanged data is a no-op)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
-      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
       const key = 'snapshot-test';
@@ -842,7 +842,7 @@ describe('session state', () => {
 
     it('disk format uses structuredSerialize envelopes (Maps round-trip losslessly)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
-      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
       const key = 'format-test';
@@ -883,7 +883,7 @@ describe('session state', () => {
 
     it('dispatcher skips flush when handler throws (real MCP path)', async () => {
       const { setStateStore } = await import('../../src/training-agent/state.js');
-      const { InMemoryStateStore } = await import('@adcp/client/server');
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
       try {
@@ -4639,7 +4639,7 @@ describe('get_adcp_capabilities handler', () => {
 
 // ── Governance: tool inputSchema (#2845) ───────────────────────────
 //
-// The @adcp/client storyboard runner strips request fields the server's
+// The @adcp/sdk storyboard runner strips request fields the server's
 // inputSchema does not declare. Governance handlers use account.brand.domain
 // and brand.domain for session keying (see state.ts::sessionKeyFromArgs), so
 // these fields must appear in the declared schema — otherwise sync_plans and

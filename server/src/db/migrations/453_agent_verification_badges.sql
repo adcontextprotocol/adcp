@@ -1,0 +1,55 @@
+-- Agent verification badges: tracks which agents have earned AAO Verified status.
+-- Badge is earned when ALL applicable storyboards pass and the agent has an active membership.
+
+CREATE TABLE IF NOT EXISTS agent_verification_badges (
+  agent_url               TEXT NOT NULL,
+  role                    TEXT NOT NULL,
+  verified_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  verified_protocol_version TEXT,
+  verified_specialisms    TEXT[] NOT NULL DEFAULT '{}',
+
+  -- Verification axes. 'spec' = agent passes the AdCP storyboard suite for
+  -- the declared specialisms. 'live' = AAO has observed real production
+  -- traffic via canonical campaigns (lights up later — runner ships in 3.1).
+  -- Spec is a prerequisite for measuring Live; both can be earned.
+  verification_modes      TEXT[] NOT NULL DEFAULT ARRAY['spec'],
+
+  -- JWT token issued by AAO for decentralized verification
+  verification_token      TEXT,
+  token_expires_at        TIMESTAMPTZ,
+
+  -- Membership that earned the badge
+  membership_org_id       TEXT,
+
+  -- Status tracking
+  status                  TEXT NOT NULL DEFAULT 'active',
+  revoked_at              TIMESTAMPTZ,
+  revocation_reason       TEXT,
+
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (agent_url, role),
+
+  -- Badge roles correspond to AdCP protocols (see static/schemas/source/enums/adcp-protocol.json)
+  CONSTRAINT valid_badge_role CHECK (
+    role IN ('media-buy', 'creative', 'signals', 'governance', 'brand', 'sponsored-intelligence')
+  ),
+  CONSTRAINT valid_badge_status CHECK (
+    status IN ('active', 'degraded', 'revoked')
+  ),
+  -- Verification modes constrained to known axes. Mirrors VERIFICATION_MODES
+  -- in services/adcp-taxonomy.ts; the application also filters at write
+  -- (badge-issuance.ts) and at read (badge-svg.ts, verification-token.ts)
+  -- so the trust mark can't carry text outside this set even on data drift.
+  CONSTRAINT valid_verification_modes CHECK (
+    verification_modes <@ ARRAY['spec', 'live']::TEXT[]
+    AND array_length(verification_modes, 1) >= 1
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_verification_badges_status
+  ON agent_verification_badges(status) WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS idx_verification_badges_role
+  ON agent_verification_badges(role, status);

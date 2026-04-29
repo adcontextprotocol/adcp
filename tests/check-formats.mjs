@@ -1,5 +1,5 @@
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.listCreativeFormats({});
 

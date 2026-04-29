@@ -22,7 +22,7 @@ import {
   AuthError,
   type Authenticator,
   type AuthPrincipal,
-} from '@adcp/client/server';
+} from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
@@ -287,7 +287,7 @@ const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticat
  * string before rewriting. Streaming/SSE would break this contract, so do
  * not remove `enableJsonResponse: true` from the transport config above.
  *
- * Goes away once we bump past adcp-client#866 — @adcp/client 5.14+ has
+ * Goes away once we bump past adcp-client#866 — @adcp/sdk 5.14+ has
  * built-in `sanitizeAdcpErrorEnvelope` in the dispatcher, which makes this
  * wire-layer redaction redundant.
  */
@@ -491,9 +491,9 @@ export function createTrainingAgentRouter(): Router {
         // `application/json`. We satisfy both by (a) adding the missing SSE
         // content type so the transport's check passes and (b) enabling JSON
         // response mode so the body is single-shot JSON rather than an SSE
-        // stream the probe can't parse. `@adcp/client/express-mcp`'s
+        // stream the probe can't parse. `@adcp/sdk/express-mcp`'s
         // `mcpAcceptHeaderMiddleware` does the same thing in 5.14+ but
-        // @adcp/client is pinned to 5.13 in this repo (storyboard runner
+        // @adcp/sdk is pinned to 5.13 in this repo (storyboard runner
         // regressed at 5.14 — adcp-client#866). Once that's resolved, swap
         // this block for `app.use('/mcp', mcpAcceptHeaderMiddleware())`.
         const acceptHeader = req.headers.accept;
@@ -524,7 +524,7 @@ export function createTrainingAgentRouter(): Router {
         await server.connect(transport);
 
         // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
-        // `@adcp/client/server`'s `adcpError()` builder, which in 5.13
+        // `@adcp/sdk/server`'s `adcpError()` builder, which in 5.13
         // auto-injects `recovery` on every error. The universal idempotency
         // storyboard's `conflict_no_payload_leak` invariant allows only a
         // narrow set of envelope keys on conflict — anything else is flagged
@@ -532,7 +532,7 @@ export function createTrainingAgentRouter(): Router {
         // bytes before they leave the process and strip disallowed keys.
         // Legacy dispatch builds a minimal envelope by hand, so the wrap is
         // a no-op there in practice (it still runs but finds nothing to
-        // redact). @adcp/client 5.14 moves this sanitization into the
+        // redact). @adcp/sdk 5.14 moves this sanitization into the
         // dispatcher via `sanitizeAdcpErrorEnvelope` — once we bump past
         // the 5.14 storyboard regression (adcp-client#866), drop this
         // wrapper and delete conflict-envelope.ts.

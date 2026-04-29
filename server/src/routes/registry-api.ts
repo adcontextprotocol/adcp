@@ -8,8 +8,9 @@
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/client";
-import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
+import escapeHtml from "escape-html";
+import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -25,6 +26,8 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
 } from "../addie/services/compliance-testing.js";
+import { getPublicJwks } from "../services/verification-token.js";
+import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -51,6 +54,7 @@ import {
   OperatorLookupResultSchema,
   PublisherLookupResultSchema,
   AgentComplianceDetailSchema,
+  AgentVerificationSchema,
   StoryboardStatusSchema,
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
@@ -1439,6 +1443,101 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/.well-known/jwks.json",
+  operationId: "getJwks",
+  summary: "AAO public key set",
+  description: "Returns the JSON Web Key Set (JWKS) containing AAO's public verification keys. Use these to verify AAO Verified badge tokens without calling AAO's API.",
+  tags: ["Agent Compliance"],
+  responses: {
+    200: {
+      description: "JWKS response",
+      content: {
+        "application/json": {
+          schema: z.object({
+            keys: z.array(z.record(z.string(), z.any())),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/verification",
+  operationId: "getAgentVerification",
+  summary: "Get agent AAO Verified status",
+  description:
+    "Returns AAO Verified badge status for a single agent. Public and cacheable. Includes role badges, verified storyboards, and a link to the agent's registry listing.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fexample.com%2Fmcp" }),
+    }),
+  },
+  responses: {
+    200: { description: "Verification status", content: { "application/json": { schema: AgentVerificationSchema } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}.svg",
+  operationId: "getAgentBadgeSvg",
+  summary: "Get agent verification badge SVG",
+  description: "Returns an SVG badge image for the specified agent and role. Shows 'AAO Verified | Sales Agent' (teal) when verified, or 'AAO Verified | Not Verified' (grey) when not. Cacheable, suitable for embedding in websites.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role (sales, buying, creative, governance, signals, measurement)" }),
+    }),
+  },
+  responses: {
+    200: { description: "SVG badge image", content: { "image/svg+xml": { schema: z.string() } } },
+    400: { description: "Invalid agent URL" },
+    500: { description: "Server error" },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}/embed",
+  operationId: "getAgentBadgeEmbed",
+  summary: "Get embeddable badge code",
+  description: "Returns HTML and Markdown embed snippets for displaying an AAO Verified badge on websites, social profiles, and documentation. The badge links to the agent's AAO registry listing.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Embed code",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            role: z.string(),
+            badge_svg_url: z.string(),
+            registry_url: z.string(),
+            html: z.string(),
+            markdown: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/agents/{encodedUrl}/storyboard-status",
   operationId: "getAgentStoryboardStatus",
   summary: "Get agent storyboard status",
@@ -2548,6 +2647,69 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  /**
+   * Enrich brand.json agent entries with AAO verification status.
+   * Scans data for agent URLs and appends aao_verification where badges exist.
+   */
+  async function enrichBrandDataWithVerification(data: unknown): Promise<unknown> {
+    if (!data || typeof data !== 'object') return data;
+
+    // Collect all agent URLs from brand.json data
+    const agentUrls: string[] = [];
+    function collectAgentUrls(obj: unknown) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) { obj.forEach(collectAgentUrls); return; }
+      const rec = obj as Record<string, unknown>;
+      if (typeof rec.url === 'string' && typeof rec.type === 'string') {
+        agentUrls.push(rec.url as string);
+      }
+      // Check house.agents and brands[].agents
+      if (rec.agents && Array.isArray(rec.agents)) rec.agents.forEach(collectAgentUrls);
+      if (rec.brands && Array.isArray(rec.brands)) rec.brands.forEach(collectAgentUrls);
+      if (rec.house && typeof rec.house === 'object') collectAgentUrls(rec.house);
+    }
+    collectAgentUrls(data);
+
+    if (agentUrls.length === 0) return data;
+
+    let badgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>>;
+    try {
+      badgeMap = await complianceDb.bulkGetActiveBadges(agentUrls);
+    } catch {
+      return data; // Table may not exist yet
+    }
+
+    if (badgeMap.size === 0) return data;
+
+    // Deep clone and enrich agent entries
+    const enriched = JSON.parse(JSON.stringify(data));
+    function enrichAgentEntries(obj: unknown) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) { obj.forEach(enrichAgentEntries); return; }
+      const rec = obj as Record<string, unknown>;
+      if (typeof rec.url === 'string' && typeof rec.type === 'string') {
+        const badges = badgeMap.get(rec.url as string);
+        if (badges && badges.length > 0) {
+          rec.aao_verification = {
+            verified: true,
+            roles: badges.map(b => b.role),
+            // Per-role verification axes. Each entry is the modes array for
+            // the role at the same index in `roles`. ['spec'] today; will
+            // include 'live' when canonical campaigns are healthy.
+            modes_by_role: Object.fromEntries(badges.map(b => [b.role, b.verification_modes])),
+            verified_at: badges[0].verified_at.toISOString(),
+          };
+        }
+      }
+      if (rec.agents && Array.isArray(rec.agents)) rec.agents.forEach(enrichAgentEntries);
+      if (rec.brands && Array.isArray(rec.brands)) rec.brands.forEach(enrichAgentEntries);
+      if (rec.house && typeof rec.house === 'object') enrichAgentEntries(rec.house);
+    }
+    enrichAgentEntries(enriched);
+
+    return enriched;
+  }
+
   router.get("/brands/brand-json", async (req, res) => {
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
@@ -2561,11 +2723,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (fresh) {
         const result = await brandManager.validateDomain(domain, { skipCache: true });
         if (result.valid && result.raw_data) {
+          const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
           return res.json({
             domain: result.domain,
             url: result.url,
             variant: result.variant,
-            data: result.raw_data,
+            data: enrichedData,
             warnings: result.warnings,
           });
         }
@@ -2577,23 +2740,25 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (brand && brand.is_public !== false) {
         const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
         const data = { name: brand.brand_name || domain, ...manifest };
+        const enrichedData = await enrichBrandDataWithVerification(data);
 
         const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
         const url = brand.source_type === "brand_json"
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        return res.json({ domain, url, variant, data });
+        return res.json({ domain, url, variant, data: enrichedData });
       }
 
       // Nothing in DB — try live fetch as last resort
       const result = await brandManager.validateDomain(domain);
       if (result.valid && result.raw_data) {
+        const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
         return res.json({
           domain: result.domain,
           url: result.url,
           variant: result.variant,
-          data: result.raw_data,
+          data: enrichedData,
           warnings: result.warnings,
         });
       }
@@ -3437,6 +3602,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // Bulk-fetch all enrichment data from DB snapshot tables up front.
       // The crawler materializes health + capabilities into these tables on
       // each cycle, so the registry API never does live MCP/A2A fan-out.
+      // Compliance status, metadata, and badges are fetched here too.
       const agentUrls = agents.map(a => a.url);
       const [complianceMap, metadataMap, healthMap, capsMap] = await Promise.all([
         withCompliance ? complianceDb.bulkGetComplianceStatus(agentUrls) : Promise.resolve(null),
@@ -3444,6 +3610,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         withHealth ? agentSnapshotDb.bulkGetHealth(agentUrls) : Promise.resolve(null),
         withCapabilities ? agentSnapshotDb.bulkGetCapabilities(agentUrls) : Promise.resolve(null),
       ]);
+
+      let badgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>> | null = null;
+      if (withCompliance) {
+        try {
+          badgeMap = await complianceDb.bulkGetActiveBadges(agentUrls);
+        } catch (err) {
+          logger.warn({ err }, "Badge bulk query failed (table may not exist yet)");
+        }
+      }
 
       const enriched = await Promise.all(
         agents.map(async (agent): Promise<AgentWithStats> => {
@@ -3533,6 +3708,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             const meta = metadataMap.get(agent.url);
             const optedOut = meta?.compliance_opt_out ?? false;
             if (cs && !optedOut) {
+              const agentBadges = badgeMap?.get(agent.url) || [];
               enrichedAgent.compliance = {
                 status: cs.status,
                 lifecycle_stage: cs.lifecycle_stage,
@@ -3542,6 +3718,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 headline: cs.headline,
                 monitoring_paused: meta?.monitoring_paused ?? false,
                 check_interval_hours: meta?.check_interval_hours ?? 12,
+                verified: agentBadges.length > 0,
+                verified_roles: agentBadges.map(b => b.role),
               };
             }
           }
@@ -3603,6 +3781,16 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.warn({ err, agentUrl }, "Storyboard status query failed");
       }
 
+      // Verification badges — supplementary, don't fail the response
+      let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
+      try {
+        badges = await complianceDb.getBadgesForAgent(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
+      }
+
+      const encodedUrl = encodeURIComponent(agentUrl);
+
       res.json({
         agent_url: agentUrl,
         status: status.status,
@@ -3617,6 +3805,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         status_changed_at: status.status_changed_at?.toISOString() || null,
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
+        verified: badges.length > 0,
+        verified_badges: badges.map(b => ({
+          role: b.role,
+          verified_at: b.verified_at.toISOString(),
+          verified_specialisms: b.verified_specialisms,
+          verification_modes: b.verification_modes,
+          verified_protocol_version: b.verified_protocol_version,
+          badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
+        })),
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance status");
@@ -3660,6 +3857,137 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance history");
       res.status(500).json({ error: "Failed to get compliance history" });
+    }
+  });
+
+  // ── JWKS (public) ────────────────────────────────────────────────
+
+  router.get("/.well-known/jwks.json", (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.json(getPublicJwks());
+  });
+
+  // ── Agent Verification (public) ──────────────────────────────────
+
+  router.get("/registry/agents/:encodedUrl/verification", bulkResolveRateLimiter, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
+      try {
+        badges = await complianceDb.getBadgesForAgent(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
+      }
+
+      const encodedUrl = encodeURIComponent(agentUrl);
+
+      res.json({
+        agent_url: agentUrl,
+        verified: badges.length > 0,
+        badges: badges.map(b => ({
+          role: b.role,
+          verified_at: b.verified_at.toISOString(),
+          verified_specialisms: b.verified_specialisms,
+          verification_modes: b.verification_modes,
+          verified_protocol_version: b.verified_protocol_version,
+          badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
+        })),
+        registry_url: `${process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org'}/registry/agents/${encodedUrl}`,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get verification status");
+      res.status(500).json({ error: "Failed to get verification status" });
+    }
+  });
+
+  // ── Badge SVG (public) ──────────────────────────────────────────
+
+  router.get("/registry/agents/:encodedUrl/badge/:role.svg", async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const role = req.params.role;
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).send("Invalid agent URL");
+      }
+      if (!VALID_BADGE_ROLES.includes(role as any)) {
+        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+      }
+
+      // getActiveBadge returns active + degraded badges. A degraded badge
+      // (within 48-hour grace period) still renders as verified -- the grace
+      // period is invisible to the public. Revocation only happens after 48h.
+      let modes: string[] = [];
+      try {
+        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        if (badge) modes = badge.verification_modes;
+      } catch {
+        // Table may not exist yet
+      }
+
+      const svg = renderBadgeSvg(role, modes);
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Content-Security-Policy", "script-src 'none'");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
+      // ETag covers both role and the mode set so a transition (e.g. add 'live')
+      // invalidates caches for the badge URL.
+      res.setHeader("ETag", `"${role}-${modes.slice().sort().join('-') || 'nv'}"`);
+      res.send(svg);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to render badge SVG");
+      res.status(500).send("Failed to render badge");
+    }
+  });
+
+  // ── Embeddable Badge (public) ──────────────────────────────────
+
+  router.get("/registry/agents/:encodedUrl/badge/:role/embed", async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const role = req.params.role;
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!VALID_BADGE_ROLES.includes(role as any)) {
+        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+      }
+
+      let verified = false;
+      try {
+        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        verified = !!badge;
+      } catch {
+        // Table may not exist yet
+      }
+
+      const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
+      const encodedUrl = encodeURIComponent(agentUrl);
+      const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}.svg`;
+      const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
+      // Convert kebab-case domain to Title Case (e.g. "media-buy" → "Media Buy")
+      const roleLabel = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+      // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
+      const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+      const html = `<a href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(badgeSvgUrl)}" alt="${escapeHtml(`AAO Verified ${roleLabel} Agent`)}" loading="lazy" height="20" /></a>`;
+      const markdown = `[![AAO Verified ${roleLabel} Agent](${escapeMdUrl(badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
+
+      res.json({
+        agent_url: agentUrl,
+        role,
+        verified,
+        badge_svg_url: badgeSvgUrl,
+        registry_url: registryUrl,
+        html,
+        markdown,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to generate embed code");
+      res.status(500).json({ error: "Failed to generate embed code" });
     }
   });
 

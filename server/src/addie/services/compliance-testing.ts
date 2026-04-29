@@ -1,5 +1,5 @@
 /**
- * Compliance testing — thin adapter over @adcp/client's compliance module.
+ * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
  * Re-exports the client's comply(), types, platform profiles, and briefs.
  * Adds complianceResultToDbInput() for recording results in the database.
@@ -17,7 +17,7 @@ import {
   type SampleBrief,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 
 import type {
   TrackSummaryEntry,
@@ -46,7 +46,7 @@ export type {
 
 // ── Capability-resolution error classification ───────────────────
 //
-// `@adcp/client`'s `resolveStoryboardsForCapabilities` fails closed with
+// `@adcp/sdk`'s `resolveStoryboardsForCapabilities` fails closed with
 // plain `Error` instances for two distinct agent-config problems:
 //   1. Declared specialism whose parent protocol isn't in supported_protocols.
 //   2. Declared specialism whose bundle isn't in the local compliance cache.
@@ -55,10 +55,10 @@ export type {
 // not platform errors — callers should log at warn and return actionable
 // coaching, not alarm on them as system failures.
 //
-// Until @adcp/client exports typed errors (tracked upstream at
+// Until @adcp/sdk exports typed errors (tracked upstream at
 // adcontextprotocol/adcp-client#734), we classify by message regex. The
 // patterns match the exact strings thrown at
-// node_modules/@adcp/client/dist/lib/testing/storyboard/compliance.js:337
+// node_modules/@adcp/sdk/dist/lib/testing/storyboard/compliance.js:337
 // and :347. Swap to `instanceof` checks once the SDK emits coded errors.
 //
 // Security notes:
@@ -294,10 +294,135 @@ export function deriveStoryboardStatuses(
   return entries;
 }
 
+// ── Verification Status Derivation ───────────────────────────────
+
+import { isStableSpecialism, type AdcpProtocol } from '../../services/adcp-taxonomy.js';
+
+/**
+ * AAO Verified badge roles map to AdCP protocols (enums/adcp-protocol.json).
+ * Each declared specialism rolls up to exactly one protocol.
+ */
+export type BadgeRole = AdcpProtocol;
+
+/**
+ * Specialism metadata: parent protocol + root storyboard ID
+ * (the `id:` field in static/compliance/source/specialisms/{specialism}/index.yaml).
+ *
+ * The agent declares specialisms in get_adcp_capabilities; the compliance runner
+ * reports pass/fail keyed by storyboard_id. This table connects the two.
+ *
+ * TODO(adcp-client#553): once @adcp/client exposes specialism results directly,
+ * drop the storyboard_id lookup and trust the runner output.
+ */
+interface SpecialismInfo {
+  protocol: BadgeRole;
+  storyboard_id: string;
+}
+
+const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
+  // media-buy
+  'audience-sync': { protocol: 'media-buy', storyboard_id: 'audience_sync' },
+  'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
+  'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
+  'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
+  'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
+  'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },
+  'sales-social': { protocol: 'media-buy', storyboard_id: 'sales_social' },
+  'signed-requests': { protocol: 'media-buy', storyboard_id: 'signed_requests' },
+  'governance-aware-seller': { protocol: 'media-buy', storyboard_id: 'governance_aware_seller' },
+  // creative
+  'creative-ad-server': { protocol: 'creative', storyboard_id: 'creative_ad_server' },
+  'creative-generative': { protocol: 'creative', storyboard_id: 'creative_generative' },
+  'creative-template': { protocol: 'creative', storyboard_id: 'creative_template' },
+  // signals
+  'signal-marketplace': { protocol: 'signals', storyboard_id: 'signal_marketplace' },
+  'signal-owned': { protocol: 'signals', storyboard_id: 'signal_owned' },
+  // governance
+  'collection-lists': { protocol: 'governance', storyboard_id: 'collection_lists' },
+  'content-standards': { protocol: 'governance', storyboard_id: 'content_standards' },
+  'governance-delivery-monitor': { protocol: 'governance', storyboard_id: 'governance_delivery_monitor' },
+  'governance-spend-authority': { protocol: 'governance', storyboard_id: 'governance_spend_authority' },
+  'property-lists': { protocol: 'governance', storyboard_id: 'property_lists' },
+  // brand
+  'brand-rights': { protocol: 'brand', storyboard_id: 'brand_rights' },
+};
+
+export interface VerificationResult {
+  verified: boolean;
+  roles: Array<{
+    role: BadgeRole;
+    verified: boolean;
+    specialisms: string[];
+    passing: string[];
+    failing: string[];
+  }>;
+}
+
+/**
+ * Determine which badge roles an agent qualifies for based on its
+ * declared specialisms and their pass/fail status.
+ *
+ * An agent earns a role badge when ALL declared specialisms that
+ * roll up to that domain are passing. Specialisms come from the
+ * agent's get_adcp_capabilities response (specialisms field).
+ */
+export function deriveVerificationStatus(
+  declaredSpecialisms: string[],
+  storyboardStatuses: StoryboardStatusEntry[],
+): VerificationResult {
+  if (declaredSpecialisms.length === 0) {
+    return { verified: false, roles: [] };
+  }
+
+  const statusMap = new Map<string, StoryboardStatusEntry>();
+  for (const entry of storyboardStatuses) {
+    statusMap.set(entry.storyboard_id, entry);
+  }
+
+  // Preview specialisms are tested but don't count toward stable badge issuance.
+  // They'll be reported separately once the compliance runner emits preview results.
+  const stableSpecialisms = declaredSpecialisms.filter(isStableSpecialism);
+
+  // Group declared specialisms by the protocol they roll up to
+  const protocolSpecialisms = new Map<BadgeRole, string[]>();
+  for (const specialism of stableSpecialisms) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) continue;
+    const existing = protocolSpecialisms.get(info.protocol) || [];
+    existing.push(specialism);
+    protocolSpecialisms.set(info.protocol, existing);
+  }
+
+  const roles: VerificationResult['roles'] = [];
+  for (const [role, specialisms] of protocolSpecialisms) {
+    const passing: string[] = [];
+    const failing: string[] = [];
+    for (const specialism of specialisms) {
+      const info = SPECIALISM_CATALOG[specialism];
+      const status = info ? statusMap.get(info.storyboard_id) : undefined;
+      if (status?.status === 'passing') {
+        passing.push(specialism);
+      } else {
+        failing.push(specialism);
+      }
+    }
+    roles.push({
+      role,
+      verified: failing.length === 0 && passing.length > 0,
+      specialisms,
+      passing,
+      failing,
+    });
+  }
+
+  const verified = roles.some(r => r.verified);
+  return { verified, roles };
+}
+
 // ── DB Adapter ────────────────────────────────────────────────────
 
 /**
- * Convert a ComplianceResult from @adcp/client into the shape expected
+ * Convert a ComplianceResult from @adcp/sdk into the shape expected
  * by ComplianceDatabase.recordComplianceRun().
  */
 export function complianceResultToDbInput(

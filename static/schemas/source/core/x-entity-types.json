@@ -33,7 +33,8 @@
     "content_standards",
     "task",
     "si_session",
-    "offering"
+    "offering",
+    "vendor_metric"
   ],
   "x-entity-definitions": {
     "advertiser_brand": "A brand in an advertiser's house portfolio. Identified by the advertiser — e.g., the `brand_id` on get_brand_identity, the `brand_id` inside core/brand-ref.json (buyer_brand, buyer), and core/account.json `brand`. If you `$ref` core/brand-id.json you are asserting advertiser scope; talent-roster ids must use a separate type even if the string shape is identical.",
@@ -64,6 +65,7 @@
     "content_standards": "A content-standards document. `standards_id` in content-standards/* schemas.",
     "task": "An async task handle (governance check, validation result). `task_id` across core/tasks-* schemas.",
     "si_session": "A sponsored-intelligence conversation session. `session_id` in sponsored-intelligence/* schemas.",
-    "offering": "A brand-published offering (campaign, promotion, product set, service) promoted via traditional creatives or SI conversations. `offering_id` in core/offering.json, sponsored-intelligence/si-get-offering-*, and sponsored-intelligence/si-initiate-session-request. Also appears as a catalog item-type id when `core/catalog.json::type` is `offering`."
+    "offering": "A brand-published offering (campaign, promotion, product set, service) promoted via traditional creatives or SI conversations. `offering_id` in core/offering.json, sponsored-intelligence/si-get-offering-*, and sponsored-intelligence/si-initiate-session-request. Also appears as a catalog item-type id when `core/catalog.json::type` is `offering`.",
+    "vendor_metric": "A vendor-defined metric within a measurement vendor's vocabulary. `metric_id` in core/vendor-metric-id.json — used by reporting-capabilities.vendor_metrics declarations, delivery-metrics.vendor_metric_values emissions, and required_vendor_metrics filters. Identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)` — the identifier is namespaced by the vendor's BrandRef, not globally unique. Vendor catalog (category, methodology, standard alignment) lives at the vendor's brand.json `agents[type='measurement']`."
   }
 }

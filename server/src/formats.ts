@@ -1,4 +1,4 @@
-import { AdCPClient } from "@adcp/client";
+import { AdCPClient } from "@adcp/sdk";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 

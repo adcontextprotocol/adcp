@@ -1,6 +1,6 @@
 import type { Agent } from "./types.js";
-import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
-import { hardenPropertyIndex, sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
+import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
+import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
@@ -38,7 +38,6 @@ export class CrawlerService {
   private profilesDb?: AgentInventoryProfilesDatabase;
 
   constructor(options?: { eventsDb?: CatalogEventsDatabase; profilesDb?: AgentInventoryProfilesDatabase }) {
-    hardenPropertyIndex();
     this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error', userAgent: AAO_UA_DISCOVERY });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
