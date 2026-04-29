@@ -186,6 +186,10 @@ The scope deliberately omits `create_media_buy`, `sync_creatives`, and all spend
 
 `attestation_verifier` is Media Buy Protocol-specific — it binds to the **AAO Verified (Live)** qualifier, which is a media-buy flow (live observation requires real ad delivery). Equivalent observability scopes for signals, governance, creative, or brand agents are not yet standardized; until they are, those agents use `custom:` scopes.
 
+<Note>
+**Reporting only — lifecycle-running is a future scope.** `attestation_verifier` is the *reporting* half of (Live): the engine observes campaigns the seller has trafficked, reads delivery, and attaches a verification webhook. It deliberately cannot create campaigns, attach creatives, or modify budgets. The complementary *lifecycle-running* role — for the AAO-operated canonical-campaign runner contemplated in [#3046](https://github.com/adcontextprotocol/adcp/issues/3046), where the engine traffics canonical PSAs end-to-end through a seller's live agent — needs a broader write scope (`attestation_runner`, tracked in [#3561](https://github.com/adcontextprotocol/adcp/issues/3561)). Today's brownfield enrollment (Path B) requires only `attestation_verifier`; the runner-side scope lights up alongside the canonical-campaign runner itself.
+</Note>
+
 ### Custom scopes for other vendor protocols
 
 Any vendor agent MAY define custom scopes using the `custom:` prefix. Buyers MUST NOT assume any semantics from a custom-prefixed scope name — the names are agent-defined and learned out-of-band (docs, onboarding).
