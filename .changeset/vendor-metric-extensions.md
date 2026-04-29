@@ -15,7 +15,7 @@ to free-form strings (e.g., `x_*` prefixed) would solve the asymmetry with
 discovery: a buyer asking "I need attention measurement" can't query a
 flat string namespace where every vendor uses a different name. A
 structured extension gives the buyer a queryable axis — `vendor` (BrandRef)
-— with `metric_name` as a second pin once vendors converge.
+— with `metric_id` as a second pin once vendors converge.
 
 **Why the surface is intentionally thin.** Per-product extensions carry
 only what the seller can credibly attest to: "I support this vendor's
@@ -27,13 +27,13 @@ metadata on every seller's extension is duplication that drifts.
 
 **Schemas added.**
 
-- `core/vendor-metric.json`: pointer descriptor `{ vendor: BrandRef, metric_name }`.
+- `core/vendor-metric.json`: pointer descriptor `{ vendor: BrandRef, metric_id }`.
   No `metric_category`, no `standard_reference`, no `description`, no
   `documentation_url`, no inline `agent_url` — all of those live at the
   vendor and are resolved via `brand.json`. `additionalProperties: false`
   keeps the descriptor sealed.
 - `core/vendor-metric-value.json`: the reported value
-  `{ vendor, metric_name, value, unit?, measurable_impressions?, breakdown? }`.
+  `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`.
   `measurable_impressions` is the coverage denominator (vendor measurement
   is rarely 100% — vendors only score impressions where their SDK fires
   or their panel matches). Absence means coverage is unspecified; do NOT
@@ -48,13 +48,13 @@ metadata on every seller's extension is duplication that drifts.
 
 - `core/reporting-capabilities.json`: new `vendor_metrics` array (parallel
   to `available_metrics`). Semantic uniqueness key is
-  `(vendor.domain, vendor.brand_id, metric_name)`; sellers MUST NOT declare
+  `(vendor.domain, vendor.brand_id, metric_id)`; sellers MUST NOT declare
   the same vendor metric twice. JSON Schema `uniqueItems` is not used
   because BrandRef carries optional fields whose absence/presence would
   defeat deep-equal — uniqueness is enforced at build/validation time on
   the semantic key.
 - `core/product-filters.json`: new `required_vendor_metrics` filter — each
-  entry pins `vendor` and/or `metric_name`. Cross-vendor discovery (e.g.,
+  entry pins `vendor` and/or `metric_id`. Cross-vendor discovery (e.g.,
   "any attention measurement") is the buyer agent's responsibility: the
   agent resolves which vendors offer a category via the vendors'
   `brand.json` records, then enumerates them as filter entries. Same
@@ -62,7 +62,7 @@ metadata on every seller's extension is duplication that drifts.
 - `core/delivery-metrics.json`: new `vendor_metric_values` array — emitted
   alongside standard scalars on every level that uses delivery-metrics
   (totals, by_package, by_creative, by_audience, etc.). One row per
-  `(vendor.domain, vendor.brand_id, metric_name)` per reporting period.
+  `(vendor.domain, vendor.brand_id, metric_id)` per reporting period.
   The parent `additionalProperties: true` is preserved so existing
   free-form vendor emissions remain conformant during migration.
 - `docs/media-buy/task-reference/get_products.mdx`: new filter row.

@@ -9,12 +9,9 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Vendor that produced this value. Matches a `vendor_metrics[].vendor` declaration on the product."
     },
-    "metric_name": {
-      "type": "string",
-      "description": "Metric name within the vendor's vocabulary. Matches a `vendor_metrics[].metric_name` declaration on the product.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[a-z][a-z0-9_]*$"
+    "metric_id": {
+      "$ref": "/schemas/core/vendor-metric-id.json",
+      "description": "Identifier for the metric within the vendor's vocabulary. Matches a `vendor_metrics[].metric_id` declaration on the product."
     },
     "value": {
       "type": "number",
@@ -36,25 +33,25 @@
       "additionalProperties": true
     }
   },
-  "required": ["vendor", "metric_name", "value"],
+  "required": ["vendor", "metric_id", "value"],
   "additionalProperties": false,
   "examples": [
     {
       "vendor": { "domain": "attentionvendor.example" },
-      "metric_name": "attention_units",
+      "metric_id": "attention_units",
       "value": 4.2,
       "unit": "score",
       "measurable_impressions": 8000
     },
     {
       "vendor": { "domain": "emissionsvendor.example" },
-      "metric_name": "gco2e_per_impression",
+      "metric_id": "gco2e_per_impression",
       "value": 0.85,
       "unit": "gCO2e"
     },
     {
       "vendor": { "domain": "panelmeasurement.example" },
-      "metric_name": "demographic_reach",
+      "metric_id": "demographic_reach",
       "value": 1500000,
       "unit": "persons",
       "measurable_impressions": 9200000,
