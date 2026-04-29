@@ -282,7 +282,7 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the product's `reporting_capabilities.available_metrics` declared but that are NOT populated in this report. Empty array (or absent) indicates clean delivery against the declared contract. Non-empty signals an accountability breach — the seller advertised the capability at discovery but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
+                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when the package carries `committed_metrics` (frozen snapshot stamped at create_media_buy), `missing_metrics` is computed against THAT — independent of subsequent product mutations. When `committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics`. Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
                       "items": {
                         "$ref": "/schemas/enums/available-metric.json"
                       },
