@@ -27,11 +27,10 @@ metadata on every seller's extension is duplication that drifts.
 
 **Schemas added.**
 
-- `core/vendor-metric.json`: pointer descriptor `{ vendor: BrandRef, metric_id }`.
-  No `metric_category`, no `standard_reference`, no `description`, no
-  `documentation_url`, no inline `agent_url` — all of those live at the
-  vendor and are resolved via `brand.json`. `additionalProperties: false`
-  keeps the descriptor sealed.
+- `core/vendor-metric-id.json`: shared identifier schema (analogous to
+  `core/brand-id.json`) — lowercase pattern, length bounds, namespaced
+  semantics. Reused by the declaration site, the value site, and the
+  filter site.
 - `core/vendor-metric-value.json`: the reported value
   `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`.
   `measurable_impressions` is the coverage denominator (vendor measurement
