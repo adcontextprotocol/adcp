@@ -73,8 +73,8 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
 // hit a real authorization server. Default to a clean success; individual
 // tests can re-mock per-case.
 const exchangeMock = vi.fn();
-vi.mock('@adcp/client', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@adcp/client');
+vi.mock('@adcp/sdk', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@adcp/sdk');
   return {
     ...actual,
     exchangeClientCredentials: (...args: unknown[]) => exchangeMock(...args),
@@ -281,7 +281,7 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
           m: string, k: 'oauth' | 'malformed' | 'network',
           oe?: string, oed?: string, hs?: number,
         ) => Error;
-      }>('@adcp/client');
+      }>('@adcp/sdk');
       exchangeMock.mockRejectedValueOnce(
         new ClientCredentialsExchangeError(
           'Client authentication failed', 'oauth', 'invalid_client',

@@ -26,18 +26,18 @@ import {
   InMemoryReplayStore,
   InMemoryRevocationStore,
   RequestSignatureError,
-} from '@adcp/client/signing';
-import type { AdcpJsonWebKey, ReplayStore, VerifierCapability } from '@adcp/client/signing';
+} from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey, ReplayStore, VerifierCapability } from '@adcp/sdk/signing';
 import {
   verifySignatureAsAuthenticator,
   AuthError,
   tagAuthenticatorNeedsRawBody,
   tagAuthenticatorPresenceGated,
   isAuthenticatorPresenceGated,
-} from '@adcp/client/server';
-import { PostgresReplayStore, sweepExpiredReplays } from '@adcp/client/signing/server';
-import type { Authenticator } from '@adcp/client/server';
-import { getComplianceCacheDir } from '@adcp/client/testing';
+} from '@adcp/sdk/server';
+import { PostgresReplayStore, sweepExpiredReplays } from '@adcp/sdk/signing/server';
+import type { Authenticator } from '@adcp/sdk/server';
+import { getComplianceCacheDir } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { MUTATING_TOOLS } from './idempotency.js';

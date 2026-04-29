@@ -1,5 +1,5 @@
 /**
- * Compliance testing — thin adapter over @adcp/client's compliance module.
+ * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
  * Re-exports the client's comply(), types, platform profiles, and briefs.
  * Adds complianceResultToDbInput() for recording results in the database.
@@ -17,7 +17,7 @@ import {
   type SampleBrief,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 
 import type {
   TrackSummaryEntry,
@@ -46,7 +46,7 @@ export type {
 
 // ── Capability-resolution error classification ───────────────────
 //
-// `@adcp/client`'s `resolveStoryboardsForCapabilities` fails closed with
+// `@adcp/sdk`'s `resolveStoryboardsForCapabilities` fails closed with
 // plain `Error` instances for two distinct agent-config problems:
 //   1. Declared specialism whose parent protocol isn't in supported_protocols.
 //   2. Declared specialism whose bundle isn't in the local compliance cache.
@@ -55,10 +55,10 @@ export type {
 // not platform errors — callers should log at warn and return actionable
 // coaching, not alarm on them as system failures.
 //
-// Until @adcp/client exports typed errors (tracked upstream at
+// Until @adcp/sdk exports typed errors (tracked upstream at
 // adcontextprotocol/adcp-client#734), we classify by message regex. The
 // patterns match the exact strings thrown at
-// node_modules/@adcp/client/dist/lib/testing/storyboard/compliance.js:337
+// node_modules/@adcp/sdk/dist/lib/testing/storyboard/compliance.js:337
 // and :347. Swap to `instanceof` checks once the SDK emits coded errors.
 //
 // Security notes:
@@ -297,7 +297,7 @@ export function deriveStoryboardStatuses(
 // ── DB Adapter ────────────────────────────────────────────────────
 
 /**
- * Convert a ComplianceResult from @adcp/client into the shape expected
+ * Convert a ComplianceResult from @adcp/sdk into the shape expected
  * by ComplianceDatabase.recordComplianceRun().
  */
 export function complianceResultToDbInput(

@@ -1,6 +1,6 @@
 /**
  * Detect when a storyboard step's error string signals that the user must
- * (re)authorize via OAuth. The @adcp/client SDK catches its own
+ * (re)authorize via OAuth. The @adcp/sdk SDK catches its own
  * `NeedsAuthorizationError` inside `runStep` and preserves only `err.message`
  * on the step result, so by the time runStoryboardStep / comply return we
  * only have a string. Two shapes map to "user must (re)authorize":

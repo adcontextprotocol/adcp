@@ -32,7 +32,7 @@
  *                          references must be too.
  *
  * `contributes_both` / `contributes_outside_branch_set` / `contributes_bad_type`
- * mirror adcp-client's loader (node_modules/@adcp/client/dist/lib/testing/
+ * mirror adcp-client's loader (node_modules/@adcp/sdk/dist/lib/testing/
  * storyboard/loader.js `resolveContributesShorthand`) so authors see the
  * violation at build time instead of storyboard-load time.
  *

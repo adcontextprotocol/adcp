@@ -1,7 +1,7 @@
 /**
  * createAdcpServer-based training agent server (behind feature flag).
  *
- * Routes all spec-declared tools through `@adcp/client/server`'s
+ * Routes all spec-declared tools through `@adcp/sdk/server`'s
  * `createAdcpServer` domain-grouped config so idempotency, capability
  * declaration, signed-requests verification, and webhook emission are
  * handled by the framework rather than our hand-rolled dispatch.
@@ -22,11 +22,11 @@
  * after burn-in.
  */
 
-import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
-import { mergeSeedProduct } from '@adcp/client/testing';
-import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
-import { MediaChannelSchema } from '@adcp/client/types';
-import type { Product } from '@adcp/client';
+import { createAdcpServer, wrapEnvelope } from '@adcp/sdk/server';
+import { mergeSeedProduct } from '@adcp/sdk/testing';
+import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/sdk/server';
+import { MediaChannelSchema } from '@adcp/sdk/types';
+import type { Product } from '@adcp/sdk';
 import { z } from 'zod';
 import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
 import { getIdempotencyStore, scopedPrincipal } from './idempotency.js';
@@ -305,7 +305,7 @@ function scopedWebhookPrincipal(ctx: HandlerContext, params: Record<string, unkn
 
 /**
  * Build the framework-based training-agent MCP server. Returns the
- * opaque `AdcpServer` handle from `@adcp/client/server` — no SDK types
+ * opaque `AdcpServer` handle from `@adcp/sdk/server` — no SDK types
  * escape our module boundary.
  */
 export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpServer {
@@ -502,7 +502,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     // time, before the request is parsed) doesn't fit. We session-load in
     // the callback and run each fixture through `mergeSeedProduct` on top
     // of `SEED_PRODUCT_DEFAULTS` (the response-schema minimum fields).
-    // `bridgeFromSessionStore` in @adcp/client 5.14+ collapses this to a
+    // `bridgeFromSessionStore` in @adcp/sdk 5.14+ collapses this to a
     // one-liner — pending adcp-client#866 (5.14 storyboard regression).
     //
     // Security: the dispatcher's sandbox gate is `isSandboxRequest(params)`

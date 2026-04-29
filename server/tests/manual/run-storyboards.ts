@@ -20,14 +20,14 @@ import {
   listAllComplianceStoryboards,
   runStoryboard,
   getComplianceCacheDir,
-} from '@adcp/client/testing';
-import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
+import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
   InMemoryReplayStore,
   InMemoryRevocationStore,
-} from '@adcp/client/signing';
-import type { AdcpJsonWebKey } from '@adcp/client/signing';
+} from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at

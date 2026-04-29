@@ -13,8 +13,8 @@ import request from 'supertest';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { verifyWebhookSignature, StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/client/signing';
-import type { AdcpJsonWebKey } from '@adcp/client/signing';
+import { verifyWebhookSignature, StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 
 vi.hoisted(() => {

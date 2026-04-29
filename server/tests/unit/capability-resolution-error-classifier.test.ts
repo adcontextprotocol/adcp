@@ -2,7 +2,7 @@
  * Unit tests for classifyCapabilityResolutionError and presentCapabilityResolutionError.
  *
  * These tests pin the regex classifier to the exact error strings thrown by
- * `@adcp/client`'s `resolveStoryboardsForCapabilities`. If upstream changes
+ * `@adcp/sdk`'s `resolveStoryboardsForCapabilities`. If upstream changes
  * the wording (adcontextprotocol/adcp-client#734 tracks moving to typed
  * errors), these tests will fail and force us to update the classifier
  * rather than silently letting config-errors escalate back to generic

@@ -370,7 +370,7 @@ function generateIndex(version, sourceDir) {
     has_baseline: d.has_baseline,
     path: d.path,
   }));
-  // Transitional alias for @adcp/client@5.x consumers that read `domains` and expect
+  // Transitional alias for @adcp/sdk@5.x consumers that read `domains` and expect
   // `domains/{id}/` on-disk paths. Drop after v6 ships and all consumers upgrade.
   const domainAliasEntries = protocols.map(d => ({
     id: d.id,

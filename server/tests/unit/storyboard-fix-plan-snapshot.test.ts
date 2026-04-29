@@ -137,7 +137,7 @@ describe('snapshot — shape_drift (bare array list_creatives)', () => {
 
       **Locate** — at the response root.
 
-      **Fix** — reshape the response to match the expected envelope. \`@adcp/client/server\` ships typed response builders (e.g. \`listCreativesResponse\`, \`getMediaBuysResponse\`, \`buildCreativeResponse\`) — using one of those gives you the spec-correct shape from a single helper call and keeps the typing tight when the spec evolves.
+      **Fix** — reshape the response to match the expected envelope. \`@adcp/sdk/server\` ships typed response builders (e.g. \`listCreativesResponse\`, \`getMediaBuysResponse\`, \`buildCreativeResponse\`) — using one of those gives you the spec-correct shape from a single helper call and keeps the typing tight when the spec evolves.
 
       **Verify** — re-run \`run_storyboard_step\` with \`step_id: "list-creatives"\` and the same context."
     `);
@@ -167,7 +167,7 @@ describe('snapshot — missing_required_field (multiple fields)', () => {
 
       **Locate** — at the response root; the schema requirement is at \`#/required\` (schema: \`https://adcp/list-creatives-response.json\`).
 
-      **Fix** — populate each missing field with a value matching the schema's type for it. The typed response builders in \`@adcp/client/server\` enforce the requirement at the type level, so emitting through one of those prevents this class of failure.
+      **Fix** — populate each missing field with a value matching the schema's type for it. The typed response builders in \`@adcp/sdk/server\` enforce the requirement at the type level, so emitting through one of those prevents this class of failure.
 
       **Verify** — re-run \`run_storyboard_step\` with \`step_id: "list-creatives"\` and the same context."
     `);

@@ -1,4 +1,4 @@
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Get all products to see their configuration
 const result = await testAgent.getProducts({

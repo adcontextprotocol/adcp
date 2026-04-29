@@ -16,7 +16,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { validate as uuidValidate } from 'uuid';
-import { discoverOAuthMetadata } from '@adcp/client/auth';
+import { discoverOAuthMetadata } from '@adcp/sdk/auth';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase, OAuthTokens, OAuthClient } from '../db/agent-context-db.js';

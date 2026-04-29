@@ -1,7 +1,7 @@
 import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
-import { is401Error, AuthenticationRequiredError } from "@adcp/client";
+import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 
@@ -141,7 +141,7 @@ export class CapabilityDiscovery {
   private async discoverMCPTools(url: string): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
-      const { AdCPClient } = await import("@adcp/client");
+      const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
@@ -178,7 +178,7 @@ export class CapabilityDiscovery {
   private async discoverA2ATools(url: string): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
-      const { AdCPClient } = await import("@adcp/client");
+      const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
@@ -232,7 +232,7 @@ export class CapabilityDiscovery {
   private analyzeSalesCapabilities(tools: ToolCapability[]): StandardOperations {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Based on actual AdCP spec tools from @adcp/client types
+    // Based on actual AdCP spec tools from @adcp/sdk types
     return {
       can_search_inventory: toolNames.has("get_products"),
       can_get_availability: toolNames.has("get_products"), // Included in get_products

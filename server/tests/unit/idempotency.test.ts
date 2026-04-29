@@ -2,7 +2,7 @@
  * Unit tests for the training agent's idempotency facade.
  *
  * The behaviour tests (miss / replay / conflict / expired, TTL skew, JCS
- * exclusion list) live in `@adcp/client`'s own test suite — the facade just
+ * exclusion list) live in `@adcp/sdk`'s own test suite — the facade just
  * delegates. What this file covers:
  *
  * - `MUTATING_TOOLS` drift against the request schemas (security-critical —

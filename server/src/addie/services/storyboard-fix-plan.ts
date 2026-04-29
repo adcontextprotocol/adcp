@@ -20,7 +20,7 @@ import type {
   MonotonicViolationHint,
   ShapeDriftHint,
   StoryboardStepHint,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 
 export type {
   ContextValueRejectedHint,
@@ -260,7 +260,7 @@ function renderShapeDriftPlan(hint: ShapeDriftHint, ctx: RenderCtx): string {
   );
   lines.push('');
   lines.push(
-    `**Fix** — reshape the response to match the expected envelope. \`@adcp/client/server\` ships typed ` +
+    `**Fix** — reshape the response to match the expected envelope. \`@adcp/sdk/server\` ships typed ` +
       `response builders (e.g. \`listCreativesResponse\`, \`getMediaBuysResponse\`, \`buildCreativeResponse\`) — ` +
       `using one of those gives you the spec-correct shape from a single helper call and keeps the typing ` +
       `tight when the spec evolves.`
@@ -300,7 +300,7 @@ function renderMissingRequiredFieldPlan(hint: MissingRequiredFieldHint, ctx: Ren
   lines.push('');
   lines.push(
     `**Fix** — populate ${plural ? 'each missing field' : 'the missing field'} with a value matching ` +
-      `the schema's type for it. The typed response builders in \`@adcp/client/server\` enforce the ` +
+      `the schema's type for it. The typed response builders in \`@adcp/sdk/server\` enforce the ` +
       `requirement at the type level, so emitting through one of those prevents this class of failure.`
   );
   lines.push('');

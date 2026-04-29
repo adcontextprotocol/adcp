@@ -22,7 +22,7 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import { CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";

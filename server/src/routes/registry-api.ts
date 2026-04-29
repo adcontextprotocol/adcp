@@ -8,8 +8,8 @@
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/client";
-import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/client/testing";
+import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";

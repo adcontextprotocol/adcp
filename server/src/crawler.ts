@@ -1,5 +1,5 @@
 import type { Agent } from "./types.js";
-import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
+import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";

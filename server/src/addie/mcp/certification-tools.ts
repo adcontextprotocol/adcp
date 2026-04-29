@@ -88,7 +88,7 @@ If after 3 rounds on the same error the coding assistant hasn't resolved it, sug
 
 Exception — specification gaps only: if the error reveals that the learner's original specification was incomplete (they didn't mention which library to use, left out the sandbox URL, or missed a key architectural requirement from Phase 1), point out what was missing from the spec so they can update their prompt. This exception is about what the spec was missing, not about diagnosing the code.
 
-This is a build project, not a lecture. The learner builds a working AdCP agent using an AI coding assistant (Claude Code, Cursor, Copilot) and @adcp/client. Your role is coach, not builder.
+This is a build project, not a lecture. The learner builds a working AdCP agent using an AI coding assistant (Claude Code, Cursor, Copilot) and @adcp/sdk. Your role is coach, not builder.
 
 **Skill files and storyboards are the core tools.**
 Each build project maps to a skill file (which generates the agent) and a storyboard (which validates it):
@@ -2159,7 +2159,7 @@ export function createCertificationToolHandlers(
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-Tell ${codingTool}: "Build a buyer agent using @adcp/client that connects to the public test agent (test-mcp). It should discover products with get_products, create a media buy with create_media_buy, and sync creatives. Here is the campaign spec: ${learnerSpec}"
+Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the public test agent (test-mcp). It should discover products with get_products, create a media buy with create_media_buy, and sync creatives. Here is the campaign spec: ${learnerSpec}"
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
@@ -2174,7 +2174,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/client@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
+npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
@@ -2230,11 +2230,11 @@ DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill
     if (phase === 'validate') {
       const storyboardNote = moduleId === 'B4'
         ? 'The storyboard for B4 is `media_buy_seller`.'
-        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client@latest storyboard list\` to see all options.`;
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/sdk@latest storyboard list\` to see all options.`;
 
       const storyboardCmd = moduleId === 'B4'
-        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/sdk@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/sdk@latest storyboard run my-agent <STORYBOARD_NAME>';
 
       const placeholderNote = moduleId !== 'B4'
         ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
@@ -2248,7 +2248,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Save your agent and run the storyboard:
 \`\`\`
-npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/sdk@latest --save-auth my-agent http://localhost:3001/mcp
 ${storyboardCmd}
 \`\`\`
 
@@ -2264,8 +2264,8 @@ DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JS
 
     if (phase === 'extend') {
       const extendCmd = moduleId === 'B4'
-        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/sdk@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/sdk@latest storyboard run my-agent <STORYBOARD_NAME>';
       const extendNote = moduleId !== 'B4'
         ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
         : '';

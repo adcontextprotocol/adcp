@@ -22,7 +22,7 @@
 
 import { createPublicKey } from 'node:crypto';
 import { KeyManagementServiceClient } from '@google-cloud/kms';
-import type { SigningProvider } from '@adcp/client/signing';
+import type { SigningProvider } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
 import {
   ALGORITHM,

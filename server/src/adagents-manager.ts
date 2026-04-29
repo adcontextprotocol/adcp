@@ -1286,7 +1286,7 @@ export class AdAgentsManager {
     const MCP_TIMEOUT_MS = 5000; // Match timeout used in health.ts
 
     // First, do a preflight HTTP check to detect 401 errors
-    // The @adcp/client library wraps 401s in generic errors, so we need to detect them directly
+    // The @adcp/sdk library wraps 401s in generic errors, so we need to detect them directly
     try {
       // CodeQL: agentUrl is from DB registry, used for protocol validation
       const preflightResponse = await axios.post(agentUrl, // lgtm[js/request-forgery]
@@ -1316,7 +1316,7 @@ export class AdAgentsManager {
     }
 
     try {
-      const { AdCPClient, is401Error } = await import('@adcp/client');
+      const { AdCPClient, is401Error } = await import('@adcp/sdk');
       const multiClient = new AdCPClient([{
         id: 'health-check',
         name: 'Health Checker',
@@ -1348,7 +1348,7 @@ export class AdAgentsManager {
       // Check if this is an OAuth/authentication error - agent is reachable but requires auth
       // Note: We use is401Error() rather than instanceof check because dynamic imports
       // create separate module instances, making instanceof unreliable
-      const { is401Error } = await import('@adcp/client');
+      const { is401Error } = await import('@adcp/sdk');
       if (is401Error(error)) {
         result.oauth_required = true;
         result.valid = true; // Agent is reachable, just needs auth

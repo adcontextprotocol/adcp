@@ -47,7 +47,7 @@ import {
   type Storyboard,
   type StoryboardContext,
   type StoryboardStepResult,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import {
@@ -106,7 +106,7 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 };
 
 /**
- * Known error patterns that indicate bugs in the @adcp/client testing library
+ * Known error patterns that indicate bugs in the @adcp/sdk testing library
  * rather than in the agent being tested.
  *
  * Each pattern should be specific enough to avoid false positives where an agent
@@ -3631,7 +3631,7 @@ export function createMemberToolHandlers(
         }
         return (
           `**Unknown specialism.** The agent declares ${safeSpec}, which isn't in the local ` +
-          `compliance cache. Either the cache is stale (re-sync the \`@adcp/client\` compliance ` +
+          `compliance cache. Either the cache is stale (re-sync the \`@adcp/sdk\` compliance ` +
           `tarball) or the specialism id is a typo — cross-check against ` +
           `https://adcontextprotocol.org/compliance/latest/index.json.`
         );
@@ -3760,7 +3760,7 @@ export function createMemberToolHandlers(
       if (knownIds.length > 0) {
         output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
       }
-      output += `Either the cache is stale (re-sync the \`@adcp/client\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
+      output += `Either the cache is stale (re-sync the \`@adcp/sdk\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
       return output;
     }
 
@@ -3785,7 +3785,7 @@ export function createMemberToolHandlers(
       output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
     }
 
-    // Group by bundle kind. `@adcp/client@5.x` returns kind: 'domain' for protocol baselines;
+    // Group by bundle kind. `@adcp/sdk@5.x` returns kind: 'domain' for protocol baselines;
     // v6 will return 'protocol'. Accept either during transition.
     const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], protocol: [], specialism: [] };
     for (const b of nonEmpty) {
@@ -3964,7 +3964,7 @@ export function createMemberToolHandlers(
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
-          // @adcp/client contract — render them on passing steps too so
+          // @adcp/sdk contract — render them on passing steps too so
           // catalog drift caught by a downstream tool surfaces even when
           // this step happened to pass on its own response shape.
           if (!step.skipped) {
@@ -4097,7 +4097,7 @@ export function createMemberToolHandlers(
         }
 
         // Hints are diagnostic-only and don't flip pass/fail per the
-        // @adcp/client contract — surface them whether the step passed
+        // @adcp/sdk contract — surface them whether the step passed
         // or failed, so catalog drift caught by a downstream tool isn't
         // hidden when an individual step's own validations happen to pass.
         const fixPlan = renderAllHintFixPlans(result.hints, {
@@ -4200,7 +4200,7 @@ export function createMemberToolHandlers(
     }
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
 
       const agentConfig = {
         id: 'target',
@@ -4396,7 +4396,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
@@ -4614,7 +4614,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
