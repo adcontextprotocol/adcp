@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/bundled/property/validate-property-delivery-request.json",
+  "title": "Validate Property Delivery Request",
+  "description": "Request payload for validate_property_delivery task. Validates delivery records against a property list to determine compliance.",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list to validate against",
+      "x-entity": "property_list"
+    },
+    "account": {
+      "title": "Account Reference",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts; optional otherwise.",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Reference",
+              "description": "Brand reference identifying the advertiser",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "x-entity": "advertiser_brand",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ]
+                },
+                "industries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+                },
+                "data_subject_contestation": {
+                  "type": "object",
+                  "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "languages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "url"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "email"
+                      ]
+                    }
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "glow"
+                },
+                {
+                  "domain": "acme-corp.com"
+                }
+              ]
+            },
+            "operator": {
+              "type": "string",
+              "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "sandbox": {
+              "type": "boolean",
+              "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_acme_001"
+        },
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com"
+        },
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
+          "operator": "pinnacle-media.com"
+        },
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "sandbox": true
+        }
+      ]
+    },
+    "records": {
+      "type": "array",
+      "description": "Delivery records to validate. Each record represents impressions delivered to a property identifier.",
+      "items": {
+        "title": "Delivery Record",
+        "description": "A single delivery record representing impressions served to a property identifier. Used as input to validate_property_delivery.",
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "description": "The property identifier where impressions were delivered",
+            "type": "object",
+            "properties": {
+              "type": {
+                "title": "Property Identifier Types",
+                "description": "Type of identifier",
+                "type": "string",
+                "enum": [
+                  "domain",
+                  "subdomain",
+                  "network_id",
+                  "ios_bundle",
+                  "android_package",
+                  "apple_app_store_id",
+                  "google_play_id",
+                  "roku_store_id",
+                  "fire_tv_asin",
+                  "samsung_app_id",
+                  "apple_tv_bundle",
+                  "bundle_id",
+                  "venue_id",
+                  "screen_id",
+                  "openooh_venue_type",
+                  "rss_url",
+                  "apple_podcast_id",
+                  "spotify_collection_id",
+                  "podcast_guid",
+                  "station_id",
+                  "facility_id"
+                ],
+                "enumDescriptions": {
+                  "domain": "Web domain (e.g., example.com)",
+                  "subdomain": "Specific subdomain (e.g., news.example.com)",
+                  "network_id": "Network or platform-specific identifier",
+                  "ios_bundle": "iOS app bundle identifier (e.g., com.example.app)",
+                  "android_package": "Android package name (e.g., com.example.app)",
+                  "apple_app_store_id": "Apple App Store numeric ID",
+                  "google_play_id": "Google Play Store package ID",
+                  "roku_store_id": "Roku Channel Store identifier",
+                  "fire_tv_asin": "Amazon Fire TV ASIN",
+                  "samsung_app_id": "Samsung TV app identifier",
+                  "apple_tv_bundle": "Apple TV app bundle identifier",
+                  "bundle_id": "Generic app bundle identifier",
+                  "venue_id": "DOOH venue identifier",
+                  "screen_id": "DOOH screen identifier within a venue",
+                  "openooh_venue_type": "OpenOOH venue taxonomy classification",
+                  "rss_url": "RSS feed URL for podcast or content feed",
+                  "apple_podcast_id": "Apple Podcasts numeric ID",
+                  "spotify_collection_id": "Spotify show or collection URI",
+                  "podcast_guid": "Podcast GUID (podcasting 2.0 namespace)",
+                  "station_id": "Broadcast station identifier — call sign, station name, or other locally recognized identifier (e.g., WCBS-FM, BBC Radio 4, France Inter, 2GB)",
+                  "facility_id": "Broadcast facility or license ID from a national regulator, prefixed with authority slug (e.g., fcc:73953, ofcom:AL000001). Known prefixes: fcc (US), crtc (Canada), ift (Mexico), ofcom (UK), arcom (France), bnetza/medienanstalt (Germany), acma (Australia), mic (Japan), kcc (South Korea), anatel (Brazil), enacom (Argentina), trai (India)"
+                },
+                "examples": [
+                  "domain",
+                  "ios_bundle",
+                  "venue_id",
+                  "apple_podcast_id",
+                  "station_id",
+                  "facility_id"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "impressions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of impressions delivered to this identifier"
+          },
+          "record_id": {
+            "type": "string",
+            "description": "Optional client-provided ID for correlating results back to source data"
+          },
+          "sales_agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the sales agent that sold this inventory. If provided, authorization is validated against the property's adagents.json."
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "identifier",
+          "impressions"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "include_compliant": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include compliant records in results (default: only return non_compliant, unmodeled, and unidentified)"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "list_id",
+    "records"
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-04-29T01:18:44.942Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

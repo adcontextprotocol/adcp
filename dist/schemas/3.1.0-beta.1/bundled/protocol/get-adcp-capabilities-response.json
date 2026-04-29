@@ -1,0 +1,1729 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/bundled/protocol/get-adcp-capabilities-response.json",
+  "title": "Get AdCP Capabilities Response",
+  "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
+  "type": "object",
+  "properties": {
+    "adcp": {
+      "type": "object",
+      "description": "Core AdCP protocol information",
+      "properties": {
+        "major_versions": {
+          "type": "array",
+          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. When multiple versions are listed, the buyer declares its version via the adcp_major_version field on requests.",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "idempotency": {
+          "type": "object",
+          "description": "Idempotency semantics for mutating requests. Sellers MUST declare whether they honor idempotency_key replay protection so buyers can reason about safe retry behavior. Modeled as a discriminated union on the supported boolean so that code generators produce two named types (IdempotencySupported, IdempotencyUnsupported) with the replay_ttl_seconds invariant enforced at the type level — draft-07 if/then would be dropped by most generators (openapi-typescript, zod-to-json-schema, datamodel-code-generator pre-0.25, quicktype). Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
+          "oneOf": [
+            {
+              "title": "IdempotencySupported",
+              "description": "Seller honors idempotency_key replay protection on mutating requests. Replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence); replays past the window return IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'.",
+              "properties": {
+                "supported": {
+                  "const": true,
+                  "description": "Discriminator. True means the seller deduplicates replays — a repeat of the same idempotency_key within replay_ttl_seconds returns the cached response without re-executing side effects."
+                },
+                "replay_ttl_seconds": {
+                  "type": "integer",
+                  "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
+                  "minimum": 3600,
+                  "maximum": 604800
+                },
+                "account_id_is_opaque": {
+                  "type": "boolean",
+                  "description": "When true, the seller derives `account_id` via an HKDF-based one-way transform of the buyer's natural account key rather than echoing the natural key on the wire. Buyers MUST NOT attempt to invert the opaque id and MUST treat it as a blind handle scoped to this seller. Absent or false, callers should assume `account_id` is the natural key (or a server-assigned but non-opaque id). This flag does not change the wire shape, but it DOES change buyer behavior — buyers MUST NOT cache, log, or treat `account_id` as a natural-key analog when this flag is true. Migration note for sellers already returning an opaque id without this flag: set it to true at the next capabilities refresh so buyers stop inferring natural-key semantics; until set, new-buyer replay/retry logic will misclassify these ids as natural keys.",
+                  "default": false
+                }
+              },
+              "required": [
+                "supported",
+                "replay_ttl_seconds"
+              ]
+            },
+            {
+              "title": "IdempotencyUnsupported",
+              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds MUST be absent — it has no meaning without replay support.",
+              "properties": {
+                "supported": {
+                  "const": false,
+                  "description": "Discriminator. False means the seller does not deduplicate retries."
+                }
+              },
+              "required": [
+                "supported"
+              ],
+              "not": {
+                "required": [
+                  "replay_ttl_seconds"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "major_versions",
+        "idempotency"
+      ]
+    },
+    "supported_protocols": {
+      "type": "array",
+      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative",
+          "brand"
+        ]
+      },
+      "minItems": 1
+    },
+    "account": {
+      "type": "object",
+      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "properties": {
+        "require_operator_auth": {
+          "type": "boolean",
+          "description": "Whether the seller requires operator-level credentials. When true (explicit accounts), operators authenticate independently with the seller and the buyer discovers accounts via list_accounts. When false (default, implicit accounts), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts.",
+          "default": false
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
+        },
+        "supported_billing": {
+          "type": "array",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The buyer must pass one of these values in sync_accounts.",
+          "items": {
+            "title": "Billing Party",
+            "description": "Which party the seller invoices for an account. Determines the billing entity and invoicing flow.",
+            "type": "string",
+            "enum": [
+              "operator",
+              "agent",
+              "advertiser"
+            ],
+            "enumDescriptions": {
+              "operator": "Seller invoices the operator — agency or brand buying direct",
+              "agent": "Agent consolidates billing across brands and is invoiced by the seller",
+              "advertiser": "Seller invoices the advertiser directly, even when a different operator places orders on their behalf"
+            }
+          },
+          "minItems": 1
+        },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "default": false
+        },
+        "account_financials": {
+          "type": "boolean",
+          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
+          "default": false
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "Whether this seller supports sandbox accounts for testing. Buyers can provision a sandbox account via sync_accounts with sandbox: true, and all requests using that account_id will be treated as sandbox — no real platform calls or spend.",
+          "default": false
+        }
+      },
+      "required": [
+        "supported_billing"
+      ]
+    },
+    "media_buy": {
+      "type": "object",
+      "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
+      "properties": {
+        "supported_pricing_models": {
+          "type": "array",
+          "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
+          "items": {
+            "title": "Pricing Model",
+            "description": "Supported pricing models for advertising products",
+            "type": "string",
+            "enum": [
+              "cpm",
+              "vcpm",
+              "cpc",
+              "cpcv",
+              "cpv",
+              "cpp",
+              "cpa",
+              "flat_rate",
+              "time"
+            ],
+            "enumDescriptions": {
+              "cpm": "Cost Per Mille - cost per 1,000 impressions",
+              "vcpm": "Viewable Cost Per Mille - cost per 1,000 viewable impressions (MRC standard)",
+              "cpc": "Cost Per Click - cost per click on the ad",
+              "cpcv": "Cost Per Completed View - cost per 100% video/audio completion",
+              "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",
+              "cpp": "Cost Per Point - cost per Gross Rating Point or Target Rating Point (TV/audio)",
+              "cpa": "Cost Per Acquisition - cost per conversion event (purchase, lead, signup, etc.)",
+              "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)",
+              "time": "Time - cost per time unit (hour, day, week, or month) that scales with campaign duration"
+            }
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reporting_delivery_methods": {
+          "type": "array",
+          "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "webhook",
+              "offline"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "offline_delivery_protocols": {
+          "type": "array",
+          "description": "Cloud storage protocols this seller supports for offline file delivery. Only meaningful when reporting_delivery_methods includes 'offline'. Buyers express a protocol preference in sync_accounts; the seller provisions the account's reporting_bucket using a supported protocol.",
+          "items": {
+            "title": "Cloud Storage Protocol",
+            "description": "Cloud storage protocols supported for offline file delivery",
+            "type": "string",
+            "enum": [
+              "s3",
+              "gcs",
+              "azure_blob"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "features": {
+          "title": "Media Buy Features",
+          "description": "Optional media-buy protocol features. Used in capability declarations (seller declares support) and product filters (buyer requires support). If a seller declares a feature as true, they MUST honor requests using that feature.",
+          "type": "object",
+          "properties": {
+            "inline_creative_management": {
+              "type": "boolean",
+              "description": "Supports creatives provided inline in create_media_buy requests"
+            },
+            "property_list_filtering": {
+              "type": "boolean",
+              "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
+            },
+            "catalog_management": {
+              "type": "boolean",
+              "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+            }
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "execution": {
+          "type": "object",
+          "description": "Technical execution capabilities for media buying",
+          "properties": {
+            "trusted_match": {
+              "type": "object",
+              "description": "Trusted Match Protocol (TMP) support. Presence of this object indicates the seller has TMP infrastructure deployed. Check individual products via get_products for per-product TMP capabilities.",
+              "x-status": "experimental",
+              "properties": {
+                "surfaces": {
+                  "type": "array",
+                  "description": "Surface types this seller supports via TMP.",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "website",
+                      "mobile_app",
+                      "ctv_app",
+                      "desktop_app",
+                      "dooh",
+                      "podcast",
+                      "radio",
+                      "streaming_audio",
+                      "ai_assistant"
+                    ]
+                  }
+                }
+              }
+            },
+            "axe_integrations": {
+              "type": "array",
+              "description": "Deprecated. Legacy AXE integrations. Use trusted_match for new integrations.",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "creative_specs": {
+              "type": "object",
+              "description": "Creative specification support",
+              "properties": {
+                "vast_versions": {
+                  "type": "array",
+                  "description": "VAST versions supported for video creatives",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  }
+                },
+                "mraid_versions": {
+                  "type": "array",
+                  "description": "MRAID versions supported for rich media mobile creatives",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  }
+                },
+                "vpaid": {
+                  "type": "boolean",
+                  "description": "VPAID support for interactive video ads"
+                },
+                "simid": {
+                  "type": "boolean",
+                  "description": "SIMID support for interactive video ads"
+                }
+              }
+            },
+            "targeting": {
+              "type": "object",
+              "description": "Targeting capabilities. If declared true/supported, buyer can use these targeting parameters and seller MUST honor them.",
+              "properties": {
+                "geo_countries": {
+                  "type": "boolean",
+                  "description": "Country-level targeting using ISO 3166-1 alpha-2 codes"
+                },
+                "geo_regions": {
+                  "type": "boolean",
+                  "description": "Region/state-level targeting using ISO 3166-2 codes (e.g., US-NY, GB-SCT)"
+                },
+                "geo_metros": {
+                  "type": "object",
+                  "description": "Metro area targeting. Properties indicate which classification systems are supported.",
+                  "properties": {
+                    "nielsen_dma": {
+                      "type": "boolean"
+                    },
+                    "uk_itl1": {
+                      "type": "boolean"
+                    },
+                    "uk_itl2": {
+                      "type": "boolean"
+                    },
+                    "eurostat_nuts2": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "geo_postal_areas": {
+                  "type": "object",
+                  "description": "Postal area targeting. Properties indicate which postal code systems are supported.",
+                  "properties": {
+                    "us_zip": {
+                      "type": "boolean"
+                    },
+                    "us_zip_plus_four": {
+                      "type": "boolean"
+                    },
+                    "gb_outward": {
+                      "type": "boolean"
+                    },
+                    "gb_full": {
+                      "type": "boolean"
+                    },
+                    "ca_fsa": {
+                      "type": "boolean"
+                    },
+                    "ca_full": {
+                      "type": "boolean"
+                    },
+                    "de_plz": {
+                      "type": "boolean"
+                    },
+                    "fr_code_postal": {
+                      "type": "boolean"
+                    },
+                    "au_postcode": {
+                      "type": "boolean"
+                    },
+                    "ch_plz": {
+                      "type": "boolean"
+                    },
+                    "at_plz": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "age_restriction": {
+                  "type": "object",
+                  "description": "Age restriction capabilities for compliance (alcohol, gambling)",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "description": "Whether seller supports age restrictions"
+                    },
+                    "verification_methods": {
+                      "type": "array",
+                      "description": "Age verification methods this seller supports",
+                      "items": {
+                        "title": "Age Verification Method",
+                        "description": "Methods for verifying user age for compliance. Does not include 'inferred' as it is not accepted for regulatory compliance.",
+                        "type": "string",
+                        "enum": [
+                          "facial_age_estimation",
+                          "id_document",
+                          "digital_id",
+                          "credit_card",
+                          "world_id"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "language": {
+                  "type": "boolean",
+                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
+                },
+                "keyword_targets": {
+                  "type": "object",
+                  "description": "Keyword targeting capabilities. Presence indicates support for targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for keyword targets. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "$ref": "#/$defs/MatchType"
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": [
+                    "supported_match_types"
+                  ]
+                },
+                "negative_keywords": {
+                  "type": "object",
+                  "description": "Negative keyword capabilities. Presence indicates support for targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for negative keywords. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "$ref": "#/$defs/MatchType"
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": [
+                    "supported_match_types"
+                  ]
+                },
+                "geo_proximity": {
+                  "type": "object",
+                  "description": "Proximity targeting capabilities from arbitrary coordinates via targeting_overlay.geo_proximity.",
+                  "properties": {
+                    "radius": {
+                      "type": "boolean",
+                      "description": "Whether seller supports simple radius targeting (distance circle from a point)"
+                    },
+                    "travel_time": {
+                      "type": "boolean",
+                      "description": "Whether seller supports travel time isochrone targeting (requires a routing engine)"
+                    },
+                    "geometry": {
+                      "type": "boolean",
+                      "description": "Whether seller supports pre-computed GeoJSON geometry (buyer provides the polygon)"
+                    },
+                    "transport_modes": {
+                      "type": "array",
+                      "description": "Transport modes supported for travel_time isochrones. Only relevant when travel_time is true.",
+                      "items": {
+                        "title": "Transport Mode",
+                        "description": "Transportation modes for isochrone-based catchment area calculations. Determines how travel time translates to geographic reach.",
+                        "type": "string",
+                        "enum": [
+                          "walking",
+                          "cycling",
+                          "driving",
+                          "public_transport"
+                        ],
+                        "enumDescriptions": {
+                          "walking": "Pedestrian travel on walkable paths and sidewalks",
+                          "cycling": "Bicycle travel on roads and cycle paths",
+                          "driving": "Motor vehicle travel on road networks",
+                          "public_transport": "Public transit including bus, rail, metro, and ferry"
+                        }
+                      },
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "audience_targeting": {
+          "type": "object",
+          "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including sync_audiences and audience_include/audience_exclude in targeting overlays.",
+          "properties": {
+            "supported_identifier_types": {
+              "type": "array",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "hashed_email",
+                  "hashed_phone"
+                ]
+              },
+              "minItems": 1
+            },
+            "supports_platform_customer_id": {
+              "type": "boolean",
+              "description": "Whether the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). When true, buyers can include platform_customer_id values in AudienceMember.identifiers for matching against the seller's identity graph. Reporting on matched platform_customer_ids typically requires a clean room or the seller's own reporting surface."
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending uids with type: maid.",
+              "items": {
+                "$ref": "#/$defs/UIDType"
+              },
+              "minItems": 1
+            },
+            "minimum_audience_size": {
+              "type": "integer",
+              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
+              "minimum": 1
+            },
+            "matching_latency_hours": {
+              "type": "object",
+              "description": "Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring push_notification_config.",
+              "properties": {
+                "min": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "supported_identifier_types",
+            "minimum_audience_size"
+          ],
+          "additionalProperties": true
+        },
+        "conversion_tracking": {
+          "type": "object",
+          "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
+          "properties": {
+            "multi_source_event_dedup": {
+              "type": "boolean",
+              "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
+            },
+            "supported_event_types": {
+              "type": "array",
+              "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
+              "items": {
+                "$ref": "#/$defs/EventType"
+              },
+              "minItems": 1
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for user matching",
+              "items": {
+                "$ref": "#/$defs/UIDType"
+              },
+              "minItems": 1
+            },
+            "supported_hashed_identifiers": {
+              "type": "array",
+              "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "hashed_email",
+                  "hashed_phone"
+                ]
+              },
+              "minItems": 1
+            },
+            "supported_action_sources": {
+              "type": "array",
+              "description": "Action sources this seller accepts events from",
+              "items": {
+                "title": "Action Source",
+                "description": "Where the conversion event originated",
+                "type": "string",
+                "enum": [
+                  "website",
+                  "app",
+                  "offline",
+                  "phone_call",
+                  "chat",
+                  "email",
+                  "in_store",
+                  "system_generated",
+                  "other"
+                ],
+                "enumDescriptions": {
+                  "website": "Event occurred on a website",
+                  "app": "Event occurred in a mobile or desktop app",
+                  "offline": "Event occurred offline (imported data)",
+                  "phone_call": "Event originated from a phone call",
+                  "chat": "Event originated from a chat conversation",
+                  "email": "Event originated from an email interaction",
+                  "in_store": "Event occurred at a physical retail location",
+                  "system_generated": "Event generated by an automated system",
+                  "other": "Other source (specify in ext)"
+                }
+              },
+              "minItems": 1
+            },
+            "attribution_windows": {
+              "type": "array",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via attribution_window on optimization goals.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "$ref": "#/$defs/EventType"
+                  },
+                  "post_click": {
+                    "type": "array",
+                    "description": "Available post-click attribution windows (e.g. [{\"interval\": 7, \"unit\": \"days\"}])",
+                    "items": {
+                      "title": "Duration",
+                      "description": "A time duration expressed as an interval and unit. Used for frequency cap windows, attribution windows, reach optimization windows, time budgets, and other time-based settings. When unit is 'campaign', interval must be 1 — the window spans the full campaign flight.",
+                      "type": "object",
+                      "properties": {
+                        "interval": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Number of time units. Must be 1 when unit is 'campaign'."
+                        },
+                        "unit": {
+                          "type": "string",
+                          "enum": [
+                            "seconds",
+                            "minutes",
+                            "hours",
+                            "days",
+                            "campaign"
+                          ],
+                          "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
+                        }
+                      },
+                      "required": [
+                        "interval",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  },
+                  "post_view": {
+                    "type": "array",
+                    "description": "Available post-view attribution windows (e.g. [{\"interval\": 1, \"unit\": \"days\"}])",
+                    "items": {
+                      "title": "Duration",
+                      "description": "A time duration expressed as an interval and unit. Used for frequency cap windows, attribution windows, reach optimization windows, time budgets, and other time-based settings. When unit is 'campaign', interval must be 1 — the window spans the full campaign flight.",
+                      "type": "object",
+                      "properties": {
+                        "interval": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Number of time units. Must be 1 when unit is 'campaign'."
+                        },
+                        "unit": {
+                          "type": "string",
+                          "enum": [
+                            "seconds",
+                            "minutes",
+                            "hours",
+                            "days",
+                            "campaign"
+                          ],
+                          "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
+                        }
+                      },
+                      "required": [
+                        "interval",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "post_click"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "content_standards": {
+          "type": "object",
+          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
+          "properties": {
+            "supports_local_evaluation": {
+              "type": "boolean",
+              "description": "Whether the seller runs a local evaluation model. When false, all artifacts will have local_verdict: 'unevaluated' and the failures_only filter on get_media_buy_artifacts is not useful."
+            },
+            "supported_channels": {
+              "type": "array",
+              "description": "Channels for which the seller can provide content artifacts. Helps buyers understand which parts of a mixed-channel buy will have content standards coverage.",
+              "items": {
+                "$ref": "#/$defs/MediaChannel"
+              },
+              "minItems": 1
+            },
+            "supports_webhook_delivery": {
+              "type": "boolean",
+              "description": "Whether the seller supports push-based artifact delivery via artifact_webhook configured at buy creation time."
+            }
+          }
+        },
+        "portfolio": {
+          "type": "object",
+          "description": "Information about the seller's media inventory portfolio. Expected for media_buy sellers — buyers use this to understand inventory coverage and verify authorization via adagents.json.",
+          "properties": {
+            "publisher_domains": {
+              "type": "array",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "minItems": 1
+            },
+            "primary_channels": {
+              "type": "array",
+              "description": "Primary advertising channels in this portfolio",
+              "items": {
+                "$ref": "#/$defs/MediaChannel"
+              }
+            },
+            "primary_countries": {
+              "type": "array",
+              "description": "Primary countries (ISO 3166-1 alpha-2) where inventory is concentrated",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              }
+            },
+            "description": {
+              "type": "string",
+              "description": "Markdown-formatted description of the inventory portfolio",
+              "maxLength": 5000
+            },
+            "advertising_policies": {
+              "type": "string",
+              "description": "Advertising content policies, restrictions, and guidelines",
+              "maxLength": 10000
+            }
+          },
+          "required": [
+            "publisher_domains"
+          ]
+        }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
+      "properties": {
+        "data_provider_domains": {
+          "type": "array",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for signal catalog definitions and to verify authorization.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1
+        },
+        "features": {
+          "type": "object",
+          "description": "Optional signals features supported",
+          "properties": {
+            "catalog_signals": {
+              "type": "boolean",
+              "description": "Supports signals from data provider catalogs with structured signal_id references"
+            }
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
+      "properties": {
+        "aggregation_window_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+        },
+        "property_features": {
+          "type": "array",
+          "description": "Property features this governance agent can evaluate. Each feature describes a score, rating, or certification the agent can provide for properties.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', 'carbon_score')"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
+                "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
+              },
+              "range": {
+                "type": "object",
+                "description": "For quantitative features, the valid range",
+                "properties": {
+                  "min": {
+                    "type": "number",
+                    "description": "Minimum value"
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximum value"
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ]
+              },
+              "categories": {
+                "type": "array",
+                "description": "For categorical features, the valid values",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this feature measures"
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
+              }
+            },
+            "required": [
+              "feature_id",
+              "type"
+            ]
+          }
+        },
+        "creative_features": {
+          "type": "array",
+          "description": "Creative features this governance agent can evaluate. Each feature describes a score, rating, or assessment the agent can provide for creatives (e.g., security scanning, creative quality, content categorization).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Unique identifier for this feature (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
+                "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
+              },
+              "range": {
+                "type": "object",
+                "description": "For quantitative features, the valid range",
+                "properties": {
+                  "min": {
+                    "type": "number",
+                    "description": "Minimum value"
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximum value"
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ]
+              },
+              "categories": {
+                "type": "array",
+                "description": "For categorical features, the valid values",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this feature measures"
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to documentation explaining how this feature is calculated or measured."
+              }
+            },
+            "required": [
+              "feature_id",
+              "type"
+            ]
+          }
+        }
+      }
+    },
+    "sponsored_intelligence": {
+      "type": "object",
+      "description": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+      "x-status": "experimental",
+      "properties": {
+        "endpoint": {
+          "type": "object",
+          "description": "SI agent endpoint configuration",
+          "properties": {
+            "transports": {
+              "type": "array",
+              "description": "Available protocol transports. Hosts select based on their capabilities.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "mcp",
+                      "a2a"
+                    ],
+                    "description": "Protocol transport type"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Agent endpoint URL for this transport"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "preferred": {
+              "type": "string",
+              "enum": [
+                "mcp",
+                "a2a"
+              ],
+              "description": "Preferred transport when host supports multiple"
+            }
+          },
+          "required": [
+            "transports"
+          ]
+        },
+        "capabilities": {
+          "title": "SI Capabilities",
+          "description": "Modalities, components, and commerce capabilities",
+          "x-status": "experimental",
+          "type": "object",
+          "properties": {
+            "modalities": {
+              "type": "object",
+              "description": "Interaction modalities supported",
+              "properties": {
+                "conversational": {
+                  "type": "boolean",
+                  "description": "Pure text exchange - the baseline modality",
+                  "default": true
+                },
+                "voice": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "description": "TTS provider (elevenlabs, openai, etc.)"
+                        },
+                        "voice_id": {
+                          "type": "string",
+                          "description": "Brand voice identifier"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  ],
+                  "description": "Audio-based interaction using brand voice"
+                },
+                "video": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "formats": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Supported video formats (mp4, webm, etc.)"
+                        },
+                        "max_duration_seconds": {
+                          "type": "integer",
+                          "description": "Maximum video duration"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  ],
+                  "description": "Brand video content playback"
+                },
+                "avatar": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "description": "Avatar provider (d-id, heygen, synthesia, etc.)"
+                        },
+                        "avatar_id": {
+                          "type": "string",
+                          "description": "Brand avatar identifier"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  ],
+                  "description": "Animated video presence with brand avatar"
+                }
+              },
+              "additionalProperties": true
+            },
+            "components": {
+              "type": "object",
+              "description": "Visual components supported",
+              "properties": {
+                "standard": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "link",
+                      "image",
+                      "product_card",
+                      "carousel",
+                      "action_button"
+                    ]
+                  },
+                  "description": "Standard components that all SI hosts must render"
+                },
+                "extensions": {
+                  "type": "object",
+                  "description": "Platform-specific extensions (chatgpt_apps_sdk, maps, forms, etc.)",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            },
+            "commerce": {
+              "type": "object",
+              "description": "Commerce capabilities",
+              "properties": {
+                "acp_checkout": {
+                  "type": "boolean",
+                  "description": "Supports ACP (Agentic Commerce Protocol) checkout handoff"
+                }
+              },
+              "additionalProperties": true
+            },
+            "a2ui": {
+              "type": "object",
+              "description": "A2UI (Agent-to-UI) capabilities",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "description": "Supports A2UI surface rendering",
+                  "default": false
+                },
+                "catalogs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Supported A2UI component catalogs (e.g., 'si-standard', 'standard')"
+                }
+              },
+              "additionalProperties": true
+            },
+            "mcp_apps": {
+              "type": "boolean",
+              "description": "Supports MCP Apps for rendering A2UI surfaces in iframes",
+              "default": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "brand_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to brand.json with colors, fonts, logos, tone"
+        }
+      },
+      "required": [
+        "endpoint",
+        "capabilities"
+      ]
+    },
+    "brand": {
+      "type": "object",
+      "description": "Brand protocol capabilities. Only present if brand is in supported_protocols. Brand agents provide identity data (logos, colors, tone, assets) and optionally rights clearance for licensable content (talent, music, stock media).",
+      "properties": {
+        "rights": {
+          "type": "boolean",
+          "description": "Supports get_rights and acquire_rights for rights discovery and clearance",
+          "x-status": "experimental",
+          "default": false
+        },
+        "right_types": {
+          "type": "array",
+          "description": "Types of rights available through this agent",
+          "x-status": "experimental",
+          "items": {
+            "title": "Right Type",
+            "description": "Categories of intellectual property rights that can be licensed through the brand protocol.",
+            "x-status": "experimental",
+            "type": "string",
+            "enum": [
+              "talent",
+              "character",
+              "brand_ip",
+              "music",
+              "stock_media"
+            ],
+            "enumDescriptions": {
+              "talent": "Rights to a real person's likeness, voice, name, or endorsement (athletes, celebrities, influencers)",
+              "character": "Rights to fictional characters for advertising or co-branding",
+              "brand_ip": "Rights to brand intellectual property (logos, trademarks, trade dress)",
+              "music": "Rights to musical compositions or recordings (sync, background music)",
+              "stock_media": "Rights to stock photography, video, or audio collections"
+            }
+          }
+        },
+        "available_uses": {
+          "type": "array",
+          "description": "Rights uses available across this agent's roster",
+          "x-status": "experimental",
+          "items": {
+            "title": "Right Use",
+            "description": "Types of rights usage that can be licensed through the brand protocol. Aligned with DDEX UseType direction for interoperability with music and media rights systems.",
+            "x-status": "experimental",
+            "type": "string",
+            "enum": [
+              "likeness",
+              "voice",
+              "name",
+              "endorsement",
+              "motion_capture",
+              "signature",
+              "catchphrase",
+              "sync",
+              "background_music",
+              "editorial",
+              "commercial",
+              "ai_generated_image"
+            ],
+            "enumDescriptions": {
+              "likeness": "Visual representation of a person's appearance, including AI-generated imagery",
+              "voice": "Audio reproduction of a person's voice, including AI-generated speech",
+              "name": "Use of a person's name in advertising or promotional materials",
+              "endorsement": "Implied or explicit endorsement of a product or service by a person",
+              "motion_capture": "Use of a person's movement patterns for animation or video",
+              "signature": "Use of a person's signature or autograph",
+              "catchphrase": "Use of a person's well-known phrases or sayings",
+              "sync": "Synchronization of music with visual media (ads, video)",
+              "background_music": "Use of music as background audio in advertising",
+              "editorial": "Use in editorial or informational contexts",
+              "commercial": "Use in commercial advertising and promotional contexts",
+              "ai_generated_image": "License to produce AI-generated still imagery derived from the rights holder's IP (brand assets, character designs, talent likeness). Distinct from likeness/voice by output modality — a get_rights query filtered on ai_generated_image returns rights whose pricing options cover image generation, regardless of the underlying IP category."
+            }
+          }
+        },
+        "generation_providers": {
+          "type": "array",
+          "description": "LLM/generation providers this agent can issue credentials for",
+          "x-status": "experimental",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the agent's brand protocol capabilities",
+          "maxLength": 5000
+        }
+      },
+      "additionalProperties": true
+    },
+    "creative": {
+      "type": "object",
+      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
+      "properties": {
+        "supports_compliance": {
+          "type": "boolean",
+          "description": "When true, this creative agent can process briefs with compliance requirements (required_disclosures, prohibited_claims) and will validate that disclosures can be satisfied by the target format."
+        },
+        "has_creative_library": {
+          "type": "boolean",
+          "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
+          "default": false
+        },
+        "supports_generation": {
+          "type": "boolean",
+          "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
+          "default": false
+        },
+        "supports_transformation": {
+          "type": "boolean",
+          "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "request_signing": {
+      "type": "object",
+      "description": "RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capability-advertised so counterparties can opt into signing selectively. Required for spend-committing operations in 4.0 (the next breaking-changes accumulation window). The full profile is defined in docs/building/implementation/security.mdx (Signed Requests (Transport Layer)).",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent verifies RFC 9421 signatures on incoming requests. When true, signatures present on requests are validated per the AdCP request-signing profile. When false or absent, signatures are ignored (requests are bearer-authenticated only)."
+        },
+        "covers_content_digest": {
+          "type": "string",
+          "enum": [
+            "required",
+            "forbidden",
+            "either"
+          ],
+          "description": "Policy for content-digest coverage in request signatures. 'required': signers MUST cover content-digest (body is bound to the signature); body-unbound signatures rejected with request_signature_components_incomplete. 'forbidden': signers MUST NOT cover content-digest; body-bound signatures rejected with request_signature_components_unexpected. This is an opt-out for the narrow case of legacy infrastructure that cannot preserve body bytes. 'either' (default): signer chooses per-request; verifier accepts both covered and uncovered forms. 'required' is recommended for spend-committing operations in production; 4.0 recommends 'required' for those operations.",
+          "default": "either"
+        },
+        "required_for": {
+          "type": "array",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "warn_for": {
+          "type": "array",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "supported_for": {
+          "type": "array",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for and warn_for.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "supported"
+      ]
+    },
+    "webhook_signing": {
+      "type": "object",
+      "description": "RFC 9421 webhook-signature support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, and whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421. See docs/building/implementation/webhooks.mdx.",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header."
+        },
+        "profile": {
+          "type": "string",
+          "enum": [
+            "adcp/webhook-signing/v1"
+          ],
+          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
+        },
+        "algorithms": {
+          "type": "array",
+          "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ed25519",
+              "ecdsa-p256-sha256"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "legacy_hmac_fallback": {
+          "type": "boolean",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication path for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "default": false
+        }
+      },
+      "required": [
+        "supported"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
+      "properties": {
+        "per_principal_key_isolation": {
+          "type": "boolean",
+          "description": "When true, this multi-principal operator scopes signing keys per-principal so a single principal's key compromise does not silently re-scope across principals served by the same operator. `kid` values remain opaque to verifiers per RFC 7517; any operator-side naming convention (e.g., `{operator}:{principal}:{key_version}`) is internal bookkeeping and MUST NOT be parsed by verifiers. See docs/building/understanding/security-model.mdx.",
+          "default": false
+        },
+        "key_origins": {
+          "type": "object",
+          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. See docs/building/implementation/security.mdx §Origin separation.",
+          "properties": {
+            "governance_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the governance-signing JWKS."
+            },
+            "request_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the request-signing JWKS."
+            },
+            "webhook_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the webhook-signing JWKS."
+            },
+            "tmp_signing": {
+              "type": "string",
+              "format": "uri",
+              "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
+            }
+          },
+          "additionalProperties": false
+        },
+        "compromise_notification": {
+          "type": "object",
+          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/implementation/webhooks.mdx §identity.compromise_notification.",
+          "properties": {
+            "emits": {
+              "type": "boolean",
+              "description": "Whether this agent emits `identity.compromise_notification` events.",
+              "default": false
+            },
+            "accepts": {
+              "type": "boolean",
+              "description": "Whether this agent subscribes to `identity.compromise_notification` events from counterparties it verifies signatures from.",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "compliance_testing": {
+      "type": "object",
+      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block entirely if the agent does not support compliance testing.",
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "description": "Compliance testing scenarios this agent supports. Must be non-empty — at least one scenario. Callers can also use comply_test_controller with scenario: 'list_scenarios' to discover supported scenarios at runtime.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "force_creative_status",
+              "force_account_status",
+              "force_media_buy_status",
+              "force_session_status",
+              "simulate_delivery",
+              "simulate_budget_spend"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "scenarios"
+      ],
+      "additionalProperties": true
+    },
+    "specialisms": {
+      "type": "array",
+      "description": "Optional — specialized compliance claims this agent supports. Values MUST be kebab-case enum IDs (e.g., 'creative-generative', 'sales-non-guaranteed'). An agent that implements a specialism's tools but omits its ID from this array will receive 'No applicable tracks found' from the compliance runner — tracks for that specialism are not evaluated even if every tool works. Omitting the field means the agent declares no specialism claims (it still passes the universal + domain-baseline storyboards implied by supported_protocols). Each specialism maps to a storyboard bundle at /compliance/{version}/specialisms/{id}/ that the AAO compliance runner executes to verify the claim. Each specialism rolls up to one of the protocols in supported_protocols — the runner rejects a specialism claim whose parent protocol is missing. Only list specialisms your agent actually implements — the AAO Verified badge enumerates which specialisms were demonstrably passed.",
+      "items": {
+        "title": "AdCP Specialism",
+        "description": "Specialized capability claims an agent can make. Each specialism maps to a compliance storyboard bundle published at /compliance/{version}/specialisms/{id}/. An agent asserts specialisms it supports in get_adcp_capabilities; the AAO compliance runner executes the matching storyboards to verify the claim.",
+        "type": "string",
+        "x-deprecated-enum-values": [
+          "signed-requests"
+        ],
+        "x-deprecated-enum-values-doc": "Enum values listed here are retained for backward compatibility but their corresponding storyboard has been relocated or removed. Build-time parity checks (scripts/build-compliance.cjs verifyEnumParity) skip filesystem-backing enforcement for these values. Targeted for removal in a future major version.",
+        "enum": [
+          "audience-sync",
+          "brand-rights",
+          "collection-lists",
+          "content-standards",
+          "creative-ad-server",
+          "creative-generative",
+          "creative-template",
+          "governance-aware-seller",
+          "governance-delivery-monitor",
+          "governance-spend-authority",
+          "property-lists",
+          "sales-broadcast-tv",
+          "sales-catalog-driven",
+          "sales-guaranteed",
+          "sales-non-guaranteed",
+          "sales-proposal-mode",
+          "sales-social",
+          "signal-marketplace",
+          "signal-owned",
+          "signed-requests"
+        ],
+        "enumDescriptions": {
+          "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
+          "brand-rights": "Brand identity and rights licensing (talent, music, stock media)",
+          "collection-lists": "Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety",
+          "content-standards": "Content standards enforcement (brand safety, policy compliance)",
+          "creative-ad-server": "Creative ad server with tag-based delivery",
+          "creative-generative": "Generative creative agent producing assets on demand",
+          "creative-template": "Creative template and transformation agent",
+          "governance-aware-seller": "Seller agent that composes with the buyer's campaign-governance agent — accepts sync_governance, calls check_governance before confirming spend, and propagates approvals, conditions, and denials unchanged. Optional claim; pure sellers without governance composition skip the governance scenarios as not_applicable.",
+          "governance-delivery-monitor": "Campaign delivery monitoring with drift detection",
+          "governance-spend-authority": "Conditional spend approval and human-in-the-loop governance",
+          "property-lists": "Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance",
+          "sales-broadcast-tv": "Broadcast linear TV seller with guaranteed inventory and FCC cancellation rules",
+          "sales-catalog-driven": "Catalog-driven commerce with conversion tracking",
+          "sales-guaranteed": "Guaranteed media buys with human IO approval",
+          "sales-non-guaranteed": "Non-guaranteed auction-based media buys",
+          "sales-proposal-mode": "Media buys negotiated via proposal acceptance",
+          "sales-social": "Social media advertising platform with self-service flows",
+          "signal-marketplace": "Marketplace signal agent reselling third-party data",
+          "signal-owned": "Owned signal agent exposing first-party segments",
+          "signed-requests": "DEPRECATED in 3.1 — reclassified to /compliance/{version}/universal/signed-requests.yaml. Advertise request_signing.supported: true in get_adcp_capabilities; this enum value is retained until 4.0 for backward compat but is no longer needed. See https://github.com/adcontextprotocol/adcp/issues/3075 (reclassification) and https://github.com/adcontextprotocol/adcp/issues/3078 (4.0 enum removal)."
+        }
+      },
+      "uniqueItems": true
+    },
+    "extensions_supported": {
+      "type": "array",
+      "description": "Extension namespaces this agent supports. Buyers can expect meaningful data in ext.{namespace} fields on responses from this agent. Extension schemas are published in the AdCP extension registry.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')"
+      },
+      "uniqueItems": true
+    },
+    "experimental_features": {
+      "type": "array",
+      "description": "Experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries x-status: experimental and the working group has not yet frozen it. Sellers that implement any experimental surface MUST list its feature id here. Buyers inspect this array before relying on experimental surfaces — a seller that does not list a surface is asserting it does not implement it. Experimental surfaces MAY break between any two 3.x releases with at least 6 weeks notice; the full contract is in docs/reference/experimental-status.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match.core')"
+      },
+      "uniqueItems": true
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when capabilities were last updated. Buyers can use this for cache invalidation."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "title": "Error",
+        "description": "Standard error structure for task-specific errors and warnings",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Error code for programmatic handling. Standard codes are defined in error-code.json and enable autonomous agent recovery. Sellers MAY use codes not in the standard vocabulary for platform-specific errors; agents MUST handle unknown codes gracefully by falling back to the recovery classification."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "field": {
+            "type": "string",
+            "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Suggested fix for the error"
+          },
+          "retry_after": {
+            "type": "number",
+            "description": "Seconds to wait before retrying the operation. Sellers MUST return values between 1 and 3600. Clients MUST clamp values outside this range.",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
+          },
+          "recovery": {
+            "type": "string",
+            "enum": [
+              "transient",
+              "correctable",
+              "terminal"
+            ],
+            "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found)."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "adcp",
+    "supported_protocols"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "MatchType": {
+      "title": "Match Type",
+      "description": "Keyword targeting match type. broad: ads may serve on queries semantically related to the keyword. phrase: ads serve when the query contains the keyword phrase. exact: ads serve only when the query matches the keyword exactly.",
+      "type": "string",
+      "enum": [
+        "broad",
+        "phrase",
+        "exact"
+      ],
+      "enumDescriptions": {
+        "broad": "Ads may serve on queries semantically related to the keyword",
+        "phrase": "Ads serve when the query contains the keyword phrase in order",
+        "exact": "Ads serve only when the query matches the keyword exactly"
+      }
+    },
+    "UIDType": {
+      "title": "UID Type",
+      "description": "Type of user identifier. Used in audience sync, event logging, and TMP identity match requests to tell the receiver which identity graph to resolve against.",
+      "type": "string",
+      "enum": [
+        "rampid",
+        "rampid_derived",
+        "id5",
+        "uid2",
+        "euid",
+        "pairid",
+        "maid",
+        "hashed_email",
+        "publisher_first_party",
+        "other"
+      ],
+      "enumDescriptions": {
+        "rampid": "LiveRamp RampID maintained form (XY, 32 bytes on the wire)",
+        "rampid_derived": "LiveRamp RampID derived form (Xi, 48 bytes on the wire)",
+        "id5": "ID5 universal ID",
+        "uid2": "Unified ID 2.0",
+        "euid": "European Unified ID",
+        "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
+        "maid": "Mobile Advertising ID (IDFA/GAID)",
+        "hashed_email": "SHA-256 hashed email address. Pseudonymous PII, not anonymous — unsalted SHA-256 of the email namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
+        "publisher_first_party": "Publisher's own first-party identifier, opaque to buyers",
+        "other": "Other universal ID type (specify in ext)"
+      }
+    },
+    "EventType": {
+      "title": "Event Type",
+      "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "page_view": "User viewed a page",
+        "view_content": "User viewed specific content (product, article, etc.)",
+        "select_content": "User selected or clicked on content (article, video, etc.)",
+        "select_item": "User selected a specific product or item from a list",
+        "search": "User performed a search",
+        "share": "User shared content via social or messaging",
+        "add_to_cart": "User added an item to cart",
+        "remove_from_cart": "User removed an item from cart",
+        "viewed_cart": "User viewed their shopping cart",
+        "add_to_wishlist": "User added an item to a wishlist",
+        "initiate_checkout": "User started checkout process",
+        "add_payment_info": "User added payment information",
+        "purchase": "User completed a purchase",
+        "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+        "lead": "User expressed interest (form submission, signup, etc.)",
+        "qualify_lead": "Lead qualified by sales or scoring criteria",
+        "close_convert_lead": "Lead converted to a customer or closed deal",
+        "disqualify_lead": "Lead disqualified or marked as not viable",
+        "complete_registration": "User completed account registration",
+        "subscribe": "User subscribed to a service or newsletter",
+        "start_trial": "User started a free trial",
+        "app_install": "User installed an application",
+        "app_launch": "User launched an application",
+        "contact": "User initiated contact (call, message, etc.)",
+        "schedule": "User scheduled an appointment or event",
+        "donate": "User made a donation",
+        "submit_application": "User submitted an application (loan, job, etc.)",
+        "custom": "Custom event type (specify in custom_event_name)"
+      }
+    },
+    "MediaChannel": {
+      "title": "Media Channel",
+      "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+      "type": "string",
+      "enum": [
+        "display",
+        "olv",
+        "social",
+        "search",
+        "ctv",
+        "linear_tv",
+        "radio",
+        "streaming_audio",
+        "podcast",
+        "dooh",
+        "ooh",
+        "print",
+        "cinema",
+        "email",
+        "gaming",
+        "retail_media",
+        "influencer",
+        "affiliate",
+        "product_placement",
+        "sponsored_intelligence"
+      ],
+      "enumDescriptions": {
+        "display": "Digital display advertising (banners, native, rich media) across web and app",
+        "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+        "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+        "search": "Search engine advertising and search networks",
+        "ctv": "Connected TV and streaming on television screens",
+        "linear_tv": "Traditional broadcast and cable television",
+        "radio": "Traditional AM/FM radio broadcast",
+        "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+        "podcast": "Podcast advertising (host-read or dynamically inserted)",
+        "dooh": "Digital out-of-home screens in public spaces",
+        "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+        "print": "Newspapers, magazines, and other print publications",
+        "cinema": "Movie theater advertising",
+        "email": "Email advertising and sponsored newsletter content",
+        "gaming": "In-game advertising across platforms",
+        "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+        "influencer": "Creator and influencer marketing partnerships",
+        "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+        "product_placement": "Product placement, branded content, and sponsorship integrations",
+        "sponsored_intelligence": "Sponsored Intelligence — advertising within AI assistants, AI search, and generative AI experiences via the reversed data flow"
+      }
+    }
+  },
+  "_bundled": {
+    "generatedAt": "2026-04-29T01:18:44.945Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

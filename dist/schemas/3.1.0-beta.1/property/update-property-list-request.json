@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/property/update-property-list-request.json",
+  "title": "Update Property List Request",
+  "description": "Request parameters for updating an existing property list",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list to update",
+      "x-entity": "property_list"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.1/core/account-ref.json",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts; optional otherwise."
+    },
+    "name": {
+      "type": "string",
+      "description": "New name for the list"
+    },
+    "description": {
+      "type": "string",
+      "description": "New description"
+    },
+    "base_properties": {
+      "type": "array",
+      "description": "Complete replacement for the base properties list (not a patch). Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers).",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.1/property/base-property-source.json"
+      }
+    },
+    "filters": {
+      "$ref": "/schemas/3.1.0-beta.1/property/property-list-filters.json",
+      "description": "Complete replacement for the filters (not a patch)"
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-beta.1/core/brand-ref.json",
+      "description": "Update brand reference. Resolved to full brand identity at execution time."
+    },
+    "webhook_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Update the webhook URL for list change notifications (set to empty string to remove)"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "list_id"
+  ],
+  "additionalProperties": false
+}

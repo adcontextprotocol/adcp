@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/core/push-notification-config.json",
+  "title": "Push Notification Config",
+  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. By default, webhooks are signed with the AdCP RFC 9421 profile (see docs/building/implementation/security.mdx#webhook-callbacks) — the seller signs outbound with a key published at the jwks_uri on its own brand.json `agents[]` entry and the buyer verifies against that JWKS, so no shared secret crosses the wire. The optional `authentication` block selects the legacy Bearer or HMAC-SHA256 fallback for compatibility with receivers that have not yet adopted the 9421 profile; this fallback is deprecated and will be removed in AdCP 4.0. Note: the `idempotency_key` that receivers dedup on lives inside the webhook **payload** body (see docs/building/implementation/webhooks.mdx#reliability and the mcp-webhook-payload schema), not in this configuration object — this schema only describes the receiver-side transport config sent to the seller. This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL for task status notifications"
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+      "minLength": 16
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 signing instead of the default RFC 9421 webhook profile. Deprecated; removed in AdCP 4.0. **Precedence is a switch, not a fallback:** presence of this block selects the legacy scheme; absence selects 9421. A seller MUST NOT sign the same webhook both ways, and a buyer MUST NOT attempt 'try 9421 first, fall back to HMAC' verification — signature mode is determined solely by whether this block was present at registration time. The seller's baseline 9421 webhook-signing key published at its brand.json `agents[]` `jwks_uri` does not override this selector; it is always discoverable but only used when `authentication` is omitted. See docs/building/implementation/security.mdx#webhook-callbacks for the full precedence and downgrade-resistance rules (including the `webhook_mode_mismatch` rejection a buyer MUST apply when a received webhook's signing mode does not match the registered mode).",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit `authentication` and use the RFC 9421 webhook profile.",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.1/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes",
+        "credentials"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "url"
+  ]
+}

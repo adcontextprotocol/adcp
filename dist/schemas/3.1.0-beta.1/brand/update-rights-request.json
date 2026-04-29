@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/brand/update-rights-request.json",
+  "title": "Update Rights Request",
+  "description": "Modify an existing rights grant — extend dates, adjust impression caps, change pricing, or pause/resume. Parallels update_media_buy. Only the fields provided are updated; omitted fields remain unchanged.",
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant identifier from acquire_rights response",
+      "x-entity": "rights_grant"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "New end date for the rights grant (must be >= current end_date). Extending the grant may re-issue generation credentials with updated expiration."
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "New impression cap for the grant. Must be >= impressions already delivered."
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries.",
+      "x-entity": "vendor_pricing_option"
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause or resume the rights grant. When paused, generation credentials are suspended and creative delivery should stop. When resumed, credentials are re-activated."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.1.0-beta.1/core/push-notification-config.json",
+      "description": "Webhook for async update notifications if the update requires approval"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "rights_id"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/media-buy/sync-event-sources-request.json",
+  "title": "Sync Event Sources Request",
+  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, buyer-managed event sources on the account not in this request are removed. When event_sources is omitted, the call is discovery-only: it returns all event sources on the account without modification. The response always includes both synced and seller-managed event sources for full visibility.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `event_source_id` gives resource-level dedup per source, but the sync envelope emits audit events and can trigger downstream pixel provisioning — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `event_sources` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.1/core/account-ref.json",
+      "description": "Account to configure event sources for."
+    },
+    "event_sources": {
+      "type": "array",
+      "description": "Event sources to sync (create or update). When omitted, the call is discovery-only and returns all existing event sources on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_source_id": {
+            "type": "string",
+            "description": "Unique identifier for this event source",
+            "x-entity": "event_source"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this event source"
+          },
+          "event_types": {
+            "type": "array",
+            "description": "Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.",
+            "items": {
+              "$ref": "/schemas/3.1.0-beta.1/enums/event-type.json"
+            },
+            "minItems": 1
+          },
+          "allowed_domains": {
+            "type": "array",
+            "description": "Domains authorized to send events for this event source",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "event_source_id"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, event sources not included in this sync will be removed"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/core/account-authorization.json",
+  "title": "Account Authorization",
+  "description": "The authenticated caller's grant against a specific account: which tasks are callable, which request fields are modifiable, and the named scope (if any) the grant maps to. Attached to per-account entries in sync_accounts and list_accounts responses when the vendor agent supports scope introspection. APPLIES TO EVERY AGENT TYPE: media-buy sales agents, signals agents, governance agents, creative agents, and brand agents all use the same authorization shape on their sync_accounts / list_accounts responses — the accounts protocol is shared, and so is the scope-introspection mechanism. The standard scope `attestation_verifier` is Media Buy Protocol-specific (it binds to the AAO Verified mark), but the mechanism itself is protocol-neutral: a signals agent can declare a `custom:activation_only` scope, a governance agent can declare a `custom:audit_viewer` scope, and so on. ABSENCE IS SILENCE, NOT DENIAL: the vendor agent simply does not advertise introspectable scope. Callers MUST NOT infer access (or absence of access) from the absence of this object — discover scope by attempting tasks and reading the authz error codes (SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, FIELD_NOT_PERMITTED) when introspection is unavailable. Conceptually analogous to RFC 7662 OAuth 2.0 Token Introspection, specialized for AdCP's task-and-field authorization model. IDENTITY BINDING: the authorization object is implicitly scoped to the (caller identity, account_id) tuple at read time — the same account returned to a different authenticated caller MAY return a different authorization object. Vendor agents MUST resolve 'caller identity' from the authenticated request (not from any client-supplied field) and MUST bind the returned authorization to that identity. CONSISTENCY: for a given (caller identity, account_id) tuple, sequential reads within the refresh window (below) MUST return identical authorization objects, modulo operator-initiated scope changes. Flicker from load-balanced or eventually-consistent backends is non-conformant — compliance engines rely on scope stability for state tracking. REFRESH WINDOW: callers SHOULD re-read authorization at least every 300 seconds of active use against the account. Vendor agents MUST reflect operator-initiated scope changes in sync_accounts / list_accounts responses within 300 seconds of the change being made; a reader that polls every 300s MUST see operator changes within at most one refresh cycle. Vendor agents MAY cache the authorization object briefly but MUST NOT cache past 300 seconds without revalidation.",
+  "type": "object",
+  "properties": {
+    "allowed_tasks": {
+      "type": "array",
+      "description": "Canonical snake_case task names the caller may invoke against this account (e.g., get_media_buys, update_media_buy, create_media_buy, sync_creatives). Absence of a task from this list MUST be interpreted as 'not permitted' — invoking an absent task MUST return SCOPE_INSUFFICIENT. This list reflects the caller's grant, not the seller's universal capability surface (for that, see get_adcp_capabilities). A seller may grant narrower subsets to different callers on the same account.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "uniqueItems": true
+    },
+    "field_scopes": {
+      "type": "object",
+      "description": "Optional per-task allowlist of request fields the caller may set. Keys are task names (which MUST also appear in allowed_tasks). Values are arrays of top-level request-field paths permitted for that task. When a task appears in field_scopes, requests to that task with any field outside the allowlist MUST be rejected with FIELD_NOT_PERMITTED. Implicit framing fields are always permitted and do NOT need to appear in the allowlist — they identify the resource or shape the call rather than mutating business state. The list is non-exhaustive but covers the common cases: typed entity references (`account`, `media_buy_id`, `package_id`, `creative_id`, `signal_id`, `format_id`, `proposal_id`, `plan_id`, `session_id`), concurrency/idempotency (`revision`, `idempotency_key`), buyer-side correlation (`buyer_ref`, `po_number`), mode flags (`dry_run`), pagination (`pagination`, `cursor`, `max_results`), and envelope fields (`context`, `ext`, `adcp_major_version`, `push_notification_config` — transport-level async receipt, not business state). Any other typed entity-id parameter or query-shaping field on a read task SHOULD be treated as framing and not require listing. Tasks absent from field_scopes have no field-level restriction beyond what the task schema already enforces. An entry with an empty array means 'framing fields only, no business fields' — semantically distinct from the task being absent from field_scopes.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      }
+    },
+    "scope_name": {
+      "description": "Optional named scope identifier. When present, callers and the vendor agent can reason about the grant by name rather than by enumerating allowed_tasks and field_scopes. Modeled as a discriminated union so code generators produce a literal type for the standard scope(s) and a distinct type for agent-defined values — this prevents a typo of `attestation_verifier` from being silently accepted as a custom scope. Agent-defined scope names MUST use a `custom:` prefix to avoid collision with future standard scopes. The prefix is protocol-neutral: a signals agent, a governance agent, or a creative agent defines custom scopes the same way a media-buy sales agent does.",
+      "anyOf": [
+        {
+          "title": "StandardScope",
+          "type": "string",
+          "enum": ["attestation_verifier"],
+          "description": "Standard named scopes defined by the AdCP spec. `attestation_verifier` binds to the AAO Verified mark (a Media Buy Protocol flow) — the authorization mechanism itself is protocol-neutral, but this particular named scope is media-buy-specific."
+        },
+        {
+          "title": "CustomScope",
+          "type": "string",
+          "pattern": "^custom:[a-z][a-z0-9_]*$",
+          "description": "Agent-defined scope name, prefixed with `custom:`. Any vendor agent (media-buy seller, signals agent, governance agent, creative agent, brand agent) MAY define custom scopes. Callers MUST NOT assume any semantics from a custom-prefixed scope name."
+        }
+      ]
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "Convenience flag. When true, the caller is permitted only non-mutating tasks. Sellers MUST reject any mutation from a read-only caller with READ_ONLY_SCOPE. Sellers MAY omit this field; omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone — the seller MUST set this explicitly when it applies.",
+      "default": false
+    }
+  },
+  "required": ["allowed_tasks"],
+  "additionalProperties": true
+}

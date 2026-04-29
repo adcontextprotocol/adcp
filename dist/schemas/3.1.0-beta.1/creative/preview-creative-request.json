@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/creative/preview-creative-request.json",
+  "title": "Preview Creative Request",
+  "description": "Request to generate previews of creative manifests. Uses request_type to select single, batch, or variant mode.",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "request_type": {
+      "type": "string",
+      "enum": ["single", "batch", "variant"],
+      "description": "Preview mode. 'single' previews one creative manifest. 'batch' previews multiple creatives in one call. 'variant' replays a post-flight variant by ID."
+    },
+    "creative_manifest": {
+      "$ref": "/schemas/3.1.0-beta.1/core/creative-manifest.json",
+      "description": "Complete creative manifest with all required assets for the format. Required when request_type is 'single'. Also accepted per item in batch mode."
+    },
+    "format_id": {
+      "$ref": "/schemas/3.1.0-beta.1/core/format-id.json",
+      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted. Used in single mode."
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Array of input sets for generating multiple preview variants. Each input set defines macros and context values for one preview rendering. Used in single mode.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad', 'Desktop dark mode')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns')"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Specific template ID for custom format rendering. Used in single mode."
+    },
+    "quality": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/creative-quality.json",
+      "description": "Render quality. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. In batch mode, sets the default for all requests (individual items can override)."
+    },
+    "output_format": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/preview-output-format.json",
+      "default": "url",
+      "description": "Output format. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). In batch mode, sets the default for all requests (individual items can override). Default: 'url'."
+    },
+    "item_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of catalog items to render per preview variant. Used in single mode. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large."
+    },
+    "requests": {
+      "type": "array",
+      "description": "Array of preview requests (1-50 items). Required when request_type is 'batch'. Each item follows the single request structure.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "format_id": {
+            "$ref": "/schemas/3.1.0-beta.1/core/format-id.json",
+            "description": "Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted."
+          },
+          "creative_manifest": {
+            "$ref": "/schemas/3.1.0-beta.1/core/creative-manifest.json",
+            "description": "Complete creative manifest with all required assets."
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Array of input sets for generating multiple preview variants",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name for this input set"
+                },
+                "macros": {
+                  "type": "object",
+                  "description": "Macro values to use for this preview",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "context_description": {
+                  "type": "string",
+                  "description": "Natural language description of the context for AI-generated content"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": true
+            },
+            "minItems": 1
+          },
+          "template_id": {
+            "type": "string",
+            "description": "Specific template ID for custom format rendering"
+          },
+          "quality": {
+            "$ref": "/schemas/3.1.0-beta.1/enums/creative-quality.json",
+            "description": "Render quality for this preview. Overrides batch-level default."
+          },
+          "output_format": {
+            "$ref": "/schemas/3.1.0-beta.1/enums/preview-output-format.json",
+            "default": "url",
+            "description": "Output format for this preview. Overrides batch-level default."
+          },
+          "item_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum number of catalog items to render in this preview."
+          }
+        },
+        "required": [
+          "creative_manifest"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "variant_id": {
+      "type": "string",
+      "description": "Platform-assigned variant identifier from get_creative_delivery response. Required when request_type is 'variant'."
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Creative identifier for context. Used in variant mode.",
+      "x-entity": "creative"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "request_type"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "request_type": { "const": "single" } } },
+      "then": { "required": ["creative_manifest"] }
+    },
+    {
+      "if": { "properties": { "request_type": { "const": "batch" } } },
+      "then": { "required": ["requests"] }
+    },
+    {
+      "if": { "properties": { "request_type": { "const": "variant" } } },
+      "then": { "required": ["variant_id"] }
+    }
+  ],
+  "additionalProperties": true
+}
