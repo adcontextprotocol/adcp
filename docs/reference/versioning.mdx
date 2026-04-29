@@ -76,7 +76,7 @@ Per the three-tier model, patches by definition introduce no contract change —
 
 The legacy `adcp_major_version` (integer per-request) and `adcp.major_versions` (integer array on capabilities) remain functional through 3.x for backwards compatibility. New buyers and sellers SHOULD prefer release-precision negotiation. Both legacy fields are removed in 4.0.
 
-**Dual-emit during 3.x:** a buyer that emits `adcp_version` MUST also emit `adcp_major_version` (with the major component of its pin) on the same request. This lets legacy 3.x sellers that only read the integer keep negotiating correctly. When both fields are present and disagree at the major level, the server MUST treat the request as malformed and return `VERSION_UNSUPPORTED`.
+**Dual-emit during 3.x:** a buyer that emits `adcp_version` SHOULD also emit `adcp_major_version` (with the major component of its pin) on the same request. This lets legacy 3.x sellers that only read the integer keep negotiating correctly. When both fields are present and disagree at the major level, the server MUST treat the request as malformed and return `VERSION_UNSUPPORTED`.
 
 When only major-precision is provided:
 - Buyer sends `adcp_major_version: 3` → server serves the highest supported release in major 3.
@@ -84,13 +84,15 @@ When only major-precision is provided:
 
 ### Migration timeline
 
-| Phase | Buyer obligation | Seller obligation |
-|---|---|---|
-| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror through 3.x). | SHOULD honor and echo `adcp_version` on responses. MUST emit `supported_versions` on capabilities. |
-| **3.2** | MUST emit `adcp_version` (with `adcp_major_version` mirror through 3.x). | MUST honor and echo `adcp_version`. MUST emit `supported_versions` on capabilities. Compliance grader fails sellers that don't echo. |
-| **4.0** | MUST emit `adcp_version`. `adcp_major_version` removed. | MUST honor and echo `adcp_version`. `adcp.major_versions` and `extensions.adcp.adcp_version` removed. |
+The spec stays at SHOULD on both sides through all of 3.x — consistent with the 3.x stability guarantee that fields don't graduate optional → required within a major. The AdCP compliance grader carries the adoption pressure within 3.x: sellers that want certification at 3.2 ship the response echo.
 
-In-house clients that haven't moved to the SDK yet can keep sending `adcp_major_version` only through all of 3.x — the server falls back to it. Adding `adcp_version` is opt-in at 3.1 and required at 3.2.
+| Phase | Spec — buyer | Spec — seller | Compliance grader |
+|---|---|---|---|
+| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror). | SHOULD honor and echo `adcp_version`. SHOULD emit `supported_versions` on capabilities. | Advisory: reports presence on requests and responses. |
+| **3.2** | (unchanged from 3.1) | (unchanged from 3.1) | Blocking failure when sellers don't echo `adcp_version` or don't emit `supported_versions` on capabilities. |
+| **4.0** | MUST emit `adcp_version`. `adcp_major_version` removed. | MUST honor and echo `adcp_version`. `adcp.major_versions` and `extensions.adcp.adcp_version` removed. | Blocking failure on absence; legacy fields rejected. |
+
+In-house clients that haven't moved to the SDK yet can keep sending `adcp_major_version` only through all of 3.x — the server falls back to it. Adding `adcp_version` becomes the certifiable behavior at 3.2 (via the grader); the spec itself doesn't require it until 4.0.
 
 ### Relationship to MCP `protocolVersion`
 

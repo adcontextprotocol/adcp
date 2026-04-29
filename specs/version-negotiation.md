@@ -175,13 +175,17 @@ Capability pre-flight is **optional optimization, not required discovery.** Clie
 The integer `adcp_major_version` field on requests is **deprecated** in favor of the release-precision `adcp_version` string. Removed in 4.0.
 
 **Buyer obligations through 3.x:**
-- A buyer that emits `adcp_version` MUST also emit `adcp_major_version` on the same request (with the major component of its pin), so legacy 3.x sellers that only read the integer continue to negotiate correctly.
+- A buyer SHOULD emit `adcp_version` once its SDK speaks release-precision pinning.
+- A buyer that emits `adcp_version` SHOULD also emit `adcp_major_version` on the same request (with the major component of its pin), so legacy 3.x sellers that only read the integer continue to negotiate correctly.
 - A buyer SHOULD prefer `adcp_version` once it has any signal that the seller speaks 3.1+ (response echo or capabilities).
 
 **Seller obligations through 3.x:**
-- A seller MUST honor `adcp_version` when present.
-- A seller SHOULD echo `adcp_version` on every response from 3.1 onward (see migration table for the SHOULD/MUST gates).
-- A seller MUST emit both `adcp.major_versions` (integer) and `adcp.supported_versions` (release string) on capabilities responses through 3.x.
+- A seller that reads `adcp_version` MUST honor it (cross-major → `VERSION_UNSUPPORTED`; in-major → resolution algorithm in §3). A 3.0 server that doesn't read the field is unaffected — `additionalProperties: true` makes it invisible.
+- A seller SHOULD echo `adcp_version` on every response from 3.1 onward.
+- A seller SHOULD emit `adcp.supported_versions` on capabilities responses; sellers MUST keep emitting `adcp.major_versions` (integer) through 3.x for backwards compatibility (i.e. you can't drop the legacy field early). Both go away in 4.0.
+- When both `adcp_version` and `adcp_major_version` are present on a request and disagree at the major level, the server MUST return `VERSION_UNSUPPORTED` (treat as malformed).
+
+The "MUST" obligations above are correctness rules: if you read the field, you have to act on it correctly; you can't drop the legacy field early. The "SHOULD" obligations above are emission requirements that the spec deliberately leaves at SHOULD through all of 3.x — see §migration for the rationale.
 
 Mechanically: the shared `core/version-envelope.json` carries both fields as optional. Generated SDKs surface both as nullable; the SDK constructor sets both from a single user-provided release pin.
 
@@ -195,13 +199,15 @@ Fully additive on the wire:
 
 ## Migration
 
-| Phase | Buyer obligation | Seller obligation | Compliance grader |
+The spec stays at SHOULD on both sides through all of 3.x (consistent with the 3.x stability guarantee that fields don't graduate optional → required within a major). The AdCP compliance grader, operated separately by AAO, is the lever that produces adoption pressure within 3.x.
+
+| Phase | Spec — buyer | Spec — seller | Compliance grader |
 |---|---|---|---|
-| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror). | SHOULD honor and echo `adcp_version`. MUST emit `supported_versions` on capabilities. | Reports presence as advisory; flags missing echo on responses. |
-| **3.2** | MUST emit `adcp_version` (with `adcp_major_version` mirror through 3.x). | MUST honor and echo `adcp_version`. MUST emit `supported_versions` on capabilities. | Blocking failure when sellers don't echo. |
+| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror). | SHOULD honor and echo `adcp_version`. SHOULD emit `supported_versions` on capabilities. | Advisory: reports presence on requests and responses. |
+| **3.2** | (unchanged from 3.1) | (unchanged from 3.1) | Blocking failure when sellers don't echo `adcp_version` and don't emit `supported_versions` on capabilities. Sellers that want to be certified at 3.2 ship the echo. |
 | **4.0** | MUST emit `adcp_version`. `adcp_major_version` removed. | MUST honor and echo `adcp_version`. `adcp.major_versions` and `extensions.adcp.adcp_version` removed. | Blocking failure on absence; legacy fields rejected. |
 
-Cadence rationale: the 3.1 → 3.2 SHOULD/MUST gap (one minor) is intentionally tighter than the surrounding cadence policy. Buyer-side pinning is only useful once sellers actually echo the served release; leaving response echo at RECOMMENDED for two minors gives buyer SDKs nothing to key off and stalls the migration. The wire change is zero-cost (additive, optional via `additionalProperties: true`); the compliance gate is what produces real adoption.
+Cadence rationale: buyer-side pinning is only useful once sellers actually echo the served release. Rather than tightening the spec from SHOULD to MUST inside 3.x (which would dent the 3.x stability guarantee), the compliance grader carries that pressure — at 3.2, sellers that want certification ship response echo, and the migration moves. The wire change itself is zero-cost (additive, optional via `additionalProperties: true`); the grader is what produces real adoption.
 
 ## Out of scope (future RFCs)
 
