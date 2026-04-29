@@ -774,13 +774,37 @@ export class BrandDatabase {
     sub_brand_count: number;
     employee_count: number;
   }>> {
-    const offset = options.offset || 0;
-    const escapedSearch = options.search ? options.search.replace(/[%_\\]/g, '\\$&') : null;
-    const search = escapedSearch ? `%${escapedSearch}%` : null;
+    const params: unknown[] = [];
+    let paramIndex = 1;
+    const conditions: string[] = [
+      `(brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')`,
+    ];
 
-    const params: (string | number | null)[] = [search, offset];
-    const limitClause = options.limit ? `LIMIT $3` : '';
-    if (options.limit) params.push(options.limit);
+    if (options.search) {
+      const p = `%${options.search.replace(/[%_\\]/g, '\\$&')}%`;
+      conditions.push(
+        `(brands.domain ILIKE $${paramIndex} OR brands.brand_name ILIKE $${paramIndex}` +
+        ` OR brands.brand_manifest->>'name' ILIKE $${paramIndex}` +
+        ` OR brands.brand_manifest->'house'->>'name' ILIKE $${paramIndex})`
+      );
+      params.push(p);
+      paramIndex++;
+    }
+
+    if (options.source_type) {
+      conditions.push(`brands.source_type = $${paramIndex++}`);
+      params.push(options.source_type);
+    }
+
+    const whereClause = `WHERE ${conditions.join('\n        AND ')}`;
+    const offsetParam = paramIndex++;
+    params.push(options.offset ?? 0);
+
+    let limitClause = '';
+    if (options.limit) {
+      limitClause = `LIMIT $${paramIndex++}`;
+      params.push(options.limit);
+    }
 
     const result = await query<{
       domain: string;
@@ -812,17 +836,82 @@ export class BrandDatabase {
         COALESCE(CASE WHEN brands.brand_manifest->'company'->>'employees' ~ '^\\d+$'
           THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM brands
-      WHERE (brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')
-        AND ($1::text IS NULL OR brands.domain ILIKE $1 OR brands.brand_name ILIKE $1
-             OR brands.brand_manifest->>'name' ILIKE $1 OR brands.brand_manifest->'house'->>'name' ILIKE $1)
+      ${whereClause}
       ORDER BY employee_count DESC, brand_name, brands.domain
       ${limitClause}
-      OFFSET $2
+      OFFSET $${offsetParam}
       `,
       params
     );
 
     return result.rows;
+  }
+
+  /**
+   * Get aggregate counts for the brand registry, always unfiltered by source.
+   * Used alongside getAllBrandsForRegistry so stats remain global even when
+   * a source filter narrows the brands list.
+   */
+  async getBrandRegistryStats(search?: string): Promise<{
+    total: number;
+    brand_json: number;
+    community: number;
+    enriched: number;
+    houses: number;
+    sub_brands: number;
+    with_manifest: number;
+  }> {
+    const params: unknown[] = [];
+    let paramIndex = 1;
+    const conditions: string[] = [
+      `(is_public = true OR review_status IS NULL OR review_status = 'approved')`,
+    ];
+
+    if (search) {
+      const p = `%${search.replace(/[%_\\]/g, '\\$&')}%`;
+      conditions.push(
+        `(domain ILIKE $${paramIndex} OR brand_name ILIKE $${paramIndex}` +
+        ` OR brand_manifest->>'name' ILIKE $${paramIndex}` +
+        ` OR brand_manifest->'house'->>'name' ILIKE $${paramIndex})`
+      );
+      params.push(p);
+      paramIndex++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const result = await query<{
+      total: string;
+      brand_json: string;
+      community: string;
+      enriched: string;
+      houses: string;
+      sub_brands: string;
+      with_manifest: string;
+    }>(
+      `SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE source_type = 'brand_json' OR is_public = true) AS brand_json,
+        COUNT(*) FILTER (WHERE source_type = 'community' AND is_public IS NOT TRUE) AS community,
+        COUNT(*) FILTER (WHERE source_type = 'enriched' AND is_public IS NOT TRUE) AS enriched,
+        COUNT(*) FILTER (WHERE keller_type IN ('master', 'independent') OR keller_type IS NULL) AS houses,
+        COUNT(*) FILTER (WHERE keller_type IN ('sub_brand', 'endorsed')) AS sub_brands,
+        COUNT(*) FILTER (WHERE is_public = true OR has_brand_manifest = true) AS with_manifest
+      FROM brands
+      ${whereClause}`,
+      params
+    );
+
+    const row = result.rows[0];
+    return {
+      total: parseInt(row.total, 10),
+      brand_json: parseInt(row.brand_json, 10),
+      community: parseInt(row.community, 10),
+      enriched: parseInt(row.enriched, 10),
+      houses: parseInt(row.houses, 10),
+      sub_brands: parseInt(row.sub_brands, 10),
+      with_manifest: parseInt(row.with_manifest, 10),
+    };
   }
 
   // ========== Wiki Editing ==========

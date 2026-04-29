@@ -291,13 +291,16 @@ registry.registerPath({
   path: "/api/brands/registry",
   operationId: "listBrands",
   summary: "List brands",
-  description: "List all brands in the registry with optional search, pagination.",
+  description: "List all brands in the registry with optional search, pagination, and source filter.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       search: z.string().optional(),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
+      source: z.enum(['brand_json', 'enriched', 'community']).optional().openapi({
+        description: 'Filter by source type. brand_json includes self-hosted brands with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed.',
+      }),
     }),
   },
   responses: {
@@ -312,10 +315,17 @@ registry.registerPath({
               brand_json: z.number().int(),
               community: z.number().int(),
               enriched: z.number().int(),
+              houses: z.number().int(),
+              sub_brands: z.number().int(),
+              with_manifest: z.number().int(),
             }),
           }),
         },
       },
+    },
+    400: {
+      description: "Invalid source filter value",
+      content: { "application/json": { schema: ErrorSchema } },
     },
   },
 });
@@ -2516,23 +2526,31 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Brand Resolution ──────────────────────────────────────────
 
+  const BRAND_SOURCE_VALUES = ['brand_json', 'enriched', 'community'] as const;
+  type BrandSourceParam = typeof BRAND_SOURCE_VALUES[number];
+  const BRAND_SOURCE_TO_SOURCE_TYPE: Record<BrandSourceParam, 'brand_json' | 'community' | 'enriched'> = {
+    brand_json: 'brand_json',
+    enriched: 'enriched',
+    community: 'community',
+  };
+
   router.get("/brands/registry", async (req, res) => {
     try {
-      const brands = await brandDb.getAllBrandsForRegistry({
-        search: req.query.search as string,
-        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined,
-        offset: parseInt(req.query.offset as string) || 0,
-      });
+      const search = req.query.search as string | undefined;
+      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const source = req.query.source as string | undefined;
 
-      const stats = {
-        total: brands.length,
-        brand_json: brands.filter((b) => b.source === "brand_json" || b.source === "hosted").length,
-        community: brands.filter((b) => b.source === "community").length,
-        enriched: brands.filter((b) => b.source === "enriched").length,
-        houses: brands.filter((b) => b.keller_type === "master" || b.keller_type === "independent").length,
-        sub_brands: brands.filter((b) => b.keller_type === "sub_brand" || b.keller_type === "endorsed").length,
-        with_manifest: brands.filter((b) => b.has_manifest).length,
-      };
+      if (source && !(BRAND_SOURCE_VALUES as readonly string[]).includes(source)) {
+        return res.status(400).json({ error: `Invalid source filter. Valid values: ${BRAND_SOURCE_VALUES.join(', ')}` });
+      }
+
+      const sourceType = source ? BRAND_SOURCE_TO_SOURCE_TYPE[source as BrandSourceParam] : undefined;
+
+      const [brands, stats] = await Promise.all([
+        brandDb.getAllBrandsForRegistry({ search, limit, offset, source_type: sourceType }),
+        brandDb.getBrandRegistryStats(search),
+      ]);
 
       return res.json({ brands, stats });
     } catch (error) {
