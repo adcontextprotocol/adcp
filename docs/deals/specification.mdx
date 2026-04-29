@@ -1,0 +1,116 @@
+---
+title: Deals Specification
+sidebarTitle: Specification
+---
+
+<Info>
+**AdCP Deals v1** - This specification defines the Deals protocol for PMP, PG, and AP deal lifecycle, activation, and diagnostics.
+</Info>
+
+**Status**: Request for Comments
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Abstract
+
+The Deals Protocol extends the advertising automation model with a first-class **deal** resource. Products remain the discovery surface ("what is sellable"); deals represent negotiated transaction wrappers ("how it is bought"). Activation is explicit so that a deal becomes transact-able on decisioning platforms (DSP and/or SSP).
+
+## Scope
+
+- **Transaction types**: PMP (Private Marketplace), PG (Programmatic Guaranteed), AP (Auction Package).
+- **Discovery**: Via existing `get_products` with `filters.transaction_type` and product fields `supported_transaction_types`, `transaction_terms_by_type`, `deal_capabilities`.
+- **Lifecycle**: Create deal → negotiate terms (versioned) → accept → schedule → activate → live → complete (or reject/cancel).
+- **Activation**: Deals MUST be activated on each target DSP/SSP before they can be used for bidding.
+- **Monitoring**: Canonical metrics and diagnostics per logical deal.
+
+## Transport and Capabilities
+
+Sales agents MUST declare Deals Protocol support via `get_adcp_capabilities`:
+
+- `supported_protocols` MUST include `"deals"`.
+- When `deals` is present, a `deals` capability object MUST be present with at least `supported_transaction_types` (array of "PMP", "PG", "AP"). Optional `features` (e.g. supports_bid_cap, supports_deal_level_reporting) MAY be included.
+
+## Core Concepts
+
+### Deal
+
+A **deal** is a logical resource that:
+
+- References a **product** (product_id).
+- Has a **transaction_type** (PMP, PG, or AP).
+- Has **terms** (versioned); structure varies by transaction type (e.g. floor, bid_cap for PMP; commitment_units for PG).
+- Has a **state** (lifecycle).
+- Has zero or more **deployments** (per-destination activation status).
+
+### Deal States
+
+| State | Description |
+|-------|-------------|
+| DRAFT | Optional; not yet visible to buyer; seller staging |
+| PROPOSED | Visible to buyer; negotiation via update_deal_terms (versioned) |
+| ACCEPTED | Parties agree on a specific terms version (accepted_version set) |
+| SCHEDULED | Accepted + activation complete + start time in future |
+| LIVE | Eligible for transaction now (activated + within flight window) |
+| PAUSED | Temporarily stopped (may resume) |
+| REJECTED | Terminated at proposal stage (no agreement) |
+| CANCELLED | Permanently stopped before completion |
+| COMPLETED | Flight ended or commitment satisfied |
+
+### State Transitions
+
+Typical transitions:
+
+- PROPOSED → ACCEPTED (agreement)
+- ACCEPTED → SCHEDULED (future start)
+- SCHEDULED → LIVE (when in flight)
+- LIVE → PAUSED → LIVE (temporary pause)
+- LIVE → COMPLETED (flight ended)
+- PROPOSED → REJECTED (no agreement)
+- Any → CANCELLED (stop permanently)
+
+Negotiation does not require a separate NEGOTIATING state: `update_deal_terms` increments the version and keeps state PROPOSED. When moving to ACCEPTED, the seller sets `accepted_version` to the current version.
+
+### Activation
+
+A deal is not transact-able until it is **activated** on decisioning platforms.
+
+- **activate_deal**: Request specifies `deal_id` and `destinations[]` (platform_type, platform_name, account_id, mode). Mode may be CREATE_AND_SYNC (create physical deal if needed) or BIND_EXISTING (attach to existing physical id).
+- Response includes `deployments[]` with per-destination `platform_deal_id`, `deployment_status` (PENDING, ACTIVE, FAILED, DISABLED), and optional error details.
+- **Per-destination status** is separate from deal state: `deal.state` is the logical lifecycle; `deal.deployments[]` is the operational activation per destination. A deal may be LIVE while only a subset of destinations are ACTIVE.
+
+### Visibility (Marketplace)
+
+Deals may be listed with a **visibility**:
+
+- **PRIVATE**: Only explicitly addressed buyer seats can see.
+- **INVITE_ONLY**: Visible but may require seller approval.
+- **PUBLIC**: Visible to any eligible buyer seat (marketplace shelf).
+
+Sales agents that support marketplace-style discovery MUST support `list_deals` with filtering (e.g. by state, transaction_type, visibility) so buyers can discover PROPOSED or LIVE deals.
+
+## Identifiers
+
+- **deal_id**: Unique identifier for the deal (seller-assigned). Returned on create_deal; used for all subsequent operations.
+- **deployment_id**: Optional seller-assigned identifier for a single deployment; used in get_deal_activation_status when querying one destination.
+- **platform_deal_id**: Physical deal ID (or line item / targeting id) on the DSP/SSP; returned in activate_deal and list_deal_mappings.
+
+## Task Summary
+
+| Task | Purpose |
+|------|---------|
+| create_deal | Create logical deal (product_id, transaction_type, terms, optional buyer_seat_id, visibility) |
+| list_deals | List/filter deals; use deal_ids for single-deal fetch |
+| update_deal_terms | Propose new terms (increments version); deal in PROPOSED (or DRAFT if allowed) |
+| transition_deal_state | Move to target state (ACCEPTED, SCHEDULED, LIVE, PAUSED, COMPLETED, REJECTED, CANCELLED) |
+| activate_deal | Activate on one or more DSP/SSP destinations |
+| get_deal_activation_status | Per-destination activation status (async) |
+| list_deal_mappings | Logical deal_id → physical platform_deal_id mappings |
+| get_deal_metrics | Canonical reporting (time_range, granularity, dimensions, optional by_destination) |
+| get_deal_diagnostics | Health score, top_issues, root_causes, recommendations; optional viewer_role for field filtering |
+
+## Product and Filter Extensions
+
+For deal discovery, products and filters are extended as follows:
+
+- **Product** (in get_products response): May include `supported_transaction_types` (array of PMP, PG, AP), `transaction_terms_by_type` (high-level defaults/allowed ranges), `requires_channel_split` (boolean), `deal_capabilities` (e.g. supports_bid_cap, supports_deal_level_reporting).
+- **Product filters** (in get_products request): May include `transaction_type` (PMP, PG, or AP) to filter to products that support that deal type.

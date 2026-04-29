@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/deal-state.json",
+  "title": "Deal State",
+  "description": "Lifecycle state of a deal. Negotiation happens in PROPOSED via versioned terms; ACCEPTED locks a version; activation and flight drive SCHEDULED/LIVE/COMPLETED.",
+  "type": "string",
+  "enum": [
+    "DRAFT",
+    "PROPOSED",
+    "ACCEPTED",
+    "SCHEDULED",
+    "LIVE",
+    "PAUSED",
+    "REJECTED",
+    "CANCELLED",
+    "COMPLETED"
+  ]
+}

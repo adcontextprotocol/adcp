@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/deal-visibility.json",
+  "title": "Deal Visibility",
+  "description": "Who can see the deal when listing: PRIVATE (only addressed buyer seats), INVITE_ONLY (visible but requires seller approval), PUBLIC (any eligible buyer seat)",
+  "type": "string",
+  "enum": ["PRIVATE", "INVITE_ONLY", "PUBLIC"]
+}

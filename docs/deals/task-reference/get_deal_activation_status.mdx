@@ -1,0 +1,20 @@
+---
+title: get_deal_activation_status
+testable: true
+---
+
+Get per-destination activation status for a deal. Use for asynchronous activation tracking.
+
+**Request schema**: `/schemas/latest/deals/get-deal-activation-status-request.json`  
+**Response schema**: `/schemas/latest/deals/get-deal-activation-status-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to check |
+| deployment_id | string | No | Limit to this deployment |
+
+## Response
+
+Returns `deal_id`, `deployments` (status, timestamps, last error per destination), and optional `errors`.

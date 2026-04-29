@@ -1,0 +1,24 @@
+---
+title: create_deal
+testable: true
+---
+
+Create a logical deal. The deal starts in PROPOSED or DRAFT. Negotiate via `update_deal_terms`, move state via `transition_deal_state`, and make it transact-able via `activate_deal`.
+
+**Request schema**: `/schemas/latest/deals/create-deal-request.json`  
+**Response schema**: `/schemas/latest/deals/create-deal-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| product_id | string | Yes | Product this deal is based on (from get_products) |
+| transaction_type | enum | Yes | PMP, PG, or AP |
+| terms | object | Yes | Initial negotiated terms (see deal-terms schema) |
+| buyer_seat_id | string | No | Buyer seat/account; omit for marketplace shelf deals |
+| advertiser_id | string | No | Advertiser or brand identifier |
+| visibility | enum | No | PRIVATE, INVITE_ONLY, or PUBLIC |
+
+## Response
+
+Returns `deal` (full deal object with deal_id, state, version, terms) and optional `errors`.

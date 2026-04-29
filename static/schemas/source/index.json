@@ -393,6 +393,22 @@
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
           "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"
+        },
+        "deal": {
+          "$ref": "/schemas/core/deal.json",
+          "description": "Logical deal wrapping a product with negotiated terms, state, and per-destination activation"
+        },
+        "deal-terms": {
+          "$ref": "/schemas/core/deal-terms.json",
+          "description": "Versioned negotiated terms for a deal (PMP/PG/AP)"
+        },
+        "deal-deployment": {
+          "$ref": "/schemas/core/deal-deployment.json",
+          "description": "Per-destination activation of a deal on a DSP/SSP"
+        },
+        "deal-destination": {
+          "$ref": "/schemas/core/deal-destination.json",
+          "description": "Destination for deal activation (platform_type, account_id, mode)"
         }
       },
       "requirements": {
@@ -623,6 +639,22 @@
         "right-type": {
           "$ref": "/schemas/enums/right-type.json",
           "description": "Categories of licensable rights (talent, music, brand_ip, stock_media)"
+        },
+        "transaction-type": {
+          "$ref": "/schemas/enums/transaction-type.json",
+          "description": "Deal transaction type (PMP, PG, AP)"
+        },
+        "deal-state": {
+          "$ref": "/schemas/enums/deal-state.json",
+          "description": "Lifecycle state of a deal"
+        },
+        "deal-deployment-status": {
+          "$ref": "/schemas/enums/deal-deployment-status.json",
+          "description": "Per-destination activation status for a deal (PENDING, ACTIVE, FAILED, DISABLED)"
+        },
+        "deal-visibility": {
+          "$ref": "/schemas/enums/deal-visibility.json",
+          "description": "Deal visibility (PRIVATE, INVITE_ONLY, PUBLIC)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",
@@ -1133,6 +1165,101 @@
           "response": {
             "$ref": "/schemas/signals/activate-signal-response.json",
             "description": "Response payload for activate_signal task"
+          }
+        }
+      }
+    },
+    "deals": {
+      "description": "Deals protocol task request/response schemas. PMP, PG, and AP deal lifecycle, activation, and diagnostics.",
+      "tasks": {
+        "create-deal": {
+          "request": {
+            "$ref": "/schemas/deals/create-deal-request.json",
+            "description": "Request parameters for creating a logical deal"
+          },
+          "response": {
+            "$ref": "/schemas/deals/create-deal-response.json",
+            "description": "Response payload for create_deal task"
+          }
+        },
+        "list-deals": {
+          "request": {
+            "$ref": "/schemas/deals/list-deals-request.json",
+            "description": "Request parameters for listing/filtering deals (use deal_ids for single-deal fetch)"
+          },
+          "response": {
+            "$ref": "/schemas/deals/list-deals-response.json",
+            "description": "Response payload for list_deals task"
+          }
+        },
+        "update-deal-terms": {
+          "request": {
+            "$ref": "/schemas/deals/update-deal-terms-request.json",
+            "description": "Request parameters for negotiation/counter-offer (versioned terms)"
+          },
+          "response": {
+            "$ref": "/schemas/deals/update-deal-terms-response.json",
+            "description": "Response payload for update_deal_terms task"
+          }
+        },
+        "transition-deal-state": {
+          "request": {
+            "$ref": "/schemas/deals/transition-deal-state-request.json",
+            "description": "Request parameters for moving deal through lifecycle states"
+          },
+          "response": {
+            "$ref": "/schemas/deals/transition-deal-state-response.json",
+            "description": "Response payload for transition_deal_state task"
+          }
+        },
+        "activate-deal": {
+          "request": {
+            "$ref": "/schemas/deals/activate-deal-request.json",
+            "description": "Request parameters for activating deal on DSP/SSP destinations"
+          },
+          "response": {
+            "$ref": "/schemas/deals/activate-deal-response.json",
+            "description": "Response payload for activate_deal task"
+          }
+        },
+        "get-deal-activation-status": {
+          "request": {
+            "$ref": "/schemas/deals/get-deal-activation-status-request.json",
+            "description": "Request parameters for async activation status per destination"
+          },
+          "response": {
+            "$ref": "/schemas/deals/get-deal-activation-status-response.json",
+            "description": "Response payload for get_deal_activation_status task"
+          }
+        },
+        "list-deal-mappings": {
+          "request": {
+            "$ref": "/schemas/deals/list-deal-mappings-request.json",
+            "description": "Request parameters for logical-to-physical deal ID mappings"
+          },
+          "response": {
+            "$ref": "/schemas/deals/list-deal-mappings-response.json",
+            "description": "Response payload for list_deal_mappings task"
+          }
+        },
+        "get-deal-metrics": {
+          "request": {
+            "$ref": "/schemas/deals/get-deal-metrics-request.json",
+            "description": "Request parameters for canonical deal reporting"
+          },
+          "response": {
+            "$ref": "/schemas/deals/get-deal-metrics-response.json",
+            "description": "Response payload for get_deal_metrics task"
+          }
+        },
+        "get-deal-diagnostics": {
+          "request": {
+            "$ref": "/schemas/deals/get-deal-diagnostics-request.json",
+            "description": "Request parameters for deal health, root causes, and recommendations"
+          },
+          "response": {
+            "$ref": "/schemas/deals/get-deal-diagnostics-response.json",
+            "description": "Response payload for get_deal_diagnostics task"
           }
         }
       }

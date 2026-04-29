@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/transition-deal-state-request.json",
+  "title": "Transition Deal State Request",
+  "description": "Request to move a deal through its lifecycle. Typical transitions: PROPOSED→ACCEPTED, ACCEPTED→SCHEDULED, SCHEDULED→LIVE, LIVE→PAUSED/LIVE, LIVE→COMPLETED, PROPOSED→REJECTED, any→CANCELLED.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Deal to transition"
+    },
+    "state": {
+      "$ref": "/schemas/enums/deal-state.json",
+      "description": "Target state"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "state"],
+  "additionalProperties": true
+}

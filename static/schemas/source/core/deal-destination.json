@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-destination.json",
+  "title": "Deal Destination",
+  "description": "A destination where a deal is activated (DSP or SSP). Used in activate_deal request.",
+  "type": "object",
+  "properties": {
+    "platform_type": {
+      "type": "string",
+      "enum": ["DSP", "SSP"],
+      "description": "Decisioning platform type: DSP (buyer-side) or SSP (sell-side)"
+    },
+    "platform_name": {
+      "type": "string",
+      "description": "Identifier or name of the platform (e.g. vendor name)"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account or seat ID on the destination platform"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["CREATE_AND_SYNC", "BIND_EXISTING"],
+      "description": "CREATE_AND_SYNC: create physical deal if needed and sync. BIND_EXISTING: attach to existing physical deal ID."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["platform_type"],
+  "additionalProperties": true
+}

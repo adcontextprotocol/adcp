@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-diagnostics-response.json",
+  "title": "Get Deal Diagnostics Response",
+  "description": "Health summary, top issues, root causes, and recommendations for the deal. Role-filtered when viewer_role was provided.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string"
+    },
+    "deal_summary": {
+      "type": "object",
+      "description": "High-level deal info (id, name, advertiser, start_date, end_date, deal_type)",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "advertiser": { "type": "string" },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" },
+        "deal_type": { "$ref": "/schemas/enums/transaction-type.json" }
+      },
+      "additionalProperties": true
+    },
+    "health_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall health score (0-100)"
+    },
+    "status": {
+      "type": "string",
+      "description": "Summary status (e.g. underperforming, healthy, at_risk)"
+    },
+    "top_issues": {
+      "type": "array",
+      "description": "Primary issues (e.g. low fill rate, high bid rejection)",
+      "items": { "type": "string" }
+    },
+    "root_causes": {
+      "type": "array",
+      "description": "Root cause analysis with issue and evidence",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue": { "type": "string" },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "description": "Actionable recommendations",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id"],
+  "additionalProperties": true
+}

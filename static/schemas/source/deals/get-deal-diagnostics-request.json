@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-diagnostics-request.json",
+  "title": "Get Deal Diagnostics Request",
+  "description": "Request for health summary, root cause analysis, and recommendations for a deal. Optional viewer_role filters sensitive fields (buyer, seller, admin).",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Deal to diagnose"
+    },
+    "viewer_role": {
+      "type": "string",
+      "enum": ["buyer", "seller", "admin"],
+      "description": "Role of the caller; response may filter sensitive fields by role. Omit for default visibility."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id"],
+  "additionalProperties": true
+}

@@ -17,6 +17,7 @@ AdCP is an open standard that enables AI agents to discover inventory, buy media
 | Protocol | Description | Key tasks |
 |----------|-------------|-----------|
 | **Media Buy** | Inventory discovery, campaign creation, delivery reporting | `get_products`, `create_media_buy`, `get_media_buy_delivery` |
+| **Deals** | PMP, PG, AP deal lifecycle, activation, diagnostics | `create_deal`, `list_deals`, `activate_deal`, `get_deal_metrics`, `get_deal_diagnostics` |
 | **Creative** | Ad creative management across channels | `build_creative`, `preview_creative`, `list_creative_formats` |
 | **Signals** | Audience and targeting data activation | `get_signals`, `activate_signal` |
 | **Accounts** | Commercial identity and billing | `sync_accounts`, `list_accounts`, `report_usage` |
@@ -31,6 +32,7 @@ AdCP is an open standard that enables AI agents to discover inventory, buy media
 adcontextprotocol/
 ├── docs/                  # Protocol documentation (Mintlify)
 │   ├── media-buy/         # Media Buy protocol
+│   ├── deals/             # Deals protocol (PMP, PG, AP)
 │   ├── creative/          # Creative protocol
 │   ├── signals/           # Signals protocol
 │   ├── accounts/          # Accounts protocol

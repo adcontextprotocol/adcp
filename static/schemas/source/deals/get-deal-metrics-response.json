@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-metrics-response.json",
+  "title": "Get Deal Metrics Response",
+  "description": "Canonical deal metrics: imps, spend, CPM, win/fill, reject reasons when available.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Normalized metrics (impressions, spend, cpm, win_rate, fill_rate, etc.)",
+      "properties": {
+        "impressions": { "type": "number", "minimum": 0 },
+        "spend": { "type": "number", "minimum": 0 },
+        "cpm": { "type": "number" },
+        "win_rate": { "type": "number" },
+        "fill_rate": { "type": "number" },
+        "reject_reasons": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "additionalProperties": true
+    },
+    "by_destination": {
+      "type": "array",
+      "description": "Per-destination metrics when by_destination was true",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform_type": { "type": "string" },
+          "platform_name": { "type": "string" },
+          "account_id": { "type": "string" },
+          "metrics": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "metrics"],
+  "additionalProperties": true
+}

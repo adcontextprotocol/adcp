@@ -1,0 +1,39 @@
+---
+title: Deals Task Reference
+description: Request and response schemas for Deals protocol tasks.
+---
+
+This page lists all Deals protocol tasks. Use **get_products** (Media Buy) with `filters.transaction_type` for deal discovery; use **list_deals** with `deal_ids` for single-deal fetch.
+
+## Deal Lifecycle
+
+| Task | Description |
+|------|-------------|
+| [create_deal](/docs/deals/task-reference/create_deal) | Create a logical deal (starts PROPOSED or DRAFT) |
+| [list_deals](/docs/deals/task-reference/list_deals) | List or filter deals; use deal_ids for single-deal fetch |
+| [update_deal_terms](/docs/deals/task-reference/update_deal_terms) | Negotiate/counter-offer (versioned terms) |
+| [transition_deal_state](/docs/deals/task-reference/transition_deal_state) | Move deal through lifecycle states |
+
+## Activation
+
+| Task | Description |
+|------|-------------|
+| [activate_deal](/docs/deals/task-reference/activate_deal) | Activate deal on DSP/SSP destinations |
+| [get_deal_activation_status](/docs/deals/task-reference/get_deal_activation_status) | Per-destination activation status |
+| [list_deal_mappings](/docs/deals/task-reference/list_deal_mappings) | Logical-to-physical deal ID mappings |
+
+## Monitoring and Diagnostics
+
+| Task | Description |
+|------|-------------|
+| [get_deal_metrics](/docs/deals/task-reference/get_deal_metrics) | Canonical deal reporting |
+| [get_deal_diagnostics](/docs/deals/task-reference/get_deal_diagnostics) | Health, root causes, recommendations |
+
+## Schema URLs
+
+Schemas are versioned. For the latest:
+
+- Registry: `/schemas/latest/index.json`
+- Deals tasks: `/schemas/latest/deals/*.json` (request/response pairs)
+- Core: `/schemas/latest/core/deal.json`, `deal-terms.json`, `deal-deployment.json`, `deal-destination.json`
+- Enums: `/schemas/latest/enums/transaction-type.json`, `deal-state.json`, `deal-deployment-status.json`, `deal-visibility.json`

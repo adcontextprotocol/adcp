@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-activation-status-response.json",
+  "title": "Get Deal Activation Status Response",
+  "description": "Response with per-destination activation status, timestamps, and last error.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string"
+    },
+    "deployments": {
+      "type": "array",
+      "description": "Per-destination status, timestamps, last error",
+      "items": {
+        "$ref": "/schemas/core/deal-deployment.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "deployments"],
+  "additionalProperties": true
+}

@@ -1,0 +1,20 @@
+---
+title: get_deal_diagnostics
+testable: true
+---
+
+Health summary, root cause analysis, and recommendations for a deal. Optional viewer_role (buyer, seller, admin) filters sensitive fields.
+
+**Request schema**: `/schemas/latest/deals/get-deal-diagnostics-request.json`  
+**Response schema**: `/schemas/latest/deals/get-deal-diagnostics-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to diagnose |
+| viewer_role | enum | No | buyer, seller, or admin; response may filter by role |
+
+## Response
+
+Returns `deal_id`, optional `deal_summary`, `health_score`, `status`, `top_issues`, `root_causes`, `recommendations`, and optional `errors`.

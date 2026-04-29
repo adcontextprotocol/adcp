@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/deal-deployment-status.json",
+  "title": "Deal Deployment Status",
+  "description": "Per-destination activation status for a deal on a decisioning platform (DSP/SSP)",
+  "type": "string",
+  "enum": ["PENDING", "ACTIVE", "FAILED", "DISABLED"]
+}

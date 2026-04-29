@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/list-deal-mappings-response.json",
+  "title": "List Deal Mappings Response",
+  "description": "Logical deal to physical platform ID mappings: platform_type, platform_name, account_id, platform_deal_id, related_ids.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string"
+    },
+    "mappings": {
+      "type": "array",
+      "description": "One entry per destination with platform_deal_id and related_ids",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform_type": { "type": "string", "enum": ["DSP", "SSP"] },
+          "platform_name": { "type": "string" },
+          "account_id": { "type": "string" },
+          "platform_deal_id": { "type": "string" },
+          "related_ids": {
+            "type": "object",
+            "description": "Platform-specific IDs (e.g. line_item_id, targeting_id)",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["platform_type", "platform_deal_id"],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "mappings"],
+  "additionalProperties": true
+}

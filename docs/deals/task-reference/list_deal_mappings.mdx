@@ -1,0 +1,19 @@
+---
+title: list_deal_mappings
+testable: true
+---
+
+Return logical deal_id to physical platform_deal_id mappings. Used for reporting and troubleshooting across platforms.
+
+**Request schema**: `/schemas/latest/deals/list-deal-mappings-request.json`  
+**Response schema**: `/schemas/latest/deals/list-deal-mappings-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to list mappings for |
+
+## Response
+
+Returns `deal_id`, `mappings` (platform_type, platform_name, account_id, platform_deal_id, related_ids), and optional `errors`.
