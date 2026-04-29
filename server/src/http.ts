@@ -2018,6 +2018,7 @@ export class HTTPServer {
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
+        sales: agents.filter((a) => a.type === "sales").length,
         buying: agents.filter((a) => a.type === "buying").length,
       };
 
@@ -2084,6 +2085,7 @@ export class HTTPServer {
         by_type: {
           creative: agents.filter(a => a.type === "creative").length,
           signals: agents.filter(a => a.type === "signals").length,
+          sales: agents.filter(a => a.type === "sales").length,
           buying: agents.filter(a => a.type === "buying").length,
         }
       });
@@ -8781,7 +8783,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           ]);
 
           // Warm type-specific caches
-          if (agent.type === "buying") {
+          if (agent.type === "sales") {
             await this.propertiesService.getPropertiesForAgent(agent);
           }
         } catch (error) {

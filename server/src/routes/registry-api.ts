@@ -3664,7 +3664,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
           const promises = [];
 
-          if (withProperties && enrichedAgent.type === "buying") {
+          if (withProperties && enrichedAgent.type === "sales") {
             promises.push(
               federatedIndex.getPropertiesForAgent(agent.url),
               federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -3674,7 +3674,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           const results = await Promise.all(promises);
           let resultIndex = 0;
 
-          if (withProperties && enrichedAgent.type === "buying") {
+          if (withProperties && enrichedAgent.type === "sales") {
             const agentProperties = results[resultIndex++] as any[];
             const publisherDomains = results[resultIndex++] as string[];
 
