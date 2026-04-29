@@ -179,6 +179,8 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
+  vendorMetricValues?: unknown[];
 }
 
 export interface ComplyBudgetSimulation {

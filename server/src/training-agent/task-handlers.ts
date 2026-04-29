@@ -1864,6 +1864,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
     : 0;
 
+  // Read simulated delivery upfront so vendor_metric_values can be spread into
+  // per-package entries inside the map below.
+  const simDeliveryEarly = getDeliverySimulation(session, mb.mediaBuyId);
+
   // Build per-package metrics
   let totalImpressions = 0;
   let totalSpend = 0;
@@ -1963,11 +1967,18 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       currency: mb.currency,
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
+      // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
+      // propagate to all active packages. Multi-package buys will echo the same
+      // array across packages — known training-agent limitation, acceptable for
+      // single-package storyboard scenarios.
+      ...(simDeliveryEarly?.vendorMetricValues?.length
+        ? { vendor_metric_values: simDeliveryEarly.vendorMetricValues }
+        : {}),
     };
   });
 
   // Add simulated delivery data from comply_test_controller
-  const simDelivery = getDeliverySimulation(session, mb.mediaBuyId);
+  const simDelivery = simDeliveryEarly;
   if (simDelivery) {
     totalImpressions += simDelivery.impressions;
     totalClicks += simDelivery.clicks;

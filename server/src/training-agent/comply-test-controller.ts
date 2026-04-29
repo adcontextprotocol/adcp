@@ -595,6 +595,28 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
+  // Pre-capture vendor_metric_values from simulate_delivery before the SDK dispatcher
+  // strips them. The SDK's TestControllerStore.simulateDelivery interface only accepts
+  // standard scalar params; vendor_metric_values passthrough is a future adcp/client
+  // addition. Until then, read from rawArgs here and store in the accumulator directly
+  // so task-handlers.ts can emit them in get_media_buy_delivery by_package entries.
+  if (scenario === 'simulate_delivery') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const mediaBuyId = params.media_buy_id as string | undefined;
+    const vendorMetricValues = params.vendor_metric_values;
+    const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
+    if (mb && Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
+      const ext = session.complyExtensions;
+      let cumulative = ext.deliverySimulations.get(mediaBuyId!);
+      if (!cumulative) {
+        enforceMapCap(ext.deliverySimulations, mediaBuyId!, 'delivery simulations');
+        cumulative = { impressions: 0, clicks: 0, reportedSpend: { amount: 0, currency: mb.currency }, conversions: 0 };
+        ext.deliverySimulations.set(mediaBuyId!, cumulative);
+      }
+      cumulative.vendorMetricValues = vendorMetricValues;
+    }
+  }
+
   const store = createStore(session);
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
