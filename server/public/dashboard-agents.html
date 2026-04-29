@@ -1530,6 +1530,21 @@
       // the developer knows what window they're waiting for.
       const nextCheckCopy = `within ${checkIntervalHours} hours`;
 
+      // Tier-aware copy: when the viewer owns the agent, the API tells us
+      // their tier and whether it's API-access. We surface a deterministic
+      // answer ("Your tier: X — eligible") instead of the generic guess
+      // ("check that your AAO membership is on an API-access tier").
+      // Cross-org viewers and anonymous users see the generic copy because
+      // the API omits the membership_tier fields for them.
+      const hasTierData = cs && typeof cs.membership_tier_label === 'string';
+      const tierEligible = cs?.is_api_access_tier === true;
+      const tierLabel = hasTierData ? cs.membership_tier_label : null;
+      const tierEligiblePhrase = tierEligible
+        ? `your tier (<strong>${escapeHtml(tierLabel)}</strong>) is eligible`
+        : tierLabel
+          ? `your tier (<strong>${escapeHtml(tierLabel)}</strong>) is not eligible — <a href="/membership" target="_blank" rel="noopener">upgrade for badges</a>`
+          : null;
+
       // No badges yet — show diagnostic hint scoped to the actual situation.
       // The branch order here mirrors pickVerificationHint() in
       // server/src/services/verification-hint.ts (tested decision matrix).
@@ -1538,13 +1553,17 @@
         const status = cs?.status;
         let hint;
         if (!hasAuth) {
-          hint = `Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you'll earn AAO Verified (Spec) automatically.`;
+          hint = tierEligiblePhrase
+            ? `Authorize your agent (above) so AAO can run compliance checks. ${tierEligiblePhrase[0].toUpperCase() + tierEligiblePhrase.slice(1)}, so once storyboards pass you'll earn AAO Verified (Spec) automatically.`
+            : `Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you'll earn AAO Verified (Spec) automatically.`;
         } else if (status === 'opted_out') {
           hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
         } else if (status === 'passing' && declaredSpecialisms.length === 0) {
           hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
         } else if (status === 'passing') {
-          hint = `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
+          hint = tierEligiblePhrase
+            ? `Storyboards are passing and ${tierEligiblePhrase}. Your badge should issue ${nextCheckCopy}.`
+            : `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
         } else if (status === 'failing' || status === 'degraded') {
           hint = declaredSpecialisms.length === 0
             ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
