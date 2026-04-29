@@ -239,6 +239,14 @@ Override fields take precedence over `brand.json` for that creative.
 5. **Flatten wrapper**: implement a server-side wrapper that derives the v1 `list_creative_formats` shape from v2 product declarations. Lets v1-era dashboards and tooling keep working.
 6. **Deprecate timing**: at 5.0, remove v1 `format_ids` references on your products. Until then, both paths coexist.
 
+#### Server-side implementation considerations
+
+Three concrete hooks v2 introduces that existing seller implementations don't have today:
+
+- **`sync_creatives` provenance verification when `provenance_required: true`.** When a v2 product's format declaration carries `provenance_required: true` (and the buyer's manifest contains synthesized assets — typically video/image from generative platforms), `sync_creatives` MUST verify a C2PA-compatible provenance manifest is attached and reject unsigned synthesized assets. This is a natural extension of existing AI-provenance tracking on Creative (EU AI Act Article 50 work) — the new piece is a validation hook that gates submission. Sellers without existing provenance plumbing only need this once they ship a v2 product with the flag set; until then it's no-op.
+- **`get_products` response gathers extension definitions.** When products carry v2 `format.params.platform_extensions` references, the response SHOULD include the referenced extension definitions in the `extensions` map keyed by `<uri>@sha256:<digest>`. Implementations gather extensions referenced by any product in the response, dedupe by digest, and emit. Buyers cache by URI@digest; subsequent responses MAY omit definitions the buyer already has cached. Trivial when no products use v2 declarations; only kicks in when tenants opt in.
+- **`production_window_business_days` on host-read / agent-produced products.** Today most server implementations don't model production turnaround on Products — the field is a v2 addition. Only matters once a tenant ships a v2 host-read or generative-video product (audio_hosted with `audio_source: 'publisher_host_recorded'`, or any product with `synthesis_nondeterministic: true`). Today many of these flows route through hand-trafficked sponsorships and don't surface turnaround over the protocol; v2 makes it declarable.
+
 ### Creative agents (transformation services like AudioStack, generative platforms)
 
 1. Add `creative.supported_formats` to your `get_adcp_capabilities` response. Each entry is a `ProductFormatDeclaration` describing what canonical format you can produce, with parameter narrowing and `slots` declaring the assets you accept as production input.
