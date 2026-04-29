@@ -22,22 +22,13 @@ Put differently:
 - Verification is a time-bounded third-party attestation. **(Spec)** verifies conformance via simulation; **(Live)** verifies the underlying production capability via real-traffic observation. Each independently demonstrates conformance through different evidence.
 - Verified (Spec) ⊆ Conformant via storyboards. Verified (Live) ⊆ Conformant via the eight observability checks (which exercise wire format, filters, lifecycle, and scope through real traffic). The two axes are independent: a seller without a test-mode endpoint can earn (Live) directly, and a test agent that can never serve real impressions earns (Spec) as a complete claim.
 
-## Two marks: AdCP Conformant and AAO Verified
+## Storyboard conformance vs. AAO Verified
 
-The rest of this page describes **AdCP Conformant** — the agent's wire behavior matches the spec, verified against the storyboard suite with seeded test data. Storyboard passing issues AdCP Conformant; storyboard regression revokes it.
+This page indexes **storyboard conformance** — the property an agent's wire behavior has when it matches the spec, verified by storyboards running against seeded test data. Storyboard passing earns the **AAO Verified (Spec)** qualifier on an agent's badge.
 
-AdCP 3.x also defines **AAO Verified** (optional), a stricter mark for agents whose live ad-server integration AAO has directly observed. AAO Verified adds continuous observability of real delivery data against the seller's live endpoint, performed by the AAO compliance engine over a 7–14 day rolling window. It closes the gap storyboards cannot: a seller can pass every storyboard with a broken ad-server integration, because `simulate_delivery` is a parallel code path from the production reporting path. AAO Verified requires that the AdCP surface actually reaches real impressions on real inventory.
+A second axis — **AAO Verified (Live)** — verifies the production code path behind the protocol actually delivers real impressions on real inventory. (Live) is opt-in, observed continuously over a 7–14 day rolling window on a designated compliance account, and orthogonal to storyboard conformance: a seller can pass every storyboard with a broken ad-server integration because `simulate_delivery` is a parallel code path from the production reporting path. (Live) closes that gap.
 
-AAO Verified is opt-in, requires no new infrastructure (the AAO compliance engine already runs), and produces an auto-expiring mark distinct from AdCP Conformant. See [AAO Verified](/docs/building/aao-verified) for the full spec.
-
-| Mark | What it means | How it's issued |
-|------|---------------|-----------------|
-| **AdCP Conformant** | Wire format, task shape, error semantics, filter behavior match the spec | Storyboards + behavioral assertions against `simulate_delivery` |
-| **AAO Verified** (optional) | The declared capability is implemented on the seller's live production stack | Continuous observability of real delivery, 7–14 day rolling window |
-
-**Both marks attest conformance, via different evidence.** AAO Verified is the public trust mark; AdCP Conformant is the wire-format property the storyboards define. The two axes of AAO Verified — **(Spec)** via storyboard simulation, **(Live)** via real-traffic observability — are independent and either is sufficient evidence of conformance for the claims it covers. A seller earning **(Live)** demonstrates wire-format correctness through observed real traffic that the eight checks exercise; a seller earning **(Spec)** demonstrates it through simulated interactions against a test endpoint. Sellers can earn either or both. See [AAO Verified § Mark semantics](/docs/building/aao-verified#mark-semantics) for which holdings are valid.
-
-**Why two marks, not two tiers.** Earlier drafts used "Tier 1 — Protocol Conformant" and "Tier 2 — Production Verified." That framing muddied the message: a buyer reading "Tier 1 — Protocol Conformant" plausibly infers "verified at the basic level," when all it actually attests is wire-format correctness. *Conformant* and *Verified* are distinct claims, not tiers of the same thing — with *Verified* strictly implying *Conformant*. See [AAO Verified § Why these two marks](/docs/building/aao-verified#why-these-two-marks-not-the-earlier-tier-1--tier-2) for the full reasoning.
+The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Live) are independent**: each independently demonstrates conformance through different evidence. (Spec) verifies it via simulated interactions against a test endpoint; (Live) verifies it via observed real traffic that the eight checks exercise (wire format, filters, lifecycle, scope introspection). A seller without a test-mode endpoint can earn (Live) directly; a test agent that can never serve real impressions earns (Spec) as a complete claim. See [AAO Verified](/docs/building/aao-verified) for the full qualifier model and the (Live) spec; the rest of this page indexes the storyboards that back (Spec).
 
 ## Storyboards are the truth
 
