@@ -1,14 +1,15 @@
 import { query, getPool } from './client.js';
-import type {
-  MemberProfile,
-  CreateMemberProfileInput,
-  UpdateMemberProfileInput,
-  ListMemberProfilesOptions,
-  MemberOffering,
-  AgentConfig,
-  PublisherConfig,
-  BrandConfig,
-  DataProviderConfig,
+import {
+  isValidAgentType,
+  type MemberProfile,
+  type CreateMemberProfileInput,
+  type UpdateMemberProfileInput,
+  type ListMemberProfilesOptions,
+  type MemberOffering,
+  type AgentConfig,
+  type PublisherConfig,
+  type BrandConfig,
+  type DataProviderConfig,
 } from '../types.js';
 
 /**
@@ -36,7 +37,10 @@ function normalizeAgentConfig(raw: unknown): AgentConfig {
     url: String(obj.url ?? ''),
     visibility,
     ...(typeof obj.name === 'string' ? { name: obj.name } : {}),
-    ...(typeof obj.type === 'string' ? { type: obj.type as AgentConfig['type'] } : {}),
+    // Drop legacy / out-of-enum values (e.g. 'buyer', 'seller' from older
+    // dev seeds) instead of leaking them through the AgentConfig['type']
+    // cast. Callers can repopulate via the route-layer inference path.
+    ...(isValidAgentType(obj.type) ? { type: obj.type } : {}),
   };
 }
 

@@ -766,7 +766,7 @@ export function createAdcpToolHandlers(
                 organization_id: organizationId,
                 agent_url: agentUrl,
                 agent_name: baseUrl.hostname,
-                agent_type: 'buying',
+                agent_type: 'unknown',
                 protocol: 'mcp',
               });
               logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
