@@ -13,7 +13,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('adcp-tools');
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
