@@ -77,6 +77,8 @@ The single source of truth for both fields lives in `core/version-envelope.json`
 
 > **Note:** distinct from the existing `core/protocol-envelope.json`, which describes the protocol-layer wrapper (`context_id`, `task_id`, `status`, `payload`) added by MCP/A2A/REST. `version-envelope.json` is part of the payload itself.
 
+**Composition invariant.** Schemas that compose the envelope via `allOf $ref` MUST have `additionalProperties: true` (or absent — defaults to true) at their outer root. JSON Schema draft-07 `allOf` does not bypass the parent's `additionalProperties` — a strict parent rejects the envelope's fields outright. The strict-additional-properties variant returns at draft 2019-09 via `unevaluatedProperties: false` (tracked separately). The build pipeline carries a CI lint (`tests/lint-version-envelope.test.cjs`) that fails any schema violating the invariant.
+
 The field has the same name on both sides of the wire — semantics fall out of context (request body vs response body), matching the Stripe-Version model.
 
 Placement per transport:

@@ -160,5 +160,5 @@
     "outcome",
     "governance_context"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

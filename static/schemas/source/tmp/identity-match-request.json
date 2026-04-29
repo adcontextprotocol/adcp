@@ -97,5 +97,5 @@
     "identities",
     "package_ids"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

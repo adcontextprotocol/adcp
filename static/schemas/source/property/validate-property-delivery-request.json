@@ -44,5 +44,5 @@
     "list_id",
     "records"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

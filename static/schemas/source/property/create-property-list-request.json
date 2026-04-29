@@ -57,5 +57,5 @@
     "idempotency_key",
     "name"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

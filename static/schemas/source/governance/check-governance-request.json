@@ -193,5 +193,5 @@
     "plan_id",
     "caller"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

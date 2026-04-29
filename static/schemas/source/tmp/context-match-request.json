@@ -215,5 +215,5 @@
     "property_type",
     "placement_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
