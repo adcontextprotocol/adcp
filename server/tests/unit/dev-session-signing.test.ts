@@ -6,7 +6,18 @@
  * pick a privileged dev user. These tests lock in the integrity check.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Stub the WorkOS module before auth.ts loads. auth.ts has a top-level
+// `new WorkOS(process.env.WORKOS_API_KEY!)` that throws if the env var is
+// unset — which it is in CI for repo-level `vitest run server/tests/unit/`
+// (the repo-root config has no setupFile, only the server-level config
+// does). We don't need a real WorkOS for the cookie-signing tests; the
+// stub just lets the auth.ts module load.
+vi.mock('@workos-inc/node', () => ({
+  WorkOS: class { userManagement = {}; organizations = {}; },
+}));
+
 import { encodeDevSessionCookie, getDevUser } from '../../src/middleware/auth.js';
 
 describe('dev-session cookie signing', () => {
