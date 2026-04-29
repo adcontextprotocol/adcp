@@ -17,7 +17,7 @@
     },
     "field": {
       "type": "string",
-      "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+      "description": "Field path associated with the error in JSONPath-lite format (e.g., 'packages[0].targeting'). When `issues[]` is also present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., '/packages/0/targeting' → 'packages[0].targeting') so pre-3.1 consumers reading `field` only get deterministic behavior. Will be deprecated in a future major version in favor of `issues[].pointer`."
     },
     "suggestion": {
       "type": "string",
@@ -29,9 +29,36 @@
       "minimum": 1,
       "maximum": 3600
     },
+    "issues": {
+      "type": "array",
+      "description": "Structured list of validation failures. Primary use is `VALIDATION_ERROR`, where multi-field rejections are common and `field` (singular) cannot carry the full pointer map. MAY appear on other error codes that reject multiple fields at once. When `issues` is present, sellers MUST also populate `field` from `issues[0]` for backward compatibility with pre-3.1 consumers that read `field` only — translating the RFC 6901 `pointer` format to the JSONPath-lite format `field` uses (e.g., `/packages/0/targeting` → `packages[0].targeting`). MUST (not SHOULD) so consumers reading `field` get deterministic behavior across sellers — the cost is one line of dual-write per seller; the cost of SHOULD is a long tail of seller-A-vs-seller-B inconsistency. Future major versions will deprecate `field` in favor of `issues[].pointer`.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "RFC 6901 JSON Pointer to the offending field in the request payload (e.g., '/packages/0/targeting/geo_countries/2'). Format chosen to match Ajv's native validation output (`instancePath`); standardized and unambiguous on keys containing `/` or `~`. NOTE: this differs from the legacy top-level `field` which uses JSONPath-lite (`packages[0].targeting.geo_countries[2]`). When sellers populate `field` from `issues[0].pointer` for backward compatibility (see `field` description), they MUST translate the format — `/packages/0/x` → `packages[0].x`. Future major versions will deprecate `field` in favor of `issues[].pointer`."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable description of why this specific field was rejected."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Schema keyword that rejected the payload, drawn from the JSON Schema vocabulary (e.g., 'required', 'type', 'format', 'enum', 'pattern', 'minimum', 'maxLength'). Matches the keyword names emitted by JSON Schema validators (Ajv, jsonschema, etc.) so agents can pattern-match on rejection class without parsing message text. Implementers SHOULD use the validator's native keyword name; do not invent custom values here."
+          },
+          "schemaPath": {
+            "type": "string",
+            "description": "Optional. Path inside the schema that rejected the payload (e.g., '#/properties/packages/items/properties/targeting/oneOf/1'). Sellers SHOULD NOT emit on production-facing endpoints — `schemaPath` leaks which `oneOf` branch the validator selected before semantic rejection, which is a probe oracle for adversarial callers crafting payloads against polymorphic unions. Sellers MAY emit in dev/sandbox modes where the diagnostic value outweighs the fingerprinting risk."
+          }
+        },
+        "required": ["pointer", "message", "keyword"],
+        "additionalProperties": true
+      }
+    },
     "details": {
       "type": "object",
-      "description": "Additional task-specific error details",
+      "description": "Additional task-specific error details. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers reading from `details`; new consumers SHOULD prefer the top-level `issues` field.",
       "additionalProperties": true
     },
     "recovery": {
