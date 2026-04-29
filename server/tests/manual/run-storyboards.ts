@@ -20,14 +20,14 @@ import {
   listAllComplianceStoryboards,
   runStoryboard,
   getComplianceCacheDir,
-} from '@adcp/client/testing';
-import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
+import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
   InMemoryReplayStore,
   InMemoryRevocationStore,
-} from '@adcp/client/signing';
-import type { AdcpJsonWebKey } from '@adcp/client/signing';
+} from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -41,6 +41,11 @@ if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
+const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
+  '../../src/training-agent/comply-test-controller.js'
+);
+const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 
 const args = process.argv.slice(2);
@@ -94,8 +99,25 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
   });
 }
 
+/**
+ * Storyboards we know fail against the training agent for reasons that aren't
+ * a regression — track each entry with the upstream/internal issue that gates
+ * removal so the skip list doesn't silently grow.
+ */
+const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
+  // The storyboard asserts `field_present: status` against the v3 envelope,
+  // but `response_schema_ref` points at the inner per-tool response schema
+  // (which doesn't define `status`). The framework's auto-registered
+  // `get_adcp_capabilities` returns the inner payload as `structuredContent`
+  // without an envelope wrapper, so `data.status` is undefined at runtime.
+  // Tracked upstream as adcp#3429; remove once the storyboard is migrated to
+  // `envelope_field_present` AND the framework wraps capabilities responses.
+  ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
+]);
+
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
+  if (KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
   return true;
 }
 
@@ -214,7 +236,21 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log(`Filter: ${filter ?? '(all storyboards)'}\n`);
 
-  const all = listAllComplianceStoryboards().filter(isApplicable);
+  const everything = listAllComplianceStoryboards();
+  const all = everything.filter(isApplicable);
+  const skippedKnownFailing = everything
+    .filter(sb => KNOWN_FAILING_STORYBOARDS.has(sb.id))
+    .filter(sb => !filter || sb.id.includes(filter) || (sb.category ?? '').includes(filter));
+  if (skippedKnownFailing.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('Skipping storyboards on the known-failing list:');
+    for (const sb of skippedKnownFailing) {
+      // eslint-disable-next-line no-console
+      console.log(`  - ${sb.id}: ${KNOWN_FAILING_STORYBOARDS.get(sb.id)}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log('');
+  }
   const results: Summary[] = [];
 
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
@@ -227,6 +263,17 @@ async function main() {
     // from `media_buy_seller/governance_denied` silently intercepts a
     // $50K buy in `sales_guaranteed`.
     await clearSessions();
+    // clearSessions() only resets the framework's per-session map. The training
+    // agent also keeps several module-level pools that are not session-scoped
+    // (account catalogue, comply-controller seed/forced-completion pools,
+    // catalog/event-source stores). Without these resets, e.g. a creative
+    // format seeded by sales_catalog_driven leaks into creative_template's
+    // discover_formats step and shadows the static catalogue, missing
+    // `formats[0].assets`.
+    clearAccountStore();
+    clearSeededCreativeFormats();
+    clearForcedTaskCompletions();
+    clearCatalogEventStores();
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
       const kit = loadTestKit(sb);

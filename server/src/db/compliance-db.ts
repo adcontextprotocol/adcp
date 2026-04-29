@@ -16,7 +16,7 @@ export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
 
 /**
  * Auth shape resolved from an agent_context for outbound compliance/test
- * requests. Matches the SDK's `TestOptions.auth` union in `@adcp/client/testing`.
+ * requests. Matches the SDK's `TestOptions.auth` union in `@adcp/sdk/testing`.
  * Resolvers return `ResolvedOwnerAuth | undefined`; `undefined` is not part
  * of the domain type so post-null-check call sites don't carry the
  * possibility forward.
@@ -644,7 +644,7 @@ export class ComplianceDatabase {
    * that owns the agent (via member_profiles.agents), not arbitrary orgs.
    *
    * Returns the full `oauth` shape when a refresh token is saved so the
-   * @adcp/client SDK can refresh on 401 instead of failing once the access
+   * @adcp/sdk SDK can refresh on 401 instead of failing once the access
    * token drifts near expiry. Without a refresh token, returns the raw
    * access token as a bearer so callers surface a clear 401 from the agent
    * rather than sending no Authorization header at all.

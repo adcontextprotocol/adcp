@@ -1,6 +1,6 @@
 import type { Agent, AgentHealth, AgentStats } from "./types.js";
 import { Cache } from "./cache.js";
-import { getPropertyIndex } from "@adcp/client";
+import { getPropertyIndex } from "@adcp/sdk";
 import { FormatsService } from "./formats.js";
 import { AAO_UA_HEALTH_CHECK } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
@@ -49,7 +49,7 @@ export class HealthChecker {
   private async tryMCP(agent: Agent, startTime: number): Promise<AgentHealth> {
     try {
       // Use AdCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
-      const { AdCPClient } = await import("@adcp/client");
+      const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
         id: "health-check",
         name: "Health Checker",

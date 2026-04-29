@@ -14,7 +14,7 @@
 import type { OAuthClientCredentials } from '../../db/agent-context-db.js';
 
 /**
- * `$ENV:VAR_NAME` references resolved at exchange time by `@adcp/client`.
+ * `$ENV:VAR_NAME` references resolved at exchange time by `@adcp/sdk`.
  * Constrained to an OAuth-scoped namespace so a caller with save access
  * cannot smuggle an unrelated server env var (`DATABASE_URL`,
  * `ENCRYPTION_SECRET`, cloud credentials, …) into `client_id` /

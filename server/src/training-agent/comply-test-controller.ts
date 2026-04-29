@@ -2,7 +2,7 @@
  * Training-agent wrapper around the SDK's comply_test_controller.
  *
  * The SDK owns the scenario dispatcher, response envelope, and per-scenario
- * enum validation (`@adcp/client` exports `handleTestControllerRequest`,
+ * enum validation (`@adcp/sdk` exports `handleTestControllerRequest`,
  * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
  * adds the two things the SDK intentionally leaves to the seller: a sandbox
  * gate on the top-level `account.sandbox` flag, and a per-request
@@ -15,9 +15,9 @@ import {
   createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
-} from '@adcp/client';
-import type { TestControllerStore } from '@adcp/client';
-import type { BrandReference } from '@adcp/client';
+} from '@adcp/sdk';
+import type { TestControllerStore } from '@adcp/sdk';
+import type { BrandReference } from '@adcp/sdk';
 import type {
   TrainingContext,
   ToolArgs,
@@ -517,7 +517,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 // sanitizer is not a live leak. If a future edit ever returns `{ adcp_error:
 // { code: 'IDEMPOTENCY_CONFLICT', recovery, ... } }` (or any code with a
 // restricted ADCP_ERROR_FIELD_ALLOWLIST entry), route it through
-// `@adcp/client/server`'s `adcpError()` builder — the builder filters at
+// `@adcp/sdk/server`'s `adcpError()` builder — the builder filters at
 // construction time and gives the dispatcher's invariant the same guarantee
 // spec tools get for free.
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {

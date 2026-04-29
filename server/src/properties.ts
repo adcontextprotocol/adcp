@@ -1,4 +1,4 @@
-import { AdCPClient } from "@adcp/client";
+import { AdCPClient } from "@adcp/sdk";
 import type { Agent } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { AgentValidator } from "./validator.js";

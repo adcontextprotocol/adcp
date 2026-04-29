@@ -12,7 +12,7 @@
 import {
   testCapabilityDiscovery,
   resolveStoryboardsForCapabilities,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
 
 const agentUrl = process.argv[2] || PUBLIC_TEST_AGENT.url;

@@ -2,12 +2,12 @@
  * Redaction helper for `IDEMPOTENCY_CONFLICT` response envelopes.
  *
  * The universal idempotency storyboard's `idempotency.conflict_no_payload_leak`
- * invariant (ships as a default in `@adcp/client/testing`) allows only a narrow
+ * invariant (ships as a default in `@adcp/sdk/testing`) allows only a narrow
  * set of envelope keys on `adcp_error` when `code === 'IDEMPOTENCY_CONFLICT'`:
  * `code, message, status, retry_after, correlation_id, request_id, operation_id`.
  * Any other key is flagged as a potential stolen-key read oracle.
  *
- * `adcpError()` in `@adcp/client/server` auto-injects `recovery` for every
+ * `adcpError()` in `@adcp/sdk/server` auto-injects `recovery` for every
  * error it produces, and the framework dispatch path's `IDEMPOTENCY_CONFLICT`
  * branch routes through that builder — the `recovery: "correctable"` string
  * is a constant classification, not prior payload, but the invariant is

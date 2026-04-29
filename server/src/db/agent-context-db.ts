@@ -62,7 +62,7 @@ export interface OAuthClient {
 /**
  * OAuth 2.0 client-credentials configuration stored for machine-to-machine
  * agent auth (RFC 6749 §4.4). Mirrors the SDK's `AgentOAuthClientCredentials`
- * shape in `@adcp/client`. `client_secret` is either a literal value or a
+ * shape in `@adcp/sdk`. `client_secret` is either a literal value or a
  * `$ENV:VAR_NAME` reference — the SDK resolves the reference at exchange time.
  */
 export interface OAuthClientCredentials {
@@ -76,7 +76,7 @@ export interface OAuthClientCredentials {
   /**
    * Client-credentials auth placement. `basic` = HTTP Basic header
    * (RFC 6749 §2.3.1 preferred); `body` = client_id/client_secret as form
-   * fields. Passed through to `@adcp/client`'s exchange helper.
+   * fields. Passed through to `@adcp/sdk`'s exchange helper.
    */
   auth_method?: 'basic' | 'body';
 }
@@ -989,7 +989,7 @@ export class AgentContextDatabase {
    */
   inferAgentType(tools: string[]): AgentType {
     if (tools.includes('get_products') || tools.includes('create_media_buy')) {
-      return 'buying';
+      return 'sales';
     }
     if (tools.includes('list_creative_formats') && !tools.includes('get_products')) {
       return 'creative';

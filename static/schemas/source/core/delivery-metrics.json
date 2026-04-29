@@ -64,7 +64,7 @@
     },
     "new_to_brand_rate": {
       "type": "number",
-      "description": "Fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+      "description": "Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none, 1 = all. For retail-media unit-volume tracking of first-time buyers, see `new_to_brand_units` (count, not rate).",
       "minimum": 0,
       "maximum": 1
     },
@@ -279,6 +279,31 @@
     "cost_per_click": {
       "type": "number",
       "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
+    "cost_per_completed_view": {
+      "type": "number",
+      "description": "Cost per completed view (spend / completed_views). Primary CPCV pricing scalar for video/audio inventory; the package's `pricing_model` is `cpcv` when this field is the billing basis.",
+      "minimum": 0
+    },
+    "cpm": {
+      "type": "number",
+      "description": "Cost per thousand impressions, computed as (spend / impressions) × 1000. Universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH inventory; the package's `pricing_model` is `cpm` when this field is the billing basis. Field name aligns with the canonical `cpm` token in `enums/pricing-model.json` and `pricing-options/cpm-option.json` so buyers cross-walk pricing model → reported scalar without a translation table.",
+      "minimum": 0
+    },
+    "downloads": {
+      "type": "number",
+      "description": "Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x methodology). Distinct from `views` — for podcast inventory this is the count of podcast episode downloads; for streaming audio it is the count of stream starts that meet the platform's download threshold. Prefer this over `views` for audio inventory.",
+      "minimum": 0
+    },
+    "units_sold": {
+      "type": "number",
+      "description": "Items sold attributed to this delivery. Retail-media scalar distinct from `conversions` — a single conversion (transaction) may carry multiple `units_sold`. Used by retail media platforms where the buyer optimizes against unit movement, not transaction count. Attribution lookback windows are platform-specific (commonly 7/14/30 days, view-through and click-through variants); sellers SHOULD declare the window via `reporting_capabilities.measurement_windows` or `measurement_terms` rather than encoding it in this scalar.",
+      "minimum": 0
+    },
+    "new_to_brand_units": {
+      "type": "number",
+      "description": "Units sold to first-time brand buyers (count, not rate). Retail-media scalar — the unit-volume parallel to the conversion-fraction `new_to_brand_rate`. Used by retail media platforms where new-customer acquisition unit volume is a primary KPI. Same attribution-window note as `units_sold` applies.",
       "minimum": 0
     },
     "by_action_source": {

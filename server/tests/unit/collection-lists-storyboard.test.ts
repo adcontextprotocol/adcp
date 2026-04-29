@@ -228,7 +228,7 @@ describe('collection-lists specialism storyboard', () => {
       const account = tool.inputSchema.properties?.account;
       expect(
         account,
-        `${tool.name} inputSchema does not declare 'account' — @adcp/client will strip it, collapsing session key to open:default`,
+        `${tool.name} inputSchema does not declare 'account' — @adcp/sdk will strip it, collapsing session key to open:default`,
       ).toBeDefined();
       expect(
         account?.oneOf,

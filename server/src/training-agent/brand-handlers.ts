@@ -7,7 +7,7 @@
  */
 
 import type { TrainingContext, ToolArgs } from './types.js';
-import { getSandboxBrands } from '@adcp/client/testing';
+import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs, findSessionMatching } from './state.js';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -448,7 +448,7 @@ const TALENT: TalentEntry[] = [
 
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
-// ── Advertiser brands from @adcp/client sandbox entities ────────
+// ── Advertiser brands from @adcp/sdk sandbox entities ────────
 // Loaded via getSandboxBrands() — the same API the AAO registry uses.
 // New sandbox brands added to the SDK appear here automatically.
 
