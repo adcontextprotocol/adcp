@@ -505,7 +505,8 @@
                       "directory": "docs/registry/api-reference"
                     },
                     "pages": [
-                      "docs/registry/index"
+                      "docs/registry/index",
+                      "docs/registry/registering-an-agent"
                     ]
                   },
                   "docs/reference/gmsf-reference",
@@ -997,7 +998,8 @@
                   "directory": "docs/registry/api-reference"
                 },
                 "pages": [
-                  "docs/registry/index"
+                  "docs/registry/index",
+                  "docs/registry/registering-an-agent"
                 ]
               },
               "docs/reference/gmsf-reference",

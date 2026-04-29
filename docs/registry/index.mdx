@@ -84,8 +84,11 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
   <Card title="Change Feed" icon="clock-rotate-left" href="/docs/registry/index#change-feed">
     Poll a cursor-based feed of registry changes for local sync.
   </Card>
-  <Card title="Lookups & Authorization" icon="shield-check" href="/docs/registry/index#lookups--authorization">
+  <Card title="Authorization Lookups" icon="shield-check" href="/docs/registry/index#authorization-lookups">
     Look up agents by domain, validate product authorization, and check property authorization in real time.
+  </Card>
+  <Card title="Registering an Agent" icon="circle-plus" href="/docs/registry/registering-an-agent">
+    How agents appear in the registry, what trust level each path produces, and what membership unlocks.
   </Card>
 </CardGroup>
 
@@ -139,16 +142,29 @@ All sources produce the same resolution response structure. To get full brand id
 | GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
 
 
-### Lookups & Authorization
+### Authorization Lookups
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/registry/operator` | What agents does this domain operate? (auth-aware — see [operator lookup](#operator-and-publisher-lookup)) |
+| GET | `/api/registry/publisher` | What does this domain publish and which agents does it authorize? |
 | GET | `/api/registry/lookup/domain/{domain}` | Find agents authorized for a domain |
 | GET | `/api/registry/lookup/property` | Find agents by property identifier |
 | GET | `/api/registry/lookup/agent/{agentUrl}/domains` | Get all domains for an agent |
 | POST | `/api/registry/validate/product-authorization` | Validate agent product authorization |
 | POST | `/api/registry/expand/product-identifiers` | Expand property selectors to identifiers |
 | GET | `/api/registry/validate/property-authorization` | Real-time authorization check |
+
+#### Operator and publisher lookup
+
+`/api/registry/operator` and `/api/registry/publisher` answer different questions about the same domain:
+
+| Endpoint | Question | Typical caller |
+|----------|----------|----------------|
+| `/api/registry/operator?domain=X` | What agents does this entity operate? Which publishers trust it? | Buy-side: validating a sell-side counterparty |
+| `/api/registry/publisher?domain=X` | What inventory does this entity publish? Which agents does it authorize? | Sell-side: inspecting a publisher's authorization set |
+
+The operator endpoint returns more data for authenticated callers: anonymous callers see public agents only; callers with an AgenticAdvertising.org API-access token additionally see `members_only` agents; callers who are the profile owner additionally see `private` agents. [See registering an agent](/docs/registry/registering-an-agent) for how trust levels map to registration source.
 
 Authorization validation checks both sides: the publisher's `adagents.json` (does it authorize this agent with the claimed `delegation_type`?) and the operator's `brand.json` (does it declare this property with a matching `relationship`?).
 
