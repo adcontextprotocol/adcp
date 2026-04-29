@@ -4,17 +4,23 @@
   "title": "Identity Match Request",
   "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
-  "allOf": [
-    {
-      "$ref": "/schemas/core/version-envelope.json"
-    }
-  ],
   "x-status": "experimental",
   "properties": {
     "$schema": {
       "type": "string",
       "format": "uri",
       "description": "Optional schema URI for validation. Ignored at runtime."
+    },
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.",
+      "minimum": 1,
+      "maximum": 99
     },
     "type": {
       "type": "string",
@@ -97,5 +103,5 @@
     "identities",
     "package_ids"
   ],
-  "additionalProperties": true
+  "additionalProperties": false
 }

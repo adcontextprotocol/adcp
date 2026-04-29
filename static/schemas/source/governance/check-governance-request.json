@@ -13,7 +13,7 @@
   "properties": {
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
+      "description": "Campaign governance plan identifier. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Governance agents MUST treat any sibling `account` field as a contract violation and reject the request.",
       "x-entity": "governance_plan"
     },
     "caller": {

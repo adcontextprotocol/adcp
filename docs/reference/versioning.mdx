@@ -40,9 +40,9 @@ Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3
 2. **Buyer declares**: `adcp_version` (release-precision string) on every request tells the seller which release the buyer's payloads conform to. Through 3.x the buyer SHOULD also emit `adcp_major_version` so legacy 3.x sellers that only read the integer continue to negotiate correctly.
 3. **Server resolves**:
    - Exact match → serve in that release.
-   - Same major, server's max release < buyer's pin → downshift to the highest supported release ≤ the pin.
    - Same major, both pre-release and release present, buyer pins the release → exact match wins; server MUST NOT silently downshift onto the pre-release. (Server `["3.1-beta", "3.1"]` + pin `"3.1"` → serve `"3.1"`.)
-   - Same major, no server release ≤ buyer's pin (gap or sub-min) → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
+   - Same major, no exact match, at least one server release ≤ buyer's pin → downshift to highest supported release ≤ the pin. Covers both "server's max < pin" and gap-cases (e.g. server `["3.0", "3.2"]` + pin `"3.1"` → serve `"3.0"`).
+   - Same major, no server release ≤ buyer's pin (sub-min: every supported release is strictly greater) → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Different major → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Omitted → server uses its default release (or, if only `adcp_major_version` was sent, the highest supported release in that major).
 4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. The echoed value is the **release served**, never the seller's own latest release — a 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against that release's schema, not against their pin.
@@ -78,6 +78,8 @@ Per the three-tier model, patches by definition introduce no contract change —
 `build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9). Examples: `"3.1.2"`, `"3.1.2+scope3.deploy.4821"`, `"3.1.0-beta.3+sha.a1b2c3d"`.
 
 The `adcp_version` wire shape is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. SDKs that internally key bundles using full semver (`"3.1.0-beta.1"`) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
+
+**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/client.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/docs/building/schemas-and-sdks#version-discovery) for the discovery URL.
 
 ### Major-precision negotiation (deprecated, kept through 3.x)
 

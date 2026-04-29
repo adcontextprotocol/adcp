@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Lint: every schema that composes core/version-envelope.json via allOf
- * MUST have additionalProperties: true (or absent — defaults to true) at
- * its outer root.
+ * Lint: schemas that compose core/version-envelope.json at the **root**
+ * `allOf` MUST have additionalProperties: true (or absent — defaults to
+ * true) at their outer root.
  *
  * Why: in JSON Schema draft-07, allOf does not bypass the parent schema's
  * additionalProperties. A parent with additionalProperties: false rejects
@@ -14,6 +14,15 @@
  * Until then, the envelope-via-allOf pattern requires permissive parents.
  * This lint enforces the invariant so future contributors don't reintroduce
  * the regression.
+ *
+ * Scope: this lint inspects only the schema's root `allOf` array. Schemas
+ * that need strict-mode (e.g. tmp/identity-match-request.json's privacy
+ * boundary) intentionally don't compose the envelope via allOf — they
+ * inline `adcp_version` / `adcp_major_version` in `properties`. The lint
+ * does not (and should not) detect indirect composition through `oneOf`
+ * branches, `definitions`/`$defs`, or nested allOf — those patterns are
+ * not used in AdCP today and adding them would rightly trigger this lint
+ * via direct conversion to a root-level allOf.
  */
 
 'use strict';
