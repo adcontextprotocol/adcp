@@ -43,6 +43,12 @@
       "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00\u201359, seconds 00\u201359), or an integer percentage 0\u2013100 suffixed with `%`. Negative offsets are NOT permitted \u2014 the VAST 4.2 XSD pattern does not allow a leading minus.",
       "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
     },
+    "target": {
+      "type": "string",
+      "enum": ["linear", "non_linear", "companion"],
+      "default": "linear",
+      "description": "Which VAST creative element this tracker scopes to \u2014 `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. VAST 4.2 places these under separate XML elements with separate event semantics (e.g., `acceptInvitation` is meaningful on non-linear / companion; `closeLinear` only on linear). Defaults to `linear`. Sales agents use this to place the tracker in the correct location during VAST assembly."
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this asset, overrides manifest-level provenance."
