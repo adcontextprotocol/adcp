@@ -1,0 +1,65 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "amazon_sp_search",
+  "name": "Amazon Sponsored Products — Search",
+  "description": "Catalog-driven sponsored product placement in Amazon search results. Buyer supplies a product catalog with ASINs; Amazon's surface composes per-item rendering (product image + title + price + rating + Prime badge) using its native placement template. Composition is deterministic — buyer can predict per-slot rendering from the catalog item structure. No buyer creative slots; the catalog reference is the entire input.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "amazon.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "retail_media"
+  ],
+  "format": {
+    "format_kind": "sponsored_placement",
+    "params": {
+      "supported_catalog_types": [
+        "product"
+      ],
+      "min_items": 1,
+      "max_items": 50,
+      "fanout_mode": "per_item",
+      "required_catalog_fields": [
+        "title",
+        "image_url",
+        "price"
+      ],
+      "supported_id_types": [
+        "asin"
+      ],
+      "hero_asset_supported": false,
+      "composition_model": "deterministic"
+    }
+  },
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpc_auction",
+      "pricing_model": "cpc",
+      "currency": "USD",
+      "floor_price": 0.5
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
+    "expected_delay_minutes": 60,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": true,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "conversions",
+      "conversion_value",
+      "roas",
+      "new_to_brand_rate"
+    ],
+    "date_range_support": "date_range"
+  }
+}

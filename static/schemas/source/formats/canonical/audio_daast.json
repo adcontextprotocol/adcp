@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/audio_daast.json",
+  "title": "Canonical Format: DAAST Audio",
+  "description": "DAAST-tag-delivered audio creative (audio analog of VAST). Slot: `daast_tag` (daast asset, URL or inline XML). Tracking model: DAAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `clickTracking`, `error`. Distinct from `audio_hosted` (direct file with external tracking).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "daast_version": {
+      "type": "string",
+      "enum": ["1.0", "1.1"]
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "linear_required": {
+      "type": "boolean"
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ssl_required": {
+      "type": "boolean"
+    },
+    "companion_image_required": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

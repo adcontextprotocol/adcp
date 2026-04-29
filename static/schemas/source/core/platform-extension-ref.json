@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/platform-extension-ref.json",
+  "title": "Platform Extension Reference",
+  "description": "Reference to a platform extension definition. The agent that owns the URI is authoritative for the extension's schema. Buyers fetch the definition once per content digest and cache it. Platform extensions are typically bundled in `get_products` responses under an `extensions` map keyed by `uri@digest`, eliminating the need for a separate fetch.",
+  "type": "object",
+  "required": ["uri", "digest"],
+  "properties": {
+    "uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL identifying the extension. The URI base is the owning agent's URL; the path identifies the extension within that agent. Example: 'https://meta.adcp/extensions/meta_pixel'."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 content digest of the extension definition (sha256:<hex>). Used to detect drift — if the agent revises the extension, the digest changes and cached definitions become invalid."
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "uri": "https://meta.adcp/extensions/meta_pixel",
+      "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+    }
+  ]
+}

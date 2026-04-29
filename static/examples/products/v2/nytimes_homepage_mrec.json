@@ -1,0 +1,69 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "nytimes_homepage_mrec",
+  "name": "NYTimes.com Homepage MREC (300×250)",
+  "description": "IAB Medium Rectangle (300×250) static image placement on the NYTimes.com homepage above the fold. Buyers upload jpg/png/gif up to 200KB; HTTPS-only; standard impression pixel + click URL tracking via universal_macros plus IAB Open Measurement viewability via the nytimes_om_strict extension.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "nytimes.com",
+      "selection_type": "by_id",
+      "property_ids": [
+        "homepage_above_fold"
+      ]
+    }
+  ],
+  "channels": [
+    "display"
+  ],
+  "format": {
+    "format_kind": "image",
+    "params": {
+      "width": 300,
+      "height": 250,
+      "max_file_size_kb": 200,
+      "image_formats": [
+        "jpg",
+        "png",
+        "gif"
+      ],
+      "ssl_required": true,
+      "cta_values": [
+        "LEARN_MORE",
+        "SHOP_NOW",
+        "GET_OFFER"
+      ],
+      "composition_model": "deterministic",
+      "platform_extensions": [
+        {
+          "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+          "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
+        }
+      ]
+    }
+  },
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_homepage_mrec",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 22
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "daily"
+    ],
+    "expected_delay_minutes": 240,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "viewability"
+    ],
+    "date_range_support": "date_range"
+  }
+}

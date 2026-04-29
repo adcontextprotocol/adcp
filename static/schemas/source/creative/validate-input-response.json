@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/validate-input-response.json",
+  "title": "Validate Input Response",
+  "description": "Response payload for the validate_input task. Returns per-target validation results — one entry per format_id or product_id requested. `predicted` carries the platform's pre-flight estimate (e.g., predicted audio duration from text-length analysis), NOT the actual output — there is no protocol state for orphaned out-of-spec artifacts. For nondeterministic generative platforms, the QA-loop obligation means out-of-spec output never reaches this surface; instead, build_creative returns task_failed with synthesis_failed reason.",
+  "type": "object",
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": { "$ref": "/schemas/creative/validate-input-result.json" },
+      "description": "Per-target validation results."
+    }
+  },
+  "additionalProperties": true
+}

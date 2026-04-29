@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/sponsored_placement.json",
+  "title": "Canonical Format: Sponsored Placement (retail-media catalog-driven)",
+  "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference), optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products. Distinct from `responsive_creative` (algorithmic combinator from buyer pool) and `agent_placement` (text/audio AI-surface composition).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "source_catalog", "required": true, "asset_type": "catalog" },
+        { "asset_group_id": "hero_asset", "required": false, "asset_type": "image" },
+        { "asset_group_id": "landing_page_url", "required": false, "asset_type": "url" }
+      ]
+    },
+    "supported_catalog_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["product", "store", "offering", "hotel", "flight", "vehicle", "real_estate", "education", "destination", "app", "job", "inventory"]
+      },
+      "description": "Catalog types this product accepts."
+    },
+    "min_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum catalog item count buyer must supply."
+    },
+    "max_items": {
+      "type": "integer",
+      "description": "Maximum items considered for placement."
+    },
+    "fanout_mode": {
+      "type": "string",
+      "enum": ["per_item", "multi_item_in_creative", "single_item"],
+      "description": "How items map to delivery: per_item = one ad per catalog item; multi_item_in_creative = composed multi-item ad (Pinterest Collection, Snap Collection); single_item = one ad showing one item."
+    },
+    "required_catalog_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Catalog item fields the seller requires (e.g., ['title', 'image_url', 'price'])."
+    },
+    "supported_id_types": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["asin", "sku", "gtin", "offering_id", "store_id", "hotel_id", "flight_id", "vehicle_id", "listing_id", "program_id", "destination_id", "app_id", "job_id"] },
+      "description": "Catalog identifier types the placement renders against."
+    },
+    "hero_asset_supported": {
+      "type": "boolean",
+      "description": "Whether the buyer can supply a hero/banner asset alongside the catalog (Pinterest Collection pattern)."
+    }
+  },
+  "additionalProperties": true
+}

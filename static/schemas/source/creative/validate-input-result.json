@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/validate-input-result.json",
+  "title": "Validate Input Result",
+  "description": "Per-target result of a validate_input call.",
+  "type": "object",
+  "required": ["target", "ok"],
+  "properties": {
+    "target": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["canonical", "product", "third_party_format"]
+        },
+        "id": {
+          "type": "string",
+          "description": "Canonical format name (e.g., 'image'), product_id, or URI-form format_id."
+        }
+      },
+      "additionalProperties": true
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True when the manifest validates against the target."
+    },
+    "violations": {
+      "type": "array",
+      "description": "When ok is false, the specific constraints the manifest fails to meet.",
+      "items": {
+        "type": "object",
+        "required": ["rule", "field"],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "Rule name (e.g., 'duration_ms_range', 'aspect_ratio', 'max_file_size_kb')."
+          },
+          "expected": {
+            "description": "Expected value or range (e.g., '28000-32000', '9:16', 200)."
+          },
+          "predicted": {
+            "description": "Platform's pre-flight estimate for this field (NOT the actual output — there is no protocol state for orphaned out-of-spec artifacts). For TTS, this might be the predicted audio duration from text-length analysis. Helps the buyer fix the input before committing to a build."
+          },
+          "field": {
+            "type": "string",
+            "description": "Path to the violating field (e.g., 'assets.video_main.duration_ms')."
+          },
+          "retry_with": {
+            "type": "object",
+            "description": "Optional advisory adjustment hint. Platforms MAY suggest a corrected input shape; buyers MUST treat this as advisory, not authoritative.",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Manifest fails canonical video_vertical because its duration is too long",
+      "data": {
+        "target": { "kind": "canonical", "id": "video_vertical" },
+        "ok": false,
+        "violations": [
+          {
+            "rule": "duration_ms_range",
+            "expected": "3000-90000",
+            "predicted": 91500,
+            "field": "assets.video_main.duration_ms",
+            "retry_with": { "trim_ms_from_end": 1500 }
+          }
+        ]
+      }
+    }
+  ]
+}

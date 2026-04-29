@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-format-declaration.json",
+  "title": "Product Format Declaration",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.",
+  "type": "object",
+  "required": ["format_kind", "params"],
+  "discriminator": { "propertyName": "format_kind" },
+  "oneOf": [
+    {
+      "title": "Image Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "image" },
+        "params": { "$ref": "/schemas/formats/canonical/image.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "HTML5 Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "html5" },
+        "params": { "$ref": "/schemas/formats/canonical/html5.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Display Tag Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "display_tag" },
+        "params": { "$ref": "/schemas/formats/canonical/display_tag.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Image Carousel Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "image_carousel" },
+        "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Hosted Video Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "video_hosted" },
+        "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "VAST Video Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "video_vast" },
+        "params": { "$ref": "/schemas/formats/canonical/video_vast.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Hosted Audio Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "audio_hosted" },
+        "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "DAAST Audio Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "audio_daast" },
+        "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Sponsored Placement Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "sponsored_placement" },
+        "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Responsive Creative Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "responsive_creative" },
+        "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Agent Placement Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "agent_placement" },
+        "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" }
+      },
+      "required": ["format_kind", "params"]
+    }
+  ],
+  "examples": [
+    {
+      "description": "Meta Reels — narrows video_hosted (vertical orientation)",
+      "data": {
+        "format_kind": "video_hosted",
+        "params": {
+          "orientation": "vertical",
+          "aspect_ratio": "9:16",
+          "duration_ms_range": [3000, 90000],
+          "min_width": 1080,
+          "min_height": 1920,
+          "max_file_size_mb": 200,
+          "video_codecs": ["h264"],
+          "audio_codecs": ["aac"],
+          "headline_max_chars": 25,
+          "primary_text_max_chars": 72,
+          "captions": "recommended",
+          "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+          "composition_model": "deterministic",
+          "platform_extensions": [
+            { "uri": "https://meta.adcp/extensions/meta_pixel", "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2" }
+          ]
+        }
+      }
+    },
+    {
+      "description": "IAB Medium Rectangle (300x250) — narrows image",
+      "data": {
+        "format_kind": "image",
+        "params": {
+          "width": 300,
+          "height": 250,
+          "max_file_size_kb": 200,
+          "image_formats": ["jpg", "png", "gif"],
+          "ssl_required": true,
+          "composition_model": "deterministic",
+          "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
+        }
+      }
+    },
+    {
+      "description": "Podcast 30s host-read — narrows audio_hosted with a `script` slot the seller's host reads verbatim. No separate `inputs` map; the script lives in the manifest's `assets` like any other text asset.",
+      "data": {
+        "format_kind": "audio_hosted",
+        "params": {
+          "duration_ms_exact": 30000,
+          "audio_codecs": ["mp3", "aac"],
+          "audio_sample_rates": [44100, 48000],
+          "audio_channels": ["stereo"],
+          "loudness_lufs": -16,
+          "audio_source": "publisher_host_recorded",
+          "buyer_audio_acceptance": "rejected",
+          "composition_model": "deterministic",
+          "slots": [
+            { "asset_group_id": "script", "required": true, "asset_type": "text", "max_chars": 800 },
+            { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" }
+          ],
+          "production_window_business_days": 7
+        }
+      }
+    }
+  ]
+}

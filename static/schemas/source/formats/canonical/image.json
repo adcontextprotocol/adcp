@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/image.json",
+  "title": "Canonical Format: Image",
+  "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image width in pixels."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image height in pixels."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Optional aspect ratio constraint (e.g., '1.91:1', '1:1'). When provided alongside width/height, must agree."
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes."
+    },
+    "image_formats": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg"] },
+      "description": "Permitted image file formats."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether the image and its trackers must be served over HTTPS."
+    },
+    "headline_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "body_text_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cta_values": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
+    }
+  },
+  "additionalProperties": true
+}

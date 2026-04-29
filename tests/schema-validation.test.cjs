@@ -279,7 +279,8 @@ async function runTests() {
   await test('Core schemas have appropriate required fields', () => {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
-      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type'],
+      // product.json: format_ids OR format is required (v1 OR v2 path) — checked separately below
+      'product.json': ['product_id', 'name', 'description', 'delivery_type'],
       'media-buy.json': ['media_buy_id', 'status', 'total_budget', 'packages'],
       'package.json': ['package_id'],
       'creative-asset.json': ['creative_id', 'name', 'format_id', 'assets'],
@@ -299,6 +300,19 @@ async function runTests() {
         }
       }
     }
+
+    // product.json: assert v1 (format_ids) OR v2 (format) is required via oneOf
+    const productEntry = coreSchemas.find(([p]) => path.basename(p) === 'product.json');
+    if (productEntry) {
+      const [, productSchema] = productEntry;
+      const oneOf = productSchema.oneOf || [];
+      const hasV1Branch = oneOf.some((branch) => (branch.required || []).includes('format_ids'));
+      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format'));
+      if (!hasV1Branch || !hasV2Branch) {
+        return `product.json: must have a oneOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      }
+    }
+
     return true;
   });
 

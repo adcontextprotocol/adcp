@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/video_hosted.json",
+  "title": "Canonical Format: Hosted Video",
+  "description": "Direct video file (mp4/webm/mov) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "orientation": {
+      "type": "string",
+      "enum": ["vertical", "horizontal", "square"],
+      "description": "Video orientation. Vertical = 9:16 (Reels, Stories, Shorts). Horizontal = 16:9 (instream, CTV). Square = 1:1 (in-feed)."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Aspect ratio. Inferred from orientation if omitted."
+    },
+    "min_width": { "type": "integer", "minimum": 1 },
+    "min_height": { "type": "integer", "minimum": 1 },
+    "max_width": { "type": "integer", "minimum": 1 },
+    "max_height": { "type": "integer", "minimum": 1 },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value."
+    },
+    "video_codecs": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores"] }
+    },
+    "audio_codecs": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["aac", "mp3", "opus", "pcm"] }
+    },
+    "containers": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mp4", "webm", "mov"] }
+    },
+    "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "max_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "max_file_size_mb": { "type": "integer", "minimum": 1 },
+    "frame_rates": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "captions": {
+      "type": "string",
+      "enum": ["required", "recommended", "not_required"]
+    },
+    "om_sdk_required": {
+      "type": "boolean"
+    },
+    "headline_max_chars": { "type": "integer", "minimum": 1 },
+    "primary_text_max_chars": { "type": "integer", "minimum": 1 },
+    "brand_name_max_chars": { "type": "integer", "minimum": 1 },
+    "cta_values": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "companion_banner_widths": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "Permitted companion banner widths (instream video)."
+    },
+    "companion_banner_heights": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    }
+  },
+  "additionalProperties": true
+}

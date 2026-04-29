@@ -1,0 +1,388 @@
+---
+title: Creative Formats v2 (preview)
+description: "Canonical formats live on AdCP; sellers' products narrow them inline. Phase 1 + Phase 2 preview against the v2 RFC #3305."
+"og:title": "AdCP — Creative Formats v2"
+testable: true
+---
+
+# Creative Formats v2 (preview)
+
+> **Status:** Preview track. The v2 surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307). v1 named formats (`format_id` as `{ agent_url, id }`) remain a first-class path through 4.x with a 5.0 sunset; v2 is opt-in and additive.
+
+v2 collapses today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration` that narrows exactly one canonical with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — v2 doesn't create a new vocabulary layer for those.
+
+## Architectural shift
+
+| Concept | v1 | v2 |
+|---|---|---|
+| Format identity | Compound `{ agent_url, id }` referencing a separately-defined format file | Canonical name (e.g., `image`) keyed under `format` on the product, narrowed inline |
+| Format authoring | Each platform authors its own named format files | Platforms narrow AdCP-defined canonicals; canonical IS the contract buyers validate against |
+| Format submission contract | Each platform publishes a parallel set of `*_generated_*` format files for AI-produced creative alongside the asset-upload version (~30 duplicate files in agentic-adapters) | The format declares a single `slots` array enumerating everything the buyer ships in the manifest's `assets` map, each entry a canonical `asset_group_id` paired with an `asset_type` (image / video / audio for direct rendering; text / brief / object / url for content the seller consumes for production). Buyer mental model is uniform — one `assets` map, no separate "inputs" concept. **Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is invisible to the buyer.** No "generative" category at the protocol level; the production mechanism is implementation detail. |
+| Discovery | `list_creative_formats` (overloaded — used by both sales and creative agents) | `creative.supported_formats` on `get_adcp_capabilities` (uniform replacement, same `ProductFormatDeclaration` shape regardless of agent role); sales agents additionally expose `get_products` for product-level detail with `format` inline |
+| Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
+| Brand identity | Sometimes redeclared as format slots | Implicit via `brand` (a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) — `domain` plus optional `brand_id` for house-of-brands) resolving brand.json; explicit override via `brand_kit_override` on the manifest |
+
+## The 11 canonical formats
+
+Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 11 instead of, say, 5).
+
+| Canonical | What it is | Tracking |
+|---|---|---|
+| `image` | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
+| `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
+| `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
+| `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
+| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
+| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_daast` | DAAST tag | Inherent DAAST events |
+| `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
+| `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
+| `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
+
+## Worked example — Meta Reels
+
+Meta Reels narrows `video_hosted` (vertical orientation) with Meta-specific parameters and platform extensions:
+
+```json test=false
+{
+  "product_id": "meta_reels_us",
+  "name": "Meta Reels — United States",
+  "publisher_properties": [
+    { "publisher_domain": "meta.com", "selection_type": "all" }
+  ],
+  "channels": ["social"],
+  "format": {
+    "format_kind": "video_hosted",
+    "params": {
+      "orientation": "vertical",
+      "aspect_ratio": "9:16",
+      "duration_ms_range": [3000, 90000],
+      "min_width": 1080,
+      "min_height": 1920,
+      "max_file_size_mb": 200,
+      "video_codecs": ["h264"],
+      "audio_codecs": ["aac"],
+      "headline_max_chars": 25,
+      "primary_text_max_chars": 72,
+      "captions": "recommended",
+      "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+      "composition_model": "deterministic",
+      "platform_extensions": [
+        {
+          "uri": "https://meta.adcp/extensions/meta_pixel",
+          "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+        },
+        {
+          "uri": "https://meta.adcp/extensions/meta_placements_reels",
+          "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
+        }
+      ]
+    }
+  },
+  "pricing_options": [
+    { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "fixed_price": 5.50 }
+  ]
+}
+```
+
+Buyer's manifest validates against canonical `video_hosted` first (does it satisfy the contract any seller speaking that canonical accepts?), then narrows against this product's specific parameters. The Meta-specific extensions (pixel, placements) are bundled in the `get_products` response under an `extensions` map keyed by `uri@digest` — buyers fetch them once and cache by digest.
+
+## Worked example — IAB MREC (300×250)
+
+The canonical-as-contract value is clearest for IAB-standard formats. NYTimes and any other publisher selling MREC narrow `image` with the same IAB-standard parameters; buyers validate against canonical `image` *before* knowing which publisher wins.
+
+```json test=false
+{
+  "product_id": "nytimes_homepage_mrec",
+  "name": "NYTimes.com Homepage MREC (300×250)",
+  "publisher_properties": [
+    { "publisher_domain": "nytimes.com", "selection_type": "all" }
+  ],
+  "channels": ["display"],
+  "format": {
+    "format_kind": "image",
+    "params": {
+      "width": 300,
+      "height": 250,
+      "max_file_size_kb": 200,
+      "image_formats": ["jpg", "png", "gif"],
+      "ssl_required": true,
+      "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"],
+      "composition_model": "deterministic",
+      "platform_extensions": [
+        {
+          "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+          "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
+        }
+      ]
+    }
+  },
+  "pricing_options": [
+    { "pricing_option_id": "cpm_homepage", "pricing_model": "cpm", "currency": "USD", "fixed_price": 22.00 }
+  ]
+}
+```
+
+For HTML5 banners on the same placement, NYTimes publishes a *separate* product narrowing `html5`:
+
+```json test=false
+{
+  "product_id": "nytimes_homepage_html5",
+  "name": "NYTimes.com Homepage HTML5 Banner (300×250)",
+  "publisher_properties": [
+    { "publisher_domain": "nytimes.com", "selection_type": "all" }
+  ],
+  "channels": ["display"],
+  "format": {
+    "format_kind": "html5",
+    "params": {
+      "width": 300,
+      "height": 250,
+      "max_initial_load_kb": 200,
+      "max_polite_load_kb": 500,
+      "host_initiated_subload": true,
+      "max_animation_duration_ms": 30000,
+      "max_cpu_load_percent": 30,
+      "om_sdk_required": true,
+      "clicktag_macro": "clickTag",
+      "backup_image_required": true,
+      "backup_image_max_size_kb": 50,
+      "ssl_required": true,
+      "composition_model": "deterministic"
+    }
+  },
+  "pricing_options": [
+    { "pricing_option_id": "cpm_homepage_html5", "pricing_model": "cpm", "currency": "USD", "fixed_price": 28.00 }
+  ]
+}
+```
+
+Different canonical (`html5`, not `image`) because the tracking model is fundamentally different — MRAID + OM-SDK + click-tag rather than impression pixel + click URL. Adopters that want to express "this placement accepts either image or HTML5" publish two products.
+
+## Worked example — Podcast 30s host-read
+
+Host-reads are the host-recorded-from-buyer-script pattern. The product declares `audio_hosted` narrowed to publisher-host-recorded mode with `slots` describing what the buyer ships (a `script` text asset; the publisher's host records audio from it):
+
+```json test=false
+{
+  "product_id": "the_daily_30s_host_read_us",
+  "name": "The Daily — 30s Host-Read Pre-roll (US)",
+  "publisher_properties": [
+    { "publisher_domain": "thedailypod.example", "selection_type": "all" }
+  ],
+  "channels": ["podcast"],
+  "format": {
+    "format_kind": "audio_hosted",
+    "params": {
+      "duration_ms_exact": 30000,
+      "audio_codecs": ["mp3", "aac"],
+      "audio_sample_rates": [44100, 48000],
+      "audio_channels": ["stereo"],
+      "loudness_lufs": -16,
+      "audio_source": "publisher_host_recorded",
+      "buyer_audio_acceptance": "rejected",
+      "composition_model": "deterministic",
+      "slots": [
+        {
+          "asset_group_id": "script",
+          "required": true,
+          "asset_type": "text",
+          "max_chars": 800,
+          "description": "Verbatim script the host reads."
+        },
+        {
+          "asset_group_id": "offering_ref",
+          "required": false,
+          "asset_type": "text"
+        }
+      ],
+      "production_window_business_days": 7
+    }
+  },
+  "pricing_options": [
+    { "pricing_option_id": "cpm_host_read", "pricing_model": "cpm", "currency": "USD", "fixed_price": 35.00 }
+  ]
+}
+```
+
+The format declaration tells the buyer everything they need to know — no extra capability lookup. The buyer ships a `script` text asset under that slot in the manifest's `assets` map; brand context comes from the manifest's top-level `brand` BrandRef. There is no separate "inputs" map — everything the buyer ships lives in `assets`. The buyer has two flows depending on whether the seller doubles as a creative agent and whether the buyer wants to pre-produce externally.
+
+### Flow 1 — buyer pre-produces (upstream creative agent)
+
+The buyer calls a creative agent's `build_creative` independently, gets back a rendered manifest, and submits that to the seller. Useful when the buyer has a preferred production partner (their in-house studio, AudioStack-style services) or the seller exposes itself as a creative agent.
+
+1. Buyer reads The Daily's product format → sees `slots: [{ asset_group_id: "script", asset_type: "text", required: true }]` declared
+2. Buyer calls `build_creative({ format: <The Daily's audio_hosted narrowing>, assets: { script: { asset_type: "text", content: "..." } }, brand: { domain: "..." } })` on a creative agent — this could be The Daily's own creative-agent surface (if they expose one), or any other agent that declares it can produce this format via its `creative.supported_formats` on `get_adcp_capabilities`
+3. Receives a rendered manifest with audio asset
+4. Submits the rendered manifest via `sync_creatives` to The Daily's sales agent
+
+### Flow 2 — seller produces internally
+
+The buyer submits assets directly to the seller; the seller produces internally (calls its own creative team or an upstream creative agent under the hood) and returns a registered creative.
+
+1. Buyer reads the same product format
+2. Buyer submits via `sync_creatives` with the assets in the manifest (e.g., a `script` text asset under that slot in the `assets` map)
+3. Seller produces internally; how is invisible to the buyer
+4. Returns async status; buyer polls or waits for completion
+
+The format's `audio_source: "publisher_host_recorded"` + `buyer_audio_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
+
+For brief-driven (talking-points-style) host-reads, the same shape applies with a `creative_brief` slot (asset_type `brief`) in place of the `script` slot. Same target format (`audio_hosted`); different slot declaration.
+
+## Validation flow — `validate_input`
+
+Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render:
+
+```json test=false
+{
+  "manifest": {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "assets": {
+      "video": {
+        "asset_type": "video",
+        "url": "https://cdn.acme.example/spring-30s.mp4",
+        "duration_ms": 30000,
+        "width": 1080,
+        "height": 1920
+      }
+    },
+    "brand": { "domain": "acme.example" }
+  },
+  "format_ids": ["video_hosted"],
+  "product_ids": ["meta_reels_us"]
+}
+```
+
+Response carries per-target results:
+
+```json test=false
+{
+  "results": [
+    {
+      "target": { "kind": "canonical", "id": "video_hosted" },
+      "ok": true
+    },
+    {
+      "target": { "kind": "product", "id": "meta_reels_us" },
+      "ok": false,
+      "violations": [
+        {
+          "rule": "duration_ms_range",
+          "expected": "3000-90000",
+          "predicted": 30000,
+          "field": "assets.video_main.duration_ms"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`validate_input` is the predictable-case primitive. For genuinely nondeterministic synthesis (Veo / Sora / Runway-class), predictive validation is impossible and the platform's own post-synthesis QA loop applies — submission returns `task_failed` with a `synthesis_failed` reason if the QA loop exhausts without producing a valid artifact. There is **no protocol state for orphaned out-of-spec artifacts**.
+
+## Preview as the universal "what does this produce" surface
+
+Buyers ship assets per the format's `slots` declaration; `preview_creative` shows what the output renders as. The seller's response to a creative submission can also include a preview URL — the buyer doesn't need a separate preview call to verify that their submission produced the intended output. Same surface, two production paths:
+
+- **Direct rendering**: buyer ships finished creative assets (image, video, audio) → seller renders them on the placement → preview shows the rendered output (with seller-side composition, overlays, CTA buttons applied).
+- **Seller-side production**: buyer ships content the seller consumes (script text, creative_brief, voice_id selection) → seller produces the rendered asset internally (host recording, generative AI synthesis, transcoding — invisible) → preview shows the produced output.
+
+The buyer can iterate on shipped assets and inspect previews before committing to a buy. Different sellers may produce differently internally; the preview surface is uniform. This is what makes "production mechanism is invisible to the buyer" workable in practice — the buyer doesn't need to know HOW the output was produced because they can see WHAT was produced.
+
+## Brand identity via brand.json (with override)
+
+v2 formats no longer redeclare `brand_logo`, `brand_colors`, `brand_voice`, `brand_tagline` as explicit slots. When a manifest carries a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) like `brand: { domain: "acme.example" }` (or with `brand_id` for house-of-brands), the seller fetches `https://acme.example/.well-known/brand.json` for brand context.
+
+For the case where brand.json is missing or stale, the manifest includes `brand_kit_override`:
+
+```json test=false
+{
+  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "image_300x250" },
+  "assets": {
+    "image_main": { "asset_type": "image", "url": "https://cdn.acme.example/banner.jpg", "width": 300, "height": 250 }
+  },
+  "brand": { "domain": "acme.example" },
+  "brand_kit_override": {
+    "logo": { "asset_type": "image", "url": "https://cdn.acme.example/logo-2026.png", "width": 200, "height": 100 },
+    "colors": { "primary": "#0066CC", "accent": "#FF6600" },
+    "tagline": "Spring savings, all season"
+  }
+}
+```
+
+Override fields take precedence over `brand.json` for that creative.
+
+## Platform extensions — distribution
+
+Platform extensions are narrow, truly platform-specific additions (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). They live at well-known paths on the owning agent:
+
+```
+https://meta.adcp/extensions/meta_pixel
+https://tiktok.adcp/extensions/tiktok_pixel
+https://nytimes.adcp/extensions/nytimes_om_strict
+```
+
+Each extension's response carries the schema, the canonical pattern or slot it extends, a version, and a content digest.
+
+**Distribution path: bundled in `get_products`.** The sales agent's response includes definitions for every extension referenced by any product in the response, keyed by `uri@digest`:
+
+```json test=false
+{
+  "products": [ { "...": "..." } ],
+  "extensions": {
+    "https://meta.adcp/extensions/meta_pixel@sha256:a3f5...": {
+      "extends": "tracking",
+      "fields": {
+        "pixel_id": { "type": "string", "required": true },
+        "conversion_event": { "type": "string", "enum": ["PURCHASE", "LEAD"] }
+      },
+      "version": "2.1.0"
+    }
+  }
+}
+```
+
+Buyer's SDK caches by URI@digest. Subsequent `get_products` responses can reference by digest alone if the buyer has the extension cached. Direct URI fetch is supported for tooling but the primary path is bundled-in-`get_products`.
+
+## What's NOT in v2
+
+By design, v2 doesn't introduce new vocabulary for things AdCP already handles or that belong elsewhere:
+
+- **Brand safety vocabularies** — that's media-buy/campaign-level (`creative-policy.json` and broader campaign settings), not creative-format-level. Format declarations don't redeclare brand safety.
+- **Universal macros as a new schema** — already documented at [`/docs/creative/universal-macros`](/docs/creative/universal-macros). Canonical formats reference them by name.
+- **`destination_kinds` as a new schema** — `url-asset.json` already has `url_type` covering URL kind disambiguation. Platform-specific destinations (Meta `messenger_thread`, etc.) are platform extensions.
+- **`cta_vocabulary` as a canonical pattern** — CTAs vary meaningfully across surfaces; we let products declare `cta_values` arrays inline until cross-platform demand emerges.
+- **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
+- **`build_capability`, `build_capability_ref`, and a separate `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
+
+## Migration
+
+| Adopter | Cost | Realistic timeline |
+|---|---|---|
+| DSP buyer agents | Low | 3.1-3.2 |
+| SSP/sales agents | Medium-high | 3.3-4.0 |
+| Walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest) | High, low motivation | 4.0-5.0 if at all (gated on AAO providing a translator from existing format docs) |
+| Creative agents (AudioStack-shaped) | Low, high motivation | 3.1-3.2 |
+| Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
+
+**v1 stays first-class.** v1 named formats remain supported; sellers SHOULD provide server-side flatten wrappers that derive the v1 `list_creative_formats` shape from v2 product format declarations through 4.0. v2 is the *new* path, not the only path.
+
+## Phase status
+
+| Phase | Status | What's in it |
+|---|---|---|
+| Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `scenes` schema, `zip` asset type, video/audio doc fixes |
+| Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` ⊕ `format` oneOf on Product |
+| Phase 3 | ✅ in #3307 | v1↔v2 migration guide, 7 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:v2-fixtures`) |
+| Phase 4 | TBD | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation |
+| Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
+
+## Related
+
+- [v1 → v2 migration guide](/docs/creative/v2-migration) — concrete migration paths for sellers, creative agents, buyers, and publisher-direct integrations
+- [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — v2 architecture decisions and rationale
+- [PR #3307](https://github.com/adcontextprotocol/adcp/pull/3307) — Phase 1 + Phase 2 implementation, on hold pending 3.1.0 beta cycle
+- [Asset group vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) — canonical slot-name registry
+- [Scenes schema](https://adcontextprotocol.org/schemas/v3/creative/scenes.json) — typed scene-by-scene structure for build_creative
+- [Universal macros](/docs/creative/universal-macros) — substitution patterns referenced from canonical tracking

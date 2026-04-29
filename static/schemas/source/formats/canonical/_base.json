@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/_base.json",
+  "title": "Canonical Format Base",
+  "description": "Shared parameter fields that apply across canonical formats. Each canonical format extends this base with format-specific parameters (dimensions, durations, codecs, slot constraints).",
+  "type": "object",
+  "properties": {
+    "composition_model": {
+      "type": "string",
+      "enum": ["deterministic", "algorithmic"],
+      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — responsive_creative, agent_placement)."
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "When true, the product rejects unsigned synthesized assets. Builders calling build_creative MUST attach a C2PA-compatible provenance manifest attributing synthesis to the creative agent."
+    },
+    "platform_extensions": {
+      "type": "array",
+      "description": "Platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). Each extension is a URI+digest reference resolved against the bundled `extensions` map in get_products responses or fetched directly.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "tracking_extensions": {
+      "type": "array",
+      "description": "Subset of platform_extensions specifically scoped to tracking concerns (pixel IDs, conversion event taxonomies, viewability vendors, OM-SDK partners). Functionally equivalent to listing tracking-related extensions under platform_extensions; the separate field surfaces \"what's tracking-related\" without forcing buyers to fetch each extension definition to find out. When present, every entry MUST also be present in (or implied by) platform_extensions. Producers MAY omit tracking_extensions and put everything under platform_extensions; the split is for buyer convenience, not schema enforcement.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "synthesis_nondeterministic": {
+      "type": "boolean",
+      "description": "When true, the format's production pipeline is genuinely nondeterministic — the platform cannot guarantee that synthesis from a given input set produces in-spec output. Veo / Sora / Runway-class generative video, and other AI-synthesis flows where output dimensions, duration, or quality vary per run. Implies a different validation contract: predictive `validate_input` is impossible; the platform's own post-synthesis QA loop applies; if the QA loop exhausts without producing a valid artifact, `build_creative` returns task_failed with a synthesis_failed reason. Distinct from `composition_model` (which describes how the surface composes per-slot rendering, not whether synthesis is deterministic). When false or absent, the format's production is predictable enough that `validate_input` can predict output properties from input properties.",
+      "default": false
+    },
+    "slots": {
+      "type": "array",
+      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry, paired with an `asset_type` so the validator knows which asset schema to apply. Format-level narrowing parameters that apply across all slots (e.g., flat `headline_max_chars` on responsive_creative) may also live on the format declaration; per-slot constraints (a specific slot's `max_chars` or `max_size_kb`) live on the slot entry.",
+      "items": {
+        "type": "object",
+        "required": ["asset_group_id", "asset_type"],
+        "properties": {
+          "asset_group_id": {
+            "type": "string",
+            "description": "Canonical asset_group_id from /schemas/core/asset-group-vocabulary.json. Non-canonical IDs are valid but trigger soft warnings."
+          },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "object"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `object` is a fallback for structured non-asset inputs that don't fit a primitive asset_type (rare; prefer specific types when possible)."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this slot is required for a valid manifest.",
+            "default": false
+          },
+          "min": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Minimum count for repeatable / pool slots."
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum count for repeatable / pool slots."
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot character limit for text / markdown / brief assets."
+          },
+          "max_size_kb": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot file size limit in kilobytes for image / video / audio / zip assets."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what the slot expects from the buyer."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "production_window_business_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Typical production turnaround in business days when the format requires seller-side production (e.g., host-recording from a buyer-supplied script). 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
+    }
+  },
+  "additionalProperties": true,
+  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark any of their parameter fields as `required` and use `additionalProperties: true`. The canonical is the loose contract — describing what parameters MAY narrow it. Products narrow the canonical with concrete values (and may also leave most parameters absent — buyers infer behavior from the canonical's prose description for any unspecified parameter). This is intentional, not an oversight: enforcing required params on the canonical would force every product to declare every parameter, which is the wrong direction (we want products to declare only the values that differ from sensible canonical defaults). Adopters writing strict validators should validate against the canonical's structural shape (what fields ARE valid) and apply business rules separately for product-level narrowing minima."
+}

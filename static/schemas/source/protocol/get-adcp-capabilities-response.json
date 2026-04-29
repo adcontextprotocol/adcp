@@ -819,6 +819,25 @@
           "type": "boolean",
           "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
+        },
+        "supported_formats": {
+          "type": "array",
+          "description": "v2 path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as products' inline `format` field — keyed by canonical format name with parameter narrowing and `inputs` describing what the agent needs from the buyer. Replaces the v1 `list_creative_formats` discovery surface for creative agents. Each entry MAY include a `capability_id` for stable identification across versions; the format key already disambiguates which canonical the entry targets.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "description": "Stable identifier for this format declaration within the agent (e.g., 'audiostack_audio_30s'). Optional but recommended for declarations that may be referenced over time."
+              },
+              "format": {
+                "$ref": "/schemas/core/product-format-declaration.json",
+                "description": "Format declaration this agent can produce. Same shape as a product's inline `format`: keyed by canonical name with parameters and inputs."
+              }
+            },
+            "required": ["format"],
+            "additionalProperties": true
+          }
         }
       },
       "additionalProperties": true

@@ -1,0 +1,324 @@
+---
+title: Creative Formats v1 → v2 Migration
+description: "Concrete migration paths for sellers, creative agents, buyers, and tooling moving from v1 named formats to v2 product-bound declarations."
+"og:title": "AdCP — Creative Formats v1 → v2 Migration"
+testable: true
+---
+
+# Migration: v1 → v2 Creative Formats
+
+This guide walks through the shift from v1 named formats (`format_id` as `{ agent_url, id }` referencing a separately-defined format file) to v2 product-bound declarations introduced by [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305). v1 named formats remain a first-class path through 4.x; v2 is the new path, opt-in indefinitely.
+
+For the architecture, read [`v2-overview`](/docs/creative/v2-overview) first. This page is just the migration mechanics.
+
+## What stays unchanged
+
+Most of AdCP doesn't change. v2 builds on the existing primitives:
+
+- All asset primitive schemas (`image-asset.json`, `video-asset.json`, `audio-asset.json`, `vast-asset.json`, `daast-asset.json`) — unchanged
+- Catalog and offering schemas — unchanged
+- Manifest envelope shape (`creative-manifest.json` keyed by `assets` map) — unchanged
+- Response envelopes, error schemas, common types — unchanged
+- v1 named formats (`format.json` with compound `format_id`) — still supported through 4.x
+- v1 `list_creative_formats` tool — deprecated but functional through 4.x; removed at 5.0
+- All existing producers and consumers — continue to work without changes
+
+## Side-by-side: a v1 named format → v2 product format declaration
+
+### v1 — separate format file referenced by product
+
+```json test=false
+// formats/meta_reels.json
+{
+  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "meta_reels" },
+  "name": "Meta Reels",
+  "type": "video",
+  "assets": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "item_type": "individual",
+      "required": true,
+      "requirements": {
+        "min_duration_ms": 3000,
+        "max_duration_ms": 90000,
+        "aspect_ratio": "9:16",
+        "min_width": 1080,
+        "min_height": 1920,
+        "containers": ["mp4"],
+        "codecs": ["h264"]
+      }
+    }
+  ]
+}
+
+// products/meta_reels_us.json
+{
+  "product_id": "meta_reels_us",
+  "name": "Meta Reels — United States",
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "meta_reels" }
+  ],
+  // ... pricing, targeting, etc.
+}
+```
+
+### v2 — inline format declaration on the product
+
+```json test=false
+{
+  "product_id": "meta_reels_us",
+  "name": "Meta Reels — United States",
+  "format": {
+    "format_kind": "video_hosted",
+    "params": {
+      "orientation": "vertical",
+      "aspect_ratio": "9:16",
+      "duration_ms_range": [3000, 90000],
+      "min_width": 1080,
+      "min_height": 1920,
+      "video_codecs": ["h264"],
+      "containers": ["mp4"],
+      "headline_max_chars": 25,
+      "primary_text_max_chars": 72,
+      "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+      "composition_model": "deterministic",
+      "platform_extensions": [
+        { "uri": "https://meta.adcp/extensions/meta_pixel", "digest": "sha256:..." }
+      ]
+    }
+  },
+  // ... pricing, targeting, etc.
+}
+```
+
+The v2 `format` is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format`) — not both. The product schema's `oneOf` enforces this.
+
+For 12 fully-validated worked examples spanning all 11 canonical formats (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention, Meta Carousel, YouTube VAST pre-roll, Triton DAAST audio, Veo generative video, GAM 3P display tag), see `static/examples/products/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
+
+## Slot name mapping (v1 → canonical)
+
+If a v1 format slot uses an author-invented name that the canonical vocabulary covers, the format declaration carries an optional `asset_group_id` field on the slot pointing at the canonical entry. Same as the existing `asset_role` field, but referencing the [canonical vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) rather than free text.
+
+```json test=false
+// v1 format with author-invented slot name
+{
+  "asset_id": "click_url",
+  "asset_type": "url",
+  "item_type": "individual",
+  "required": true
+}
+
+// Same v1 format with canonical pointer (additive — backwards-compatible)
+{
+  "asset_id": "click_url",
+  "asset_type": "url",
+  "asset_group_id": "landing_page_url",
+  "item_type": "individual",
+  "required": true
+}
+```
+
+The vocabulary registry's `aliases` field captures common v1 alias names per canonical entry (e.g., `landing_page_url` aliases include `click_url`, `link`, `final_url`, `link_url`, `click_through_url`, `landing_url`). Six different names for the same field collapse to one canonical.
+
+Common alias mappings (from the audit-grounded set in `asset-group-vocabulary.json`):
+
+| Canonical | Common v1 aliases |
+|---|---|
+| `headlines` | `headline`, `title`, `tagline`, `headline_text` |
+| `descriptions` | `description`, `body`, `body_text`, `text`, `content` |
+| `images_landscape` | `image`, `hero_image`, `landscape_image`, `banner_image` |
+| `images_vertical` | `vertical_image`, `story_image`, `portrait_image` |
+| `images_square` | `square_image`, `feed_image` |
+| `logo` | `brand_logo`, `logo_image` |
+| `video` | `video_file`, `hero_video`, `video_asset`, `video_main` |
+| `audio` | `audio_file`, `hero_audio`, `audio_asset`, `audio_main` |
+| `landing_page_url` | `click_url`, `link`, `final_url`, `link_url`, `click_through_url`, `landing_url` |
+
+## Discovery surface migration
+
+`list_creative_formats` is uniformly deprecated. Replacements:
+
+| Role | v1 path | v2 path |
+|---|---|---|
+| Sales agent | `list_creative_formats` returns the seller's accepted formats | `get_products` — each product carries its `format` declaration inline. Optionally also `creative.supported_formats` on `get_adcp_capabilities` for a flat summary. |
+| Creative agent (no inventory) | `list_creative_formats` overloaded as "what I can produce" | `creative.supported_formats` on `get_adcp_capabilities`. Each entry uses the same `ProductFormatDeclaration` shape as products' inline `format`. |
+
+Sellers SHOULD provide a server-side flatten wrapper that derives the v1 `list_creative_formats` shape from v2 product format declarations through 4.0, so existing dashboards and tooling keep working. The wrapper iterates over `get_products`, reads each product's `format` declaration, and emits a v1-compatible format file plus a `format_ids` reference.
+
+## Generative formats — `*_generated_*` files dissolve
+
+The agentic-adapters audit found ~30 `*_generated_*` format files (e.g., `meta_generated_reels`, `tiktok_generated_video_9x16`) that mirror their non-generated counterparts but accept a `creative_brief` instead of an asset upload. In v2 these collapse:
+
+- The format declaration's `slots` array enumerates everything the buyer ships in the manifest's `assets` map — each entry is a canonical `asset_group_id` paired with an `asset_type`. Some slots are rendered verbatim (image / video / audio); some are consumed for production (text script → host-read audio; brief → synthesized image; scenes → generated video). The seller dispatches per slot.
+- Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is **invisible to the buyer**
+- A single canonical format (e.g., `audio_hosted`) handles both buyer-uploaded audio and agent-produced audio; the format's `audio_source` and `buyer_audio_acceptance` parameters describe which flows are accepted
+
+Side-by-side for an audio format:
+
+```json test=false
+// v1: separate generated format file
+{
+  "format_id": { "agent_url": "...", "id": "audiostack_audio_30s_generated" },
+  "name": "AudioStack 30s Audio (Generated)",
+  "assets": [
+    {
+      "asset_id": "creative_brief",
+      "asset_type": "brief",
+      "required": true
+    },
+    {
+      "asset_id": "audio_output",
+      "asset_type": "audio",
+      "required": false
+    }
+  ]
+}
+
+// v2: same canonical (audio_hosted), buyer-shipped assets declared as slots
+{
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 30000,
+    "audio_codecs": ["mp3"],
+    "loudness_lufs": -16,
+    "audio_source": "agent_synthesized",
+    "buyer_audio_acceptance": "rejected",
+    "slots": [
+      { "asset_group_id": "creative_brief", "required": true, "asset_type": "brief", "max_chars": 1000 },
+      { "asset_group_id": "voice_id", "required": false, "asset_type": "text" }
+    ],
+    "production_window_business_days": 0
+  }
+}
+```
+
+Note the v2 manifest has no separate `inputs` map — the buyer ships the brief and voice_id as `text`/`brief` assets in the `assets` map under those slot names. The seller dispatches per the format's slot declaration: brief → consume for synthesis; rendered audio is what comes out the other side.
+
+## Brand identity — slots disappear
+
+v1 formats sometimes redeclared `brand_logo`, `brand_colors`, `brand_voice`, `brand_tagline` as explicit slots. v2 formats don't. When the manifest carries a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) (`brand: { domain: "acme.com" }`, optionally with `brand_id` for house-of-brands), the seller fetches `brand.json` for context automatically.
+
+For the case where `brand.json` is missing or stale, the manifest carries `brand_kit_override`:
+
+```json test=false
+{
+  "format_id": { "agent_url": "...", "id": "..." },
+  "assets": { ... },
+  "brand": { "domain": "acme.example" },
+  "brand_kit_override": {
+    "logo": { "asset_type": "image", "url": "https://cdn.acme.example/logo-2026.png", "width": 200, "height": 100 },
+    "colors": { "primary": "#0066CC", "accent": "#FF6600" },
+    "tagline": "Spring savings, all season"
+  }
+}
+```
+
+Override fields take precedence over `brand.json` for that creative.
+
+## Tools — what's new vs unchanged
+
+| Tool | v1 | v2 |
+|---|---|---|
+| `get_products` | Returns products with `format_ids` | Returns products with either `format_ids` (v1 path) or `format` (v2 inline) |
+| `sync_creatives` | Submit creative manifest | Unchanged. Sales agents accept manifests with `assets` keyed by slot name per the format's `slots` declaration. |
+| `preview_creative` | Submit manifest, get preview | Same surface; preview shows output regardless of whether the slots ship rendered creative (image/video/audio) or production content (script/brief/scenes). The single-render hoist in #3268 lands alongside v2. |
+| `validate_input` | (didn't exist) | New buyer dry-run primitive. Validates a manifest against canonical formats and/or specific products without committing to a render. Cheap; `predicted` field carries pre-flight estimates. |
+| `build_creative` | Generative tool on creative agents | Same role; creative-agent surface only. Sales agents do **not** expose `build_creative`. Creative agents may **also** expose `sync_creatives` for ad-server use cases. |
+| `list_creative_formats` | Both sales and creative agents | Deprecated. Sales agents migrate to `get_products`; creative agents to `creative.supported_formats`. v1 tool stays functional through 4.x. |
+
+## Adopter migration paths
+
+### Sales agents (DSPs, SSPs, retail media networks, walled gardens)
+
+1. **Inventory**: enumerate your existing v1 named formats. Confirm each maps to one of the 11 v2 canonicals.
+2. **Translate**: for each named format, write a v2 `ProductFormatDeclaration` narrowing the canonical with your platform's parameters.
+3. **Test**: validate translated declarations against `/schemas/core/product.json` (use the `npm run test:v2-fixtures` pattern).
+4. **Publish dual**: keep your v1 named formats and `list_creative_formats` working through 4.x. Add the v2 `format` field on products that have it.
+5. **Flatten wrapper**: implement a server-side wrapper that derives the v1 `list_creative_formats` shape from v2 product declarations. Lets v1-era dashboards and tooling keep working.
+6. **Deprecate timing**: at 5.0, remove v1 `format_ids` references on your products. Until then, both paths coexist.
+
+#### Server-side implementation considerations
+
+Three concrete hooks v2 introduces that existing seller implementations don't have today:
+
+- **`sync_creatives` provenance verification when `provenance_required: true`.** When a v2 product's format declaration carries `provenance_required: true` (and the buyer's manifest contains synthesized assets — typically video/image from generative platforms), `sync_creatives` MUST verify a C2PA-compatible provenance manifest is attached and reject unsigned synthesized assets. This is a natural extension of existing AI-provenance tracking on Creative (EU AI Act Article 50 work) — the new piece is a validation hook that gates submission. Sellers without existing provenance plumbing only need this once they ship a v2 product with the flag set; until then it's no-op.
+- **`get_products` response gathers extension definitions.** When products carry v2 `format.params.platform_extensions` references, the response SHOULD include the referenced extension definitions in the `extensions` map keyed by `<uri>@sha256:<digest>`. Implementations gather extensions referenced by any product in the response, dedupe by digest, and emit. Buyers cache by URI@digest; subsequent responses MAY omit definitions the buyer already has cached. Trivial when no products use v2 declarations; only kicks in when tenants opt in.
+- **`production_window_business_days` on host-read / agent-produced products.** Today most server implementations don't model production turnaround on Products — the field is a v2 addition. Only matters once a tenant ships a v2 host-read or generative-video product (audio_hosted with `audio_source: 'publisher_host_recorded'`, or any product with `synthesis_nondeterministic: true`). Today many of these flows route through hand-trafficked sponsorships and don't surface turnaround over the protocol; v2 makes it declarable.
+
+### Creative agents (transformation services like AudioStack, generative platforms)
+
+1. Add `creative.supported_formats` to your `get_adcp_capabilities` response. Each entry is a `ProductFormatDeclaration` describing what canonical format you can produce, with parameter narrowing and `slots` declaring the assets you accept as production input.
+2. Continue to support `build_creative` per the existing v1 contract — it's the same tool with the same shape.
+3. If you're also acting as an ad server (rare but valid), expose `sync_creatives` alongside `build_creative`.
+
+### Buyers / DSPs
+
+1. Update your client to read either `format_ids` (v1) or `format` (v2 inline) on products.
+2. Use `validate_input` for cheap dry-run validation before committing to renders.
+3. Use the canonical [`asset_group_id` vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) when constructing manifests; the registry's `aliases` field maps v1-era slot names to canonical equivalents.
+4. Submit creative via `sync_creatives` as before. For products whose slots accept production content (host-read podcasts ship a `script` text asset; generative video ships a `creative_brief` and `scenes`), either pre-produce via a creative agent's `build_creative` to get back a manifest with rendered assets OR submit the production-content assets directly and let the seller produce internally — both flows are valid.
+
+### Publisher direct (GAM/prebid path)
+
+1. The `zip` asset type (Phase 1) handles HTML5 banner bundles cleanly. URL-delivered HTML/JS routes through `url-asset.json` with appropriate `url_type`.
+2. Tag-based delivery (VAST, third-party display tags) maps to the `display_tag`, `video_vast`, and `audio_daast` canonical formats.
+3. Native canonical format is deferred to 3.2 after the TemplateCreative + OpenRTB Native 1.2 audit; until then, native formats stay on the v1 path.
+
+## Realistic timeline by adopter type
+
+| Adopter | Cost | Realistic timeline |
+|---|---|---|
+| DSP buyer agents (TTD-shaped) | Low | 3.1-3.2 |
+| SSP/sales agents (Magnite, PubMatic, retail media) | Medium-high | 3.3-4.0 |
+| Walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest) | High, low motivation | 4.0-5.0 if at all (gated on AAO providing a translator from existing format docs) |
+| Creative agents (AudioStack-shaped) | Low, high motivation | 3.1-3.2 |
+| Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
+
+## `product_card` and `product_card_detailed` are typed inline
+
+The `product_card` and `product_card_detailed` fields on the `Product` object are typed inline structures in v2 — no `format_id` indirection, no manifest. They describe the **UI rendering of the product itself** (what catalog browsers, dashboards, and admin interfaces display so humans and agents can see what a product is). Distinct from `format` (which describes the ad creative the product accepts).
+
+```json test=false
+"product_card": {
+  "image": { "asset_type": "image", "url": "https://...", "width": 300, "height": 400 },
+  "title": "Meta Reels — United States",
+  "description": "9:16 vertical short-form video on Meta Reels.",
+  "price_label": "From $5.50 CPM",
+  "cta_label": "View details"
+}
+
+"product_card_detailed": {
+  "hero_image": { "asset_type": "image", "url": "...", "width": 1200, "height": 600 },
+  "carousel_images": [ { "asset_type": "image", "url": "...", ... }, ... ],
+  "title": "Meta Reels — United States",
+  "description": "Full markdown-friendly product description...",
+  "specifications": [
+    { "label": "Aspect ratio", "value": "9:16" },
+    { "label": "Duration", "value": "3-90s" }
+  ],
+  "price_label": "From $5.50 CPM",
+  "cta_label": "Get proposal"
+}
+```
+
+Migration from v1 (where `product_card` was `{ format_id, manifest }` referencing a `product_card_standard` format file): drop the format reference; populate the typed fields directly. The image, title, and description flatten out of what was previously a manifest. v2-only adopters who don't render product cards can ignore both fields entirely.
+
+## Validating your migration
+
+Run the fixture validation against your translated products:
+
+```bash test=false
+npm run test:v2-fixtures
+```
+
+The reference fixtures at `static/examples/products/v2/` are validated against `/schemas/core/product.json`. Adopters can drop their own translated products into a sibling directory and reuse the same validator pattern.
+
+## Related
+
+- [Creative Formats v2 overview](/docs/creative/v2-overview)
+- [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — architectural decisions and rationale
+- [Asset group vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json)
+- [BrandRef schema](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json)
+- [Universal macros](/docs/creative/universal-macros) — substitution patterns referenced from canonical tracking

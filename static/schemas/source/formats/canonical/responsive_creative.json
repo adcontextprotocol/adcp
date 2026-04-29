@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/responsive_creative.json",
+  "title": "Canonical Format: Responsive Creative",
+  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Responsive Display Ads (RDA), Responsive Search Ads (RSA), Performance Max (PMax), Demand Gen, and Meta Advantage+ creative. Industry term: \"Responsive\" (Google) / \"Advantage+ creative\" (Meta) / \"Dynamic Creative\" (older Meta term). Distinct from `sponsored_placement` (catalog-driven, deterministic) and `agent_placement` (AI-surface composition). The structured `slots` field below enumerates expected canonical asset_group_id slots; per-slot count/length narrowing lives in flat parameters (`headlines_min`, `headline_max_chars`, etc.).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "headlines", "asset_type": "text", "required": true, "min": 3, "max": 15 },
+        { "asset_group_id": "long_headlines", "asset_type": "text", "required": false, "min": 1, "max": 5 },
+        { "asset_group_id": "descriptions", "asset_type": "text", "required": true, "min": 2, "max": 5 },
+        { "asset_group_id": "images_landscape", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_square", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_vertical", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "video", "asset_type": "video", "required": false, "min": 0, "max": 5 },
+        { "asset_group_id": "logo", "asset_type": "image", "required": true, "min": 1, "max": 5 },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true, "min": 1, "max": 1 }
+      ]
+    },
+    "headlines_min": { "type": "integer", "minimum": 0 },
+    "headlines_max": { "type": "integer", "minimum": 0 },
+    "headline_max_chars": { "type": "integer", "minimum": 1 },
+    "long_headlines_min": { "type": "integer", "minimum": 0 },
+    "long_headlines_max": { "type": "integer", "minimum": 0 },
+    "long_headline_max_chars": { "type": "integer", "minimum": 1 },
+    "descriptions_min": { "type": "integer", "minimum": 0 },
+    "descriptions_max": { "type": "integer", "minimum": 0 },
+    "description_max_chars": { "type": "integer", "minimum": 1 },
+    "images_landscape_min": { "type": "integer", "minimum": 0 },
+    "images_landscape_max": { "type": "integer", "minimum": 0 },
+    "images_landscape_aspect_ratio": { "type": "string" },
+    "images_square_min": { "type": "integer", "minimum": 0 },
+    "images_square_max": { "type": "integer", "minimum": 0 },
+    "images_vertical_min": { "type": "integer", "minimum": 0 },
+    "images_vertical_max": { "type": "integer", "minimum": 0 },
+    "videos_min": { "type": "integer", "minimum": 0 },
+    "videos_max": { "type": "integer", "minimum": 0 },
+    "video_min_duration_ms": { "type": "integer", "minimum": 1 },
+    "video_max_duration_ms": { "type": "integer", "minimum": 1 },
+    "logo_min": { "type": "integer", "minimum": 0 },
+    "logo_max": { "type": "integer", "minimum": 0 },
+    "logo_aspect_ratios": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "business_name_max_chars": { "type": "integer", "minimum": 1 },
+    "asset_image_max_file_size_kb": { "type": "integer", "minimum": 1 },
+    "supports_catalog_input": {
+      "type": "boolean",
+      "description": "Whether the product can additionally consume a catalog reference (e.g., PMax with product feed)."
+    }
+  },
+  "additionalProperties": true
+}
