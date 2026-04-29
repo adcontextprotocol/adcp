@@ -212,6 +212,14 @@ npx @adcp/client@latest \
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
 
+#### Reporting contract on confirmed packages
+
+Each package in the response MAY carry `committed_metrics` and `committed_vendor_metrics` — frozen snapshots of the product's `reporting_capabilities.available_metrics` and `vendor_metrics` at the moment the buy was created. These become the binding reporting contract for the package's lifetime, independent of subsequent product mutations:
+
+- `missing_metrics` on `get_media_buy_delivery` is computed against `committed_metrics` when present (against the product's current `available_metrics` when absent).
+- The fields MUST NOT change post-creation. `update_media_buy` cannot modify them; renegotiating the metric contract requires a new buy.
+- Optional in v1 (sellers without per-package snapshot infrastructure can adopt incrementally; absence is conformant). Expected to become required at the next major.
+
 ### Error Response
 
 | Field | Description |

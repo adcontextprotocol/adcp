@@ -71,6 +71,35 @@
       },
       "minItems": 1
     },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Frozen snapshot of the product's `reporting_capabilities.available_metrics` at the moment this package was created. Becomes the binding reporting contract for the package's lifetime, independent of subsequent product mutations. The seller stamps this on the `create_media_buy` response; once set, it MUST NOT change for the lifetime of the package — `update_media_buy` cannot modify it. If the buyer/seller need to renegotiate the metric contract, that is a new buy. The `missing_metrics` field on `get_media_buy_delivery` is computed against `committed_metrics` when present, and against the product's current `available_metrics` when absent (sellers without per-package snapshot infrastructure can adopt incrementally; absence is conformant). Optional in v1; expected to become required at the next major once the audit pattern is established.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "uniqueItems": true,
+      "examples": [
+        ["impressions", "spend", "completed_views", "completion_rate"],
+        ["impressions", "spend", "clicks", "ctr", "viewability"]
+      ]
+    },
+    "committed_vendor_metrics": {
+      "type": "array",
+      "description": "Frozen snapshot of the product's `reporting_capabilities.vendor_metrics` at the moment this package was created. Same contract semantics as `committed_metrics` but for vendor-defined metrics — buyers reconcile delivery against the snapshotted vendor list, not the product's live state. Optional in v1; absent means sellers without snapshot infrastructure fall back to the current `vendor_metrics` declaration. MUST NOT change post-creation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json"
+          },
+          "metric_id": {
+            "$ref": "/schemas/core/vendor-metric-id.json"
+          }
+        },
+        "required": ["vendor", "metric_id"],
+        "additionalProperties": false
+      }
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Creative assets assigned to this package",
