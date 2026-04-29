@@ -14,11 +14,12 @@ import {
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
-import { notifyComplianceChange } from '../../notifications/compliance.js';
+import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
+import { processAgentBadges } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
@@ -111,6 +112,54 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             source: 'compliance-notification',
             errorMessage: `Status transition notification failed for ${agent.agent_url}: ${notifyError instanceof Error ? notifyError.message : String(notifyError)}`,
           });
+        }
+      }
+
+      // Process AAO Verified badges
+      const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
+
+      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+        try {
+          // Resolve membership org for this agent — only orgs with an active
+          // API-access tier qualify for badge issuance. If the org downgrades
+          // or cancels, processAgentBadges will see undefined here and revoke
+          // any existing badges.
+          const orgResult = await query(
+            `SELECT mp.workos_organization_id
+             FROM member_profiles mp
+             JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
+             WHERE mp.agents @> $1::jsonb
+               AND o.membership_tier IN ('individual_professional', 'company_standard', 'company_icl', 'company_leader')
+               AND o.subscription_status IN ('active', 'past_due', 'trialing')
+             ORDER BY mp.created_at ASC
+             LIMIT 1`,
+            [JSON.stringify([{ url: agent.agent_url }])],
+          );
+          const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
+
+          const badgeResult = await processAgentBadges(
+            complianceDb,
+            agent.agent_url,
+            declaredSpecialisms,
+            storyboardStatuses,
+            dbInput.overall_status === 'passing',
+            membershipOrgId,
+          );
+
+          // Notify on badge changes
+          if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: badgeResult.issued,
+                revoked: badgeResult.revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification notification');
+            }
+          }
+        } catch (badgeError) {
+          logger.warn({ badgeError, agentUrl: agent.agent_url }, 'Badge processing failed (non-fatal)');
         }
       }
     } catch (error) {
