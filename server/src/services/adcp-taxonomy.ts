@@ -13,6 +13,20 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
+/**
+ * Verification axes for the AAO Verified mark. An agent's badge can carry
+ * any non-empty subset of these — currently 'spec' (storyboards pass against
+ * test-mode endpoint), 'live' to be added when the canonical-campaign runner
+ * ships. Order in the array is preserved at the wire and re-ordered for
+ * display.
+ */
+export const VERIFICATION_MODES = ['spec', 'live'] as const;
+export type VerificationMode = typeof VERIFICATION_MODES[number];
+
+export function isVerificationMode(value: unknown): value is VerificationMode {
+  return typeof value === 'string' && (VERIFICATION_MODES as readonly string[]).includes(value);
+}
+
 /** AdCP protocol enum — must match enums/adcp-protocol.json. */
 export type AdcpProtocol =
   | 'media-buy'

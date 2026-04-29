@@ -7,6 +7,7 @@
 
 import * as jose from 'jose';
 import { randomUUID } from 'crypto';
+import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
 
 // ── Token Payload ────────────────────────────────────────────────
 
@@ -17,9 +18,10 @@ export interface VerificationTokenPayload {
   /**
    * Verification axes earned. ['spec'] = protocol storyboards pass;
    * ['spec', 'live'] = also observed via canonical campaigns. Always
-   * includes at least 'spec'. See VERIFICATION_MODES in services/badge-svg.ts.
+   * non-empty for a real badge. Constrained to {@link VerificationMode}
+   * (see adcp-taxonomy.ts) — unknown values are filtered before signing.
    */
-  verification_modes: string[];
+  verification_modes: VerificationMode[];
   protocol_version?: string;
 }
 
@@ -83,11 +85,19 @@ export async function signVerificationToken(
   const now = Math.floor(Date.now() / 1000);
   const exp = now + TOKEN_LIFETIME_SECONDS;
 
+  // Defense in depth: filter modes against the known set before signing,
+  // so a corrupted DB row or programming error can't put an arbitrary
+  // string into a signed AAO claim.
+  const safeModes = payload.verification_modes.filter(isVerificationMode);
+  if (safeModes.length === 0) {
+    return null;
+  }
+
   const token = await new jose.SignJWT({
     agent_url: payload.agent_url,
     role: payload.role,
     verified_specialisms: payload.verified_specialisms,
-    verification_modes: payload.verification_modes,
+    verification_modes: safeModes,
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })
@@ -103,7 +113,9 @@ export async function signVerificationToken(
 }
 
 /**
- * Verify a token and return its claims. Returns null if invalid.
+ * Verify a token and return its claims. Returns null if invalid OR if the
+ * payload doesn't carry the expected fields (defense against token-format
+ * drift and pre-refactor tokens that lack `verification_modes`).
  */
 export async function verifyVerificationToken(
   token: string,
@@ -115,6 +127,23 @@ export async function verifyVerificationToken(
       issuer: ISSUER,
       audience: 'aao-verification',
     });
+
+    // Runtime-validate the claim shape. Verifiers reading
+    // claims.verification_modes get a guaranteed VerificationMode[] — never
+    // undefined — so they can branch on it without optional-chain quirks.
+    const p = payload as Record<string, unknown>;
+    if (
+      typeof p.agent_url !== 'string' ||
+      typeof p.role !== 'string' ||
+      !Array.isArray(p.verified_specialisms) ||
+      !p.verified_specialisms.every((s): s is string => typeof s === 'string') ||
+      !Array.isArray(p.verification_modes) ||
+      !p.verification_modes.every(isVerificationMode) ||
+      p.verification_modes.length === 0
+    ) {
+      return null;
+    }
+
     return payload as unknown as VerificationTokenClaims;
   } catch {
     return null;

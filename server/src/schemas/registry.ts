@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { ADCP_PROTOCOLS, ADCP_SPECIALISMS } from "../services/adcp-taxonomy.js";
+import { ADCP_PROTOCOLS, ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
@@ -274,8 +274,8 @@ export const VerificationBadgeSchema = z
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
-    verification_modes: z.array(z.enum(['spec', 'live']))
-      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. An agent may earn either or both." }),
+    verification_modes: z.array(z.enum(VERIFICATION_MODES as readonly [string, ...string[]])).min(1)
+      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional(),
   })

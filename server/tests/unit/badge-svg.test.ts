@@ -33,6 +33,18 @@ describe('renderBadgeSvg', () => {
     expect(svg).toContain('Media Buy Agent (Live)');
   });
 
+  it('drops unknown modes from the qualifier (defense against DB drift)', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec', 'platinum']);
+    // Only the known mode survives.
+    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).not.toContain('Platinum');
+  });
+
+  it('renders Not Verified when only unknown modes are present', () => {
+    const svg = renderBadgeSvg('media-buy', ['platinum']);
+    expect(svg).toContain('Not Verified');
+  });
+
   it('renders a not-verified badge when modes is empty', () => {
     const svg = renderBadgeSvg('media-buy', []);
 

@@ -6,6 +6,7 @@
 import { ComplianceDatabase, type BadgeRole, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import { deriveVerificationStatus } from '../addie/services/compliance-testing.js';
 import { signVerificationToken, isTokenSigningEnabled } from './verification-token.js';
+import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
 import { logger as baseLogger } from '../logger.js';
 
 const logger = baseLogger.child({ module: 'badge-issuance' });
@@ -64,8 +65,11 @@ export async function processAgentBadges(
       // Spec-only issuance for now. The 'live' axis lights up later when the
       // canonical-campaign runner ships; an existing 'live' mode on a badge
       // is preserved (we only add 'spec' here, never remove 'live').
-      const existingModes = existing?.verification_modes ?? [];
-      const modes = Array.from(new Set(['spec', ...existingModes]));
+      // Filter existing modes through the known set so a corrupted DB row
+      // can't pollute a re-asserted badge. 'spec' is unconditionally added
+      // because we got here from a passing storyboard heartbeat.
+      const existingModes = (existing?.verification_modes ?? []).filter(isVerificationMode);
+      const modes: VerificationMode[] = Array.from(new Set<VerificationMode>(['spec', ...existingModes]));
 
       let token: string | undefined;
       let tokenExpiresAt: Date | undefined;

@@ -37,6 +37,14 @@ CREATE TABLE IF NOT EXISTS agent_verification_badges (
   ),
   CONSTRAINT valid_badge_status CHECK (
     status IN ('active', 'degraded', 'revoked')
+  ),
+  -- Verification modes constrained to known axes. Mirrors VERIFICATION_MODES
+  -- in services/adcp-taxonomy.ts; the application also filters at write
+  -- (badge-issuance.ts) and at read (badge-svg.ts, verification-token.ts)
+  -- so the trust mark can't carry text outside this set even on data drift.
+  CONSTRAINT valid_verification_modes CHECK (
+    verification_modes <@ ARRAY['spec', 'live']::TEXT[]
+    AND array_length(verification_modes, 1) >= 1
   )
 );
 

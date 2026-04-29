@@ -2693,6 +2693,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           rec.aao_verification = {
             verified: true,
             roles: badges.map(b => b.role),
+            // Per-role verification axes. Each entry is the modes array for
+            // the role at the same index in `roles`. ['spec'] today; will
+            // include 'live' when canonical campaigns are healthy.
+            modes_by_role: Object.fromEntries(badges.map(b => [b.role, b.verification_modes])),
             verified_at: badges[0].verified_at.toISOString(),
           };
         }

@@ -10,11 +10,11 @@
  * both, e.g. "(Spec + Live)". An empty modes array renders "Not Verified".
  */
 
-import { ADCP_PROTOCOLS } from './adcp-taxonomy.js';
+import { ADCP_PROTOCOLS, VERIFICATION_MODES, isVerificationMode } from './adcp-taxonomy.js';
 
-/** Verification axes. Spec is current-PR; Live ships with the canonical-campaign runner. */
-export const VERIFICATION_MODES = ['spec', 'live'] as const;
-export type VerificationMode = typeof VERIFICATION_MODES[number];
+// Re-exported for backward compatibility — canonical home is adcp-taxonomy.ts.
+export { VERIFICATION_MODES };
+export type { VerificationMode } from './adcp-taxonomy.js';
 
 const AAO_TEAL = '#076D63'; // WCAG AA contrast ≥ 4.5:1 against white
 const LABEL_BG = '#555';
@@ -72,28 +72,33 @@ function escapeXml(str: string): string {
 
 /**
  * Format verification modes for badge display.
- * Always renders Spec before Live; unknown modes append alphabetically.
+ * Always renders Spec before Live; unknown modes are dropped (defense in
+ * depth — corrupted DB rows or third-party-injected modes don't reach
+ * public badge text). The signed JWT is filtered the same way upstream.
  *
  *   formatModes(['spec'])         → 'Spec'
  *   formatModes(['spec', 'live']) → 'Spec + Live'
  *   formatModes([])               → ''
+ *   formatModes(['platinum'])     → '' (unknown mode dropped)
  */
 function formatModes(modes: readonly string[]): string {
   const ordered: string[] = [];
   for (const known of VERIFICATION_MODES) {
     if (modes.includes(known)) ordered.push(known);
   }
-  const unknown = [...modes].filter(m => !VERIFICATION_MODES.includes(m as VerificationMode)).sort();
-  return [...ordered, ...unknown]
+  return ordered
     .map(m => m.charAt(0).toUpperCase() + m.slice(1))
     .join(' + ');
 }
 
 export function renderBadgeSvg(role: string, modes: readonly string[] = []): string {
+  // Filter to known modes — unknown values from corrupted DB rows or
+  // tampered input don't reach public badge text.
+  const safeModes = modes.filter(isVerificationMode);
   const label = 'AAO Verified';
-  const isVerified = modes.length > 0;
+  const isVerified = safeModes.length > 0;
   const roleLabel = ROLE_LABELS[role] || escapeXml(role);
-  const qualifier = formatModes(modes);
+  const qualifier = formatModes(safeModes);
   const message = isVerified
     ? (qualifier ? `${roleLabel} (${qualifier})` : roleLabel)
     : 'Not Verified';
