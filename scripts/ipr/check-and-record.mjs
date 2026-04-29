@@ -103,7 +103,7 @@ function configureGitIdentity() {
 // against contention from sibling AAO repos all writing to the same ledger.
 // Asserting the remote URL here removes a class of "future workflow edit
 // changes which checkout backs LEDGER_DIR" footguns.
-const LEDGER_REMOTE_PATTERN = /^https:\/\/[^/@]+@?github\.com\/adcontextprotocol\/adcp(\.git)?\/?$/;
+const LEDGER_REMOTE_PATTERN = /^https:\/\/(?:[^/@]+@)?github\.com\/adcontextprotocol\/adcp(\.git)?\/?$/;
 
 function assertLedgerRemote() {
   let url;
