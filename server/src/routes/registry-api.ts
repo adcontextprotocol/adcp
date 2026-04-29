@@ -615,7 +615,7 @@ registry.registerPath({
   operationId: "lookupDomain",
   summary: "Domain lookup",
   description: "Find all agents authorized for a given publisher domain.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { params: z.object({ domain: z.string().openapi({ example: "examplepub.com" }) }) },
   responses: {
     200: { description: "Domain lookup result", content: { "application/json": { schema: DomainLookupResultSchema } } },
@@ -628,7 +628,7 @@ registry.registerPath({
   operationId: "lookupProperty",
   summary: "Property identifier lookup",
   description: "Find agents that hold a specific property identifier.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { query: z.object({ type: z.string(), value: z.string() }) },
   responses: {
     200: { description: "Matching agents", content: { "application/json": { schema: z.object({ type: z.string(), value: z.string(), agents: z.array(z.unknown()), count: z.number().int() }) } } },
@@ -641,7 +641,7 @@ registry.registerPath({
   operationId: "getAgentDomains",
   summary: "Agent domain lookup",
   description: "Get all publisher domains associated with an agent.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
     200: { description: "Domains for the agent", content: { "application/json": { schema: z.object({ agent_url: z.string(), domains: z.array(z.string()), count: z.number().int() }) } } },
@@ -653,8 +653,13 @@ registry.registerPath({
   path: "/api/registry/operator",
   operationId: "lookupOperator",
   summary: "Operator lookup",
-  description: "Given a domain, returns the agents this entity operates and which publishers trust them.",
-  tags: ["Lookups & Authorization"],
+  description:
+    "Given a domain, returns the agents this entity operates and which publishers trust them.\n\n" +
+    "**Response shape is auth-aware.** Anonymous callers see only `public` agents. " +
+    "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
+    "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
+    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.",
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "pubmatic.com" }),
@@ -672,7 +677,7 @@ registry.registerPath({
   operationId: "lookupPublisher",
   summary: "Publisher lookup",
   description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
@@ -691,7 +696,7 @@ registry.registerPath({
   summary: "Validate product authorization",
   description:
     "Check whether an agent is authorized to sell a product based on its publisher_properties.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     body: {
       content: {
@@ -715,7 +720,7 @@ registry.registerPath({
   operationId: "expandProductIdentifiers",
   summary: "Expand product identifiers",
   description: "Expand publisher_properties selectors into concrete property identifiers for caching.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     body: {
       content: {
@@ -753,7 +758,7 @@ registry.registerPath({
   operationId: "validatePropertyAuthorization",
   summary: "Property authorization check",
   description: "Quick check if a property identifier is authorized for an agent. Optimized for real-time ad request validation.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       agent_url: z.string(),
