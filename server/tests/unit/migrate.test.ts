@@ -309,6 +309,12 @@ describe("Database Migrations", () => {
   });
 
   describe("advisory lock", () => {
+    // Hard-code rather than import: this *is* the wire-format check.
+    // If the constant in migrate.ts changes, that's a behavior change
+    // that requires a deliberate test update — we don't want test/source
+    // to drift in lockstep through a shared import.
+    const EXPECTED_LOCK_KEY = 0x6d696772;
+
     it("acquires and releases pg_advisory_lock around the run", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([] as any);
       mockPool.query
@@ -319,13 +325,20 @@ describe("Database Migrations", () => {
 
       expect(mockClient.query).toHaveBeenCalledWith(
         "SELECT pg_advisory_lock($1)",
-        expect.any(Array),
+        [EXPECTED_LOCK_KEY],
       );
       expect(mockClient.query).toHaveBeenCalledWith(
         "SELECT pg_advisory_unlock($1)",
-        expect.any(Array),
+        [EXPECTED_LOCK_KEY],
       );
       expect(mockClient.release).toHaveBeenCalled();
+
+      // Lock must precede the migrations table create; unlock must follow it.
+      const calls = mockClient.query.mock.calls;
+      const lockIdx = calls.findIndex((c: any[]) => c[0] === "SELECT pg_advisory_lock($1)");
+      const unlockIdx = calls.findIndex((c: any[]) => c[0] === "SELECT pg_advisory_unlock($1)");
+      expect(lockIdx).toBeGreaterThanOrEqual(0);
+      expect(unlockIdx).toBeGreaterThan(lockIdx);
     });
 
     it("releases the lock even when migrations throw", async () => {
@@ -335,9 +348,30 @@ describe("Database Migrations", () => {
 
       expect(mockClient.query).toHaveBeenCalledWith(
         "SELECT pg_advisory_unlock($1)",
-        expect.any(Array),
+        [EXPECTED_LOCK_KEY],
       );
       expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it("does not shadow migration errors when unlock itself fails", async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error("real migration error"));
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "SELECT pg_advisory_unlock($1)") {
+          return Promise.reject(new Error("unlock failed"));
+        }
+        return Promise.resolve({});
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await expect(runMigrations()).rejects.toThrow("real migration error");
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to release migration advisory lock:",
+        expect.any(Error),
+      );
+      expect(mockClient.release).toHaveBeenCalled();
+
+      warnSpy.mockRestore();
     });
   });
 });
