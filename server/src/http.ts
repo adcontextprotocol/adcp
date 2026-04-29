@@ -1035,11 +1035,34 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
-        const brandJson: Record<string, unknown> = {
-          name: brand.brand_name || domain,
-          ...manifest,
-        };
+        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
+        // not brand-attested — serving them under this URL would misrepresent third-party data
+        // as brand-authoritative. Community entries are served only when structurally valid.
+        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
+        if (!manifest) return res.status(404).json({ error: 'Brand not found' });
+
+        if (brand.source_type === 'community') {
+          // Community entries must be approved and have a recognizable brand.json root shape.
+          if (brand.review_status === 'pending') return res.status(404).json({ error: 'Brand not found' });
+          const hasValidShape =
+            (typeof manifest.house === 'object' && Array.isArray(manifest.brands)) ||
+            typeof manifest.house === 'string' ||
+            Array.isArray(manifest.agents) ||
+            Boolean(manifest.brand_agent) ||
+            typeof manifest.authoritative_location === 'string';
+          if (!hasValidShape) return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const brandJson: Record<string, unknown> =
+          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
+            ? { ...manifest }
+            : { $schema: schemaUrl, ...manifest };
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
         return res.json(brandJson);
