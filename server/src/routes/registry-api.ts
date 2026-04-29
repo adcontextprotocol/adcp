@@ -551,6 +551,9 @@ registry.registerPath({
   request: {
     query: z.object({
       type: z.enum(["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"]).optional(),
+      source: z.enum(["registered", "discovered"]).optional().openapi({
+        description: "Filter agents by registration source. Omit to receive both.",
+      }),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
@@ -570,6 +573,7 @@ registry.registerPath({
         },
       },
     },
+    400: { description: "Invalid query parameter", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -3559,6 +3563,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const withProperties = req.query.properties === "true";
       const withCompliance = req.query.compliance === "true";
 
+      // Optional source filter — narrows the response to one trust level
+      // (registered = AAO-attested opt-in; discovered = crawled from
+      // adagents.json with no opt-in). Omit to receive both, preserving
+      // the historical default. Validate explicitly so unknown values
+      // produce a 400 instead of silently being ignored.
+      const sourceParam = req.query.source;
+      let sourceFilter: "registered" | "discovered" | undefined;
+      if (typeof sourceParam === "string" && sourceParam.length > 0) {
+        if (sourceParam !== "registered" && sourceParam !== "discovered") {
+          return res.status(400).json({
+            error: "Invalid source: expected 'registered' or 'discovered'",
+          });
+        }
+        sourceFilter = sourceParam;
+      }
+
       // members_only agents are discoverable to authenticated API-access
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
@@ -3571,7 +3591,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      const federatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
+      const allFederatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
+      const federatedAgents = sourceFilter
+        ? allFederatedAgents.filter((fa) => fa.source === sourceFilter)
+        : allFederatedAgents;
 
       const agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
