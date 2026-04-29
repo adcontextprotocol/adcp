@@ -3789,6 +3789,17 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
       }
 
+      // Declared specialisms from the latest run — surfaces what the agent
+      // told us via get_adcp_capabilities so the dashboard can answer
+      // "did my agent declare what I think it did?" without re-running
+      // compliance.
+      let declaredSpecialisms: string[] = [];
+      try {
+        declaredSpecialisms = await complianceDb.getLatestDeclaredSpecialisms(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Latest declared specialisms query failed");
+      }
+
       const encodedUrl = encodeURIComponent(agentUrl);
 
       res.json({
@@ -3805,6 +3816,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         status_changed_at: status.status_changed_at?.toISOString() || null,
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
+        declared_specialisms: declaredSpecialisms,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,

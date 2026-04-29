@@ -299,6 +299,29 @@
       line-height: 1.5;
     }
     .verification-eligibility-hint a { color: var(--color-primary-600); }
+    .verification-eligibility-hint code {
+      font-size: 0.95em;
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .verification-declared-row {
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+    .verification-declared-row .verification-declared-label {
+      color: var(--color-text-muted);
+      margin-right: var(--space-1);
+    }
+    .verification-declared-row code {
+      font-size: 0.95em;
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 4px;
+    }
     .history-run {
       display: flex;
       align-items: center;
@@ -1339,6 +1362,7 @@
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             ${visibilitySelectorHtml}
+            ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
               <span></span>
               <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
@@ -1459,25 +1483,42 @@
           .join(' + ');
       };
 
+      const declaredSpecialisms = Array.isArray(cs?.declared_specialisms) ? cs.declared_specialisms : [];
+
       // No badges yet — show diagnostic hint scoped to the actual situation.
+      // The branch order here mirrors pickVerificationHint() in
+      // server/src/services/verification-hint.ts (tested decision matrix).
+      // Keep them in sync.
       if (badges.length === 0) {
-        const isPassing = cs && cs.status === 'passing';
+        const status = cs?.status;
         let hint;
         if (!hasAuth) {
-          hint = 'Connect your agent (above) to start receiving compliance checks. Once storyboards pass and your AAO membership is active, you\'ll earn AAO Verified (Spec) automatically.';
-        } else if (isPassing) {
-          hint = 'Storyboards are passing — your badge should issue on the next heartbeat. If it doesn\'t, check that your <code>get_adcp_capabilities</code> response declares the specialisms you intend to claim, and that your AAO membership is on an API-access tier.';
-        } else if (cs && cs.status === 'opted_out') {
-          hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring above to be eligible.';
+          hint = 'Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you\'ll earn AAO Verified (Spec) automatically.';
+        } else if (status === 'opted_out') {
+          hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
+        } else if (status === 'passing' && declaredSpecialisms.length === 0) {
+          hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
+        } else if (status === 'passing') {
+          hint = 'Storyboards are passing — your badge should issue on the next heartbeat. If it doesn\'t, check that your AAO membership is on an API-access tier.';
+        } else if (status === 'failing' || status === 'degraded') {
+          hint = declaredSpecialisms.length === 0
+            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
+            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         } else {
-          hint = 'Earn AAO Verified (Spec) by passing the storyboards for your declared specialisms. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
+          hint = 'Compliance check will run on the next heartbeat. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         }
+        const declaredHtml = declaredSpecialisms.length
+          ? '<div class="verification-declared-row"><span class="verification-declared-label">Declared specialisms:</span> ' +
+            declaredSpecialisms.slice().sort().map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') +
+            '</div>'
+          : '';
         return `
           <div class="agent-verification-panel agent-verification-panel-empty">
             <div class="agent-verification-header">
               <span>AAO Verified</span>
               <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">No badges yet</span>
             </div>
+            ${declaredHtml}
             <div class="verification-eligibility-hint">${hint}</div>
           </div>`;
       }

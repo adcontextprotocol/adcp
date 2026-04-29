@@ -467,6 +467,25 @@ export class ComplianceDatabase {
     return result.rows;
   }
 
+  async getLatestDeclaredSpecialisms(agentUrl: string): Promise<string[]> {
+    const result = await query(
+      `SELECT agent_profile_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    const profile = result.rows[0]?.agent_profile_json;
+    const list = profile?.specialisms;
+    if (list != null && !Array.isArray(list)) {
+      logger.debug({ agentUrl, specialismsType: typeof list }, 'agent_profile_json.specialisms is not an array');
+      return [];
+    }
+    if (!Array.isArray(list)) return [];
+    return list.filter((s: unknown): s is string => typeof s === 'string');
+  }
+
   // ----- Due-for-Check Query -----
 
   /**

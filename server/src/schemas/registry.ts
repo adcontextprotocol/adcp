@@ -296,6 +296,7 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
