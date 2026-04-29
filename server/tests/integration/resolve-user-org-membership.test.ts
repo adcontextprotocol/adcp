@@ -62,7 +62,7 @@ describe('resolveUserOrgMembership', () => {
       // workos arg is a no-op in dev path — pass null to prove it.
       const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
 
-      expect(result).toEqual({ role: 'owner', status: 'active' });
+      expect(result).toEqual({ role: 'owner', status: 'active', via_dev_bypass: true });
     });
 
     it('returns null for a dev user who has no membership in the requested org', async () => {
@@ -80,7 +80,7 @@ describe('resolveUserOrgMembership', () => {
 
       const result = await resolveUserOrgMembership(null, DEV_MEMBER_USER, DEV_ORG);
 
-      expect(result).toEqual({ role: 'member', status: 'active' });
+      expect(result).toEqual({ role: 'member', status: 'active', via_dev_bypass: true });
     });
 
     it('falls through to WorkOS for users not in DEV_USERS even when dev mode is enabled', async () => {
@@ -95,7 +95,7 @@ describe('resolveUserOrgMembership', () => {
       // NON_DEV_USER isn't in DEV_USERS, so we hit WorkOS even in dev mode.
       const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
 
-      expect(result).toEqual({ role: 'admin', status: 'active' });
+      expect(result).toEqual({ role: 'admin', status: 'active', via_dev_bypass: false });
       expect(mockWorkos.userManagement.listOrganizationMemberships).toHaveBeenCalledWith({
         userId: NON_DEV_USER,
         organizationId: NON_DEV_ORG,
