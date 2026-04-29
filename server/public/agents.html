@@ -612,13 +612,6 @@
         return 'Unclassified';
     }
 
-    // Sales agents (sell-side, expose get_products / create_media_buy) and
-    // buying agents (buy-side) share the same commerce-tool surface — publishers,
-    // properties, products, AdCP spec checks all apply to both.
-    function isCommerceType(type) {
-        return type === 'sales' || type === 'buying';
-    }
-
     function renderAgents() {
         const container = document.getElementById('agents-grid');
 
@@ -694,7 +687,7 @@
                 `;
             }
 
-            if (isCommerceType(agent.type) && agent.properties.length > 0) {
+            if (agent.type === 'sales' && agent.properties.length > 0) {
                 metaHtml += `
                     <div class="meta-item">
                         <span class="meta-value">${agent.properties.length}</span> properties
@@ -746,7 +739,7 @@
 
             let extrasHtml = '';
 
-            if (isCommerceType(agent.type) && agent.properties.length > 0) {
+            if (agent.type === 'sales' && agent.properties.length > 0) {
                 extrasHtml = `
                     <div class="agent-properties">
                         <div class="property-section-small">
@@ -922,7 +915,7 @@
             if (agentWithCaps?.capabilities) {
                 const caps = agentWithCaps.capabilities;
 
-                if (isCommerceType(agent.type) && caps.tools) {
+                if (agent.type === 'sales' && caps.tools) {
                     const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
                     const coreTools = ['get_products', 'create_media_buy', 'update_media_buy', 'get_media_buy_delivery'];
                     const optionalTools = ['sync_creatives', 'list_authorized_properties', 'list_creative_formats', 'build_creative'];
@@ -1009,8 +1002,11 @@
                 `;
             }
 
-            // Type-specific sections
-            if (isCommerceType(agent.type)) {
+            // Type-specific sections — Publishers & properties is sales-only.
+            // Buying agents don't have publishers in adagents.json and don't
+            // expose list_authorized_properties, so this surface is meaningless
+            // for them.
+            if (agent.type === 'sales') {
                 html += `
                     <div class="detail-section">
                         <h3>Publishers &amp; properties</h3>
@@ -1087,7 +1083,7 @@
 
             // Fetch tools and additional data
             fetchTools(agent);
-            if (isCommerceType(agent.type)) {
+            if (agent.type === 'sales') {
                 fetchPublishers(agent);
 
                 const productsDetails = document.querySelector('#products-section').closest('details');
