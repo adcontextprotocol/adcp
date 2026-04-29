@@ -21,6 +21,7 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { processAgentBadges } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from '../../services/membership-tiers.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
@@ -129,11 +130,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
              FROM member_profiles mp
              JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
              WHERE mp.agents @> $1::jsonb
-               AND o.membership_tier IN ('individual_professional', 'company_standard', 'company_icl', 'company_leader')
-               AND o.subscription_status IN ('active', 'past_due', 'trialing')
+               AND o.membership_tier = ANY($2::text[])
+               AND o.subscription_status = ANY($3::text[])
              ORDER BY mp.created_at ASC
              LIMIT 1`,
-            [JSON.stringify([{ url: agent.agent_url }])],
+            [
+              JSON.stringify([{ url: agent.agent_url }]),
+              [...API_ACCESS_TIERS],
+              [...ACTIVE_SUBSCRIPTION_STATUSES],
+            ],
           );
           const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
 
