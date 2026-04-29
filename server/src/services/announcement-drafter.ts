@@ -76,6 +76,14 @@ Rules:
 - If the tagline is generic, lean on the offerings and agents for
   specificity. If those are thin too, stay short rather than padding.
 - Do not use the member's voice ("we're ...") — write as AAO.
+- Do not refer to the member's tier as a label or noun phrase
+  ("as a Company member", "Company-tier member", "ICL member",
+  "Individual Professional member"). Tier is internal context only;
+  it does not appear in the output. Call them a member of
+  AgenticAdvertising.org. Vary your opener; example shapes:
+  "Welcome <Name>, the newest member of AgenticAdvertising.org",
+  "<Name> just joined AgenticAdvertising.org",
+  "AgenticAdvertising.org has a new member: <Name>".
 - Never include @channel, @here, @everyone, or Slack channel mentions.
 - Never include URLs other than the profile URL provided below.
 - Slack copy: Slack mrkdwn only. Use <url|label> for links.
