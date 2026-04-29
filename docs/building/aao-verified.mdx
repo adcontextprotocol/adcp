@@ -17,7 +17,9 @@ It is two axes, not two tiers. The qualifiers answer different questions:
 
 An agent can earn either axis or both. A pure protocol wrapper around a stub ad server is honestly **Verified (Spec)** — that's what test agents and sandbox environments *are*. A real production seller with both an AdCP wrapper and a working ad server earns **Verified (Spec + Live)**, the strongest claim available.
 
-The two axes are related but not hierarchical. (Spec) is a *prerequisite* for measuring (Live) — AAO can't run a real campaign through a broken protocol implementation, so a storyboard regression blocks (Live) issuance even when delivery looks fine. But they answer different questions and the badge surfaces both qualifiers as they're earned.
+The two axes are **orthogonal** — neither is a prerequisite for the other. A seller without a sandbox/test endpoint (common for SDK-built agents whose correctness is guaranteed by the SDK, or for production-only platforms that have no test-mode surface) can earn **(Live)** directly by enrolling a compliance account; the eight observability checks already exercise wire format, filters, lifecycle, and scope introspection through real traffic, which makes a separate simulation pass redundant for that seller. Conversely, a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
+
+The two axes are related but answer different questions, and the badge surfaces whichever qualifiers are earned.
 
 <Tip>
 **TL;DR for sellers.** (Spec) is automatic for any agent passing storyboards on a test-mode endpoint with active AAO membership. (Live) is opt-in: designate one compliance account with real live campaigns (PSA / remnant / house / genuine revenue all qualify), grant the AAO compliance engine the `attestation_verifier` scope, and you're done. The same compliance engine that runs your storyboards monitors delivery on that account over a 7–14 day rolling window. Signal healthy → (Live) qualifier holds; signal degrades → it lapses. Today (AdCP 3.x) the webhook-attached path requires a dedicated compliance tenant because `reporting_webhook` is single-slot; AdCP 4.0 relaxes that via [#3009](https://github.com/adcontextprotocol/adcp/issues/3009).
@@ -44,7 +46,7 @@ The two axes are related but not hierarchical. (Spec) is a *prerequisite* for me
 | **What it proves** | A real ad server / decisioning engine / creative renderer is behind the protocol. Real impressions delivered on real inventory. Reporting flows through AdCP. Lifecycle transitions surface correctly. The eight observability checks below all hold. |
 | **How** | Continuous observability on a designated compliance account, run by the AAO compliance engine over a 7–14 day rolling window |
 | **Cadence** | Continuous; mark expires automatically when signals degrade |
-| **Eligibility** | Currently holds **(Spec)** + has enrolled in observability (designated compliance account + `attestation_verifier` scope granted) + signals are healthy |
+| **Eligibility** | Has enrolled in observability (designated compliance account + `attestation_verifier` scope granted) + signals are healthy across the rolling window. **Independent of (Spec)** — sellers without a test-mode endpoint can earn (Live) directly. |
 | **Status** | **Lights up in 3.1** when the canonical-campaign runner is operational. The eight-check observability machinery ships now and runs against operator-designated accounts; it pivots to AAO-operated canonical campaigns when the runner is in place. |
 
 The (Live) axis is the strongest signal a buyer can rely on: AAO is the active counterparty, not just an attesting body. If something breaks in the production code path, the compliance engine sees it within days and the qualifier expires.
@@ -73,9 +75,9 @@ Badges render as a single shields.io-style image with the qualifiers in parens:
 
 | Display | Meaning |
 |---|---|
-| `AAO Verified Sales Agent (Spec)` | Storyboards pass for declared media-buy specialisms; live traffic not yet observed (or no Live path exists for this agent's specialisms). |
+| `AAO Verified Sales Agent (Spec)` | Storyboards pass for declared media-buy specialisms; live traffic not yet observed, not yet enrolled, or no Live path exists for this agent's specialisms. Common for test agents and pre-production rollouts. |
 | `AAO Verified Sales Agent (Spec + Live)` | Both axes earned. The strongest claim. |
-| `AAO Verified Sales Agent (Live)` | Live observability is healthy but Spec is currently failing — rare and transient. The badge will revoke (Live) once the storyboard regression triggers Spec revocation, since Live cannot be measured against a broken protocol. |
+| `AAO Verified Sales Agent (Live)` | Real production traffic is observed healthy across the rolling window. Common for SDK-built agents and production-only sellers without a test-mode endpoint — the eight observability checks already exercise wire format, filters, lifecycle, and scope, so a parallel storyboard pass would be redundant. |
 | `AAO Verified — Not Verified` | No badge issued for this agent + role, or the badge has been revoked. |
 
 The badge URL is stable per agent + role. As an agent earns or loses an axis, the SVG content updates without changing the URL — embedded badges automatically reflect the current state.
@@ -234,14 +236,14 @@ Verification is continuously re-evaluated, not a one-time certificate.
 - **Issued** — first heartbeat with all declared-specialism storyboards passing + active membership.
 - **Active** — re-checked every heartbeat; JWT auto-renewed.
 - **Degraded** — first storyboard regression starts a 48-hour grace; the badge continues to render (Spec) while the operator investigates.
-- **Revoked** — 48h continuous failure → `(Spec)` qualifier drops from the badge. If `(Live)` was also held, that drops too — (Live) cannot be held without (Spec) being measurable.
+- **Revoked** — 48h continuous failure → `(Spec)` qualifier drops from the badge. (Live), if held, is unaffected — the axes are independent.
 - **Recovery** — passing storyboards reissue (Spec) automatically.
 
 ### (Live)
 - **Issued** — eight checks healthy across the rolling window for an enrolled compliance account.
 - **Active** — continuous observation; mark stays as long as signals are healthy.
 - **Degraded** — any check fails → 48-hour grace. Particular failures (check 7 mismatch with secondary-identity probes) MAY skip the grace period and revoke immediately.
-- **Revoked** — 48h continuous failure → `(Live)` qualifier drops. (Spec) is unaffected.
+- **Revoked** — 48h continuous failure → `(Live)` qualifier drops. (Spec), if held, is unaffected.
 - **Recovery** — sustained healthy window reissues (Live).
 
 Membership lapse revokes the entire badge regardless of test results — public trust marks require active membership.
@@ -250,11 +252,12 @@ Membership lapse revokes the entire badge regardless of test results — public 
 
 A seller MAY hold:
 
-- **(Spec) only** (default for storyboard-passing sellers without (Live) enrollment yet, or for capabilities without a (Live) path)
-- **(Spec + Live)** (the strongest claim — both axes verified)
+- **(Spec) only** — storyboards pass on a test-mode endpoint; (Live) not enrolled, or no (Live) path exists for the agent's specialisms. Common for test agents, sandboxes, and pre-production rollouts.
+- **(Live) only** — real production traffic observed healthy across the rolling window. Common for SDK-built agents whose wire-format correctness is guaranteed by the SDK, and for production-only platforms with no test-mode surface. The eight observability checks already exercise wire format, filters, lifecycle, and scope, so requiring a parallel storyboard pass would be busywork.
+- **(Spec + Live)** — the strongest claim. Both axes verified independently.
 - **Neither**
 
-A seller cannot hold (Live) without (Spec) — a storyboard regression blocks (Live) issuance even when live campaigns look fine, because storyboards catch wire-format violations that live data might paper over.
+The two axes are evaluated independently. A storyboard regression revokes (Spec) without affecting (Live); an observability check failure revokes (Live) without affecting (Spec). Sellers can earn either in either order.
 
 ## Display
 
