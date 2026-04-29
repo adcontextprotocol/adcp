@@ -1316,7 +1316,7 @@ export class AdAgentsManager {
     }
 
     try {
-      const { AdCPClient, is401Error } = await import('@adcp/sdk');
+      const { AdCPClient } = await import('@adcp/sdk');
       const multiClient = new AdCPClient([{
         id: 'health-check',
         name: 'Health Checker',
