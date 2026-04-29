@@ -11,7 +11,7 @@
 -- corrupt the registry. We use the strongest available signal:
 --
 --   The agent URL exists in discovered_agents with agent_type = 'sales'.
---   Post-453, this means the agent's MCP tool listing actually advertises
+--   Post-454, this means the agent's MCP tool listing actually advertises
 --   SALES_TOOLS (get_products / create_media_buy / list_authorized_properties).
 --   The agent IS sell-side regardless of how the member labelled it.
 --
@@ -20,7 +20,7 @@
 -- from offerings entirely, so that branch is dead at runtime. Dropped here
 -- for clarity. Sales agents that haven't been crawled yet (no discovered_agents
 -- row) stay as 'buying' until either a future crawl picks them up or the
--- prevention layer in PR #3 corrects them at the next registration write.
+-- prevention layer in PR #3498 corrects them at the next registration write.
 
 UPDATE member_profiles mp
 SET agents = (
