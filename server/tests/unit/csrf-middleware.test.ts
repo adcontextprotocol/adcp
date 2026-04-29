@@ -114,6 +114,9 @@ describe('csrfProtection', () => {
 
   const exemptExactPaths = [
     '/mcp',
+    '/mcp-strict',
+    '/mcp-strict-required',
+    '/mcp-strict-forbidden',
     '/stripe-webhook',
     '/auth/bridge-callback',
     '/token',
@@ -132,6 +135,31 @@ describe('csrfProtection', () => {
     const req = mockReq({
       method: 'POST',
       path: '/api/webhook', // no trailing slash — NOT /api/webhooks/
+      cookies: { 'csrf-token': token },
+      headers: {} as Record<string, string>,
+    });
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res._status).toBe(403);
+  });
+
+  // Guards EXEMPT_EXACT against a future refactor that switches `Array.includes`
+  // to `startsWith`. Today's check is exact equality, so these paths must
+  // continue to be rejected even though they look like exempt entries.
+  const nearMissExactPaths = [
+    '/mcp-stricter',           // strict-prefix only
+    '/mcp-strict-extra',       // appended segment, no slash
+    '/mcp-strict/extra',       // appended path
+    '/mcps',                   // ambiguous bare /mcp variant
+    '/mcp-strictly',           // strict-prefix variant
+  ];
+
+  it.each(nearMissExactPaths)('rejects POST to %s — must NOT match exempt-exact entries', (path) => {
+    const token = 'a'.repeat(64);
+    const req = mockReq({
+      method: 'POST',
+      path,
       cookies: { 'csrf-token': token },
       headers: {} as Record<string, string>,
     });

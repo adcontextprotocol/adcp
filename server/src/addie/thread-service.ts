@@ -12,6 +12,23 @@
 import { query, getPool } from '../db/client.js';
 import { logger } from '../logger.js';
 
+// Postgres TEXT and JSONB both reject U+0000. Tool results occasionally
+// surface null bytes from upstream APIs, which would otherwise blow up the
+// addMessage INSERT with "unsupported Unicode escape sequence" (JSONB) or
+// "invalid byte sequence for UTF8" (TEXT). Strip them at the boundary.
+const NULL_BYTE = String.fromCharCode(0);
+const NULL_BYTE_RE = new RegExp(NULL_BYTE, 'g');
+
+function stripNullBytesString(s: string): string {
+  return s.includes(NULL_BYTE) ? s.replace(NULL_BYTE_RE, '') : s;
+}
+
+function stripNullBytesFromJson(json: string): string {
+  // JSON.stringify encodes a null byte as a six-character backslash-u escape.
+  // Strip that encoded form and any raw null byte left in the output.
+  return json.replace(/\\u0000/g, '').replace(NULL_BYTE_RE, '');
+}
+
 // =====================================================
 // TYPES
 // =====================================================
@@ -132,6 +149,14 @@ export interface CreateMessageInput {
   config_version_id?: number;
   // Email threading — RFC 822 Message-ID or Resend ID for threading replies
   email_message_id?: string;
+  // Per-message speaker identity. Required to disambiguate speakers in
+  // multi-human Slack channel threads where addie_threads.user_id is only
+  // the thread starter. Optional for assistant/system rows and legacy paths.
+  user_id?: string;
+  user_display_name?: string;
+  // How the user initiated this message. Only populated on role='user' rows.
+  // NULL on rows predating migration 451 (2026-04-28).
+  message_source?: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown';
 }
 
 export interface ThreadMessage {
@@ -186,6 +211,10 @@ export interface ThreadMessage {
   config_version_id: number | null;
   // Email threading
   email_message_id: string | null;
+  // Per-message speaker identity (see CreateMessageInput).
+  user_id: string | null;
+  user_display_name: string | null;
+  message_source: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown' | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -334,7 +363,7 @@ export class ThreadService {
   async updateThreadTitle(threadId: string, title: string): Promise<void> {
     await query(
       `UPDATE addie_threads SET title = $2, updated_at = NOW() WHERE thread_id = $1`,
-      [threadId, title]
+      [threadId, title.slice(0, 500)]
     );
   }
 
@@ -430,23 +459,24 @@ export class ThreadService {
           flagged, flag_reason, sequence_number,
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
-          router_decision, config_version_id, email_message_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          router_decision, config_version_id, email_message_id,
+          user_id, user_display_name, message_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
         RETURNING *`,
         [
           input.thread_id,
           input.role,
-          input.content,
-          input.content_sanitized ?? null,
-          input.tools_used ?? null,
-          input.tool_calls ? JSON.stringify(input.tool_calls) : null,
+          stripNullBytesString(input.content),
+          input.content_sanitized != null ? stripNullBytesString(input.content_sanitized) : null,
+          input.tools_used ? input.tools_used.map(stripNullBytesString) : null,
+          input.tool_calls ? stripNullBytesFromJson(JSON.stringify(input.tool_calls)) : null,
           input.knowledge_ids ?? null,
           input.model ?? null,
           input.latency_ms ?? null,
           input.tokens_input ?? null,
           input.tokens_output ?? null,
           input.flagged ?? false,
-          input.flag_reason ?? null,
+          input.flag_reason != null ? stripNullBytesString(input.flag_reason) : null,
           sequenceNumber,
           input.timing?.system_prompt_ms ?? null,
           input.timing?.total_llm_ms ?? null,
@@ -455,9 +485,12 @@ export class ThreadService {
           input.tokens_cache_creation ?? null,
           input.tokens_cache_read ?? null,
           input.active_rule_ids ?? null,
-          input.router_decision ? JSON.stringify(input.router_decision) : null,
+          input.router_decision ? stripNullBytesFromJson(JSON.stringify(input.router_decision)) : null,
           input.config_version_id ?? null,
-          input.email_message_id ?? null,
+          input.email_message_id != null ? stripNullBytesString(input.email_message_id) : null,
+          input.user_id ?? null,
+          input.user_display_name != null ? stripNullBytesString(input.user_display_name) : null,
+          input.message_source ?? null,
         ]
       );
 
@@ -621,6 +654,13 @@ export class ThreadService {
     // Determine if we need to join with messages table for search/tool filtering
     const needsMessageJoin = !!(filters.search_text || filters.tool_name);
 
+    // user_search matches across all identifiers an admin might describe a
+    // person by — full name, Slack handle, real name, WorkOS first/last
+    // name, or any of the email addresses we know about. Without these
+    // joins, harmonizing thread.user_display_name to "Brian O'Kelley"
+    // would orphan admins searching by Slack handle "bokelley".
+    const needsUserSearchJoins = !!filters.user_search;
+
     if (filters.channel) {
       conditions.push(`s.channel = $${paramIndex++}`);
       params.push(filters.channel);
@@ -657,9 +697,25 @@ export class ThreadService {
       params.push(filters.since);
     }
 
-    // User display name search (ILIKE for partial matching)
+    // Cross-identifier user search: match the term against every name and
+    // email we have for the thread's owner — thread display name, raw
+    // user_id (which carries the email for email threads), Slack mapping
+    // fields (handle/real name/Slack email), and WorkOS profile fields
+    // (email/first/last). The `sm.*` and `u.*` aliases below are valid
+    // only because `needsUserSearchJoins` adds the matching LEFT JOINs
+    // when this filter is set — keep the two in lockstep.
     if (filters.user_search) {
-      conditions.push(`s.user_display_name ILIKE $${paramIndex++}`);
+      const idx = paramIndex++;
+      conditions.push(`(
+        s.user_display_name ILIKE $${idx} OR
+        s.user_id ILIKE $${idx} OR
+        sm.slack_display_name ILIKE $${idx} OR
+        sm.slack_real_name ILIKE $${idx} OR
+        sm.slack_email ILIKE $${idx} OR
+        u.email ILIKE $${idx} OR
+        u.first_name ILIKE $${idx} OR
+        u.last_name ILIKE $${idx}
+      )`);
       params.push(`%${filters.user_search}%`);
     }
 
@@ -681,11 +737,25 @@ export class ThreadService {
 
     params.push(limit, offset);
 
+    // User-search joins: slack_user_mappings keys off the Slack thread's
+    // user_id; users keys off the WorkOS id (either the thread's own
+    // user_id when user_type='workos', or the WorkOS id resolved through
+    // the Slack mapping). Both are LEFT JOINs so threads without a
+    // matching row simply contribute NULLs and fall out of the OR match.
+    const userSearchJoins = needsUserSearchJoins
+      ? `LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = s.user_id
+         LEFT JOIN users u ON u.workos_user_id = COALESCE(
+           sm.workos_user_id,
+           CASE WHEN s.user_type = 'workos' THEN s.user_id END
+         )`
+      : '';
+
     let sql: string;
     if (needsMessageJoin) {
       // Join with messages table for text/tool search, use DISTINCT to avoid duplicates
       sql = `SELECT DISTINCT ON (s.last_message_at, s.thread_id) s.*
              FROM addie_threads_summary s
+             ${userSearchJoins}
              JOIN addie_thread_messages m ON s.thread_id = m.thread_id
              ${whereClause}
              ORDER BY s.last_message_at DESC, s.thread_id
@@ -694,6 +764,7 @@ export class ThreadService {
       // Simple query without join
       sql = `SELECT s.*
              FROM addie_threads_summary s
+             ${userSearchJoins}
              ${whereClause}
              ORDER BY s.last_message_at DESC
              LIMIT $${paramIndex++} OFFSET $${paramIndex}`;

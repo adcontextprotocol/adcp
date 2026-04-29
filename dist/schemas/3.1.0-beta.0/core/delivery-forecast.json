@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/delivery-forecast.json",
+  "title": "Delivery Forecast",
+  "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help buyers evaluate expected campaign performance before purchase.",
+  "type": "object",
+  "properties": {
+    "points": {
+      "type": "array",
+      "description": "Forecasted delivery data points. For spend curves (default), points at ascending budget levels show how metrics scale with spend. For availability forecasts, points represent total available inventory independent of budget. See forecast_range_unit for interpretation.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/forecast-point.json"
+      },
+      "minItems": 1
+    },
+    "forecast_range_unit": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/forecast-range-unit.json",
+      "description": "How to interpret the points array. 'spend' (default when omitted): points at ascending budget levels. 'availability': total available inventory, budget omitted. 'reach_freq': points at ascending reach/frequency targets. 'weekly'/'daily': metrics are per-period values. 'clicks'/'conversions': points at ascending outcome targets. 'package': each point is a distinct inventory package."
+    },
+    "method": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/forecast-method.json",
+      "description": "Method used to produce this forecast"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for monetary values in this forecast (spend, budget)"
+    },
+    "demographic_system": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/demographic-system.json",
+      "description": "Measurement system for the demographic field. Ensures buyer and seller agree on demographic notation."
+    },
+    "demographic": {
+      "type": "string",
+      "description": "Target demographic code within the specified demographic_system. For Nielsen: P18-49, M25-54, W35+. For BARB: ABC1 Adults, 16-34. For AGF: E 14-49.",
+      "examples": ["P18-49", "A25-54", "W35+", "M18-34"]
+    },
+    "measurement_source": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Third-party measurement provider whose data was used to produce this forecast. Distinct from demographic_system, which specifies demographic notation — measurement_source identifies whose data produced the forecast numbers. Should be present when measured_impressions is used. Lowercase slug format.",
+      "examples": ["nielsen", "videoamp", "comscore", "geopath", "barb", "agf", "oztam", "kantar", "barc", "route", "rajar", "triton"]
+    },
+    "reach_unit": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/reach-unit.json",
+      "description": "Unit of measurement for reach and audience_size metrics in this forecast. Required for cross-channel forecast comparison."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast was computed"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast expires. After this time, the forecast should be refreshed. Forecast expiry does not affect proposal executability."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": ["points", "method", "currency"],
+  "additionalProperties": true
+}

@@ -11,8 +11,8 @@ Discover available advertising products based on campaign requirements using nat
 
 **Response Time**: ~60 seconds (AI inference with back-end systems)
 
-**Request Schema**: [`/schemas/latest/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Quick Start
 
@@ -171,6 +171,7 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `geo_proximity` | object[] | Filter by proximity to geographic points. Each entry uses exactly one boundary method: `radius`, `travel_time` + `transport_mode`, or `geometry` |
 | `keywords` | object[] | Filter by keyword relevance for search/retail media. Each entry: `{ keyword, match_type? }`. `match_type` defaults to `broad` if omitted |
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
+| `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 
 ### Budget Range Object
 
@@ -317,7 +318,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
-**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-response.json)
+**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Common Scenarios
 

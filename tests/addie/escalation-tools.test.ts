@@ -36,6 +36,8 @@ vi.mock('../../server/src/db/addie-db.js', () => ({
   })),
 }));
 
+import { createEscalationToolHandlers } from '../../server/src/addie/mcp/escalation-tools.js';
+
 const mockMemberContext: MemberContext = {
   is_mapped: true,
   is_member: true,
@@ -55,8 +57,7 @@ const mockMemberContext: MemberContext = {
 };
 
 beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
+  mockListEscalationsForUser.mockReset();
   mockListEscalationsForUser.mockResolvedValue([]);
 });
 
@@ -64,7 +65,6 @@ describe('get_escalation_status', () => {
   test('returns empty message when user has no escalations', async () => {
     mockListEscalationsForUser.mockResolvedValue([]);
 
-    const { createEscalationToolHandlers } = await import('../../server/src/addie/mcp/escalation-tools.js');
     const handlers = createEscalationToolHandlers(mockMemberContext, 'U_SLACK_123', 'thread_abc');
     const getStatus = handlers.get('get_escalation_status')!;
 
@@ -104,7 +104,6 @@ describe('get_escalation_status', () => {
       },
     ]);
 
-    const { createEscalationToolHandlers } = await import('../../server/src/addie/mcp/escalation-tools.js');
     const handlers = createEscalationToolHandlers(mockMemberContext, 'U_SLACK_123', 'thread_abc');
     const getStatus = handlers.get('get_escalation_status')!;
 
@@ -121,7 +120,6 @@ describe('get_escalation_status', () => {
   });
 
   test('returns error when user identity is unavailable', async () => {
-    const { createEscalationToolHandlers } = await import('../../server/src/addie/mcp/escalation-tools.js');
     // No member context, no slack user ID
     const handlers = createEscalationToolHandlers(null, undefined, undefined);
     const getStatus = handlers.get('get_escalation_status')!;
@@ -136,7 +134,6 @@ describe('get_escalation_status', () => {
   test('handles DB errors gracefully', async () => {
     mockListEscalationsForUser.mockRejectedValue(new Error('DB connection failed'));
 
-    const { createEscalationToolHandlers } = await import('../../server/src/addie/mcp/escalation-tools.js');
     const handlers = createEscalationToolHandlers(mockMemberContext, 'U_SLACK_123', 'thread_abc');
     const getStatus = handlers.get('get_escalation_status')!;
 

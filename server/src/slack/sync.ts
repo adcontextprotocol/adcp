@@ -15,7 +15,7 @@ import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
 import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import { getPool } from '../db/client.js';
-import { workos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
 import type { SyncSlackUsersResult } from './types.js';
 
@@ -27,8 +27,8 @@ const workingGroupDb = new WorkingGroupDatabase();
  * the first member gets 'owner' to prevent ownerless orgs.
  */
 async function roleForNewMember(orgId: string): Promise<'owner' | 'member'> {
-  if (!workos) return 'member';
   try {
+    const workos = getWorkos();
     const memberships = await workos.userManagement.listOrganizationMemberships({
       organizationId: orgId,
       statuses: ['active', 'inactive', 'pending'],
@@ -673,7 +673,7 @@ export async function checkAndAssignOrganizationByDomain(
       'Adding user to organization based on email domain'
     );
 
-    await workos.userManagement.createOrganizationMembership({
+    await getWorkos().userManagement.createOrganizationMembership({
       userId: workosUserId,
       organizationId: targetOrgId,
       roleSlug: role,
@@ -857,7 +857,7 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
     try {
       let after: string | undefined;
       do {
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await getWorkos().userManagement.listOrganizationMemberships({
           organizationId: orgId,
           statuses: ['active', 'inactive', 'pending'],
           limit: 100,
@@ -888,7 +888,7 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
       const role = hasAdmin ? 'member' : 'owner';
 
       try {
-        await workos.userManagement.createOrganizationMembership({
+        await getWorkos().userManagement.createOrganizationMembership({
           userId: user.workos_user_id,
           organizationId: orgId,
           roleSlug: role,

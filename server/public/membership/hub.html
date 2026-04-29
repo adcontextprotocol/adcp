@@ -1354,11 +1354,28 @@
       window.location.href = '/auth/login?return_to=/member-hub';
     }
 
-    document.addEventListener('DOMContentLoaded', loadHub);
+    document.addEventListener('DOMContentLoaded', () => {
+      loadHub();
+      maybeShowConnectedToast();
+    });
+
+    function maybeShowConnectedToast() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('connected') !== 'github') return;
+      const toast = document.createElement('div');
+      toast.textContent = 'GitHub connected. Ask Addie to file your issue now.';
+      toast.style.cssText = 'position:fixed; top:var(--space-4); right:var(--space-4); background:#059669; color:#fff; padding:var(--space-3) var(--space-4); border-radius:var(--radius-md); box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:9999; font-size:var(--text-sm); font-weight:500; max-width:340px;';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.style.opacity = '0', 4500);
+      setTimeout(() => toast.remove(), 5000);
+      params.delete('connected');
+      const newSearch = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (newSearch ? '?' + newSearch : ''));
+    }
 
     async function loadHub() {
       try {
-        const [engRes, meRes, communityRes, certRes, tracksRes, contentRes, perspectivesRes, journeyRes] = await Promise.all([
+        const [engRes, meRes, communityRes, certRes, tracksRes, contentRes, perspectivesRes, journeyRes, githubRes] = await Promise.all([
           fetch('/api/me/engagement'),
           fetch('/api/me', { credentials: 'include' }),
           fetch('/api/me/community/hub', { credentials: 'include' }),
@@ -1367,6 +1384,7 @@
           fetch('/api/me/content?limit=6', { credentials: 'include' }),
           fetch('/api/perspectives?authored=true&limit=6', { credentials: 'include' }),
           fetch('/api/me/journey', { credentials: 'include' }),
+          fetch('/api/me/connected-accounts/github', { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -1375,6 +1393,9 @@
             return;
           }
           if (engRes.status === 404) {
+            const github = githubRes.status === 503
+              ? { connected: false, unavailable: true }
+              : githubRes.ok ? await githubRes.json() : { connected: false };
             document.getElementById('hub-loading').innerHTML =
               '<div class="hub-empty-panel">' +
               '<div class="hub-kicker">My hub</div>' +
@@ -1384,7 +1405,8 @@
               '<a href="/membership" class="btn btn-primary">Explore membership</a>' +
               '<a href="/community" class="btn btn-secondary">Browse community</a>' +
               '</div>' +
-              '</div>';
+              '</div>' +
+              '<div class="hub-card" style="max-width:720px; margin:var(--space-6) auto 0;">' + renderConnections({ github }) + '</div>';
             return;
           }
           throw new Error('Failed to load engagement data');
@@ -1397,6 +1419,9 @@
         const contentData = contentRes.ok ? await contentRes.json() : null;
         const perspectivesData = perspectivesRes.ok ? await perspectivesRes.json() : null;
         const journeyData = journeyRes.ok ? await journeyRes.json() : null;
+        const githubConnection = githubRes.status === 503
+          ? { connected: false, unavailable: true }
+          : githubRes.ok ? await githubRes.json() : { connected: false };
 
         renderHub({
           engagement: data,
@@ -1407,6 +1432,7 @@
           contentItems: contentData?.items || [],
           latestPerspectives: Array.isArray(perspectivesData) ? perspectivesData : [],
           journey: journeyData,
+          connections: { github: githubConnection },
         });
 
         // Check marketing opt-in status (non-blocking)
@@ -1511,6 +1537,7 @@
         contentItems,
         latestPerspectives,
         journey,
+        connections,
       } = payload;
       const {
         organization_name,
@@ -1604,6 +1631,10 @@
         <div class="hub-grid">
           <div class="hub-card">${renderProfileCard(profile, profileCompleteness)}</div>
           <div class="hub-card">${renderContentStudio(contentItems)}</div>
+        </div>
+
+        <div class="hub-grid hub-grid--single">
+          <div class="hub-card">${renderConnections(connections)}</div>
         </div>
 
         <div class="hub-grid hub-grid--single">
@@ -2041,6 +2072,69 @@
     }
 
     // -------------------------------------------------------------------------
+
+    function renderConnections(connections) {
+      const github = connections?.github ?? { connected: false };
+      const header = `
+        <div class="hub-card-header">
+          <span class="hub-card-title">Connections</span>
+        </div>`;
+      const rowStyle = 'display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;';
+      const copyStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary);';
+      const statusStyle = 'font-size:var(--text-sm); color:var(--color-success-600); font-weight:600;';
+      const warnStyle = 'font-size:var(--text-sm); color:var(--color-text-secondary); font-style:italic;';
+      let githubRow;
+      if (github.connected) {
+        githubRow = `
+          <div style="${rowStyle}">
+            <div>
+              <strong>GitHub</strong>
+              <div style="${copyStyle}">Connected${github.login ? ` as <code>@${escapeHtml(github.login)}</code>` : ''}. Addie can file issues as you on <code>adcontextprotocol/adcp</code>.</div>
+            </div>
+            <span style="${statusStyle}">✓ Connected</span>
+          </div>`;
+      } else if (github.unavailable) {
+        githubRow = `
+          <div style="${rowStyle}">
+            <div>
+              <strong>GitHub</strong>
+              <div style="${warnStyle}">GitHub connection status is temporarily unavailable. Try again in a moment.</div>
+            </div>
+          </div>`;
+      } else {
+        githubRow = `
+          <div style="${rowStyle}">
+            <div>
+              <strong>GitHub</strong>
+              <div style="${copyStyle}">Connect GitHub so Addie can file issues on <code>adcontextprotocol/adcp</code> under your account.</div>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="connectGitHub(this)">Connect GitHub</button>
+          </div>`;
+      }
+      return `${header}${githubRow}`;
+    }
+
+    async function connectGitHub(btn) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Opening...';
+      try {
+        const res = await fetch('/api/me/connected-accounts/github/authorize', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ return_to: '/member-hub?connected=github' }),
+        });
+        if (!res.ok) throw new Error('Failed to start GitHub connection');
+        const { url } = await res.json();
+        window.location.href = url;
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Could not start GitHub connection. Please try again in a moment.');
+      }
+    }
 
     function renderProfileCard(profile, profileCompleteness) {
       const hdr = `

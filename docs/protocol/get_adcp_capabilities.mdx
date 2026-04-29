@@ -15,8 +15,12 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
-**Request Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-request.json)
-**Response Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json)
+<Note>
+**Per-caller authorization is NOT reported here.** `get_adcp_capabilities` returns the seller's surface — everything it *could* do for any authorized caller. To discover what *you* are allowed to do on a specific account (which tasks are callable for your identity, which request fields are modifiable, any named scope like `attestation_verifier`), read the `authorization` object on per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics.
+</Note>
+
+**Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
@@ -75,7 +79,7 @@ Core AdCP protocol information:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[1]`) |
+| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
 | `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
 
 #### idempotency
@@ -133,7 +137,7 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 }
 ```
 
-See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/latest/enums/specialism.json) for the authoritative list.
+See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
 
 ### account
 
@@ -402,7 +406,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [1],
+    "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["governance"],
@@ -749,7 +753,7 @@ const buy = await client.createMediaBuy({
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
-    "major_versions": [1],
+    "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],

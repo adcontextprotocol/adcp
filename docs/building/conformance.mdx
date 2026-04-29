@@ -22,6 +22,23 @@ Put differently:
 - Verification is a time-bounded third-party attestation. **(Spec)** verifies conformance; **(Live)** verifies the underlying production capability that conformance presumes.
 - Verified (Spec) ⊆ Conformant. You can be conformant without being Verified; you cannot be Verified (Spec) without being conformant. Verified (Live) presumes Verified (Spec) — a broken protocol implementation makes live observation unmeasurable.
 
+## Two marks: AdCP Conformant and AAO Verified
+
+The rest of this page describes **AdCP Conformant** — the agent's wire behavior matches the spec, verified against the storyboard suite with seeded test data. Storyboard passing issues AdCP Conformant; storyboard regression revokes it.
+
+AdCP 3.x also defines **AAO Verified** (optional), a stricter mark for agents whose live ad-server integration AAO has directly observed. AAO Verified adds continuous observability of real delivery data against the seller's live endpoint, performed by the AAO compliance engine over a 7–14 day rolling window. It closes the gap storyboards cannot: a seller can pass every storyboard with a broken ad-server integration, because `simulate_delivery` is a parallel code path from the production reporting path. AAO Verified requires that the AdCP surface actually reaches real impressions on real inventory.
+
+AAO Verified is opt-in, requires no new infrastructure (the AAO compliance engine already runs), and produces an auto-expiring mark distinct from AdCP Conformant. See [AAO Verified](/docs/building/aao-verified) for the full spec.
+
+| Mark | What it means | How it's issued |
+|------|---------------|-----------------|
+| **AdCP Conformant** | Wire format, task shape, error semantics, filter behavior match the spec | Storyboards + behavioral assertions against `simulate_delivery` |
+| **AAO Verified** (optional) | The declared capability is implemented on the seller's live production stack | Continuous observability of real delivery, 7–14 day rolling window |
+
+**Containment.** AAO Verified ⊆ AdCP Conformant. A seller cannot hold AAO Verified without AdCP Conformant — a storyboard regression blocks AAO Verified issuance even when live campaigns look fine, because storyboards catch wire-format violations that live data might paper over. You can be Conformant without being Verified (storyboard-passing but no live traffic yet); you cannot be Verified without being Conformant.
+
+**Why two marks, not two tiers.** Earlier drafts used "Tier 1 — Protocol Conformant" and "Tier 2 — Production Verified." That framing muddied the message: a buyer reading "Tier 1 — Protocol Conformant" plausibly infers "verified at the basic level," when all it actually attests is wire-format correctness. *Conformant* and *Verified* are distinct claims, not tiers of the same thing — with *Verified* strictly implying *Conformant*. See [AAO Verified § Why these two marks](/docs/building/aao-verified#why-these-two-marks-not-the-earlier-tier-1--tier-2) for the full reasoning.
+
 ## Storyboards are the truth
 
 Rather than restate every MUST in prose — which would inevitably drift from the executable suite — **the storyboards ARE the conformance specification.** This document is a navigational index to them, grouped by the declaration that obligates the storyboard to run.
@@ -48,16 +65,31 @@ Agents MUST NOT declare a capability whose storyboards they do not pass. See the
 
 Every agent MUST pass every storyboard below.
 
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (snake_case YAML id) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+
 | Storyboard | What it verifies |
 |------------|------------------|
 | [`capability_discovery`](https://adcontextprotocol.org/compliance/latest/universal/capability-discovery) | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
 | [`schema_validation`](https://adcontextprotocol.org/compliance/latest/universal/schema-validation) | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| [`v3_envelope_integrity`](https://adcontextprotocol.org/compliance/latest/universal/v3-envelope-integrity) | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3 |
 | [`error_compliance`](https://adcontextprotocol.org/compliance/latest/universal/error-compliance) | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | [`idempotency`](https://adcontextprotocol.org/compliance/latest/universal/idempotency) | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | [`security_baseline`](https://adcontextprotocol.org/compliance/latest/universal/security) | Unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding |
+| [`webhook_emission`](https://adcontextprotocol.org/compliance/latest/universal/webhook-emission) | Outbound webhook conformance — stable `idempotency_key` across retries, RFC 9421 webhook signing (or opt-in HMAC fallback) on every delivery. Runs for any agent accepting `push_notification_config`. |
+| [`pagination_integrity`](https://adcontextprotocol.org/compliance/latest/universal/pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `list_creatives` responses, walked from a continuation page through to a terminal page |
+| [`get_signals_pagination_integrity`](https://adcontextprotocol.org/compliance/latest/universal/get-signals-pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `get_signals` responses under a broad query, with first-page non-terminal assertion against any non-trivial signals catalog |
+| [`pagination_integrity_list_accounts`](https://adcontextprotocol.org/compliance/latest/universal/pagination-integrity-list-accounts) | `cursor` ↔ `has_more` invariant on paginated `list_accounts` responses; storyboard bootstraps three accounts via `sync_accounts` and walks from a continuation page to a terminal page |
+| [`pagination_integrity_creative_formats`](https://adcontextprotocol.org/compliance/latest/universal/pagination-integrity-creative-formats) | `cursor` ↔ `has_more` invariant on paginated `list_creative_formats` responses; storyboard seeds two creative formats via `seed_creative_format` and walks from a continuation page to a terminal page |
+| [`get_media_buys_pagination_integrity`](https://adcontextprotocol.org/compliance/latest/universal/get-media-buys-pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `get_media_buys` responses; storyboard seeds three media buys via `seed_media_buy` and walks from a continuation page to a terminal page |
+| [`pagination_integrity_content_standards`](https://adcontextprotocol.org/compliance/latest/universal/content-standards-pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `list_content_standards` responses; storyboard bootstraps three content standards configurations via `create_content_standards` and walks from a continuation page to a terminal page |
+| [`pagination_integrity_collection_lists`](https://adcontextprotocol.org/compliance/latest/universal/collection-lists-pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `list_collection_lists` responses; storyboard bootstraps three collection lists via `create_collection_list` and walks from a continuation page to a terminal page |
+| [`pagination_integrity_property_lists`](https://adcontextprotocol.org/compliance/latest/universal/property-lists-pagination-integrity) | `cursor` ↔ `has_more` invariant on paginated `list_property_lists` responses; storyboard bootstraps three property lists via `create_property_list` and walks from a continuation page to a terminal page |
 | [`deterministic_testing`](https://adcontextprotocol.org/compliance/latest/universal/deterministic-testing) | `comply_test_controller` state machine — skipped if `capabilities.compliance_testing.supported: false` |
+| [`signed_requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests) | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
 Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/docs/building/implementation/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
+
+Agents that declare `request_signing.supported: true` MUST implement the full RFC 9421 verifier per the [request-signing profile](/docs/building/implementation/security#signed-requests-transport-layer); a partial verifier is non-conformant, so declare `false` rather than ship one.
 
 ## Protocol conformance
 
@@ -136,6 +168,7 @@ Conformance is per-version; the suite is per-version. A 3.0-conformant agent is 
 
 ## Further reading
 
+- **[AAO Verified](/docs/building/aao-verified)** — Continuous-observability verification of the seller's live ad-server integration
 - **[Compliance Catalog](/docs/building/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
 - **[Validate Your Agent](/docs/building/validate-your-agent)** — How to run the suite
 - **[Security Model](/docs/building/understanding/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce

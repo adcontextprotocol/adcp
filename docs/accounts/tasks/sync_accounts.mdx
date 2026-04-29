@@ -11,8 +11,8 @@ Sync advertiser accounts with a seller for one or more brand/operator pairs. The
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
-**Request Schema**: [`/schemas/latest/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json)
-**Response Schema**: [`/schemas/latest/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-response.json)
+**Request Schema**: [`/schemas/v3/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
+**Response Schema**: [`/schemas/v3/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json)
 
 ## Quick start
 
@@ -133,6 +133,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
 | `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for implicit accounts. |
+| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape. |
 
 ### Account status
 

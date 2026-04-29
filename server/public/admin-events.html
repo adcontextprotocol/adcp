@@ -458,6 +458,7 @@
               <option value="cancelled">Cancelled</option>
               <option value="completed">Completed</option>
             </select>
+            <small>Set to <strong>Published</strong> to make the event publicly visible. Use the Preview link to check a draft before publishing.</small>
           </div>
         </div>
 
@@ -667,6 +668,7 @@
             <option value="invite_listed">Invite only, listed — shown in listings; registration restricted</option>
             <option value="invite_unlisted">Invite only, unlisted — hidden from public listing</option>
           </select>
+          <small>Controls who can register once the event is published. This does not make a draft event live — use Status for that.</small>
         </div>
 
         <div id="accessRulesSection" style="display: none;">
@@ -968,7 +970,10 @@
             <div class="event-actions">
               <button class="btn btn-secondary btn-small" onclick="editEvent('${event.id}')">Edit</button>
               ${event.status === 'draft' ? `
+                <a class="btn btn-secondary btn-small" href="/events/${escapeHtml(event.slug)}" target="_blank" rel="noopener noreferrer">Preview</a>
                 <button class="btn btn-primary btn-small" onclick="publishEvent('${event.id}')">Publish</button>
+              ` : (event.status === 'published' || event.status === 'completed') ? `
+                <a class="btn btn-secondary btn-small" href="/events/${escapeHtml(event.slug)}" target="_blank" rel="noopener noreferrer">View</a>
               ` : ''}
               <button class="btn btn-secondary btn-small" onclick="viewRegistrations('${event.id}')">Registrations</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${event.id}')">Delete</button>

@@ -3,6 +3,7 @@
   "$id": "/schemas/tmp/context-match-response.json",
   "title": "Context Match Response",
   "description": "Response from router or provider with offers for matched packages. An empty offers array means no packages matched. For simple GAM integration, package_id flows as a macro via signals. For rich integrations, the offer includes brand, price, summary, and optionally an inline creative manifest. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "type": {

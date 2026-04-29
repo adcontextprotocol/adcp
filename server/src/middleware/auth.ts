@@ -7,6 +7,7 @@ import { createLogger } from '../logger.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
+import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
 
@@ -79,6 +80,9 @@ setInterval(() => {
   }
   for (const [key, ts] of deadSessionCache.entries()) {
     if (now - ts > DEAD_SESSION_TTL_MS) deadSessionCache.delete(key);
+  }
+  for (const [key, value] of bearerJwtCache.entries()) {
+    if (value.expiresAt < now) bearerJwtCache.delete(key);
   }
 }, 5 * 60 * 1000);
 
@@ -215,7 +219,7 @@ export interface ValidatedApiKey {
  * Validate a WorkOS API key from the Authorization header
  * Returns the validated API key info or null if invalid
  */
-async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
+export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
 
@@ -225,7 +229,7 @@ async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | nul
   if (!isWorkOSApiKeyFormat(token)) return null;
 
   try {
-    const result = await workos.apiKeys.validateApiKey({ value: token });
+    const result = await workos.apiKeys.createValidation({ value: token });
     if (!result.apiKey) return null;
 
     return {
@@ -245,6 +249,122 @@ async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | nul
  */
 function apiKeyHasPermission(apiKey: ValidatedApiKey, permission: string): boolean {
   return apiKey.permissions.includes(permission);
+}
+
+/**
+ * Validated OAuth bearer token — a WorkOS-signed JWT issued via the
+ * OAuth 2.1 flow brokered by mcpAuthRouter. Callers end up here when
+ * a user SSO'd through AuthKit from an agent/MCP client.
+ */
+export interface ValidatedBearerJWT {
+  user: WorkOSUser;
+  rawToken: string;
+  orgId?: string;
+}
+
+/**
+ * Short-lived positive cache for successfully-validated bearer JWTs.
+ * Keyed on SHA-256 of the raw token; value includes the synthesized user
+ * and an expiry that is the minimum of (token exp, now + BEARER_JWT_CACHE_TTL_MS).
+ *
+ * Without this, every REST request with a Bearer JWT incurs a DB round-trip
+ * for the local-user lookup — the cookie path has an equivalent cache
+ * (`sessionCache`) and its absence here creates a DoS amplifier.
+ */
+interface CachedBearerJWT {
+  user: WorkOSUser;
+  orgId?: string;
+  expiresAt: number;
+}
+const bearerJwtCache = new Map<string, CachedBearerJWT>();
+const BEARER_JWT_CACHE_TTL_MS = 60 * 1000;
+const BEARER_JWT_CACHE_MAX_SIZE = 10_000;
+
+function hashBearerToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Validate a WorkOS-signed user JWT from the Authorization header.
+ * Returns null if the header is missing, points at a different token
+ * type (API key, admin key), or fails verification.
+ *
+ * On success the returned `user` mirrors the shape produced by the
+ * sealed-session path — real WorkOS user id, real email, names resolved
+ * from the local users table. Machine-to-machine tokens (client_credentials)
+ * are not accepted here; those callers should use WorkOS API keys.
+ *
+ * `isMember` is intentionally NOT set from the JWT's `org_id` claim —
+ * that claim reflects the org the user selected during AuthKit, not
+ * whether the org holds an active AAO membership. Downstream
+ * `enrichUserWithMembership` resolves real membership via the DB.
+ */
+export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBearerJWT | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.slice(7);
+
+  if (isWorkOSApiKeyFormat(token)) return null; // handled by validateWorkOSApiKey
+  if (ADMIN_API_KEY && token === ADMIN_API_KEY) return null; // handled by hasValidAdminApiKey
+  if (!looksLikeJWT(token)) return null;
+
+  const cacheKey = hashBearerToken(token);
+  const now = Date.now();
+  const cached = bearerJwtCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return { user: cached.user, rawToken: token, orgId: cached.orgId };
+  }
+
+  let verified: Awaited<ReturnType<typeof verifyWorkOSJWT>>;
+  try {
+    verified = await verifyWorkOSJWT(token);
+  } catch (err) {
+    logger.debug({ err }, 'Bearer JWT verification failed');
+    return null;
+  }
+
+  if (verified.isM2M || !verified.sub) return null;
+
+  // Confirm the subject corresponds to a real local user. This catches
+  // tokens from WorkOS accounts that have been deleted or never synced,
+  // and gives us names for the synthesized WorkOSUser.
+  const pool = getPool();
+  const localUser = await pool.query<{
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+  }>(
+    `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
+    [verified.sub],
+  );
+  if (localUser.rowCount === 0) {
+    logger.warn({ sub: verified.sub }, 'Bearer JWT verified but user not found in local DB');
+    return null;
+  }
+
+  const row = localUser.rows[0];
+  const email = verified.email ?? row.email ?? '';
+  const user: WorkOSUser = {
+    id: verified.sub,
+    email,
+    firstName: row.first_name?.trim() || undefined,
+    lastName: row.last_name?.trim() || undefined,
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const tokenExpMs = verified.expiresAt ? verified.expiresAt * 1000 : Infinity;
+  const cacheUntil = Math.min(now + BEARER_JWT_CACHE_TTL_MS, tokenExpMs);
+  if (cacheUntil > now) {
+    if (bearerJwtCache.size >= BEARER_JWT_CACHE_MAX_SIZE) {
+      const oldest = bearerJwtCache.keys().next().value;
+      if (oldest) bearerJwtCache.delete(oldest);
+    }
+    bearerJwtCache.set(cacheKey, { user, orgId: verified.orgId, expiresAt: cacheUntil });
+  }
+
+  return { user, rawToken: token, orgId: verified.orgId };
 }
 
 // Dev mode: bypass auth with mock users for local testing
@@ -362,9 +482,34 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
 // Dev session cookie name
 const DEV_SESSION_COOKIE = 'dev-session';
 
+// Hard prod-boot guard: dev mode bypasses auth on every requireAuth-protected
+// endpoint (now widened to 23 admin/owner-gated org routes after the
+// resolveUserOrgMembership refactor). Refuse to start if these env vars are
+// set in a production-shaped environment — better to crash boot than silently
+// expose owner-level mutations to a stray cookie.
+//
+// "Production-shaped" is detected by NODE_ENV=production OR FLY_APP_NAME being
+// set (Fly.io always sets it on deployed apps). Override via
+// ALLOW_DEV_MODE_IN_PROD=true if you genuinely need it for a one-off (you
+// almost certainly don't).
 if (DEV_MODE_ENABLED) {
+  const isProdShaped =
+    process.env.NODE_ENV === 'production' || !!process.env.FLY_APP_NAME;
+  const overrideOk = process.env.ALLOW_DEV_MODE_IN_PROD === 'true';
+  if (isProdShaped && !overrideOk) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[FATAL] DEV_USER_EMAIL + DEV_USER_ID are set in a production-shaped ' +
+      'environment (NODE_ENV=production or FLY_APP_NAME present). Dev mode ' +
+      'bypasses auth on every requireAuth-protected endpoint. Refusing to start.'
+    );
+    process.exit(1);
+  }
   logger.warn({
     availableUsers: Object.keys(DEV_USERS),
+    nodeEnv: process.env.NODE_ENV,
+    flyAppName: process.env.FLY_APP_NAME,
+    overrideAllowed: overrideOk,
   }, 'DEV MODE ENABLED - Auth bypass active. DO NOT use in production!');
   logger.info('Visit /auth/login to select a test user');
 }
@@ -516,6 +661,30 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (apiKeyBan) {
       logger.info({ apiKeyId: apiKey.id, banId: apiKeyBan.id }, 'API key request blocked by platform ban');
       return sendBanResponse(res, apiKeyBan);
+    }
+
+    return next();
+  }
+
+  // Check for OAuth-issued user JWT (user SSO'd via AuthKit through the
+  // MCP OAuth flow and is now calling the REST API with that token).
+  const jwtAuth = await validateWorkOSBearerJWT(req);
+  if (jwtAuth) {
+    logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT');
+    req.user = jwtAuth.user;
+    req.accessToken = jwtAuth.rawToken;
+
+    try {
+      const userBan = await checkPlatformBan(
+        `user:${jwtAuth.user.id}`,
+        () => bansDb.checkPlatformBan(jwtAuth.user.id),
+      );
+      if (userBan) {
+        logger.info({ userId: jwtAuth.user.id, banId: userBan.id }, 'User request blocked by platform ban');
+        return sendBanResponse(res, userBan);
+      }
+    } catch (banError) {
+      logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
     return next();

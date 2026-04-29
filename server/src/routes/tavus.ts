@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from "uuid";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { sanitizeSpeakerName } from "../addie/prompts.js";
+import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
@@ -456,12 +458,14 @@ export function createTavusRouter() {
     let voiceRequestTools: RequestTools | undefined;
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
+    let voiceUserId: string | null = null;
     if (threadId) {
       const threadService = getThreadService();
       try {
         const thread = await threadService.getThread(threadId);
         if (thread?.user_id && thread.channel === 'video') {
           userDisplayName = thread.user_display_name;
+          voiceUserId = thread.user_id;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -476,12 +480,16 @@ export function createTavusRouter() {
     }
 
     // Log the user message (before voice prefix is applied)
+    const voiceSpeakerName = sanitizeSpeakerName(userDisplayName);
     if (threadId) {
       const threadService = getThreadService();
       threadService.addMessage({
         thread_id: threadId,
         role: "user",
         content: currentMessage,
+        user_id: voiceUserId ?? undefined,
+        user_display_name: voiceSpeakerName,
+        message_source: 'voice',
       }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
     }
 
@@ -561,11 +569,27 @@ export function createTavusRouter() {
 
     let streamError = false;
     try {
+      // Cost cap (#2790 / #2945 f/u): voice sessions carry a
+      // thread.user_id resolved from session-init auth. When that
+      // resolves, charge the WorkOS user and honor their
+      // subscription tier (member_paid vs member_free). If it
+      // doesn't (misconfigured / abandoned thread, or a caller
+      // reaching the LLM endpoint with the shared-secret but no
+      // valid thread), bucket by IP under the anonymous tier so a
+      // leaked TAVUS_LLM_SECRET still hits a bounded daily spend.
+      const voiceScope = voiceUserId
+        ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
+        : null;
+
       for await (const event of claudeClient.processMessageStream(
         currentMessage,
         threadContext,
         voiceRequestTools,
-        { requestContext }
+        {
+          requestContext,
+          currentSpeakerName: voiceSpeakerName,
+          costScope: voiceScope ?? { userId: `tavus:ip:${req.ip ?? 'unknown'}`, tier: 'anonymous' as const },
+        }
       )) {
         if (connectionClosed) break;
         if (event.type === "text") {

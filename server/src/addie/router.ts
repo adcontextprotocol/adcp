@@ -414,6 +414,7 @@ ${reactList}
 - Off-topic discussions
 - Community introductions, announcements, or social updates where the author is NOT asking a question and NOT requesting help from Addie — even if the topic relates to AdCP or events. Examples: "Hi everyone, I'm James from X, looking forward to the event", "We hosted an AdCP meetup last week", "Will register for the summit". React to these with an emoji instead.
 - Open questions to the channel ("does anyone know...", "has anyone tried...", "thoughts on...") — these are addressed to humans, not Addie
+- Opinion polls or community discussion prompts ("what do you all think about...", "what does everyone think about...") — even when the topic involves ad tech standards, IAB guidelines, or industry news. Exception: if the question is specifically about an AdCP protocol detail or schema that only Addie's docs can answer, apply the Channel Response Policy criteria above instead
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
 - Questions where a knowledgeable human in the workspace is likely better positioned to answer
 
@@ -427,7 +428,7 @@ ${ctx.threadMessages.join('\n')}
 ## Instructions
 Respond with a JSON object for the execution plan. Choose ONE action:
 ${ctx.source === 'channel' && !explicitlyNamedAddie ? `
-**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion, and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
+**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion (including opinions about IAB or other standards, "what do you all think about X" — except when X is a specific AdCP protocol or schema question only Addie can answer), and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
 
 1. {"action": "ignore", "reason": "brief reason"}
    - For messages that don't need Addie's response${ctx.source === 'channel' && !explicitlyNamedAddie ? ' — THIS IS THE DEFAULT FOR CHANNEL MESSAGES' : ''}

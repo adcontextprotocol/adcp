@@ -1,15 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/format-id.json",
-  "title": "Format ID",
-  "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+  "title": "Format Reference (Structured Object)",
+  "description": "A JSON object — never a plain string — that identifies a creative format by its declaring agent and local slug. Required properties: agent_url (URI of the agent that owns the format) and id (slug matching [a-zA-Z0-9_-]+). Example: {\"agent_url\": \"https://creative.adcontextprotocol.org\", \"id\": \"display_300x250\"}. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants. Using a plain string here is a schema violation.",
   "x-entity": "creative_format",
   "type": "object",
   "properties": {
     "agent_url": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+      "description": "URL of the agent that defines this format (e.g., 'https://creative.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats). Callers comparing two `format-id` values MUST canonicalize `agent_url` per the AdCP URL canonicalization rules before treating two formats as the same. See docs/reference/url-canonicalization."
     },
     "id": {
       "type": "string",

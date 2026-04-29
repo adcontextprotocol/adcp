@@ -19,7 +19,7 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Optional reference to a format definition. Uses the same format registry as creative formats."
+      "description": "Always a structured object {agent_url, id} — never a plain string. Optional reference to a format definition. Uses the same format registry as creative formats."
     },
     "url": {
       "type": "string",

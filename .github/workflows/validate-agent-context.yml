@@ -1,0 +1,23 @@
+name: Validate agent context files
+
+on:
+  pull_request:
+    paths:
+      - '.agents/current-context.md'
+      - '.github/scripts/validate-agent-context.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Safety + boundary lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Run validator
+        run: node .github/scripts/validate-agent-context.mjs

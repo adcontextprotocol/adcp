@@ -36,16 +36,23 @@ import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
+import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
+import { runEscalationTriageJob } from './escalation-triage.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
 import { runMeetingPrepNudgeJob } from './meeting-prep-nudge.js';
 import { runProfileCompletionNudgeJob } from './profile-completion-nudge.js';
+import {
+  runAnnouncementTriggerJob,
+  runAnnouncementReminderJob,
+} from './announcement-trigger.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
+import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
@@ -143,6 +150,20 @@ export function registerAllJobs(): void {
     runner: runSummaryGeneratorJob,
     options: { batchSize: 10 },
     shouldLogResult: (r) => r.summariesGenerated > 0,
+  });
+
+  // Channel privacy audit (#2849) — daily backstop for the send-time
+  // recheck in #2735. Catches drift on admin-settings channels that
+  // sit idle between writes so the drift doesn't linger until
+  // someone tries to post.
+  jobScheduler.register({
+    name: 'channel-privacy-audit',
+    description: 'Channel privacy audit',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runChannelPrivacyAudit,
+    shouldLogResult: (r: ChannelPrivacyAuditResult) =>
+      r.drifted.length > 0 || r.unknown.length > 0,
   });
 
   // Relationship orchestrator - continues member relationships across channels
@@ -326,6 +347,20 @@ export function registerAllJobs(): void {
     failureThreshold: 1,
     businessHours: { startHour: 9, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.posted || r.awardsFound > 0,
+  });
+
+  // Brand logo pending-review digest - daily reminder when items are stuck
+  // in moderation. The pending queue is otherwise invisible (admins won't
+  // poll list_pending_brand_logos), and members hit dead-letter UX while
+  // their logo waits.
+  jobScheduler.register({
+    name: 'brand-logo-digest',
+    description: 'Daily digest of brand logos pending review',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 25, unit: 'minutes' },
+    runner: runBrandLogoDigestJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.posted || r.staleCount > 0,
   });
 
   // Social post ideas - generates social copy for members to share
@@ -554,6 +589,32 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.nudgesSent > 0,
   });
 
+  // Announcement trigger - drafts welcome posts for newly announce-ready members
+  // and posts them to the editorial review channel for HITL approval.
+  jobScheduler.register({
+    name: 'announcement-trigger',
+    description: 'Draft new-member announcements for editorial review',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 4, unit: 'minutes' },
+    runner: runAnnouncementTriggerJob,
+    businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
+    shouldLogResult: (r) => r.drafted > 0 || r.failed > 0,
+  });
+
+  // Announcement LI reminder - threaded nudge on the original review
+  // card when Slack is posted but LinkedIn is still pending >7 days
+  // later. Rate-limited: at most one reminder per org per week, max
+  // three over the draft's lifetime.
+  jobScheduler.register({
+    name: 'announcement-li-reminder',
+    description: 'Nudge editorial on LinkedIn posts that are stuck >7 days',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 22, unit: 'minutes' },
+    runner: runAnnouncementReminderJob,
+    businessHours: { startHour: 10, endHour: 11, skipWeekends: true },
+    shouldLogResult: (r) => r.reminded > 0 || r.failed > 0,
+  });
+
   // Weekly spec insight post - Addie posts a thought-provoking spec question to Slack
   jobScheduler.register({
     name: 'spec-insight-post',
@@ -722,6 +783,18 @@ export function registerAllJobs(): void {
     options: { limit: 50 },
     shouldLogResult: (r) => r.generated > 0 || r.alerts_fired > 0,
   });
+
+  // Escalation triage - scans open escalations and writes suggested resolutions
+  // for admin review. Never resolves directly; an admin accept/reject is required.
+  jobScheduler.register({
+    name: 'escalation-triage',
+    description: 'Escalation triage suggestions',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 25, unit: 'minutes' },
+    runner: runEscalationTriageJob,
+    options: { minAgeDays: 7, limit: 25, staleOpsDays: 21 },
+    shouldLogResult: (r) => r.suggested > 0 || r.errors > 0,
+  });
 }
 
 /**
@@ -745,6 +818,7 @@ export const JOB_NAMES = {
   WG_DIGEST: 'wg-digest',
   WG_DIGEST_PREP: 'wg-digest-prep',
   CREDENTIAL_DIGEST: 'credential-digest',
+  BRAND_LOGO_DIGEST: 'brand-logo-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
@@ -762,4 +836,5 @@ export const JOB_NAMES = {
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
   NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
+  ESCALATION_TRIAGE: 'escalation-triage',
 } as const;

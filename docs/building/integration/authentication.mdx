@@ -96,7 +96,7 @@ AdCP distinguishes between the **agent** (who is making requests) and the **acco
 
 An agent may have access to multiple accounts (e.g., an agency managing several clients). See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for details on account selection and billing attribution.
 
-For schema definitions, see [`account.json`](https://adcontextprotocol.org/schemas/latest/core/account.json).
+For schema definitions, see [`account.json`](https://adcontextprotocol.org/schemas/v3/core/account.json).
 
 ## Tenant resolution
 
@@ -183,6 +183,10 @@ If you're getting "authentication required" errors:
 3. **Test with the public test agent** - verify your setup works before testing custom agents
 4. **Check protocol version** - ensure client and server protocol versions are compatible
 
+<Tip>
+For OAuth handshake failures and RFC 9421 signing issues, use the [CLI auth graders](/docs/building/grading) — `diagnose-auth` probes RFC 9728 + RFC 8414 discovery and ranks hypotheses; `grade request-signing` runs every signing vector with per-vector diagnostics.
+</Tip>
+
 ## Obtaining Credentials
 
 ### Account Setup Process
@@ -221,6 +225,26 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 - Financial relationships
 - Legal agreements
 - Compliance monitoring
+
+## Authenticating to AAO Platform Services
+
+The mechanisms above govern **agent-to-agent** auth (buyer ↔ sales agent). Authenticating to **AAO-hosted services** — the registry write API, the AAO MCP endpoint, the member dashboard — is a separate surface.
+
+AAO runs an OAuth 2.1 + OIDC authorization server. Clients discover it via standard well-knowns:
+
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` (REST API) and `/.well-known/oauth-protected-resource/mcp` (MCP). Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST /register`.
+- **Server-to-server:** there is no `client_credentials` grant. Backend services should use a WorkOS organization API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys), not the OAuth `/token` endpoint.
+
+All AAO endpoints are HTTPS-only; reject any discovery document served over plain HTTP.
+
+A user JWT obtained from AAO is **not** an AdCP credential. Calls to a sales agent still use that agent's bearer / 9421 / mTLS credentials per the table above. Full reference: [AAO registry — Authentication](/docs/registry#authentication).
+
+<Warning>
+  **If you discover an `authorization_endpoint` on a sales agent's RFC 9728 protected-resource metadata** (e.g., for an operator-account OAuth flow), pin the discovered `authorization_servers` issuer against what `adagents.json` — or out-of-band onboarding — authorized for that seller. Do not blindly trust an AS URL the resource itself returned, otherwise a malicious or compromised seller can route operator credentials to an attacker-controlled endpoint.
+</Warning>
 
 ## Error Responses
 

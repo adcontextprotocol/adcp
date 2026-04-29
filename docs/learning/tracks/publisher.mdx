@@ -162,7 +162,7 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
 - **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
-- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `media_buy_id` + `planned_delivery` before confirming media buys
+- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
 ### Exercise
@@ -197,10 +197,23 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 Run the `media_buy_seller` storyboard against your running agent:
 
 ```bash
-npx @adcp/client storyboard run my-agent media_buy_seller
+npx @adcp/client@latest storyboard run my-agent media_buy_seller
 ```
 
 The storyboard exercises the complete buyer workflow — discovery, account sync, media buy, creatives, delivery — and validates every response. See [Validate Your Agent](/docs/building/validate-your-agent) for setup and debugging.
+
+### Specialisms you can claim
+
+Declare `media_buy` in `supported_protocols` and choose the specialism that matches your inventory model. Each specialism has a compliance storyboard at `/compliance/{version}/specialisms/{id}/` that verifies your claim:
+
+- `sales-guaranteed` — guaranteed with human IO approval
+- `sales-non-guaranteed` — auction-based
+- `sales-proposal-mode` — proposal-negotiated
+- `sales-catalog-driven` — catalog-driven commerce with conversion tracking
+- `sales-broadcast-tv` — broadcast linear TV
+- `sales-social` — social platform with self-service flows
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for the full list.
 
 ### Assessment rubric
 

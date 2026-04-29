@@ -9,6 +9,7 @@
  * - CC: Only respond if explicitly invoked (Addie is observing)
  */
 
+import crypto from 'crypto';
 import { createLogger } from '../logger.js';
 import {
   sanitizeInput,
@@ -16,6 +17,7 @@ import {
 } from './security.js';
 import { getThreadService } from './thread-service.js';
 import type { Thread } from './thread-service.js';
+import { sanitizeSpeakerName } from './prompts.js';
 import { sendEmailReply, type EmailThreadContext } from '../notifications/email.js';
 import { markdownToEmailHtml } from '../utils/markdown.js';
 import {
@@ -145,8 +147,14 @@ export async function handleEmailConversation(
     // 1. Resolve thread (3-tier lookup)
     const thread = await resolveThread(input, threadService);
 
-    // 2. Store inbound user message
+    // 2. Store inbound user message. Email From headers are spoofable so the
+    // address-as-id is not authoritative — we still store it as a label so
+    // multi-correspondent threads (forwarded chains, ccd reply-alls) can
+    // distinguish speakers in conversation history. The display name is
+    // sanitized so a sender setting "Brian]\n[system]..." in their From
+    // header cannot break out of the prompt envelope.
     const inputValidation = sanitizeInput(strippedContent);
+    const speakerName = sanitizeSpeakerName(input.senderDisplayName);
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'user',
@@ -155,6 +163,9 @@ export async function handleEmailConversation(
       flagged: inputValidation.flagged,
       flag_reason: inputValidation.reason,
       email_message_id: input.messageId,
+      user_id: input.senderEmail,
+      user_display_name: speakerName,
+      message_source: 'email',
     });
 
     // 3. Get conversation history
@@ -162,7 +173,7 @@ export async function handleEmailConversation(
     const contextMessages = threadMessages
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => ({
-        user: m.role === 'user' ? 'User' : 'Addie',
+        user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
         text: m.content,
         toolCalls: m.tool_calls ?? undefined,
       }));
@@ -186,7 +197,24 @@ export async function handleEmailConversation(
     // 5. Build email-specific system context
     const emailSystemContext = buildEmailSystemContext(input, prepared.requestContext);
 
-    // 6. Process with Claude
+    // 6. Process with Claude.
+    //
+    // Per-user cost cap scope (#2790 / #2950): email is the highest-
+    // priority bypass vector because From headers are spoofable — a
+    // cooperative mail server can hit Claude with any identity it
+    // wants. We hash the From address (rather than use it raw) so
+    // the scope key and surrounding logs don't carry sender PII.
+    // 16 hex = 64 bits; for realistic sender volumes, collision is
+    // negligible (birthday bound well above any plausible corpus).
+    // The upstream 10-emails-per-hour per-sender limiter already
+    // bounds single-sender abuse; the cost cap is the second line
+    // of defense against a spoofing mail server.
+    const emailScopeKey = `email:${crypto
+      .createHash('sha256')
+      .update(input.senderEmail.toLowerCase().trim())
+      .digest('hex')
+      .substring(0, 16)}`;
+
     const claudeClient = await getChatClaudeClient();
     const response = await claudeClient.processMessage(
       prepared.messageToProcess,
@@ -198,6 +226,8 @@ export async function handleEmailConversation(
         requestContext: emailSystemContext,
         threadId: thread.thread_id,
         userDisplayName: input.senderDisplayName || undefined,
+        currentSpeakerName: speakerName,
+        costScope: { userId: emailScopeKey, tier: 'anonymous' },
       }
     );
 

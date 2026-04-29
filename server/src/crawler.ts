@@ -1,11 +1,15 @@
 import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
+import { hardenPropertyIndex, sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
+import { PublisherDatabase, type AdagentsManifest } from "./db/publisher-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { HealthChecker } from "./health.js";
+import { AgentSnapshotDatabase } from "./db/agent-snapshot-db.js";
 import { AAO_HOST } from "./config/aao.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
@@ -25,19 +29,26 @@ export class CrawlerService {
   private adAgentsManager: AdAgentsManager;
   private brandManager: BrandManager;
   private brandDb: BrandDatabase;
+  private publisherDb: PublisherDatabase;
   private memberDb: MemberDatabase;
   private capabilityDiscovery: CapabilityDiscovery;
+  private healthChecker: HealthChecker;
+  private snapshotDb: AgentSnapshotDatabase;
   private eventsDb?: CatalogEventsDatabase;
   private profilesDb?: AgentInventoryProfilesDatabase;
 
   constructor(options?: { eventsDb?: CatalogEventsDatabase; profilesDb?: AgentInventoryProfilesDatabase }) {
+    hardenPropertyIndex();
     this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error', userAgent: AAO_UA_DISCOVERY });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
     this.brandManager = new BrandManager();
     this.brandDb = new BrandDatabase();
+    this.publisherDb = new PublisherDatabase();
     this.memberDb = new MemberDatabase();
     this.capabilityDiscovery = new CapabilityDiscovery();
+    this.healthChecker = new HealthChecker();
+    this.snapshotDb = new AgentSnapshotDatabase();
     this.eventsDb = options?.eventsDb;
     this.profilesDb = options?.profilesDb;
   }
@@ -372,6 +383,8 @@ export class CrawlerService {
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
+            await this.cacheAdagentsManifest(pubConfig.domain, validation.raw_data as AdagentsManifest);
+
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
@@ -424,6 +437,8 @@ export class CrawlerService {
             await this.federatedIndex.markPublisherHasValidAdagents(domain);
             processedDomains.add(domain);
 
+            await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
 
@@ -466,30 +481,26 @@ export class CrawlerService {
       // Stats are optional
     }
 
-    // 3. Probe all agents to discover and save their types
-    await this.probeAndUpdateAgentTypes(agents);
+    // 3. Probe all agents to discover capabilities+health, write snapshots,
+    //    and update type for any still-unknown agents.
+    await this.refreshAgentSnapshots(agents);
 
     return processedDomains;
   }
 
   /**
-   * Probe agents to discover their capabilities and infer their type.
-   * Updates the database with the inferred type for each agent.
+   * Probe every known agent to refresh capability + health snapshots in the DB,
+   * and fill in agent type for any that are still `unknown`. The registry
+   * page reads these snapshot tables instead of calling agents live, so this
+   * pass is the materialization step that keeps the public API fast.
    *
-   * Type indicators:
-   * - Sales: get_products, create_media_buy, list_authorized_properties
-   * - Creative: list_creative_formats, build_creative, generate_creative, validate_creative
-   * - Signals: get_signals, list_signals, match_audience, activate_signal, activate_audience
-   *
-   * Returns 'unknown' if no type-specific tools found or multiple types detected (hybrid agent).
+   * Type indicators (SALES_TOOLS / CREATIVE_TOOLS / SIGNALS_TOOLS) live in
+   * CapabilityDiscovery; inferTypeFromProfile collapses them to one.
    */
-  private async probeAndUpdateAgentTypes(agents: Agent[]): Promise<void> {
-    log.debug('Probing agents to discover types');
+  private async refreshAgentSnapshots(agents: Agent[]): Promise<void> {
+    log.debug('Refreshing agent health + capability snapshots');
 
-    // Get all unique agent URLs (from both registered and discovered)
     const allAgents = await this.federatedIndex.listAllAgents();
-
-    // Build a map of known types to skip already-typed agents
     const knownTypes = new Map<string, string>();
     for (const a of allAgents) {
       if (a.type && a.type !== 'unknown') {
@@ -497,45 +508,41 @@ export class CrawlerService {
       }
     }
 
-    const agentUrls = new Set([
-      ...agents.map(a => a.url),
-      ...allAgents.map(a => a.url),
-    ]);
-
-    // Filter out agents that already have a type or are paused
+    // Build one probe entry per unique URL; prefer registered-agent metadata
+    // (name/protocol) when we have it, else derive from URL.
     const pausedUrls = await this.getPausedAgentUrls();
-    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url) && !pausedUrls.has(url));
+    const seen = new Set<string>();
+    const toProbe: Agent[] = [];
+    for (const src of [...agents, ...allAgents.map(a => ({
+      name: a.name || a.url,
+      url: a.url,
+      type: (a.type as Agent['type']) || 'unknown',
+      protocol: (a.protocol as 'mcp' | 'a2a') || 'mcp',
+      description: '',
+      mcp_endpoint: a.url,
+      contact: { name: '', email: '', website: '' },
+      added_date: new Date().toISOString().split('T')[0],
+    } satisfies Agent))]) {
+      if (seen.has(src.url) || pausedUrls.has(src.url)) continue;
+      seen.add(src.url);
+      toProbe.push(src);
+    }
 
-    if (urlsToProbe.length === 0) {
-      log.debug('All agents already typed, skipping probe');
+    if (toProbe.length === 0) {
+      log.debug('No agents to probe');
       return;
     }
 
-    log.debug({ toProbe: urlsToProbe.length, alreadyTyped: knownTypes.size }, 'Probing agents for type');
-
-    // Probe agents in parallel with concurrency limit
     const CONCURRENCY = 5;
     const PROBE_TIMEOUT_MS = 10000;
-    let updated = 0;
+    let typesUpdated = 0;
+    let snapshotsWritten = 0;
     let failed = 0;
 
-    // Process in batches for controlled concurrency
-    for (let i = 0; i < urlsToProbe.length; i += CONCURRENCY) {
-      const batch = urlsToProbe.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < toProbe.length; i += CONCURRENCY) {
+      const batch = toProbe.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
-        batch.map(async (url) => {
-          const agent: Agent = {
-            name: url,
-            url,
-            type: 'unknown',
-            protocol: 'mcp',
-            description: '',
-            mcp_endpoint: url,
-            contact: { name: '', email: '', website: '' },
-            added_date: new Date().toISOString().split('T')[0],
-          };
-
-          // Add timeout to prevent hanging on unresponsive agents
+        batch.map(async (agent) => {
           const profile = await Promise.race([
             this.capabilityDiscovery.discoverCapabilities(agent),
             new Promise<never>((_, reject) =>
@@ -543,30 +550,59 @@ export class CrawlerService {
             ),
           ]);
 
-          // Infer type from capabilities
           const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
+          const effectiveType = knownTypes.get(agent.url) || inferredType;
+          const agentForHealth: Agent = { ...agent, type: effectiveType as Agent['type'], protocol: profile.protocol };
 
-          if (inferredType !== 'unknown') {
-            await this.federatedIndex.updateAgentMetadata(url, {
+          const [health, stats] = await Promise.all([
+            Promise.race([
+              this.healthChecker.checkHealth(agentForHealth),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
+              ),
+            ]).catch((err): import('./types.js').AgentHealth => ({
+              online: false,
+              checked_at: new Date().toISOString(),
+              error: err instanceof Error ? err.message : 'health check failed',
+            })),
+            Promise.race([
+              this.healthChecker.getStats(agentForHealth),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
+              ),
+            ]).catch((): import('./types.js').AgentStats => ({})),
+          ]);
+
+          await Promise.all([
+            this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+            this.snapshotDb.upsertHealth(agent.url, health, stats),
+          ]);
+
+          if (!knownTypes.has(agent.url) && inferredType !== 'unknown') {
+            await this.federatedIndex.updateAgentMetadata(agent.url, {
               agent_type: inferredType,
               protocol: profile.protocol,
             });
-            return 'updated';
+            return 'type_updated';
           }
-          return 'skipped';
+          return 'snapshot_only';
         })
       );
 
       for (const result of results) {
-        if (result.status === 'fulfilled' && result.value === 'updated') {
-          updated++;
-        } else if (result.status === 'rejected') {
+        if (result.status === 'fulfilled') {
+          snapshotsWritten++;
+          if (result.value === 'type_updated') typesUpdated++;
+        } else {
           failed++;
         }
       }
     }
 
-    log.info({ updated, unreachable: failed }, 'Agent type discovery complete');
+    log.info(
+      { snapshotsWritten, typesUpdated, unreachable: failed, probed: toProbe.length },
+      'Agent snapshots refreshed',
+    );
   }
 
   /**
@@ -574,6 +610,25 @@ export class CrawlerService {
    */
   getFederatedIndex(): FederatedIndexService {
     return this.federatedIndex;
+  }
+
+  /**
+   * Cache a validated adagents.json manifest into the publishers overlay and
+   * project its properties into the property catalog. The writer runs as one
+   * transaction with per-property savepoints, so a malformed property is
+   * skipped without losing the rest of the manifest.
+   *
+   * Failure of the entire transaction is logged but does not abort the crawl:
+   * the legacy discovered_properties / agent_property_authorizations writes
+   * happen separately via recordPropertiesForAgent and remain authoritative
+   * until catalog readers take over.
+   */
+  private async cacheAdagentsManifest(domain: string, manifest: AdagentsManifest): Promise<void> {
+    try {
+      await this.publisherDb.upsertAdagentsCache({ domain, manifest });
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+    }
   }
 
   /**
@@ -594,7 +649,10 @@ export class CrawlerService {
     authorizedFor?: string,
     limitToPropertyIds?: string[]
   ): Promise<void> {
-    for (const prop of properties) {
+    for (const rawProp of properties) {
+      const prop = sanitizeAdagentsProperty(rawProp, { publisherDomain, agentUrl });
+      if (!prop) continue;
+
       // If agent has specific property_ids, only record those
       if (limitToPropertyIds && limitToPropertyIds.length > 0) {
         if (!prop.property_id || !limitToPropertyIds.includes(prop.property_id)) {
@@ -800,6 +858,8 @@ export class CrawlerService {
         return;
       }
 
+      await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
         if (!authorizedAgent.url) continue;
@@ -966,6 +1026,8 @@ export class CrawlerService {
   private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
     const validation = await this.adAgentsManager.validateDomain(domain);
     if (!validation.valid || !validation.raw_data?.authorized_agents) return;
+
+    await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       if (!authorizedAgent.url) continue;

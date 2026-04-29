@@ -93,6 +93,24 @@ For example, the JS/TS seller skill lives at [`adcp-client/skills/build-seller-a
 - **Python** — [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills)
 - **Go** — [adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills)
 
+### Which domain and specialisms do you claim?
+
+Each agent declares its `supported_protocols` (domains) and `specialisms` on `get_adcp_capabilities`. Each skill's storyboard verifies the domain baseline — to also claim a specialism, your agent must pass that specialism's storyboard. Skills-to-specialism mapping:
+
+| Skill | Typical `supported_protocols` | Typical `specialisms` (pick one or combine) |
+|---|---|---|
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed`, `sales-proposal-mode` |
+| `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` + `sales-non-guaranteed` |
+| `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
+| `build-signals-agent` | `["signals"]` | `signal-owned`, `signal-marketplace` |
+| `build-creative-agent` | `["creative"]` | `creative-ad-server`, `creative-template` |
+
+Building a **brand rights** agent (licensing talent, music, stock media)? There's no skill today — see the [Brand Protocol docs](/docs/brand-protocol) and claim `brand-rights` under the `brand` domain.
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for every domain and specialism with its storyboard and status (stable, preview, deprecated).
+
+Storyboard passing issues the **AdCP Conformant** mark — validated against seeded test data. Once your agent is running against real production inventory, consider enrolling in **[AAO Verified](/docs/building/aao-verified)**, which adds continuous observability of real delivery on a dedicated compliance account. AAO Verified is optional and strictly implies AdCP Conformant; enterprise buyers that treat AdCP as production infrastructure filter on it.
+
 ## Build the agent
 
 Point your coding agent at the skill file for your agent type. In Claude Code:
@@ -135,15 +153,15 @@ Once the agent is running, validate it against the matching storyboard:
 ```bash
 # JS/TS agent
 npx tsx agent.ts &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Python agent
 python agent.py &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Go agent
 go run main.go &
-npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 ```
 
 Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
@@ -167,7 +185,7 @@ media_buy_seller (9 steps)
 </Warning>
 
 <Tip>
-Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client storyboard list` to see all available storyboards.
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client@latest storyboard list` to see all available storyboards.
 </Tip>
 
 See **[Validate Your Agent](/docs/building/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.

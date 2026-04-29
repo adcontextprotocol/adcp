@@ -48,6 +48,7 @@ const EXPECTED_COLUMNS = {
     'agreement_signed_at',
     'agreement_version',
     'pending_agreement_version',
+    'pending_agreement_user_id',
     'pending_agreement_accepted_at',
     // Workspace type
     'is_personal',
@@ -196,7 +197,7 @@ describe("Database Schema Alignment", () => {
     });
 
     it("should include all agreement-related columns", () => {
-      const agreementColumns = ['agreement_signed_at', 'agreement_version', 'pending_agreement_version', 'pending_agreement_accepted_at'];
+      const agreementColumns = ['agreement_signed_at', 'agreement_version', 'pending_agreement_version', 'pending_agreement_accepted_at', 'pending_agreement_user_id'];
       for (const col of agreementColumns) {
         expect(EXPECTED_COLUMNS.organizations).toContain(col);
       }

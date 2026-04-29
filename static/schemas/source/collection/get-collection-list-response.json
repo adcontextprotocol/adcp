@@ -61,14 +61,7 @@
             "description": "Taxonomy system for genre values"
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "series",
-              "publication",
-              "event_series",
-              "rotation"
-            ],
-            "description": "What kind of content program this is"
+            "$ref": "/schemas/enums/collection-kind.json"
           }
         },
         "required": [
@@ -125,5 +118,5 @@
   "required": [
     "list"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

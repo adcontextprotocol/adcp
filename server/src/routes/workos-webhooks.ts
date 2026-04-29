@@ -21,7 +21,8 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
-import { workos } from '../auth/workos-client.js';
+import { BrandDatabase } from '../db/brand-db.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
@@ -35,6 +36,7 @@ import {
   consumeInvitationSeatType,
   findSuccessorForPromotion,
   setMembershipRole,
+  autoLinkByVerifiedDomain,
 } from '../db/membership-db.js';
 
 const logger = createLogger('workos-webhooks');
@@ -96,7 +98,7 @@ async function upsertMembership(
   let userData = user;
   if (!userData) {
     try {
-      const workosUser = await workos.userManagement.getUser(membership.user_id);
+      const workosUser = await getWorkos().userManagement.getUser(membership.user_id);
       userData = {
         id: workosUser.id,
         email: workosUser.email,
@@ -120,10 +122,14 @@ async function upsertMembership(
 
   const role = membership.role?.slug || 'member';
 
-  // Consume any pending seat_type assignment from the invitation
-  const consumedSeatType = await consumeInvitationSeatType(membership.organization_id, userData.email);
-  const hasExplicitSeatType = consumedSeatType !== null;
-  const seatType = consumedSeatType || 'community_only';
+  // Consume any pending seat_type + provisioning_source staged by the
+  // endpoint that triggered this membership creation. Falls back to defaults
+  // when no row was staged (e.g. someone added the membership directly in
+  // WorkOS rather than through one of our endpoints).
+  const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
+  const hasExplicitSeatType = consumed !== null;
+  const seatType = consumed?.seat_type || 'community_only';
+  const provisioningSource = consumed?.source || 'webhook';
 
   const { assigned_role } = await upsertOrganizationMembership({
     user_id: membership.user_id,
@@ -135,12 +141,13 @@ async function upsertMembership(
     role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
+    provisioning_source: provisioningSource,
   });
 
   // If the DB promoted this member to owner, sync the change to WorkOS
   if (assigned_role === 'owner' && role === 'member') {
     try {
-      await workos.userManagement.updateOrganizationMembership(membership.id, {
+      await getWorkos().userManagement.updateOrganizationMembership(membership.id, {
         roleSlug: 'owner',
       });
       logger.info({
@@ -159,10 +166,16 @@ async function upsertMembership(
     }
   }
 
-  // Set primary_organization_id if not already set (prefer paying orgs)
-  const preferredOrg = await resolvePreferredOrganization(membership.user_id);
-  if (preferredOrg) {
-    await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+  // Set primary_organization_id if not already set (prefer paying orgs).
+  // Best-effort — same rationale as upsertUser: a transient backfill failure
+  // shouldn't fail the membership webhook. Integrity invariant catches drift.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(membership.user_id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
 }
 
@@ -189,19 +202,19 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
       // Promote in WorkOS first, then mirror locally
       let promotedInWorkos = false;
       if (target.workos_membership_id) {
-        await workos.userManagement.updateOrganizationMembership(
+        await getWorkos().userManagement.updateOrganizationMembership(
           target.workos_membership_id,
           { roleSlug: 'owner' }
         );
         promotedInWorkos = true;
       } else {
         // No cached membership ID — look it up from WorkOS
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await getWorkos().userManagement.listOrganizationMemberships({
           organizationId: membership.organization_id,
           userId: target.workos_user_id,
         });
         if (memberships.data.length > 0) {
-          await workos.userManagement.updateOrganizationMembership(
+          await getWorkos().userManagement.updateOrganizationMembership(
             memberships.data[0].id,
             { roleSlug: 'owner' }
           );
@@ -301,6 +314,24 @@ async function upsertUser(user: UserData): Promise<void> {
       user.updated_at,
     ]
   );
+
+  // Close the user.created vs organization_membership.created race: if a
+  // membership webhook fired first, its backfill UPDATE was a no-op because
+  // this row didn't exist yet. Set the pointer now from whatever memberships
+  // are already on file. No-op when the user has no memberships yet — the
+  // membership webhook will handle that case when it fires.
+  //
+  // Failures here don't fail the user upsert — the integrity invariant
+  // surfaces any pointer that doesn't get set, and the next authenticated
+  // request opportunistically backfills via resolvePrimaryOrganization.
+  try {
+    const preferredOrg = await resolvePreferredOrganization(user.id);
+    if (preferredOrg) {
+      await backfillPrimaryOrganization(user.id, preferredOrg);
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'primary_organization_id backfill failed during user upsert');
+  }
 
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');
 }
@@ -560,6 +591,32 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
     }, 'Upserted organization domain');
+
+    // Sync the brand registry: if WorkOS just confirmed the domain is owned
+    // by this org, mirror ownership + verified flags into the brands row
+    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
+    // because the webhook doesn't know the user's adopt-vs-fresh decision
+    // and would otherwise clobber a manifest the inline /verify route
+    // intentionally adopted seconds earlier.
+    //
+    // For dashboard-flipped domains (admin marked verified directly in the
+    // WorkOS console, no inline /verify call), this path is the ONLY writer.
+    // A failure here means the brand row will lag the WorkOS state until the
+    // next event for this domain — investigate logs if it surfaces.
+    if (domainData.state === 'verified') {
+      try {
+        const brandDb = new BrandDatabase();
+        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+        logger.info({
+          orgId: domainData.organization_id,
+          domain: normalizedDomain,
+        }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        // Don't block the webhook on brand-registry sync errors — webhook
+        // idempotency is the whole point. Subsequent events will retry.
+        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -686,7 +743,7 @@ export function createWorkOSWebhooksRouter(): Router {
         }
 
         try {
-          await workos.webhooks.constructEvent({
+          await getWorkos().webhooks.constructEvent({
             payload: req.body,
             sigHeader,
             secret: WORKOS_WEBHOOK_SECRET,
@@ -707,7 +764,7 @@ export function createWorkOSWebhooksRouter(): Router {
             if (membership.status === 'active') {
               let workosUser: any;
               try {
-                workosUser = await workos.userManagement.getUser(membership.user_id);
+                workosUser = await getWorkos().userManagement.getUser(membership.user_id);
               } catch (error) {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
               }
@@ -773,6 +830,23 @@ export function createWorkOSWebhooksRouter(): Router {
                 { userId: user.id, email: user.email, slackUserId: linkResult.slack_user_id },
                 'Auto-linked new website user to Slack account'
               );
+            }
+            // Auto-provision into a verified-domain org if one matches.
+            // Verified email is the trust gate: skip when WorkOS hasn't confirmed it yet
+            // (the /api/me/* paths will retry after the user signs in and the email verifies).
+            if (user.email_verified) {
+              try {
+                const linked = await autoLinkByVerifiedDomain(getWorkos(), user.id, user.email);
+                if (linked) {
+                  logger.info(
+                    { userId: user.id, email: user.email, orgId: linked.organizationId, role: linked.role },
+                    'Auto-provisioned new user into verified-domain organization'
+                  );
+                }
+              } catch (linkErr) {
+                logger.warn({ err: linkErr, userId: user.id, email: user.email },
+                  'Failed to auto-provision new user into verified-domain organization');
+              }
             }
             // Fire-and-forget prospect triage + brand research for business emails.
             if (user.email) {
@@ -944,7 +1018,7 @@ export async function backfillOrganizationMemberships(): Promise<{
           // Fetch users for this org from WorkOS
           let after: string | undefined;
           do {
-            const usersResponse = await workos.userManagement.listUsers({
+            const usersResponse = await getWorkos().userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
               after,
@@ -953,7 +1027,7 @@ export async function backfillOrganizationMemberships(): Promise<{
             for (const user of usersResponse.data) {
               try {
                 // Get the membership ID for this user in this org
-                const membershipsResponse = await workos.userManagement.listOrganizationMemberships({
+                const membershipsResponse = await getWorkos().userManagement.listOrganizationMemberships({
                   userId: user.id,
                 });
 
@@ -1102,7 +1176,7 @@ export async function backfillUsers(): Promise<{
     try {
       let after: string | undefined;
       do {
-        const usersResponse = await workos.userManagement.listUsers({
+        const usersResponse = await getWorkos().userManagement.listUsers({
           limit: 100,
           after,
         });
@@ -1141,7 +1215,7 @@ export async function backfillUsers(): Promise<{
         try {
           let orgAfter: string | undefined;
           do {
-            const usersResponse = await workos.userManagement.listUsers({
+            const usersResponse = await getWorkos().userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
               after: orgAfter,
@@ -1186,7 +1260,7 @@ export async function backfillUsers(): Promise<{
       for (const row of candidates) {
         try {
           // Confirm the user is actually gone from WorkOS before deleting
-          await workos.userManagement.getUser(row.workos_user_id);
+          await getWorkos().userManagement.getUser(row.workos_user_id);
           // User still exists in WorkOS — skip deletion
           result.usersSkipped++;
         } catch (getErr: any) {
@@ -1266,7 +1340,7 @@ export async function backfillOrganizationDomains(): Promise<{
 
       await Promise.all(batch.map(async (org) => {
         try {
-          const workosOrg = await workos.organizations.getOrganization(org.workos_organization_id);
+          const workosOrg = await getWorkos().organizations.getOrganization(org.workos_organization_id);
 
           // Map WorkOS SDK response to the shape syncOrganizationDomains expects
           const orgData: OrganizationData = {

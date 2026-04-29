@@ -14,8 +14,8 @@ Supports two modes:
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
-**Request Schema**: [`/schemas/latest/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json)
 
 ## Quick Start
 
@@ -144,7 +144,7 @@ asyncio.run(create_campaign())
 ```
 
 ```bash CLI test=false
-npx @adcp/client \
+npx @adcp/client@latest \
   https://test-agent.adcontextprotocol.org/mcp \
   create_media_buy \
   '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
@@ -627,7 +627,7 @@ const result = await testAgent.createMediaBuy({
       credentials: 'secret_token_xyz_minimum_32_chars'
     },
     reporting_frequency: 'daily',
-    requested_metrics: ['impressions', 'spend', 'video_completions']
+    requested_metrics: ['impressions', 'spend', 'completed_views']
   }
 });
 
@@ -678,7 +678,7 @@ async def create_with_reporting():
                 'credentials': 'secret_token_xyz_minimum_32_chars'
             },
             'reporting_frequency': 'daily',
-            'requested_metrics': ['impressions', 'spend', 'video_completions']
+            'requested_metrics': ['impressions', 'spend', 'completed_views']
         }
     )
 

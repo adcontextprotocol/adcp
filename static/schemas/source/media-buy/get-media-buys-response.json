@@ -98,17 +98,7 @@
             "type": "array",
             "description": "Actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now.",
             "items": {
-              "type": "string",
-              "enum": [
-                "pause",
-                "resume",
-                "cancel",
-                "update_budget",
-                "update_dates",
-                "update_packages",
-                "add_packages",
-                "sync_creatives"
-              ]
+              "$ref": "/schemas/enums/media-buy-valid-action.json"
             }
           },
           "history": {
@@ -278,13 +268,8 @@
                   }
                 },
                 "snapshot_unavailable_reason": {
-                  "type": "string",
-                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package.",
-                  "enum": [
-                    "SNAPSHOT_UNSUPPORTED",
-                    "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
-                    "SNAPSHOT_PERMISSION_DENIED"
-                  ]
+                  "$ref": "/schemas/enums/snapshot-unavailable-reason.json",
+                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package."
                 },
                 "snapshot": {
                   "type": "object",

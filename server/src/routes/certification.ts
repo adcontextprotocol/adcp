@@ -6,6 +6,7 @@ import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
 import { notifyUser } from '../notifications/notification-service.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('certification-routes');
 
@@ -577,14 +578,12 @@ export function createCertificationRouters() {
   });
 
   // POST /api/organizations/:orgId/certification-invites/:id/resend — re-send a stale invitation
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   orgRouter.post('/:orgId/certification-invites/:id/resend', requireAuth, async (req, res) => {
     try {
       const userId = req.user!.id;
       const { orgId, id } = req.params;
 
-      if (!UUID_RE.test(id)) {
+      if (!isUuid(id)) {
         return res.status(400).json({ error: 'Invalid invitation ID' });
       }
 
@@ -945,8 +944,7 @@ export function createCertificationRouters() {
   adminRouter.post('/attempts/:attemptId/resolve', async (req, res) => {
     try {
       const { attemptId } = req.params;
-      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!UUID_RE.test(attemptId)) {
+      if (!isUuid(attemptId)) {
         return res.status(400).json({ error: 'Invalid attempt ID format' });
       }
 

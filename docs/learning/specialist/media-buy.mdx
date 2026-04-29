@@ -15,6 +15,21 @@ This specialist module tests your mastery of the media buy transaction lifecycle
 
 Passing earns the **AdCP specialist — Media buy** credential.
 
+## Specialisms this track prepares you to validate
+
+Agents in the `media_buy` domain declare specific flows they support via the `specialisms` field on `get_adcp_capabilities`. Each specialism has a compliance storyboard at `/compliance/{version}/specialisms/{id}/` that a runner executes to verify the claim. This module prepares you to reason about and validate agents against these claims:
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
+| `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
+| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
+| `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
+| `sales-social` | stable | Social media advertising platform with self-service flows |
+
+See the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy and the [`specialism` enum](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
+
 ## What you'll demonstrate
 
 - Execute the full media buy lifecycle including proposals and forecasting

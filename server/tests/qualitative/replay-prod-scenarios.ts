@@ -29,7 +29,7 @@ async function getSystemPrompt(): Promise<string> {
 
   if (adminApiKey) {
     try {
-      const res = await fetch('https://agenticadvertising.org/api/admin/addie/rules/system-prompt', {
+      const res = await fetch('https://agenticadvertising.org/api/admin/addie/system-prompt', {
         headers: { Authorization: `Bearer ${adminApiKey}` },
       });
       const data = await res.json() as { system_prompt?: string };

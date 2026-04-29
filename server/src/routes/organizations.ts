@@ -6,7 +6,7 @@
  * member invitations, and role management.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
@@ -25,6 +25,9 @@ import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { isValidWorkOSMembershipId } from "../utils/workos-validation.js";
+import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 import {
   createStripeCustomer,
   createCustomerPortalSession,
@@ -203,19 +206,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -251,19 +250,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.json({ count: 0 }); // Non-admins see 0
       }
@@ -296,19 +291,15 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -470,19 +461,15 @@ export function createOrganizationsRouter(): Router {
       const { reason } = req.body;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -556,33 +543,148 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      // Get domains from database
+      // Get domains, both auto-provision settings, and any inferred
+      // subsidiary brands in one round trip. Inferred subsidiaries — high-
+      // confidence brand-registry rows whose house_domain matches one of
+      // this org's verified domains — are what an owner gives access to
+      // when they enable hierarchical auto-provisioning, so the UI shows
+      // them in the same surface as the toggle.
+      //
+      // Hierarchy classification (parent + self) is also returned so owners
+      // can see how the brand registry has classified their org and dispute
+      // it if wrong. Without visibility, the auto-provision toggle is a
+      // black box: an owner can't tell whether enabling it would inherit
+      // employees from the right parent or grant access via a stale edge.
       const pool = getPool();
-      const result = await pool.query(
-        `SELECT domain, verified, is_primary
-         FROM organization_domains
-         WHERE workos_organization_id = $1
-         ORDER BY is_primary DESC, domain ASC`,
-        [orgId]
-      );
+      const [domainsResult, settingResult, subsidiariesResult, selfBrandResult] = await Promise.all([
+        pool.query(
+          `SELECT domain, verified, is_primary
+           FROM organization_domains
+           WHERE workos_organization_id = $1
+           ORDER BY is_primary DESC, domain ASC`,
+          [orgId]
+        ),
+        pool.query<{
+          auto_provision_verified_domain: boolean;
+          auto_provision_brand_hierarchy_children: boolean;
+          auto_provision_hierarchy_enabled_at: Date | null;
+        }>(
+          `SELECT
+             auto_provision_verified_domain,
+             auto_provision_brand_hierarchy_children,
+             auto_provision_hierarchy_enabled_at
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        ),
+        pool.query<{ domain: string; brand_name: string | null; source: string | null; last_validated: Date | null }>(
+          `SELECT db.domain, db.brand_name, db.source_type AS source, db.last_validated
+           FROM brands db
+           WHERE db.house_domain IN (
+                   SELECT od.domain FROM organization_domains od
+                   WHERE od.workos_organization_id = $1 AND od.verified = true
+                 )
+             AND db.brand_manifest->'classification'->>'confidence' = 'high'
+             AND COALESCE(db.last_validated, db.discovered_at, db.created_at)
+                 > NOW() - INTERVAL '180 days'
+           ORDER BY db.domain ASC`,
+          [orgId]
+        ),
+        // Self + parent classification: pull the brands row whose domain is
+        // any of this org's verified domains, plus the parent (if house_domain
+        // is set) in one query via LATERAL.
+        pool.query<{
+          self_domain: string;
+          self_brand_name: string | null;
+          self_house_domain: string | null;
+          self_confidence: string | null;
+          self_source: string | null;
+          self_last_validated: Date | null;
+          parent_domain: string | null;
+          parent_brand_name: string | null;
+          parent_source: string | null;
+          parent_last_validated: Date | null;
+        }>(
+          // Tenant-scoped ORDER BY: the is_primary lookup must filter by
+          // workos_organization_id, otherwise an org that shares a verified
+          // domain with another tenant could pick the wrong row's primary
+          // flag. Self-loop guard on the parent join: a malformed brand row
+          // pointing house_domain at its own domain would otherwise render
+          // "you are a child of yourself".
+          `SELECT
+             db.domain AS self_domain,
+             db.brand_name AS self_brand_name,
+             db.house_domain AS self_house_domain,
+             db.brand_manifest->'classification'->>'confidence' AS self_confidence,
+             db.source_type AS self_source,
+             db.last_validated AS self_last_validated,
+             parent.domain AS parent_domain,
+             parent.brand_name AS parent_brand_name,
+             parent.source_type AS parent_source,
+             parent.last_validated AS parent_last_validated
+           FROM brands db
+           LEFT JOIN brands parent
+             ON parent.domain = db.house_domain
+            AND parent.domain != db.domain
+           WHERE db.domain IN (
+                   SELECT od.domain FROM organization_domains od
+                   WHERE od.workos_organization_id = $1 AND od.verified = true
+                 )
+           ORDER BY (
+             SELECT is_primary FROM organization_domains od
+             WHERE od.domain = db.domain
+               AND od.workos_organization_id = $1
+             LIMIT 1
+           ) DESC NULLS LAST
+           LIMIT 1`,
+          [orgId]
+        ),
+      ]);
+
+      const setting = settingResult.rows[0];
+      const selfRow = selfBrandResult.rows[0];
+      const hierarchyClassification = selfRow
+        ? {
+            self: {
+              domain: selfRow.self_domain,
+              brand_name: selfRow.self_brand_name,
+              confidence: selfRow.self_confidence,
+              source: selfRow.self_source,
+              last_validated: selfRow.self_last_validated,
+            },
+            parent: selfRow.parent_domain
+              ? {
+                  domain: selfRow.parent_domain,
+                  brand_name: selfRow.parent_brand_name,
+                  source: selfRow.parent_source,
+                  last_validated: selfRow.parent_last_validated,
+                }
+              : null,
+          }
+        : null;
 
       res.json({
-        domains: result.rows.map(r => ({
+        domains: domainsResult.rows.map(r => ({
           domain: r.domain,
           verified: r.verified,
           is_primary: r.is_primary,
+        })),
+        auto_provision_verified_domain: setting?.auto_provision_verified_domain ?? true,
+        auto_provision_brand_hierarchy_children: setting?.auto_provision_brand_hierarchy_children ?? false,
+        auto_provision_hierarchy_enabled_at: setting?.auto_provision_hierarchy_enabled_at ?? null,
+        hierarchy_classification: hierarchyClassification,
+        inferred_subsidiaries: subsidiariesResult.rows.map(r => ({
+          domain: r.domain,
+          brand_name: r.brand_name,
+          source: r.source,
+          last_validated: r.last_validated,
         })),
       });
     } catch (error) {
@@ -593,6 +695,53 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
+  // POST /api/organizations/:orgId/brand-classification-report - Record that
+  // a member flagged a brand-registry classification as wrong on the team page.
+  // Writes a structured audit row so we have a triage queue + can detect
+  // "10 different members reported the same domain". Doesn't block the user
+  // — they're also opening a mailto in parallel, so this is fire-and-forget
+  // best-effort.
+  router.post('/:orgId/brand-classification-report', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+      const { kind, subject_domain } = req.body ?? {};
+
+      const VALID_KINDS = ['parent', 'self', 'child'];
+      if (!VALID_KINDS.includes(kind)) {
+        return res.status(400).json({ error: 'Invalid kind', message: `kind must be one of: ${VALID_KINDS.join(', ')}` });
+      }
+      if (typeof subject_domain !== 'string' || subject_domain.length === 0 || subject_domain.length > 253) {
+        return res.status(400).json({ error: 'Invalid subject_domain' });
+      }
+
+      // Member of the org can flag — broader than admin/owner, since the
+      // report is informational and the corrective action is admin-side.
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
+        return res.status(403).json({ error: 'Access denied', message: 'You are not a member of this organization' });
+      }
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'brand_classification_report_filed',
+        resource_type: 'brand',
+        resource_id: subject_domain.toLowerCase(),
+        details: {
+          kind,
+          subject_domain: subject_domain.toLowerCase(),
+          reported_by_email: user.email,
+        },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Brand classification report error');
+      res.status(500).json({ error: 'Failed to record report' });
+    }
+  });
+
   // GET /api/organizations/:orgId/domain-users - Get Slack users from verified domains not in org (admin only)
   router.get('/:orgId/domain-users', requireAuth, async (req, res) => {
     try {
@@ -600,19 +749,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -759,19 +904,15 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: adminUser.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, adminUser.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -993,12 +1134,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1015,7 +1152,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Generate portal link for domain verification
-      const { link } = await workos!.portal.generateLink({
+      const { link } = await workos!.adminPortal.generateLink({
         organization: orgId,
         intent: 'domain_verification' as any,
       });
@@ -1511,12 +1648,8 @@ export function createOrganizationsRouter(): Router {
       const trimmedName = name.trim();
 
       // Verify user is member of this organization with owner or admin role
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1524,7 +1657,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can rename
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1568,20 +1701,23 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
-  // PATCH /api/organizations/:orgId/settings - Update organization settings (company_type, revenue_tier)
+  // PATCH /api/organizations/:orgId/settings - Update organization settings
+  // (company_type, revenue_tier, auto_provision_verified_domain,
+  //  auto_provision_brand_hierarchy_children)
   router.patch('/:orgId/settings', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
       const { orgId } = req.params;
-      const { company_type, revenue_tier } = req.body;
+      const {
+        company_type,
+        revenue_tier,
+        auto_provision_verified_domain,
+        auto_provision_brand_hierarchy_children,
+      } = req.body;
 
       // Verify user is member of this organization with owner or admin role
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1589,7 +1725,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can update settings
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1629,10 +1765,51 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Validate auto_provision_verified_domain if provided
+      if (auto_provision_verified_domain !== undefined && typeof auto_provision_verified_domain !== 'boolean') {
+        return res.status(400).json({
+          error: 'Invalid auto_provision_verified_domain',
+          message: 'auto_provision_verified_domain must be a boolean',
+        });
+      }
+
+      // Validate auto_provision_brand_hierarchy_children if provided
+      if (
+        auto_provision_brand_hierarchy_children !== undefined &&
+        typeof auto_provision_brand_hierarchy_children !== 'boolean'
+      ) {
+        return res.status(400).json({
+          error: 'Invalid auto_provision_brand_hierarchy_children',
+          message: 'auto_provision_brand_hierarchy_children must be a boolean',
+        });
+      }
+
+      // Both auto-provision flags are privilege grants — turning either on
+      // widens org membership in a way an admin shouldn't be able to do
+      // unilaterally (admins can promote auto-joined members to admin under
+      // the role-cap policy). Restrict to owner-only. AAO super-admin (or
+      // the static admin API key for internal tooling) can override.
+      const isPrivilegeGrant =
+        auto_provision_verified_domain !== undefined ||
+        auto_provision_brand_hierarchy_children !== undefined;
+      if (isPrivilegeGrant && userRole !== 'owner') {
+        const isStaticAdminApiKey =
+          (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+        const isAAOAdmin = isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+        if (!isAAOAdmin) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only owners can change auto-provisioning settings',
+          });
+        }
+      }
+
       // Build updates object with properly typed values
       const updates: {
         company_type?: CompanyType | null;
         revenue_tier?: RevenueTier | null;
+        auto_provision_verified_domain?: boolean;
+        auto_provision_brand_hierarchy_children?: boolean;
       } = {};
       if (company_type !== undefined) {
         updates.company_type = company_type as CompanyType | null;
@@ -1640,11 +1817,17 @@ export function createOrganizationsRouter(): Router {
       if (revenue_tier !== undefined) {
         updates.revenue_tier = revenue_tier as RevenueTier | null;
       }
+      if (auto_provision_verified_domain !== undefined) {
+        updates.auto_provision_verified_domain = auto_provision_verified_domain;
+      }
+      if (auto_provision_brand_hierarchy_children !== undefined) {
+        updates.auto_provision_brand_hierarchy_children = auto_provision_brand_hierarchy_children;
+      }
 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({
           error: 'No updates provided',
-          message: 'Provide company_type or revenue_tier to update',
+          message: 'Provide company_type, revenue_tier, auto_provision_verified_domain, or auto_provision_brand_hierarchy_children to update',
         });
       }
 
@@ -1652,13 +1835,18 @@ export function createOrganizationsRouter(): Router {
       await orgDb.updateOrganization(orgId, updates);
 
       // Record audit log
+      const rawUA = req.get('user-agent');
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
-        details: updates,
+        details: {
+          ip_address: req.ip ?? null,
+          user_agent: rawUA ? rawUA.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512) : null,
+          ...updates,
+        },
       });
 
       logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');
@@ -1667,6 +1855,12 @@ export function createOrganizationsRouter(): Router {
         success: true,
         company_type: company_type !== undefined ? company_type : org.company_type,
         revenue_tier: revenue_tier !== undefined ? revenue_tier : org.revenue_tier,
+        auto_provision_verified_domain: auto_provision_verified_domain !== undefined
+          ? auto_provision_verified_domain
+          : org.auto_provision_verified_domain,
+        auto_provision_brand_hierarchy_children: auto_provision_brand_hierarchy_children !== undefined
+          ? auto_provision_brand_hierarchy_children
+          : org.auto_provision_brand_hierarchy_children,
       });
     } catch (error) {
       logger.error({ err: error }, 'Update organization settings error');
@@ -1685,12 +1879,8 @@ export function createOrganizationsRouter(): Router {
       const { confirmation } = req.body;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1698,7 +1888,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners can delete
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1806,12 +1996,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1883,12 +2069,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1924,6 +2106,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.updateOrganization(orgId, {
         pending_agreement_version: agreement_version,
         pending_agreement_accepted_at: agreement_accepted_at ? new Date(agreement_accepted_at) : new Date(),
+        pending_agreement_user_id: user.id,
       });
 
       logger.info({
@@ -1953,19 +2136,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2019,19 +2198,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(memberships.data);
+      const userRole = membership.role;
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2129,19 +2304,15 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const requestingUserRole = resolveUserRole(userMemberships.data);
+      const requestingUserRole = callerMembership.role;
 
       // Get all members of the organization (paginate to handle orgs with >100 members)
       // Fetch first page to get type inference, then paginate if needed
@@ -2312,12 +2483,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2325,7 +2492,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can invite
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2359,11 +2526,11 @@ export function createOrganizationsRouter(): Router {
         roleSlug: role || 'member',
       });
 
-      // Persist seat_type intent for when the invitation is accepted
+      // Persist seat_type intent + provisioning source for when the invitation is accepted
       await query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, 'invited')
+         ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
         [invitation.id, orgId, email, seatType]
       );
 
@@ -2421,12 +2588,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId, invitationId } = req.params;
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2434,7 +2597,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can revoke invitations
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2488,12 +2651,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId, invitationId } = req.params;
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2501,7 +2660,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can resend invitations
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2534,10 +2693,10 @@ export function createOrganizationsRouter(): Router {
         roleSlug: 'member',
       });
 
-      // Persist seat_type intent for the new invitation
+      // Persist seat_type intent + provisioning source for the new invitation
       await query(
-        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
-         VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+         VALUES ($1, $2, $3, $4, 'invited')`,
         [newInvitation.id, orgId, invitation.email, preservedSeatType]
       );
 
@@ -2586,6 +2745,430 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
+  /**
+   * POST /api/organizations/:orgId/members/by-email
+   *
+   * Add or promote a member by email. Walks the four-state machine so callers
+   * don't need to know whether the user has a WorkOS account, whether they're
+   * already a member, or how WorkOS membership IDs work:
+   *   - WorkOS user not found             -> sendInvitation (always as member; promote after accept)
+   *   - User found, no membership in org  -> createOrganizationMembership with target role
+   *   - User found, already in this role  -> no_change
+   *   - User found, different role        -> updateOrganizationMembership
+   *
+   * Authz mirrors the existing patterns:
+   *   - Adding a new member: org admin/owner OR AAO super-admin
+   *   - Updating an existing member's role: org owner OR AAO super-admin
+   *   - Org admins capped at 'admin'/'member' roles. Only owners and AAO
+   *     super-admins can assign 'owner'.
+   */
+  router.post('/:orgId/members/by-email', requireAuth, async (req, res) => {
+    const user = req.user!;
+    const { orgId } = req.params;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const email = body.email;
+    const requestedRole = body.role ?? 'member';
+    const requestedSeatType = body.seat_type;
+
+    if (typeof email !== 'string') {
+      return res.status(400).json({ error: 'Missing required field', message: 'email is required' });
+    }
+
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ error: 'Invalid email', message: emailValidation.error });
+    }
+
+    if (typeof requestedRole !== 'string' || !VALID_ORGANIZATION_ROLES.includes(requestedRole as any)) {
+      return res.status(400).json({
+        error: 'Invalid role',
+        message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
+      });
+    }
+    const role = requestedRole as 'owner' | 'admin' | 'member';
+
+    // seat_type is optional. When omitted, inherit the existing /invitations
+    // default of 'community_only' so callers don't accidentally consume a
+    // contributor seat without asking for one.
+    let seatType: 'contributor' | 'community_only' = 'community_only';
+    if (requestedSeatType !== undefined) {
+      if (requestedSeatType !== 'contributor' && requestedSeatType !== 'community_only') {
+        return res.status(400).json({
+          error: 'Invalid seat type',
+          message: 'seat_type must be one of: contributor, community_only',
+        });
+      }
+      seatType = requestedSeatType;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (!localOrg) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+      if (localOrg.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
+        });
+      }
+
+      // Static admin API key (used by internal tooling and incident scripts)
+      // grants the same authority as AAO super-admin. requireAuth has already
+      // verified the key matches ADMIN_API_KEY before reaching this point.
+      const isStaticAdminApiKey =
+        (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+
+      // Resolve caller authority: org role + AAO super-admin override.
+      // Skip membership lookup for the static admin API key — 'admin_api_key'
+      // is a synthetic user id and won't have memberships.
+      const callerMembership = isStaticAdminApiKey
+        ? null
+        : await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerOrgRole = callerMembership?.role ?? null;
+      const isAAOAdmin =
+        isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+
+      const isOrgAdminOrOwner = callerOrgRole === 'admin' || callerOrgRole === 'owner';
+      const isOrgOwner = callerOrgRole === 'owner';
+
+      if (!isAAOAdmin && !callerMembership) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+      if (!isAAOAdmin && !isOrgAdminOrOwner) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only admins and owners can manage members',
+        });
+      }
+      // Org admins (non-owner, non-AAO) cannot assign 'owner'
+      if (role === 'owner' && !isAAOAdmin && !isOrgOwner) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners can assign the owner role',
+        });
+      }
+
+      const userLookup = await workos!.userManagement.listUsers({ email: normalizedEmail });
+      const workosUser = userLookup.data.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+      // Path 1: WorkOS user does not exist yet — invite as member only.
+      //
+      // The WorkOS-hosted invite-accept page would honor whatever roleSlug we pass,
+      // but invite tokens are bearer credentials (forwarded mail, leaked links).
+      // We always invite as 'member' and require an explicit promote step after
+      // acceptance — same discipline as routes/invites.ts uses on the AAO-internal
+      // accept flow.
+      if (!workosUser) {
+        const seatCheck = await canAddSeat(orgId, seatType);
+        if (!seatCheck.allowed) {
+          return res.status(403).json({ error: 'Seat limit reached', message: seatCheck.reason });
+        }
+
+        const invitation = await workos!.userManagement.sendInvitation({
+          email: normalizedEmail,
+          organizationId: orgId,
+          inviterUserId: user.id,
+          roleSlug: 'member',
+        });
+
+        // Persist seat_type intent + provisioning source so the webhook
+        // handler picks them up when the invitee accepts (mirrors the
+        // existing /invitations endpoint).
+        await query(
+          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+           VALUES ($1, $2, $3, $4, 'invited')
+           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
+          [invitation.id, orgId, normalizedEmail, seatType],
+        );
+
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_invited',
+          resource_type: 'invitation',
+          resource_id: invitation.id,
+          details: {
+            email: normalizedEmail,
+            requested_role: role,
+            invited_role: 'member',
+            seat_type: seatType,
+            inviter_email: user.email,
+            via: 'by_email',
+          },
+        });
+
+        logger.info(
+          { orgId, email: normalizedEmail, requestedRole: role, seatType, inviterId: user.id },
+          'Invited member by email (no WorkOS account yet)',
+        );
+
+        const promoteHint = role !== 'member'
+          ? ` After they accept, call this endpoint again to promote them to ${role}.`
+          : '';
+        return res.status(201).json({
+          success: true,
+          action: 'invited',
+          message: `Invitation sent to ${normalizedEmail} as member.${promoteHint}`,
+          invited_role: 'member',
+          requested_role: role,
+          seat_type: seatType,
+          invitation: {
+            id: invitation.id,
+            email: invitation.email,
+            state: invitation.state,
+            expires_at: invitation.expiresAt,
+            accept_invitation_url: invitation.acceptInvitationUrl,
+          },
+        });
+      }
+
+      const targetUserId = workosUser.id;
+      const pool = getPool();
+
+      const existingRow = await pool.query<{
+        workos_membership_id: string | null;
+        role: string | null;
+      }>(
+        `SELECT workos_membership_id, role
+         FROM organization_memberships
+         WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+        [orgId, targetUserId],
+      );
+
+      // Path 2: user exists but is not yet a member — create membership
+      if (existingRow.rows.length === 0) {
+        const seatCheck = await canAddSeat(orgId, seatType);
+        if (!seatCheck.allowed) {
+          return res.status(403).json({ error: 'Seat limit reached', message: seatCheck.reason });
+        }
+
+        // Stage seat_type for the membership.created webhook handler to consume.
+        //
+        // consumeInvitationSeatType matches by (organization_id, lower(email)),
+        // ignoring workos_invitation_id, so any prior stale row for this
+        // (org, email) pair would also be consumed by the next webhook. Clear
+        // those first so the seat_type the webhook reads is the one this caller
+        // requested, not a leftover from a previous failed attempt or a
+        // separate invitation that wasn't consumed yet.
+        await query(
+          'DELETE FROM invitation_seat_types WHERE workos_organization_id = $1 AND lower(email) = lower($2)',
+          [orgId, normalizedEmail],
+        );
+        const stagingKey = `direct_${orgId}_${targetUserId}`;
+        await query(
+          `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+           VALUES ($1, $2, $3, $4, 'admin_added')
+           ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
+          [stagingKey, orgId, normalizedEmail, seatType],
+        );
+
+        let membership;
+        try {
+          membership = await workos!.userManagement.createOrganizationMembership({
+            userId: targetUserId,
+            organizationId: orgId,
+            roleSlug: role,
+          });
+        } catch (createErr) {
+          // Roll back the seat_type stage row on failure. If the rollback DELETE
+          // itself fails (DB blip), log loudly so an operator can clean it up —
+          // but don't swallow silently, since a stale row would be consumed by
+          // the next /invitations webhook for the same (org, email) pair.
+          try {
+            await query(
+              'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1',
+              [stagingKey],
+            );
+          } catch (rollbackErr) {
+            logger.error(
+              { err: rollbackErr, orgId, email: normalizedEmail, stagingKey },
+              'CRITICAL: failed to rollback invitation_seat_types staging row after createOrganizationMembership failure — manually delete row to avoid seat_type leak',
+            );
+          }
+          const code = (createErr as { code?: string }).code;
+          if (code === 'organization_membership_already_exists') {
+            return res.status(409).json({
+              error: 'Membership already exists',
+              message: 'This user was just added. Try again to update their role.',
+            });
+          }
+          throw createErr;
+        }
+
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_added',
+          resource_type: 'membership',
+          resource_id: membership.id,
+          details: {
+            target_user_id: targetUserId,
+            target_email: normalizedEmail,
+            role,
+            seat_type: seatType,
+            actor_email: user.email,
+            via: 'by_email',
+          },
+        });
+
+        logger.info(
+          { orgId, targetUserId, email: normalizedEmail, role, seatType, actorId: user.id },
+          'Added member by email',
+        );
+
+        return res.status(201).json({
+          success: true,
+          action: 'membership_created',
+          message: `Added ${normalizedEmail} to the organization as ${role}.`,
+          user_id: targetUserId,
+          role,
+          seat_type: seatType,
+        });
+      }
+
+      // Path 3: user is already a member — update role if it differs.
+      //
+      // Self-role-change is blocked here even when the caller is the owner.
+      // Without this guard, an owner who hits this endpoint with their own
+      // email could demote themselves to member, leaving the org without an
+      // owner. PATCH /:orgId/members/:membershipId enforces the same rule;
+      // mirroring it here closes the parallel path. AAO super-admins are
+      // permitted to act on themselves only when they're not also an org
+      // member of this org (handled by the org-member check above).
+      if (targetUserId === user.id) {
+        return res.status(400).json({
+          error: 'Cannot change own role',
+          message: 'You cannot change your own role',
+        });
+      }
+
+      // Treat NULL local role the same as 'member' for comparison, but log the
+      // raw value in the audit row so a NULL doesn't get silently rewritten as
+      // 'member' in the trail.
+      const rawCurrentRole = existingRow.rows[0].role;
+      const effectiveCurrentRole = rawCurrentRole || 'member';
+      if (effectiveCurrentRole === role) {
+        return res.json({
+          success: true,
+          action: 'no_change',
+          message: `${normalizedEmail} is already a ${role}.`,
+          user_id: targetUserId,
+          role,
+        });
+      }
+
+      // Role-change authorization (parallel to PATCH /:orgId/members/:membershipId):
+      //   - Owner / AAO super-admin: can change any role to any role
+      //   - Org admin: can change member ↔ admin only; cannot promote anyone
+      //     to owner, and cannot change a current owner's role
+      //   - Anyone else: blocked
+      const targetIsOwner = effectiveCurrentRole === 'owner';
+      if (!isAAOAdmin && !isOrgOwner) {
+        if (!isOrgAdminOrOwner) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only owners and admins can change member roles',
+          });
+        }
+        if (targetIsOwner) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only owners can change another owner\'s role',
+          });
+        }
+        // role === 'owner' is already blocked earlier (line ~2691) for non-owner non-AAO callers
+      }
+
+      // Resolve membership ID (backfill from WorkOS if local cache is missing it)
+      let membershipId = existingRow.rows[0].workos_membership_id;
+      if (!membershipId) {
+        try {
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: targetUserId,
+            organizationId: orgId,
+          });
+          const match = memberships.data.find(
+            (m) => m.userId === targetUserId && m.organizationId === orgId,
+          );
+          if (!match || !isValidWorkOSMembershipId(match.id)) {
+            return res.status(400).json({
+              error: 'Cannot update role: membership not found in WorkOS',
+            });
+          }
+          membershipId = match.id;
+          await pool.query(
+            `UPDATE organization_memberships SET workos_membership_id = $1
+             WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+            [membershipId, orgId, targetUserId],
+          );
+        } catch (lookupErr) {
+          logger.error(
+            { err: lookupErr, orgId, targetUserId, email: normalizedEmail },
+            'Failed to look up membership from WorkOS for backfill',
+          );
+          return res.status(400).json({
+            error: 'Cannot update role: unable to resolve WorkOS membership',
+          });
+        }
+      }
+
+      await workos!.userManagement.updateOrganizationMembership(membershipId, { roleSlug: role });
+
+      await pool.query(
+        `UPDATE organization_memberships
+         SET role = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+        [role, orgId, targetUserId],
+      );
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'member_role_changed',
+        resource_type: 'membership',
+        resource_id: membershipId,
+        details: {
+          target_user_id: targetUserId,
+          target_email: normalizedEmail,
+          old_role: rawCurrentRole,
+          new_role: role,
+          actor_email: user.email,
+          via: 'by_email',
+        },
+      });
+
+      logger.info(
+        { orgId, targetUserId, email: normalizedEmail, oldRole: rawCurrentRole, newRole: role, actorId: user.id },
+        'Updated member role by email',
+      );
+
+      return res.json({
+        success: true,
+        action: 'role_updated',
+        message: `Updated ${normalizedEmail} to ${role}.`,
+        user_id: targetUserId,
+        role,
+        previous_role: rawCurrentRole,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(
+        { err: error, errorMessage, orgId, email: normalizedEmail, role },
+        'Error in members/by-email',
+      );
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Unable to add or promote member. Please try again or contact support.',
+      });
+    }
+  });
+
   // PATCH /api/organizations/:orgId/members/:membershipId - Update member role and/or seat type
   router.patch('/:orgId/members/:membershipId', requireAuth, async (req, res) => {
     try {
@@ -2617,24 +3200,21 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      // Check user's role - only owners can change roles, admins can change seat types
-      const userRole = resolveUserRole(userMemberships.data);
-      if (role && userRole !== 'owner') {
+      // Check caller's role first. Detailed role-change caps for admins are
+      // applied below once we have the target membership in hand.
+      const userRole = callerMembership.role;
+      if (role && userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
-          message: 'Only owners can change member roles',
+          message: 'Only owners and admins can change member roles',
         });
       }
       if (seat_type && userRole !== 'owner' && userRole !== 'admin') {
@@ -2659,6 +3239,25 @@ export function createOrganizationsRouter(): Router {
           error: 'Cannot change own role',
           message: 'You cannot change your own role',
         });
+      }
+
+      // Admin role-change caps: an org admin (non-owner) cannot promote anyone
+      // to owner, and cannot change the role of an existing owner. Owners and
+      // AAO super-admins are unrestricted.
+      if (role && userRole === 'admin') {
+        if (role === 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only owners can assign the owner role',
+          });
+        }
+        const targetCurrentRole = membership.role?.slug || 'member';
+        if (targetCurrentRole === 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: "Only owners can change another owner's role",
+          });
+        }
       }
 
       // If upgrading to contributor, enforce seat limits
@@ -2796,12 +3395,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId, membershipId } = req.params;
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2809,7 +3404,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can remove members
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = callerMembership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2938,12 +3533,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -2951,7 +3542,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Get available roles from WorkOS
-      const roles = await workos!.organizations.listOrganizationRoles({ organizationId: orgId });
+      const roles = await workos!.authorization.listOrganizationRoles(orgId);
 
       res.json({
         roles: roles.data.map(role => ({
@@ -2994,12 +3585,8 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
       const { target_org_id } = req.body;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3066,12 +3653,8 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3135,12 +3718,8 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId, codeId } = req.params;
 
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-
-      if (memberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -3185,11 +3764,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is a member of this org
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -3283,18 +3859,15 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this org
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
 
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       const isAdmin = userRole === 'admin' || userRole === 'owner';
 
       // Admins see all pending requests; members see their own
@@ -3316,14 +3889,11 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({ error: 'Only admins and owners can approve seat requests' });
       }
@@ -3410,14 +3980,11 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-        organizationId: orgId,
-      });
-      if (userMemberships.data.length === 0) {
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
-      const userRole = resolveUserRole(userMemberships.data);
+      const userRole = membership.role;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({ error: 'Only admins and owners can deny seat requests' });
       }

@@ -16,19 +16,24 @@
  * the five collection-list endpoints) register directly on the returned
  * server via `registerTool` after `createAdcpServer` returns.
  *
- * Opt-in via `TRAINING_AGENT_USE_FRAMEWORK=1`. Defaults to legacy until
- * storyboard parity is verified and a follow-up PR flips the default.
+ * Default dispatch path since both modes hit 52/52 storyboard parity.
+ * Legacy stays reachable via `TRAINING_AGENT_USE_FRAMEWORK=0` for one
+ * release as an escape hatch; a follow-up PR deletes the legacy dispatch
+ * after burn-in.
  */
 
-import { createAdcpServer } from '@adcp/client/server';
+import { createAdcpServer, wrapEnvelope } from '@adcp/client/server';
+import { mergeSeedProduct } from '@adcp/client/testing';
 import type { HandlerContext, AdcpServerToolName, AdcpServer, AdcpCustomToolConfig } from '@adcp/client/server';
 import { MediaChannelSchema } from '@adcp/client/types';
+import type { Product } from '@adcp/client';
 import { z } from 'zod';
-import type { TrainingContext, ToolArgs } from './types.js';
-import { getIdempotencyStore } from './idempotency.js';
-import { getWebhookSigningKey } from './webhooks.js';
-import { getRequestSigningCapability, getStrictRequestSigningCapability } from './request-signing.js';
+import type { TrainingContext, ToolArgs, AccountRef, BrandRef } from './types.js';
+import { getIdempotencyStore, scopedPrincipal } from './idempotency.js';
+import { getWebhookSigningMaterial, maybeEmitCompletionWebhook } from './webhooks.js';
+import { selectSigningCapability } from './request-signing.js';
 import { PUBLISHERS } from './publishers.js';
+import { getSession, runWithSessionContext, flushDirtySessions, sessionKeyFromArgs } from './state.js';
 import { createLogger } from '../logger.js';
 
 import {
@@ -47,7 +52,7 @@ import {
   handleActivateSignal,
   handleReportUsage,
 } from './task-handlers.js';
-import { handleSyncAccounts, handleSyncGovernance } from './account-handlers.js';
+import { handleSyncAccounts, handleSyncGovernance, handleListAccounts } from './account-handlers.js';
 import {
   handleSyncCatalogs,
   handleSyncEventSources,
@@ -96,6 +101,26 @@ const logger = createLogger('training-agent-framework');
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 
+// Baseline seeded-product fields — fills in the Product response-schema
+// minimums (description, publisher_properties, format_ids, pricing_options,
+// reporting_capabilities, delivery_type) so storyboards that seed a sparse
+// `{ name, channels }` fixture still emit a schema-valid product.
+const SEED_PRODUCT_DEFAULTS: Partial<Product> = {
+  description: 'Seeded sandbox fixture product',
+  delivery_type: 'non_guaranteed',
+  publisher_properties: [],
+  format_ids: [],
+  pricing_options: [],
+  reporting_capabilities: {
+    available_metrics: [],
+    available_reporting_frequencies: ['daily'],
+    expected_delay_minutes: 240,
+    timezone: 'UTC',
+    supports_webhooks: false,
+    date_range_support: 'date_range',
+  },
+};
+
 // ── Types ────────────────────────────────────────────────────────
 
 type LegacyHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
@@ -132,8 +157,7 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     if (first.field) errorObj.field = first.field;
     if (first.details !== undefined) errorObj.details = first.details;
     if (first.recovery) errorObj.recovery = first.recovery;
-    const body: Record<string, unknown> = { adcp_error: errorObj };
-    if (callerContext !== undefined) body.context = callerContext;
+    const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
     return {
       isError: true,
       content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -141,7 +165,16 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  const response = callerContext !== undefined ? { ...inner, context: callerContext } : inner;
+  // wrapEnvelope stamps the AdCP context-echo envelope. `replayed` is
+  // intentionally NOT set here — per protocol-envelope.json and the
+  // SDK's injectReplayed helper, fresh executions MUST omit the field
+  // (the framework stamps `replayed: true` only on idempotency replays).
+  const withEnvelope = wrapEnvelope(inner, {
+    ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
+      ? { context: callerContext }
+      : {}),
+  });
+  const response = withEnvelope as Record<string, unknown>;
   return {
     content: [{ type: 'text', text: JSON.stringify(response) }],
     structuredContent: response,
@@ -154,8 +187,7 @@ function serviceUnavailable(err: unknown, callerContext: unknown): AdaptedRespon
     message: err instanceof Error ? err.message : 'Unknown error',
     recovery: 'transient',
   };
-  const body: Record<string, unknown> = { adcp_error: errorObj };
-  if (callerContext !== undefined) body.context = callerContext;
+  const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -170,8 +202,7 @@ function versionUnsupported(requested: unknown, callerContext: unknown): Adapted
     details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
     field: 'adcp_major_version',
   };
-  const body: Record<string, unknown> = { adcp_error: errorObj };
-  if (callerContext !== undefined) body.context = callerContext;
+  const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -191,8 +222,11 @@ function versionUnsupported(requested: unknown, callerContext: unknown): Adapted
  *   it on the response (so handlers never see or forward `context` and the
  *   framework's own injectContextIntoResponse doesn't double-echo).
  * - Wraps thrown exceptions as `SERVICE_UNAVAILABLE` per legacy behavior.
+ * - Fires a completion webhook after a successful handler when the buyer
+ *   supplied `push_notification_config.url` and the tool maps to a webhook
+ *   task type. Matches legacy dispatch behavior in `task-handlers.ts`.
  */
-function adapt(handler: LegacyHandler) {
+function adapt(toolName: string, handler: LegacyHandler) {
   return async (params: unknown, ctx: HandlerContext): Promise<AdaptedResponse> => {
     const rawParams = (params as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...handlerArgs } = rawParams;
@@ -210,13 +244,33 @@ function adapt(handler: LegacyHandler) {
       principal: ctx.authInfo?.clientId ?? 'anonymous',
     };
 
-    try {
-      const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
-      return toAdaptedResponse(result, callerContext);
-    } catch (err) {
-      logger.error({ err }, 'framework handler threw');
-      return serviceUnavailable(err, callerContext);
-    }
+    return runWithSessionContext(async () => {
+      let result: unknown;
+      try {
+        result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+      } catch (err) {
+        logger.error({ err }, 'framework handler threw');
+        return serviceUnavailable(err, callerContext);
+      }
+      try {
+        await flushDirtySessions();
+      } catch (err) {
+        logger.error({ err }, 'framework flushDirtySessions threw');
+        return serviceUnavailable(err, callerContext);
+      }
+      const response = toAdaptedResponse(result, callerContext);
+      if (!response.isError) {
+        const idk = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
+        maybeEmitCompletionWebhook({
+          toolName,
+          args: handlerArgs as Record<string, unknown>,
+          response: (result ?? {}) as Record<string, unknown>,
+          requestIdempotencyKey: typeof idk === 'string' ? idk : undefined,
+          principal: scopedWebhookPrincipal(ctx, handlerArgs as Record<string, unknown>),
+        });
+      }
+      return response;
+    });
   };
 }
 
@@ -235,6 +289,18 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
   return undefined;
 }
 
+/** Scoped principal for webhook idempotency. Mirrors the
+ *  `resolveIdempotencyPrincipal` rule on the AdcpServer config below: only
+ *  `static:public` (the shared sandbox token) needs account-level partitioning;
+ *  other principals are single-caller and use the auth principal directly.
+ *  Delegates to `scopedPrincipal` so the partition format stays defined in
+ *  one place and can never drift from the request-side cache. */
+function scopedWebhookPrincipal(ctx: HandlerContext, params: Record<string, unknown>): string {
+  const auth = ctx.authInfo?.clientId ?? 'anonymous';
+  if (auth !== 'static:public') return auth;
+  return scopedPrincipal(auth, deriveAccountScope(params));
+}
+
 // ── Server factory ──────────────────────────────────────────────
 
 /**
@@ -243,7 +309,7 @@ function deriveAccountScope(params: Record<string, unknown>): string | undefined
  * escape our module boundary.
  */
 export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpServer {
-  const signingCap = ctx.strict ? getStrictRequestSigningCapability() : getRequestSigningCapability();
+  const signingCap = selectSigningCapability(ctx);
 
   // ── Custom tools outside AdcpToolMap ─────────────────────────
   // Registered through the framework's `customTools` config (5.4).
@@ -270,13 +336,22 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
           principal: authInfo?.clientId ?? 'anonymous',
         };
         const { context: callerContext, ...handlerArgs } = params;
-        try {
-          const result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+        return runWithSessionContext(async () => {
+          let result: unknown;
+          try {
+            result = await Promise.resolve(handler(handlerArgs as ToolArgs, trainingCtx));
+          } catch (err) {
+            logger.error({ err, tool: name }, 'framework custom-tool handler threw');
+            return serviceUnavailable(err, callerContext);
+          }
+          try {
+            await flushDirtySessions();
+          } catch (err) {
+            logger.error({ err, tool: name }, 'framework custom-tool flushDirtySessions threw');
+            return serviceUnavailable(err, callerContext);
+          }
           return toAdaptedResponse(result, callerContext);
-        } catch (err) {
-          logger.error({ err, tool: name }, 'framework custom-tool handler threw');
-          return serviceUnavailable(err, callerContext);
-        }
+        });
       },
     };
   }
@@ -366,6 +441,10 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     account: ACCOUNT_REF,
     brand: BRAND_REF,
     context: CONTEXT_REF,
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().optional(),
+    }).optional(),
   };
 
   const DELETE_COLLECTION_LIST_SCHEMA = {
@@ -375,16 +454,15 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     context: CONTEXT_REF,
   };
 
+  // `scenario` stays an open string rather than z.enum so unrecognized
+  // scenarios reach the SDK handler and get a typed `UNKNOWN_SCENARIO`
+  // response envelope. A zod enum here would reject at MCP input validation,
+  // returning a generic validation error without the controller's context
+  // echo — breaking the deterministic_testing storyboard's unknown-scenario
+  // probe. Seed scenarios (seed_product, seed_creative, etc.) are also
+  // accepted here for the same reason.
   const COMPLY_TEST_CONTROLLER_SCHEMA = {
-    scenario: z.enum([
-      'list_scenarios',
-      'force_creative_status',
-      'force_account_status',
-      'force_media_buy_status',
-      'force_session_status',
-      'simulate_delivery',
-      'simulate_budget_spend',
-    ]),
+    scenario: z.string(),
     params: z.record(z.string(), z.any()).optional(),
     account: ACCOUNT_REF,
     brand: BRAND_REF,
@@ -400,7 +478,7 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     version: '1.0.0',
 
     idempotency: getIdempotencyStore(),
-    webhooks: { signerKey: getWebhookSigningKey() },
+    webhooks: getWebhookSigningMaterial(),
 
     // Only `static:public` is account-scoped: it's the shared sandbox token,
     // so unscoped idempotency keys would collide across callers. Other
@@ -416,9 +494,46 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
       return `${auth}\u001F${scope ?? ''}`;
     },
 
+    // Seeded-product bridge: flow `comply_test_controller.seed_product`
+    // fixtures into `get_products` responses on sandbox requests. Our seed
+    // store is session-scoped (one Map per brand.domain/account_id), so
+    // the SDK's `bridgeFromTestControllerStore(store, defaults)` helper
+    // (which closes over a `Map<string, unknown>` at server-construction
+    // time, before the request is parsed) doesn't fit. We session-load in
+    // the callback and run each fixture through `mergeSeedProduct` on top
+    // of `SEED_PRODUCT_DEFAULTS` (the response-schema minimum fields).
+    // `bridgeFromSessionStore` in @adcp/client 5.14+ collapses this to a
+    // one-liner — pending adcp-client#866 (5.14 storyboard regression).
+    //
+    // Security: the dispatcher's sandbox gate is `isSandboxRequest(params)`
+    // + (when `resolveAccount` is wired) `ctx.account.sandbox === true`.
+    // We don't wire `resolveAccount` — by design for the training agent —
+    // so the *only* fence is `isSandboxRequest`. Sessions are keyed by
+    // `brand.domain` / `account_id`, not by auth principal. Any caller
+    // authenticated via the training-agent bearer authenticator that sends
+    // `context.sandbox: true` (or `account.sandbox: true`) plus another
+    // caller's `brand.domain` will read that tenant's seeded fixtures.
+    // Acceptable for this surface: fixture data is non-sensitive by design
+    // (see `buildBearerAuthenticator` in ./index.ts for the sandbox
+    // security posture). Production sellers adopting this wiring SHOULD
+    // configure `resolveAccount` so the dispatcher's belt-and-suspenders
+    // second gate activates.
+    testController: {
+      async getSeededProducts(bridgeCtx) {
+        const args = bridgeCtx.input as { account?: AccountRef; brand?: BrandRef };
+        const session = await getSession(sessionKeyFromArgs(args, 'open'));
+        const seeded = session.complyExtensions.seededProducts;
+        if (seeded.size === 0) return [];
+        return Array.from(seeded.entries()).map(([productId, fixture]) => {
+          const base = { ...SEED_PRODUCT_DEFAULTS, product_id: productId } as Partial<Product>;
+          return mergeSeedProduct(base, fixture as Partial<Product>) as Product;
+        });
+      },
+    },
+
     capabilities: {
       major_versions: [3],
-      specialisms: ['signed-requests'],
+      specialisms: [],
       features: {
         inlineCreativeManagement: true,
         propertyListFiltering: true,
@@ -492,56 +607,57 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
     },
 
     mediaBuy: {
-      getProducts: adapt(handleGetProducts),
-      createMediaBuy: adapt(handleCreateMediaBuy),
-      updateMediaBuy: adapt(handleUpdateMediaBuy),
-      getMediaBuys: adapt(handleGetMediaBuys),
-      getMediaBuyDelivery: adapt(handleGetMediaBuyDelivery),
-      providePerformanceFeedback: adapt(handleProvidePerformanceFeedback),
-      listCreativeFormats: adapt(handleListCreativeFormats),
-      syncCreatives: adapt(handleSyncCreatives),
-      listCreatives: adapt(handleListCreatives),
+      getProducts: adapt('get_products', handleGetProducts),
+      createMediaBuy: adapt('create_media_buy', handleCreateMediaBuy),
+      updateMediaBuy: adapt('update_media_buy', handleUpdateMediaBuy),
+      getMediaBuys: adapt('get_media_buys', handleGetMediaBuys),
+      getMediaBuyDelivery: adapt('get_media_buy_delivery', handleGetMediaBuyDelivery),
+      providePerformanceFeedback: adapt('provide_performance_feedback', handleProvidePerformanceFeedback),
+      listCreativeFormats: adapt('list_creative_formats', handleListCreativeFormats),
+      syncCreatives: adapt('sync_creatives', handleSyncCreatives),
+      listCreatives: adapt('list_creatives', handleListCreatives),
     },
     creative: {
-      buildCreative: adapt(handleBuildCreative),
-      previewCreative: adapt(handlePreviewCreative),
-      getCreativeDelivery: adapt(handleGetCreativeDelivery),
+      buildCreative: adapt('build_creative', handleBuildCreative),
+      previewCreative: adapt('preview_creative', handlePreviewCreative),
+      getCreativeDelivery: adapt('get_creative_delivery', handleGetCreativeDelivery),
     },
     signals: {
-      getSignals: adapt(handleGetSignals),
-      activateSignal: adapt(handleActivateSignal),
+      getSignals: adapt('get_signals', handleGetSignals),
+      activateSignal: adapt('activate_signal', handleActivateSignal),
     },
     governance: {
-      syncPlans: adapt(handleSyncPlans),
-      checkGovernance: adapt(handleCheckGovernance),
-      reportPlanOutcome: adapt(handleReportPlanOutcome),
-      getPlanAuditLogs: adapt(handleGetPlanAuditLogs),
-      createPropertyList: adapt(handleCreatePropertyList),
-      listPropertyLists: adapt(handleListPropertyLists),
-      getPropertyList: adapt(handleGetPropertyList),
-      updatePropertyList: adapt(handleUpdatePropertyList),
-      deletePropertyList: adapt(handleDeletePropertyList),
-      createContentStandards: adapt(handleCreateContentStandards),
-      listContentStandards: adapt(handleListContentStandards),
-      getContentStandards: adapt(handleGetContentStandards),
-      updateContentStandards: adapt(handleUpdateContentStandards),
-      calibrateContent: adapt(handleCalibrateContent),
-      validateContentDelivery: adapt(handleValidateContentDelivery),
+      syncPlans: adapt('sync_plans', handleSyncPlans),
+      checkGovernance: adapt('check_governance', handleCheckGovernance),
+      reportPlanOutcome: adapt('report_plan_outcome', handleReportPlanOutcome),
+      getPlanAuditLogs: adapt('get_plan_audit_logs', handleGetPlanAuditLogs),
+      createPropertyList: adapt('create_property_list', handleCreatePropertyList),
+      listPropertyLists: adapt('list_property_lists', handleListPropertyLists),
+      getPropertyList: adapt('get_property_list', handleGetPropertyList),
+      updatePropertyList: adapt('update_property_list', handleUpdatePropertyList),
+      deletePropertyList: adapt('delete_property_list', handleDeletePropertyList),
+      createContentStandards: adapt('create_content_standards', handleCreateContentStandards),
+      listContentStandards: adapt('list_content_standards', handleListContentStandards),
+      getContentStandards: adapt('get_content_standards', handleGetContentStandards),
+      updateContentStandards: adapt('update_content_standards', handleUpdateContentStandards),
+      calibrateContent: adapt('calibrate_content', handleCalibrateContent),
+      validateContentDelivery: adapt('validate_content_delivery', handleValidateContentDelivery),
     },
     accounts: {
-      syncAccounts: adapt(handleSyncAccounts),
-      syncGovernance: adapt(handleSyncGovernance),
-      reportUsage: adapt(handleReportUsage),
+      syncAccounts: adapt('sync_accounts', handleSyncAccounts),
+      listAccounts: adapt('list_accounts', handleListAccounts),
+      syncGovernance: adapt('sync_governance', handleSyncGovernance),
+      reportUsage: adapt('report_usage', handleReportUsage),
     },
     eventTracking: {
-      syncEventSources: adapt(handleSyncEventSources),
-      logEvent: adapt(handleLogEvent),
-      syncCatalogs: adapt(handleSyncCatalogs),
+      syncEventSources: adapt('sync_event_sources', handleSyncEventSources),
+      logEvent: adapt('log_event', handleLogEvent),
+      syncCatalogs: adapt('sync_catalogs', handleSyncCatalogs),
     },
     brandRights: {
-      getBrandIdentity: adapt(handleGetBrandIdentity),
-      getRights: adapt(handleGetRights),
-      acquireRights: adapt(handleAcquireRights),
+      getBrandIdentity: adapt('get_brand_identity', handleGetBrandIdentity),
+      getRights: adapt('get_rights', handleGetRights),
+      acquireRights: adapt('acquire_rights', handleAcquireRights),
     },
 
     customTools: {
@@ -563,13 +679,20 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
 }
 
 /**
- * Returns true when the framework path should be used. Default is OFF —
- * the legacy hand-rolled dispatch remains authoritative until framework
- * zod parity is verified end-to-end. Set `TRAINING_AGENT_USE_FRAMEWORK=1`
- * to opt in. Default will flip to ON once the framework path passes every
- * storyboard the legacy path passes.
+ * Returns true when the framework path should be used. Default is ON now
+ * that both dispatch modes hit 52/52 storyboard parity. Set
+ * `TRAINING_AGENT_USE_FRAMEWORK=0` (or `=false`) to fall back to legacy
+ * as an escape hatch; the fallback exists for one release so a regression
+ * in the flipped-default config has a clean rollback before legacy is
+ * deleted.
  */
 export function useFrameworkServer(): boolean {
   const v = process.env.TRAINING_AGENT_USE_FRAMEWORK;
-  return v === '1' || v === 'true';
+  // Default ON (framework dispatch). Framework storyboards have been at
+  // 52/52 clean since the envelope + session-fallback work landed;
+  // legacy stays alive as an explicit opt-out escape hatch
+  // (`TRAINING_AGENT_USE_FRAMEWORK=0`) for one release so a regression
+  // shows up on the flipped-default config before legacy deletion.
+  if (v === '0' || v === 'false') return false;
+  return true;
 }

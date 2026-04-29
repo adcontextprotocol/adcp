@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/collection/get-collection-list-response.json",
+  "title": "Get Collection List Response",
+  "description": "Response payload for get_collection_list task. Returns resolved collection entries with identification and key metadata for matching. Consumers should cache the resolved collections and refresh based on cache_valid_until.",
+  "type": "object",
+  "properties": {
+    "list": {
+      "$ref": "/schemas/3.1.0-beta.0/collection/collection-list.json",
+      "description": "The collection list metadata (always returned)"
+    },
+    "collections": {
+      "type": "array",
+      "description": "Resolved collections that passed filters (if resolve=true). Each entry contains identification and key metadata for seller matching.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collection_rid": {
+            "type": "string",
+            "description": "Registry-assigned stable identifier for this collection. Present when the collection has been registered in the collection registry."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable collection name"
+          },
+          "distribution_ids": {
+            "type": "array",
+            "description": "Platform-independent identifiers for cross-publisher matching",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "$ref": "/schemas/3.1.0-beta.0/enums/distribution-identifier-type.json",
+                  "description": "Type of distribution identifier"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The identifier value"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "content_rating": {
+            "$ref": "/schemas/3.1.0-beta.0/core/content-rating.json",
+            "description": "Baseline content rating for this collection"
+          },
+          "genre": {
+            "type": "array",
+            "description": "Genre tags for this collection",
+            "items": {
+              "type": "string"
+            }
+          },
+          "genre_taxonomy": {
+            "$ref": "/schemas/3.1.0-beta.0/enums/genre-taxonomy.json",
+            "description": "Taxonomy system for genre values"
+          },
+          "kind": {
+            "$ref": "/schemas/3.1.0-beta.0/enums/collection-kind.json"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-beta.0/core/pagination-response.json"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was resolved"
+    },
+    "cache_valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Cache expiration timestamp. Re-fetch the list after this time to get updated collections."
+    },
+    "coverage_gaps": {
+      "type": "object",
+      "description": "Collections included in the list despite missing metadata for a filtered dimension. Maps dimension name (e.g., 'genre', 'content_rating') to arrays of distribution identifiers for collections not covered. Only present when filters are applied and some collections lack the filtered metadata.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "$ref": "/schemas/3.1.0-beta.0/enums/distribution-identifier-type.json",
+              "description": "Type of distribution identifier"
+            },
+            "value": {
+              "type": "string",
+              "description": "The identifier value"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "additionalProperties": true
+}

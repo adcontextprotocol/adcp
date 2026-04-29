@@ -110,6 +110,14 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
     indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
     branch: 'main',
   },
+  {
+    id: 'adcp-go',
+    url: 'https://github.com/adcontextprotocol/adcp-go',
+    name: 'AdCP Go SDK',
+    description: 'Official Go SDK for AdCP — types, request parsing, response builders, TMP client/server, and reference router implementation',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
+    branch: 'main',
+  },
 
   // ============================================
   // Agent Protocols - A2A

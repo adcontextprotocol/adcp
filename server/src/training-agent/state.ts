@@ -15,7 +15,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { SessionState, AccountRef, BrandRef } from './types.js';
+import type { SessionState, AccountRef, BrandRef, CreativeState } from './types.js';
 import { cleanupExpiredTasks } from '@adcp/client';
 import {
   InMemoryStateStore,
@@ -27,6 +27,7 @@ import {
 } from '@adcp/client/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import { getAgentUrl } from './config.js';
 
 const logger = createLogger('training-agent-state');
 
@@ -176,10 +177,49 @@ function createSession(): SessionState {
       budgetSimulations: new Map(),
       seededProducts: new Map(),
       seededPricingOptions: new Map(),
+      seededCreativeFormats: new Map(),
     },
     createdAt: now,
     lastAccessedAt: now,
   };
+}
+
+/**
+ * Canonical compliance creative fixtures.
+ *
+ * Conformance storyboards reference these IDs by hardcoded value — e.g. the
+ * `creative_ad_server` storyboard calls `list_creatives` with no filter and
+ * asserts `creatives[0].pricing_options`, then calls `build_creative` /
+ * `report_usage` against `campaign_hero_video`. The storyboard declares
+ * `controller_seeding: true` to have the runner auto-fire `seed_creative`,
+ * but the SDK side of that wiring (adcp-client#778) is still open.
+ *
+ * Session handlers consult this map as a read-through fallback:
+ *  - `list_creatives` merges compliance fixtures in when the session has
+ *    none synced (so storyboards that never sync still see them); filtered
+ *    queries skip the fallback — an explicit `creative_ids` filter means
+ *    the caller is asking for a specific, session-owned creative.
+ *  - `build_creative` / `report_usage` fall through to the fixtures when a
+ *    requested `creative_id` is not in the session map.
+ *
+ * Agent URL is resolved lazily so the default propagates correctly in CI
+ * and local runs alike.
+ */
+export function getComplianceCreatives(): CreativeState[] {
+  return [
+    {
+      creativeId: 'campaign_hero_video',
+      formatId: { agent_url: getAgentUrl(), id: 'vast_30s' },
+      name: 'Campaign Hero Video',
+      status: 'approved',
+      syncedAt: new Date(0).toISOString(),
+      pricingOptionId: 'po_vast_30s_cpm',
+    },
+  ];
+}
+
+export function getComplianceCreative(id: string): CreativeState | undefined {
+  return getComplianceCreatives().find(c => c.creativeId === id);
 }
 
 /**
@@ -243,6 +283,8 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       budgetSimulations: asMap(hydratedComply.budgetSimulations, fresh.complyExtensions.budgetSimulations),
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
+      seededCreativeFormats: asMap(hydratedComply.seededCreativeFormats, fresh.complyExtensions.seededCreativeFormats),
+      forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
     createdAt: hydrated.createdAt instanceof Date ? hydrated.createdAt : fresh.createdAt,
@@ -404,6 +446,47 @@ export function stopSessionCleanup(): void {
     clearInterval(cleanupTimer);
     cleanupTimer = null;
   }
+}
+
+/**
+ * Search every persisted session for the first one that matches a
+ * predicate. Tools whose published input schema omits `account` (SDK
+ * auto-generated schemas for log_event, provide_performance_feedback,
+ * report_plan_outcome, etc.) land on `open:default` while earlier
+ * writes by sync_event_sources / create_media_buy / sync_plans went to
+ * `open:<brand.domain>`. This helper lets handlers keep their primary
+ * session lookup and fall back to a cross-session scan.
+ *
+ * Iterates the per-request cache first (fresh writes), then the
+ * persisted store (listed in pages of 100).
+ */
+export async function findSessionMatching(predicate: (s: SessionState) => boolean): Promise<SessionState | null> {
+  const ctx = requestCtx.getStore();
+  if (ctx) {
+    for (const session of ctx.sessions.values()) {
+      if (predicate(session)) return session;
+    }
+  }
+  const store = storeInstance;
+  if (!store) return null;
+  try {
+    const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
+    for (const row of page.items ?? []) {
+      const session = deserializeSession(row);
+      if (predicate(session)) return session;
+    }
+  } catch (err) {
+    logger.warn({ err }, 'findSessionMatching: store list failed');
+  }
+  return null;
+}
+
+export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionState | null> {
+  return findSessionMatching(s => s.mediaBuys.has(mediaBuyId));
+}
+
+export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
+  return findSessionMatching(s => s.governancePlans.has(planId));
 }
 
 /** Clear all sessions (tests only). */

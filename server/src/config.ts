@@ -48,8 +48,8 @@ export function getDatabaseConfig(): DatabaseConfig | null {
   return {
     connectionString,
     ssl,
-    maxPoolSize: envInt("DATABASE_POOL_MAX", 20),
-    minPoolSize: envInt("DATABASE_POOL_MIN", 5),
+    maxPoolSize: envInt("DATABASE_POOL_MAX", 8),
+    minPoolSize: envInt("DATABASE_POOL_MIN", 0),
     connectionTimeoutMillis: envInt("DATABASE_CONNECTION_TIMEOUT_MS", 5000),
     idleTimeoutMillis: envInt("DATABASE_IDLE_TIMEOUT_MS", 30000),
   };

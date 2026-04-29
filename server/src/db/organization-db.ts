@@ -1,5 +1,12 @@
+import type { PoolClient } from 'pg';
 import { getPool, query } from './client.js';
-import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
+import {
+  getStripeSubscriptionInfo,
+  listCustomersWithOrgIds,
+  listAllStripeCustomers,
+  listCustomerIdsWithLiveSubscriptions,
+  type StripeCustomerSummary,
+} from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
@@ -115,6 +122,7 @@ export interface Organization {
   agreement_version: string | null;
   pending_agreement_version: string | null;
   pending_agreement_accepted_at: Date | null;
+  pending_agreement_user_id: string | null;
   subscription_status: string | null;
   subscription_current_period_end: Date | null;
   subscription_product_id: string | null;
@@ -133,8 +141,22 @@ export interface Organization {
   discount_granted_at: Date | null;
   stripe_coupon_id: string | null;
   stripe_promotion_code: string | null;
+  billing_address: BillingAddress | null;
+  auto_provision_verified_domain: boolean;
+  auto_provision_brand_hierarchy_children: boolean;
+  auto_provision_hierarchy_enabled_at: Date | null;
+  auto_provision_hierarchy_disabled_at: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface BillingAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
 }
 
 export interface SubscriptionInfo {
@@ -201,23 +223,67 @@ export function tierFromLookupKey(lookupKey: string | null | undefined): Members
 }
 
 /**
- * Resolve the effective membership tier for an organization.
- * Fallback chain: cached tier → stored lookup key → amount inference.
- * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ * Input shape for `resolveMembershipTier`. Kept as a named type so the
+ * companion SQL helpers below can declare a matching row type, and so
+ * a future resolver change that needs a new column surfaces every
+ * consumer via TS.
  */
-export function resolveMembershipTier(org: {
+export interface MembershipTierRow {
   membership_tier: string | null;
   subscription_price_lookup_key?: string | null;
   subscription_status: string | null;
   subscription_amount: number | null;
   subscription_interval: string | null;
   is_personal: boolean;
-} | null | undefined): MembershipTier | null {
+}
+
+/**
+ * Column list the resolver requires from the `organizations` table.
+ * Single source of truth for handlers that issue their own SELECT
+ * (typically inside a transaction) and then hand the row to
+ * `resolveMembershipTier`. Extending the resolver to consider a new
+ * column means adding it here AND to `MembershipTierRow` — TS will
+ * then surface every call site that needs to be updated.
+ */
+export const MEMBERSHIP_TIER_COLUMNS = [
+  'membership_tier',
+  'subscription_price_lookup_key',
+  'subscription_status',
+  'subscription_amount',
+  'subscription_interval',
+  'is_personal',
+] as const;
+
+/**
+ * Resolve the effective membership tier for an organization.
+ * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ */
+export function resolveMembershipTier(org: MembershipTierRow | null | undefined): MembershipTier | null {
   if (!org) return null;
   if (org.membership_tier) return org.membership_tier as MembershipTier;
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
   return tierFromLookupKey(org.subscription_price_lookup_key)
     ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+}
+
+/**
+ * Read + resolve the current membership tier for `orgId` using a
+ * caller-held pg client. Prefer this to inline SQL when the read
+ * must share a transaction with subsequent writes (e.g.,
+ * `applyAgentVisibility` re-reads the tier under `FOR UPDATE` after
+ * locking `member_profiles`). Pass `{ forUpdate: true }` when the
+ * caller needs to lock the organizations row as well.
+ */
+export async function readMembershipTierFromClient(
+  client: PoolClient,
+  orgId: string,
+  opts: { forUpdate?: boolean } = {},
+): Promise<MembershipTier | null> {
+  const lockSuffix = opts.forUpdate ? ' FOR UPDATE' : '';
+  const sql = `SELECT ${MEMBERSHIP_TIER_COLUMNS.join(', ')} FROM organizations WHERE workos_organization_id = $1${lockSuffix}`;
+  const result = await client.query<MembershipTierRow>(sql, [orgId]);
+  return resolveMembershipTier(result.rows[0] ?? null);
 }
 
 /**
@@ -365,20 +431,9 @@ export async function canAddSeat(
   try {
     await client.query('BEGIN');
 
-    // Lock the org row to serialize concurrent seat checks
-    const orgResult = await client.query<{
-      membership_tier: string | null;
-      subscription_price_lookup_key: string | null;
-      subscription_amount: number | null;
-      subscription_interval: string | null;
-      subscription_status: string | null;
-      is_personal: boolean;
-    }>(
-      'SELECT membership_tier, subscription_price_lookup_key, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
-      [orgId]
-    );
-    const org = orgResult.rows[0];
-    const tier = resolveMembershipTier(org);
+    // Lock the org row to serialize concurrent seat checks and resolve
+    // the tier from the same (locked) read.
+    const tier = await readMembershipTierFromClient(client, orgId, { forUpdate: true });
     const limits = getSeatLimits(tier);
 
     // Count active members (contributor = admin-assigned OR Slack-mapped OR in working group)
@@ -789,6 +844,7 @@ export class OrganizationDatabase {
       agreement_version: 'agreement_version',
       pending_agreement_version: 'pending_agreement_version',
       pending_agreement_accepted_at: 'pending_agreement_accepted_at',
+      pending_agreement_user_id: 'pending_agreement_user_id',
       subscription_current_period_end: 'subscription_current_period_end',
       subscription_product_id: 'subscription_product_id',
       subscription_product_name: 'subscription_product_name',
@@ -806,6 +862,9 @@ export class OrganizationDatabase {
       discount_granted_at: 'discount_granted_at',
       stripe_coupon_id: 'stripe_coupon_id',
       stripe_promotion_code: 'stripe_promotion_code',
+      billing_address: 'billing_address',
+      auto_provision_verified_domain: 'auto_provision_verified_domain',
+      auto_provision_brand_hierarchy_children: 'auto_provision_brand_hierarchy_children',
     };
 
     const setClauses: string[] = [];
@@ -1219,44 +1278,146 @@ export class OrganizationDatabase {
   }
 
   /**
-   * Find Stripe customer mismatches where an org has a different customer ID in the DB
-   * than what Stripe metadata says it should have.
+   * Find Stripe customers that look like duplicates of an org's linked customer.
    *
-   * This detects the case where:
-   * - Org has stripe_customer_id = cus_X in the database
-   * - But a different Stripe customer (cus_Y) has metadata saying it belongs to that org
+   * Three signals, in priority order:
+   *   1. metadata — orphan customer's `metadata.workos_organization_id`
+   *      points at the org (the original signal).
+   *   2. email    — orphan customer shares email (case-insensitive) with the
+   *      org's linked customer.
+   *   3. name     — orphan customer shares name (trimmed, lower-cased) with
+   *      the org's linked customer AND has a live (active/trialing/past_due)
+   *      subscription.
    *
-   * This often indicates an org has multiple Stripe customers (e.g., someone created
-   * a new customer instead of using the existing one).
+   * The ResponsiveAds case (#3200) had two customers with identical name and
+   * email: one linked + one orphan with an active sub generating a duplicate
+   * \$2,500 invoice. Metadata-only detection didn't surface it.
+   *
+   * Each mismatch carries `match_reason` so the resolver can pick the right
+   * unwind (metadata-linked orphans typically merge cleanly; email/name
+   * orphans may need manual sub cancel + invoice void in Stripe first).
+   *
+   * One mismatch per (org, orphan) pair — if the same orphan matches by
+   * multiple signals, the first signal in priority order wins.
    */
   async findStripeCustomerMismatches(): Promise<Array<{
     org_id: string;
     org_name: string;
     db_customer_id: string;
     stripe_metadata_customer_id: string;
+    match_reason: 'metadata' | 'email' | 'name';
   }>> {
-    const mismatches: Array<{
+    type Mismatch = {
       org_id: string;
       org_name: string;
       db_customer_id: string;
       stripe_metadata_customer_id: string;
-    }> = [];
+      match_reason: 'metadata' | 'email' | 'name';
+    };
 
-    // Get all Stripe customers with org metadata
-    const stripeCustomers = await listCustomersWithOrgIds();
+    const allCustomers = await listAllStripeCustomers();
+    const liveSubCustomerIds = await listCustomerIdsWithLiveSubscriptions();
 
-    for (const { stripeCustomerId, workosOrgId } of stripeCustomers) {
-      const localOrg = await this.getOrganization(workosOrgId);
+    const customerById = new Map<string, StripeCustomerSummary>();
+    for (const c of allCustomers) customerById.set(c.id, c);
 
-      // Check if org exists and has a DIFFERENT customer ID than Stripe metadata suggests
-      if (localOrg && localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
-        // Mismatch: Org has cus_X in DB, but Stripe customer cus_Y claims to belong to this org
-        mismatches.push({
-          org_id: workosOrgId,
-          org_name: localOrg.name,
-          db_customer_id: localOrg.stripe_customer_id,
-          stripe_metadata_customer_id: stripeCustomerId,
-        });
+    // For each org with a linked Stripe customer, collect candidate orphans
+    // by metadata, email, and name and emit one mismatch per (org, orphan)
+    // pair. `seenPairs` keys "<orgId>:<orphanId>" so we don't emit duplicates
+    // when an orphan matches by multiple signals.
+    const linkedOrgsResult = await getPool().query<{
+      workos_organization_id: string;
+      name: string;
+      stripe_customer_id: string;
+    }>(
+      `SELECT workos_organization_id, name, stripe_customer_id
+       FROM organizations
+       WHERE stripe_customer_id IS NOT NULL
+       ORDER BY workos_organization_id`
+    );
+
+    // Set of every Stripe customer that is some org's linked customer.
+    // We use this to avoid reporting another org's linked customer as an
+    // "orphan" of *this* org — that situation is a metadata conflict, not
+    // a duplicate, and is already surfaced by findStripeCustomerConflicts.
+    const allLinkedCustomerIds = new Set(
+      linkedOrgsResult.rows.map((r) => r.stripe_customer_id),
+    );
+
+    const mismatches: Mismatch[] = [];
+    const seenPairs = new Set<string>();
+
+    const recordPair = (
+      org: { workos_organization_id: string; name: string; stripe_customer_id: string },
+      orphan: StripeCustomerSummary,
+      reason: 'metadata' | 'email' | 'name',
+    ) => {
+      const key = `${org.workos_organization_id}:${orphan.id}`;
+      if (seenPairs.has(key)) return;
+      seenPairs.add(key);
+      mismatches.push({
+        org_id: org.workos_organization_id,
+        org_name: org.name,
+        db_customer_id: org.stripe_customer_id,
+        stripe_metadata_customer_id: orphan.id,
+        match_reason: reason,
+      });
+    };
+
+    for (const org of linkedOrgsResult.rows) {
+      const linkedCustomer = customerById.get(org.stripe_customer_id);
+
+      // Pass 1: metadata — orphan customer's metadata points at this org.
+      // This pass runs even when the linked customer is missing from Stripe
+      // (e.g., deleted) — the legacy detector worked that way too.
+      // Skip candidates that are another org's linked customer; that's a
+      // metadata conflict (handled by findStripeCustomerConflicts), not a
+      // duplicate, and reporting it here would double-flag the row.
+      for (const candidate of allCustomers) {
+        if (
+          candidate.metadataWorkosOrgId === org.workos_organization_id &&
+          candidate.id !== org.stripe_customer_id &&
+          !allLinkedCustomerIds.has(candidate.id)
+        ) {
+          recordPair(org, candidate, 'metadata');
+        }
+      }
+
+      // Email/name passes need the linked customer's profile — without it
+      // we can't look for shared email/name. Skip cleanly.
+      if (!linkedCustomer || linkedCustomer.deleted) continue;
+
+      const linkedEmail = linkedCustomer.email?.toLowerCase().trim() ?? null;
+      const linkedName = linkedCustomer.name?.toLowerCase().trim() ?? null;
+
+      for (const candidate of allCustomers) {
+        if (candidate.id === linkedCustomer.id || candidate.deleted) continue;
+        // Same exclusion as the metadata pass: another org's linked customer
+        // is not an orphan of this org.
+        if (allLinkedCustomerIds.has(candidate.id)) continue;
+
+        // Pass 2: email match (case-insensitive, trimmed).
+        if (
+          linkedEmail &&
+          candidate.email &&
+          candidate.email.toLowerCase().trim() === linkedEmail
+        ) {
+          recordPair(org, candidate, 'email');
+          continue;
+        }
+
+        // Pass 3: name match + candidate has a live subscription. We require
+        // the active-sub signal here because shared names are far more common
+        // than shared emails (e.g., two unrelated personal orgs both named
+        // "Test"), so we'd false-positive without it.
+        if (
+          linkedName &&
+          candidate.name &&
+          candidate.name.toLowerCase().trim() === linkedName &&
+          liveSubCustomerIds.has(candidate.id)
+        ) {
+          recordPair(org, candidate, 'name');
+        }
       }
     }
 

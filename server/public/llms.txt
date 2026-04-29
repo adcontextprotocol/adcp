@@ -54,7 +54,7 @@ Coding-agent shortcut — skip (2) and load a seller skill directly: https://git
 
 ## SDKs and skills
 
-Each AdCP SDK ships both caller APIs (for buyers) and server primitives (for sellers). The JavaScript SDK also ships a storyboard runner (`npx @adcp/client storyboard run`) that validates any endpoint against the spec — use it regardless of the language your agent is written in.
+Each AdCP SDK ships both caller APIs (for buyers) and server primitives (for sellers). The JavaScript SDK also ships a storyboard runner (`npx @adcp/client@latest storyboard run`) that validates any endpoint against the spec — use it regardless of the language your agent is written in.
 
 - `@adcp/client` (JavaScript/TypeScript): https://github.com/adcontextprotocol/adcp-client
 - `adcp` (Python): https://github.com/adcontextprotocol/adcp-client-python
@@ -79,6 +79,8 @@ Served by AgenticAdvertising.org:
 - **Task**: A discrete unit of work in AdCP (e.g., get_products, create_media_buy)
 - **Media product**: An advertising opportunity offered by a publisher or platform
 - **Content standards**: Brand safety and suitability rules that govern where ads can appear
+- **format_id**: A structured object — never a plain string — that identifies a creative format by its declaring agent and local slug: `{ "agent_url": "https://...", "id": "display_300x250" }`. Optionally includes `width`/`height` (integers) or `duration_ms` (number) for parameterized template formats. `format_id` is a pointer to a format, not the format definition itself.
+- **format** (definition object): The complete format specification returned by `list_creative_formats`. Contains a `format_id` plus `name`, `assets`, `renders`, and other fields. A `format` object always wraps a `format_id`; they are not interchangeable — `format_id` is the reference, `format` is the definition.
 
 ## Full documentation
 

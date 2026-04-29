@@ -34,7 +34,7 @@ describe('Set primary email endpoint', () => {
   });
 
   it('updates WorkOS as source of truth', () => {
-    expect(source).toMatch(/workos\.userManagement\.updateUser/);
+    expect(source).toMatch(/getWorkos\(\)\.userManagement\.updateUser/);
   });
 
   it('swaps emails in a transaction', () => {
@@ -55,7 +55,7 @@ describe('Set primary email endpoint', () => {
 
   it('does WorkOS update after DB transaction to avoid holding connections during network calls', () => {
     const commitIdx = source.indexOf("'COMMIT'");
-    const workosIdx = source.indexOf('workos.userManagement.updateUser');
+    const workosIdx = source.indexOf('getWorkos().userManagement.updateUser');
     expect(workosIdx).toBeGreaterThan(commitIdx);
   });
 

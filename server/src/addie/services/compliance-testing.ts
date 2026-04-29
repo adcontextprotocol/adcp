@@ -324,13 +324,10 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'audience-sync': { protocol: 'media-buy', storyboard_id: 'audience_sync' },
   'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
   'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
-  'sales-exchange': { protocol: 'media-buy', storyboard_id: 'sales_exchange' },
   'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
   'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
   'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },
-  'sales-retail-media': { protocol: 'media-buy', storyboard_id: 'sales_retail_media' },
   'sales-social': { protocol: 'media-buy', storyboard_id: 'sales_social' },
-  'sales-streaming-tv': { protocol: 'media-buy', storyboard_id: 'sales_streaming_tv' },
   'signed-requests': { protocol: 'media-buy', storyboard_id: 'signed_requests' },
   'governance-aware-seller': { protocol: 'media-buy', storyboard_id: 'governance_aware_seller' },
   // creative
@@ -345,7 +342,6 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'content-standards': { protocol: 'governance', storyboard_id: 'content_standards' },
   'governance-delivery-monitor': { protocol: 'governance', storyboard_id: 'governance_delivery_monitor' },
   'governance-spend-authority': { protocol: 'governance', storyboard_id: 'governance_spend_authority' },
-  'measurement-verification': { protocol: 'governance', storyboard_id: 'measurement_verification' },
   'property-lists': { protocol: 'governance', storyboard_id: 'property_lists' },
   // brand
   'brand-rights': { protocol: 'brand', storyboard_id: 'brand_rights' },

@@ -7,6 +7,7 @@
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { buildSlackCostScope } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -97,7 +98,10 @@ import {
   createImageToolHandlers,
 } from './mcp/image-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
+import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
+import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -469,14 +473,19 @@ async function createUserScopedTools(
   };
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
@@ -549,6 +558,14 @@ export async function handleAssistantMessage(
   // Build per-request context for system prompt
   const { requestContext, memberContext, personId } = await buildRequestContext(event.user);
 
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  const matchedRuleId = matchRuleIdFromMessage(event.text);
+  const messageWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && messageWorkosUserId) {
+    void recordPromptClicked(messageWorkosUserId, matchedRuleId);
+  }
+
   // Record the user's message in the relationship and event log
   if (personId) {
     relationshipDb.recordPersonMessage(personId, 'slack')
@@ -596,8 +613,13 @@ export async function handleAssistantMessage(
     // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {
@@ -763,8 +785,13 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // Create user-scoped tools (these can only operate on behalf of this user)
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
-    // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+    // Admin users get higher iteration limit for bulk operations.
+    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+      requestContext,
+      ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+      costScope: await buildSlackCostScope(memberContext, event.user),
+    };
 
     // Process with Claude
     try {

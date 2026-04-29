@@ -35,7 +35,7 @@ If a `comply_test_controller` call references a non-sandbox account, the control
 
 ## Tool definition
 
-**Schemas**: [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/latest/compliance/comply-test-controller-request.json) | [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/latest/compliance/comply-test-controller-response.json)
+**Schemas**: [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json) | [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json)
 
 Sellers that implement compliance test controller MUST:
 - Only expose the tool in sandbox mode (see sandbox gating above)
@@ -56,6 +56,8 @@ Sellers that implement compliance test controller MUST:
           "force_creative_status",
           "force_account_status",
           "force_media_buy_status",
+          "force_create_media_buy_arm",
+          "force_task_completion",
           "force_session_status",
           "simulate_delivery",
           "simulate_budget_spend",
@@ -69,7 +71,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
       }
     },
     "required": ["scenario"]
@@ -155,6 +157,102 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
   }
 }
 ```
+
+### `force_create_media_buy_arm`
+
+Shapes the next [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
+
+The submitted-arm wire shape is otherwise implementation-dependent: most sellers route most buys synchronously and no buyer-side request shape reliably triggers async. This scenario lets storyboards pin the arm so a regressed seller (e.g., emitting `media_buy_id` under `status: submitted`) cannot pass conformance silently.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `arm` | `submitted` \| `input-required` | Yes | Target response arm for the next `create_media_buy` call |
+| `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent `tasks/get` polls. Sandbox task_ids are caller-opaque strings; production task-id format rules do not apply. |
+| `message` | string | No | Human-readable explanation surfaced verbatim on the seller's `create_media_buy` response. Plain text, max 2000 characters. Buyers consuming the resulting response MUST apply the prompt-injection sanitization documented for [`message` on the submitted envelope](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) — this scenario is the natural place for a runner to inject adversarial strings to test that buyer-side sanitization. |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_create_media_buy_arm",
+  "params": {
+    "arm": "submitted",
+    "task_id": "task_async_signed_io_q2",
+    "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+  }
+}
+```
+
+**Response.** A `ForcedDirectiveSuccess` shape carrying the registered directive:
+
+```json
+{
+  "success": true,
+  "forced": {
+    "arm": "submitted",
+    "task_id": "task_async_signed_io_q2"
+  },
+  "message": "Next create_media_buy call will return the submitted arm with task_id task_async_signed_io_q2"
+}
+```
+
+`forced.task_id` is present only when `arm: submitted`.
+
+**Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
+
+### `force_task_completion`
+
+Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to `force_create_media_buy_arm`: that scenario drives the seller into the submitted envelope; this one closes the loop by transitioning the task store entry to `completed` and stamping the registered result. The buyer observes completion via the seller's push notification to `push_notification_config.url` (the canonical 3.0 delivery path for completion payloads) and via subsequent [`tasks/get`](/docs/building/implementation/async-operations#polling-for-submitted-operations) calls reporting `status: "completed"`. A typed result projection on the polling response is tracked for 3.1 in [#3123](https://github.com/adcontextprotocol/adcp/issues/3123).
+
+The submitted → completed lifecycle is otherwise non-deterministic — real task completions ride on out-of-band signals (IO countersignature, batch processor cron, governance human review). Storyboards cannot wait. This scenario lets a runner pin the completion deterministically immediately after registering the directive, so the buyer-side polling assertion fires on the same wire shape buyers will observe in production.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `task_id` | string | Yes | Task to resolve. MUST resolve within the caller's authenticated sandbox account; sellers MUST return `NOT_FOUND` (not `FORBIDDEN`, per the multi-tenant convention above) for `task_id`s belonging to other accounts. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
+| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. Sellers MUST emit `INVALID_PARAMS` if `result` does not validate against the response branch for the task's original method. Sellers MAY reject `result` payloads exceeding 256 KB with `INVALID_PARAMS`; storyboards MUST stay below this. |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_task_completion",
+  "params": {
+    "task_id": "task_async_signed_io_q2",
+    "result": {
+      "media_buy_id": "mb_async_signed_io_q2",
+      "status": "active",
+      "packages": [
+        { "package_id": "pkg-0", "product_id": "async_signed_io_q2", "budget": 30000 }
+      ]
+    }
+  }
+}
+```
+
+**Response.** Returns a state-transition success shape:
+
+```json
+{
+  "success": true,
+  "previous_state": "submitted",
+  "current_state": "completed",
+  "message": "Task task_async_signed_io_q2 transitioned from submitted to completed"
+}
+```
+
+Source state MUST be `submitted`, `working`, or `input-required`; any other source returns `INVALID_TRANSITION`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown to the caller's account, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `canceled`). Forcing a task to `failed` is out of scope for this scenario; the input-required arm of `force_create_media_buy_arm` covers the buyer-input-needed failure path.
+
+**Replay semantics.** Replays with identical params before the task is terminal are idempotent no-ops. Replays with diverging params before the task is terminal MUST overwrite the registered result (last-write-wins) — same precedent as `force_create_media_buy_arm`'s "second call overwrites." After the task is terminal, every replay returns `INVALID_TRANSITION` regardless of params.
+
+**Cross-protocol obligations.**
+- **Push notifications.** If the buyer registered `push_notification_config.url` on the original `create_media_buy`, forcing completion MUST fire the webhook with the registered `result` payload (the canonical 3.0 delivery path for completion data). Otherwise the storyboard can only test polling for terminal status, not push delivery of the result.
+- **`simulate_delivery` / `simulate_budget_spend`.** Once forced to completed with a valid `CreateMediaBuyResponse` carrying `media_buy_id`, the resulting media buy MUST be addressable by those scenarios. Round-tripping through `force_task_completion` is the supported path for storyboards that need a media buy without going through the synchronous flow.
+
+**Buyer-side observation.** After this scenario runs, the registered `result` is delivered to the buyer's `push_notification_config.url` (3.0 canonical path) with all caller-supplied fields preserved. Sellers MAY augment with seller-controlled fields (e.g., `created_at`, `dsp_*` IDs, normalized currency casing) but MUST NOT overwrite caller-supplied values. A subsequent `tasks/get(task_id)` MUST return `status: "completed"`. The `result` payload is buyer-controlled in sandbox and round-trips through the seller's store — buyers receiving it via webhook MUST treat the payload as untrusted seller output (per AdCP convention) regardless of the fact that they originated the bytes. This makes `force_task_completion` the natural place for a runner to inject adversarial payloads when testing buyer-side sanitization on the webhook delivery path.
 
 ### `force_session_status`
 
@@ -491,7 +589,7 @@ Controllers MUST use structured error codes so the storyboard runner can assert 
 | `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
 
 <Note>
-**Controller-specific enum.** The `error` field on controller responses uses a controller-specific vocabulary defined in [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json), distinct from the canonical seller-response [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json) enum that governs task-level errors. `INVALID_TRANSITION` is controller-specific (state-machine primitives expose the transition-vs-state distinction that seller-level error codes collapse into `INVALID_STATE`). Storyboard assertions on controller responses use `path: "error"` or direct `field_value` checks, not `check: error_code` — the shape-agnostic `error_code` check is for task-response errors (`adcp_error` / payload `errors[]`), not the controller's own response schema.
+**Controller-specific enum.** The `error` field on controller responses uses a controller-specific vocabulary defined in [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json), distinct from the canonical seller-response [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) enum that governs task-level errors. `INVALID_TRANSITION` is controller-specific (state-machine primitives expose the transition-vs-state distinction that seller-level error codes collapse into `INVALID_STATE`). Storyboard assertions on controller responses use `path: "error"` or direct `field_value` checks, not `check: error_code` — the shape-agnostic `error_code` check is for task-response errors (`adcp_error` / payload `errors[]`), not the controller's own response schema.
 </Note>
 
 

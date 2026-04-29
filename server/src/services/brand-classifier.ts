@@ -3,6 +3,18 @@
  *
  * Uses a single structured Sonnet call to classify a brand's position
  * in a corporate brand architecture (Keller model) given Brandfetch data.
+ *
+ * SECURITY: `house_domain` and `confidence` from this classifier are
+ * authorization-relevant — autoLinkByVerifiedDomain (membership-db.ts) walks
+ * brands.house_domain to inherit child-brand employees into a paying parent
+ * org's WorkOS membership, gated on `confidence='high'`. Today the input
+ * fields (brandData.* below) come from Brandfetch + crawled homepage
+ * metadata, which we treat as trusted-but-third-party. If a less-trusted
+ * source is ever added (user-submitted manifests, scraped competitor sites,
+ * untrusted enrichment APIs), reassess prompt-injection exposure: the
+ * classifier's house_domain output decides which paying org's membership a
+ * new user gets. The brand_html_summary, company.industries, and
+ * raw.links fields are the most attacker-controllable surfaces.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -105,13 +117,22 @@ export async function classifyBrand(
       'Brand classified'
     );
 
+    // Whitelist confidence — it's auth-relevant (gates brand-hierarchy
+    // inheritance in autoLinkByVerifiedDomain). A prompt-injected response
+    // setting "confidence": "extreme" or any other unexpected value should
+    // collapse to 'low' rather than be persisted as-is.
+    const validConfidence: ReadonlyArray<'high' | 'medium' | 'low'> = ['high', 'medium', 'low'];
+    const confidence: 'high' | 'medium' | 'low' = validConfidence.includes(parsed.confidence as never)
+      ? (parsed.confidence as 'high' | 'medium' | 'low')
+      : 'low';
+
     return {
       keller_type: parsed.keller_type,
       house_domain: parsed.house_domain || null,
       parent_brand: parsed.parent_brand || null,
       canonical_domain: parsed.canonical_domain || domain,
       related_domains: Array.isArray(parsed.related_domains) ? parsed.related_domains : [],
-      confidence: parsed.confidence || 'low',
+      confidence,
       reasoning: parsed.reasoning || '',
     };
   } catch (err) {

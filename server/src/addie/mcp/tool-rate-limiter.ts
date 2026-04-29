@@ -66,8 +66,11 @@ const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
  * multi-member workspace collectively drives the tool past a
  * defensible cost ceiling, or where an attacker rotates through
  * compromised user sessions to stay under individual caps.
+ *
+ * Exported so admin stats can read the configured cap — single
+ * source of truth for the ceiling. Part of the admin API contract.
  */
-const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
+export const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
   // Gemini generation — most expensive tool in the Addie surface.
   // 50/day across the whole workspace keeps monthly spend bounded
   // (~1500 generations/mo max). The per-user 5/month quota + per-user
@@ -81,14 +84,12 @@ const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
  * theoretically produce any string for `workos_user_id` (especially in
  * dev mode where identities are cookie-picked). Stick to the ids used
  * by real automated pipelines and nothing else.
+ *
+ * Sourced from `../system-identities.ts` so the cost-tracker and any
+ * future per-user gate use the same list — two Sets in sync across
+ * files is a future-drift bug waiting to happen.
  */
-const SYSTEM_USER_IDS = new Set<string>([
-  'system:addie',
-  'system:sage',
-  'system:scope3_seed',
-  'system:logo-service',
-  'system:google-alias-merge',
-]);
+import { SYSTEM_USER_IDS } from '../system-identities.js';
 
 export interface RateLimitResult {
   ok: boolean;

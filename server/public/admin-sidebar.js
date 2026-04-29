@@ -37,6 +37,7 @@
           { href: '/admin/meetings', label: 'Meetings', icon: '🗓️' },
           { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
           { href: '/dashboard/content', label: 'Content', icon: '📝' },
+          { href: '/admin/announcements', label: 'Announcements', icon: '📢' },
         ]
       },
       {
@@ -73,6 +74,7 @@
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/prompt-metrics', label: 'Prompt Metrics', icon: '📈' },
           { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
           { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },

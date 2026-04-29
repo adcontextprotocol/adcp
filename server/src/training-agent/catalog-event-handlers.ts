@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs, findMediaBuyAcrossSessions } from './state.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -119,6 +119,19 @@ function getEventSourceMap(sessionKey: string): Map<string, EventSourceState> {
     eventSourceStore.set(sessionKey, map);
   }
   return map;
+}
+
+/** Look up an event source across every session. Some tools (log_event,
+ *  provide_performance_feedback) carry an id the buyer synced earlier but
+ *  drop the `account` context the SDK's request-builder strips against the
+ *  published tool schema. Fall back to a global search so a synced source
+ *  is still reachable from any session within the sandbox. */
+function findEventSourceAnywhere(eventSourceId: string): EventSourceState | undefined {
+  for (const map of eventSourceStore.values()) {
+    const hit = map.get(eventSourceId);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 /** Exported for testing */
@@ -488,13 +501,33 @@ export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  // Validate event source exists in session
+  // Validate event source exists. The request-level session key is fine when
+  // the caller carries account/brand; when those are stripped by the SDK
+  // against the published tool schema (log_event doesn't declare `account`),
+  // the request hits `open:default` while sync_event_sources wrote under
+  // `open:<brand.domain>`. Fall back to a global scan so a previously
+  // synced source is still reachable.
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const sources = getEventSourceMap(sessionKey);
-  if (!sources.has(req.event_source_id)) {
-    return {
-      errors: [{ code: 'EVENT_SOURCE_NOT_FOUND', message: `Event source '${req.event_source_id}' not found. Call sync_event_sources first to configure the event source.` }],
-    };
+  // Session-key fallback: SDK-generated log_event schemas omit `account`,
+  // so the request hits `open:default` while sync_event_sources wrote
+  // under `open:<brand.domain>`. Cross-session scan first.
+  // Sandbox permissiveness: if still not found, auto-register the source
+  // so storyboards that don't call sync_event_sources first (e.g.
+  // sales_social — buyer assumes the source was set up out-of-band) can
+  // still grade the ingestion behaviour. Production agents reject the
+  // unknown id; the training agent elides that step.
+  if (!sources.has(req.event_source_id) && !findEventSourceAnywhere(req.event_source_id)) {
+    const now = new Date().toISOString();
+    sources.set(req.event_source_id, {
+      eventSourceId: req.event_source_id,
+      name: req.event_source_id,
+      sellerId: 'sandbox-auto',
+      eventTypes: ['page_view', 'purchase', 'add_to_cart', 'lead'],
+      allowedDomains: [],
+      action: 'auto_created',
+      createdAt: now,
+    });
   }
 
   // Validate each event has event_type
@@ -555,13 +588,21 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     };
   }
 
-  // Validate media buy exists in session
+  // Validate media buy exists. The request-level session key is fine when
+  // the caller carries account/brand; when those are stripped by the SDK
+  // against the published tool schema (framework's auto-generated
+  // provide_performance_feedback schema omits `account`), the request hits
+  // `open:default` while create_media_buy wrote under `open:<brand.domain>`.
+  // Fall back to a global scan so the buy is still reachable.
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
   if (!session.mediaBuys.has(req.media_buy_id)) {
-    return {
-      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy '${req.media_buy_id}' not found. Create a media buy first via create_media_buy.` }],
-    };
+    const found = await findMediaBuyAcrossSessions(req.media_buy_id);
+    if (!found) {
+      return {
+        errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy '${req.media_buy_id}' not found. Create a media buy first via create_media_buy.` }],
+      };
+    }
   }
 
   return {

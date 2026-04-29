@@ -39,6 +39,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'set_outreach_preference', // Users can always opt out of proactive outreach
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
   'draft_github_issue',  // Bug reports & feature requests should always be possible
+  'create_github_issue', // Paired with draft — if a member wants it filed directly, keep it reachable
   'get_github_issue',    // Users paste GitHub links in any conversation; reading should never be routed away
   // Content submission is a first-class action — a member sharing a draft in
   // any channel (editorial, admin, DM) should land in pending_review, not an
@@ -96,8 +97,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_recent_news',
       'fetch_url',
       'read_slack_file',
-      // GitHub read tools — issues, PRs, RFCs, epics
-      'get_github_issue',
+      // GitHub read tools — list/search issues, PRs, RFCs, epics.
+      // NOTE: get_github_issue is intentionally NOT listed here — it lives in
+      // ALWAYS_AVAILABLE_TOOLS and is reachable regardless of routing. Keeping
+      // it here caused Sonnet to hallucinate that reading individual issues was
+      // unavailable when `knowledge` wasn't selected. See #2998.
       'list_github_issues',
       // Schema validation tools
       'validate_json',
@@ -109,12 +113,21 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   member: {
     name: 'member',
-    description: 'Manage member profile, working groups, committees, content proposals, and account settings. Includes listing working group documents.',
+    // NOTE: propose_content, get_my_content, and set_outreach_preference are
+    // intentionally NOT listed here — neither in the description nor the tools
+    // array. They live in ALWAYS_AVAILABLE_TOOLS and are reachable in every
+    // conversation. Duplicating them here caused Sonnet to hallucinate that
+    // content submission/retrieval and outreach preferences were unavailable
+    // when the router didn't pick `member`. See #2998.
+    description: 'Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.',
     tools: [
       'get_my_profile',
       'update_my_profile',
       'get_company_listing',
       'update_company_listing',
+      'update_company_logo',
+      'request_brand_domain_challenge',
+      'verify_brand_domain_challenge',
       'list_working_groups',
       'get_working_group',
       'join_working_group',
@@ -125,11 +138,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_my_council_interests',
       'list_perspectives',
       'create_working_group_post',
-      'propose_content',
       'attach_content_asset',
-      'get_my_content',
       'bookmark_resource',
-      'set_outreach_preference',
       'draft_social_posts',
       'list_committee_documents',
     ],
@@ -161,7 +171,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   agent_testing: {
     name: 'agent_testing',
-    description: 'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests. Use for any "my agent can\'t see properties", "authorization not working", or publisher setup questions.',
+    description: 'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can\'t see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.',
     tools: [
       'validate_adagents',
       'resolve_brand',
@@ -169,6 +179,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'check_publisher_authorization',
       'test_adcp_agent',
       'evaluate_agent_quality',
+      'grade_agent_signing',
+      'diagnose_agent_auth',
       'compare_media_kit',
       'test_rfp_response',
       'test_io_execution',
@@ -198,14 +210,20 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: 'content',
-    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, add or update committee documents (admin actions)',
+    // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
+    // intentionally NOT listed here — neither in the description nor the tools
+    // array. Duplicating it caused Addie to hallucinate "I can't file GitHub
+    // issues" when the router didn't pick `content`.
+    //
+    // NOTE: list_pending_content, approve_content, and reject_content are also
+    // intentionally NOT listed here. They live in ALWAYS_AVAILABLE_TOOLS so
+    // content review is reachable in every conversation. Keeping them here
+    // (and saying "handle content approvals" in the description) caused Sonnet
+    // to hallucinate that approval tools were unavailable when `content` wasn't
+    // selected. See #2998.
+    description: 'Manage content workflows — propose news sources, add or update committee documents (admin actions)',
     tools: [
-      'draft_github_issue',
-      'create_github_issue',
       'propose_news_source',
-      'list_pending_content',
-      'approve_content',
-      'reject_content',
       'add_committee_document',
       'update_committee_document',
       'delete_committee_document',
@@ -276,7 +294,12 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    // NOTE: list_escalations and resolve_escalation are intentionally NOT listed
+    // here — they live in ALWAYS_AVAILABLE_ADMIN_TOOLS and are reachable for
+    // admins regardless of routing. Duplicating them here caused Sonnet to
+    // hallucinate that escalation management was unavailable when `admin` wasn't
+    // selected. See #2998.
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking, brand logo registry review queue (approve/reject pending logos), edit a member\'s directory profile or logo on their behalf (admin only)',
     tools: [
       // Event management (admin)
       'create_event',
@@ -314,8 +337,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'check_domain_health',
       'manage_organization_domains',
       'update_org_member_role',
-      'list_escalations',
-      'resolve_escalation',
       'claim_prospect',
       'triage_prospect_domain',
       'suggest_prospects',
@@ -340,6 +361,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'send_outreach',
       'lookup_person',
       'get_action_items',
+      'list_pending_brand_logos',
+      'list_brand_logos',
+      'review_brand_logo',
+      'update_member_logo',
+      'update_member_profile',
+      'transfer_brand_ownership',
+      'list_orphaned_brands',
     ],
     adminOnly: true,
   },
@@ -456,12 +484,42 @@ export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boo
     return `- **${setName}**: ${set.description}`;
   });
 
+  // Remind Claude which escape-hatch tools bypass set routing. Without this,
+  // the model sometimes reads an unavailable-set description that overlaps
+  // with an always-available capability (e.g., GitHub issue filing) and
+  // hallucinates that the capability is off. Keep this list tight — only the
+  // tools users explicitly ask for by name.
+  //
+  // NOTE: each key MUST exist in ALWAYS_AVAILABLE_TOOLS. A test enforces this
+  // so a renamed/removed tool can't silently rot into a lying hint.
+  const ALWAYS_AVAILABLE_BLURBS: Record<string, string> = {
+    draft_github_issue: 'filing bugs / feature requests as a pre-filled GitHub link',
+    create_github_issue: "filing an issue directly under the member's GitHub account (if connected)",
+    get_github_issue: 'reading a GitHub issue or PR by number or URL',
+    escalate_to_admin: 'handing the thread to a human admin',
+    get_escalation_status: 'checking the status of an escalation the member filed',
+    propose_content: 'submitting a content draft for publication',
+    get_my_content: 'viewing the member\'s own submitted content and proposals',
+    list_pending_content: 'listing content items awaiting review',
+    approve_content: 'approving a pending content item (admin)',
+    reject_content: 'rejecting a pending content item (admin)',
+    set_outreach_preference: 'opting out of proactive outreach messages',
+  };
+  const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)
+    .filter(([tool]) => ALWAYS_AVAILABLE_TOOLS.includes(tool))
+    .map(([tool, blurb]) => `${tool} — ${blurb}`);
+
   return `
 ## Capabilities Not Available in This Conversation
 
 The following capabilities are not available right now. If the user asks for something in these areas, explain what you can't help with in plain, natural language and suggest an alternative (e.g., direct them to the right person, page, or channel). Do NOT use technical terms like "tool sets", "not loaded", or "tool categories" — describe capabilities naturally (e.g., "I don't have access to scheduling features right now" rather than "meeting tools aren't loaded").
 
 ${hints.join('\n')}
+
+## Capabilities That ARE Always Available
+
+These tools are callable in every conversation. If you're about to tell the user you can't do one of these, call it instead:
+${alwaysAvailableReminder.map(l => `- ${l}`).join('\n')}
 `;
 }
 

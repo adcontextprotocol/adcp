@@ -1,9 +1,13 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
+  "banner": {
+    "content": "🎉 AdCP 3.0 is now GA — [see what's new](/docs/reference/whats-new-in-v3)",
+    "dismissible": true
+  },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
-    "og:site_name": "AdCP \u2014 Ad Context Protocol",
+    "og:site_name": "AdCP — Ad Context Protocol",
     "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
     "og:image:width": "1200",
     "og:image:height": "630",
@@ -63,7 +67,7 @@
   "navigation": {
     "versions": [
       {
-        "version": "3.0-rc",
+        "version": "3.0",
         "default": true,
         "groups": [
           {
@@ -98,6 +102,8 @@
                   },
                   "docs/protocol/architecture",
                   "docs/protocol/required-tasks",
+                  "docs/protocol/calling-an-agent",
+                  "docs/protocol/format-references",
                   {
                     "group": "Understanding AdCP",
                     "pages": [
@@ -113,6 +119,7 @@
                   "docs/building/build-an-agent",
                   "docs/building/get-test-ready",
                   "docs/building/validate-your-agent",
+                  "docs/building/grading",
                   "docs/building/operating-an-agent",
                   "docs/building/compliance-catalog",
                   "docs/building/conformance",
@@ -302,7 +309,9 @@
                       "docs/governance/overview",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
+                      "docs/governance/policy-registry-sync",
                       "docs/governance/annex-iii-obligations",
+                      "docs/governance/working-group-charter",
                       {
                         "group": "Property Governance",
                         "pages": [
@@ -362,6 +371,7 @@
                           "docs/governance/campaign/index",
                           "docs/governance/campaign/safety-model",
                           "docs/governance/campaign/specification",
+                          "docs/governance/campaign/audit-trail",
                           {
                             "group": "Tasks",
                             "pages": [
@@ -483,6 +493,7 @@
               },
               "docs/faq",
               "docs/ai-disclosure",
+              "docs/trust",
               {
                 "group": "Reference",
                 "expanded": false,
@@ -501,6 +512,7 @@
                   "docs/reference/media-channel-taxonomy",
                   "docs/reference/roadmap",
                   "docs/reference/versioning",
+                  "docs/reference/url-canonicalization",
                   "docs/reference/test-vectors/index",
                   "docs/reference/experimental-status",
                   "docs/reference/v2-sunset",
@@ -519,6 +531,7 @@
                 "pages": [
                   "docs/learning/overview",
                   "docs/learning/instructional-design",
+                  "docs/learning/failure-mode-scope",
                   {
                     "group": "Basics (free)",
                     "pages": [
@@ -601,6 +614,8 @@
               },
               "docs/protocol/architecture",
               "docs/protocol/required-tasks",
+              "docs/protocol/calling-an-agent",
+              "docs/protocol/format-references",
               {
                 "group": "Understanding AdCP",
                 "pages": [
@@ -616,6 +631,7 @@
               "docs/building/build-an-agent",
               "docs/building/get-test-ready",
               "docs/building/validate-your-agent",
+              "docs/building/grading",
               "docs/building/operating-an-agent",
               "docs/building/compliance-catalog",
               "docs/building/conformance",
@@ -804,6 +820,8 @@
                   "docs/governance/overview",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
+                  "docs/governance/policy-registry-sync",
+                  "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
                     "pages": [
@@ -856,6 +874,7 @@
                       "docs/governance/campaign/index",
                       "docs/governance/campaign/safety-model",
                       "docs/governance/campaign/specification",
+                      "docs/governance/campaign/audit-trail",
                       {
                         "group": "Tasks",
                         "pages": [
@@ -951,10 +970,20 @@
             ]
           },
           {
+            "group": "Using AAO",
+            "pages": [
+              "docs/aao/connect-addie",
+              "docs/aao/users",
+              "docs/aao/org-admins",
+              "docs/aao/addie-tools"
+            ]
+          },
+          {
             "group": "FAQ",
             "pages": [
               "docs/faq",
-              "docs/ai-disclosure"
+              "docs/ai-disclosure",
+              "docs/trust"
             ]
           },
           {
@@ -975,6 +1004,7 @@
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
               "docs/reference/versioning",
+              "docs/reference/url-canonicalization",
               "docs/reference/known-limitations",
               "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",
@@ -991,6 +1021,7 @@
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
+              "docs/learning/failure-mode-scope",
               {
                 "group": "Basics (free)",
                 "pages": [

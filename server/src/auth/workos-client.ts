@@ -4,28 +4,30 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-client');
 
-if (!process.env.WORKOS_API_KEY) {
-  throw new Error('WORKOS_API_KEY environment variable is required');
-}
+let _workos: WorkOS | null = null;
+let _clientId = '';
 
-if (!process.env.WORKOS_CLIENT_ID) {
-  throw new Error('WORKOS_CLIENT_ID environment variable is required');
+/** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
+export function getWorkos(): WorkOS {
+  if (!_workos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _clientId = process.env.WORKOS_CLIENT_ID;
+    _workos = new WorkOS(process.env.WORKOS_API_KEY, { clientId: _clientId });
+  }
+  return _workos;
 }
-
-export const workos = new WorkOS(process.env.WORKOS_API_KEY, {
-  clientId: process.env.WORKOS_CLIENT_ID!,
-});
-export const clientId = process.env.WORKOS_CLIENT_ID!;
 
 /**
  * Get the authorization URL to redirect users to WorkOS for authentication
  */
 export function getAuthorizationUrl(state?: string): string {
+  const workos = getWorkos();
   const redirectUri = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 
   return workos.userManagement.getAuthorizationUrl({
     provider: 'authkit',
-    clientId,
+    clientId: _clientId,
     redirectUri,
     state,
   });
@@ -38,13 +40,14 @@ export async function authenticateWithCode(code: string): Promise<{
   user: WorkOSUser;
   sealedSession: string;
 }> {
+  const workos = getWorkos();
   const redirectUri = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 
   logger.debug('Authenticating with authorization code');
 
   const { user, sealedSession } =
     await workos.userManagement.authenticateWithCode({
-      clientId,
+      clientId: _clientId,
       code,
       session: {
         sealSession: true,
@@ -72,6 +75,7 @@ export async function authenticateWithCode(code: string): Promise<{
  * Get user info from access token
  */
 export async function getUser(accessToken: string): Promise<WorkOSUser> {
+  const workos = getWorkos();
   const user = await workos.userManagement.getUser(accessToken);
 
   return {
@@ -95,6 +99,8 @@ export async function loadSealedSession(sessionData: string): Promise<{
 }> {
   try {
     logger.debug('Validating sealed session');
+
+    const workos = getWorkos();
 
     // Use WorkOS's authenticateWithSessionCookie to validate and unseal
     // Note: clientId is configured in the WorkOS instance, not passed here
@@ -136,8 +142,9 @@ export async function refreshToken(refreshToken: string): Promise<{
   accessToken: string;
   refreshToken: string;
 }> {
+  const workos = getWorkos();
   const response = await workos.userManagement.authenticateWithRefreshToken({
-    clientId,
+    clientId: _clientId,
     refreshToken,
     session: {
       sealSession: true,
@@ -158,11 +165,13 @@ export async function refreshToken(refreshToken: string): Promise<{
 export async function authenticateWithCodeForTokens(code: string): Promise<{
   accessToken: string;
   refreshToken: string;
+  user: WorkOSUser;
 }> {
+  const workos = getWorkos();
   logger.debug('Authenticating with code for tokens (MCP flow)');
 
   const result = await workos.userManagement.authenticateWithCode({
-    clientId,
+    clientId: _clientId,
     code,
   });
 
@@ -171,6 +180,15 @@ export async function authenticateWithCodeForTokens(code: string): Promise<{
   return {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
+    user: {
+      id: result.user.id,
+      email: result.user.email,
+      firstName: result.user.firstName ?? undefined,
+      lastName: result.user.lastName ?? undefined,
+      emailVerified: result.user.emailVerified,
+      createdAt: result.user.createdAt,
+      updatedAt: result.user.updatedAt,
+    },
   };
 }
 
@@ -182,8 +200,9 @@ export async function refreshTokenRaw(refreshTokenValue: string): Promise<{
   accessToken: string;
   refreshToken: string;
 }> {
+  const workos = getWorkos();
   const response = await workos.userManagement.authenticateWithRefreshToken({
-    clientId,
+    clientId: _clientId,
     refreshToken: refreshTokenValue,
   });
 
@@ -200,6 +219,7 @@ export async function refreshTokenRaw(refreshTokenValue: string): Promise<{
  * happens only via explicit OAuth login.
  */
 export async function findOrCreateUserByEmail(email: string): Promise<WorkOSUser> {
+  const workos = getWorkos();
   const normalized = email.trim().toLowerCase();
 
   const toUser = (u: {

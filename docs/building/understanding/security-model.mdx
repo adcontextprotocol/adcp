@@ -97,7 +97,9 @@ Every piece of state — media buys, creatives, idempotency cache entries, sessi
 
 Implementations typically enforce this at the database layer (Postgres row-level security is the canonical pattern) so a bug in one handler cannot punch through the wall.
 
-**What this defends against.** Competitive intelligence leaks. An attacker authenticated as Agent A cannot probe Agent B's media buys, creatives, or idempotency keys — not by ID guessing, not by timing side-channels, not by error-message differencing.
+Within the tenant boundary, not every caller gets the same grant. A seller may issue one agent a full media-buy scope and another agent a narrow read + webhook-attach scope (e.g., the [`attestation_verifier`](/docs/accounts/overview#standard-named-scope-attestation_verifier) scope for AAO Verified compliance engines). Callers discover their own grant via the `authorization` object attached to per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses; sellers enforce locally and reject out-of-scope requests with `SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, or `FIELD_NOT_PERMITTED`.
+
+**What this defends against.** Competitive intelligence leaks. An attacker authenticated as Agent A cannot probe Agent B's media buys, creatives, or idempotency keys — not by ID guessing, not by timing side-channels, not by error-message differencing. A legitimately-authenticated agent with a narrow scope cannot escalate into tasks or fields it was not granted.
 
 ### Layer 3: Idempotency — at-most-once execution
 

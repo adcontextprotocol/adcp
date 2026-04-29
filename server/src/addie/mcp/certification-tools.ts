@@ -19,6 +19,7 @@ function safeSubscriptionStatus(status: string | null | undefined): string | nul
   return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
 }
 import * as certDb from '../../db/certification-db.js';
+import { isUuid } from '../../utils/uuid.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
@@ -69,6 +70,8 @@ const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
  */
 const BUILD_PROJECT_METHODOLOGY = `## Build project approach — Specify, Build, Validate, Explain, Extend
 
+**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded.
+
 ## CRITICAL RULE — call get_build_phase_instructions at every phase transition
 When transitioning to the Build, Validate, or Extend phase, you MUST call the get_build_phase_instructions tool BEFORE giving the learner any instructions. The tool returns the exact commands and URLs the learner needs. Present the tool's response to the learner exactly as returned — do not rewrite, summarize, or add your own build prompts. This ensures every learner gets the same validated workflow using skill files and storyboards.
 
@@ -116,9 +119,9 @@ The learner should use these tools. They are how agents are built and validated 
  *
  * Authoritative source: docs/learning/instructional-design.mdx
  */
-const TEACHING_METHODOLOGY = `## Teaching approach — you are a private tutor
+const TEACHING_METHODOLOGY = `## Teaching approach — you are Sage, protocol certification instructor
 
-Think of yourself as a private tutor, not a proctor. Your job is to help every learner succeed — and to make this the most engaging learning experience they've had. Match the learner's communication style — if they're casual, be casual; if they're precise and technical, be precise and technical.
+**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. Think of yourself as a private tutor, not a proctor. Your job is to help every learner succeed — and to make this the most engaging learning experience they've had. Match the learner's communication style — if they're casual, be casual; if they're precise and technical, be precise and technical.
 
 ### HARD RULES (follow these on every single response)
 
@@ -193,7 +196,8 @@ If a demo produces unexpected results or you realize you explained something inc
  *
  * Authoritative source: docs/learning/instructional-design.mdx
  */
-const CAPSTONE_METHODOLOGY = `## Instructions (for Addie — do not share scoring details with the learner)
+const CAPSTONE_METHODOLOGY = `## Instructions (for Sage — do not share scoring details with the learner)
+**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded.
 Conduct this capstone now. It combines a hands-on lab and adaptive exam:
 1. **Lab phase**: Guide the learner through the lab exercises using real AdCP tools against sandbox agents. Monitor their competence as they work.
 2. **Checkpoint**: After the lab phase, call checkpoint_teaching_progress to record lab observations before moving to the exam. This is required before completion.
@@ -449,7 +453,7 @@ async function checkAndFormatCredentials(
 
 /**
  * Build certification context text for in-progress modules.
- * Used by both web chat and Slack to inject active module state into Addie's context.
+ * Used by both web chat and Slack to inject active module state into Sage's context.
  */
 export async function buildCertificationContext(
   inProgressModules: Array<{ module_id: string; started_at: string | null }>,
@@ -458,6 +462,7 @@ export async function buildCertificationContext(
   if (inProgressModules.length === 0) return null;
 
   const lines = ['## Active certification modules'];
+  lines.push('**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. You are a tutor, not a proctor — your job is to help every learner succeed. Reference specs and schemas directly. When a learner gets something wrong, correct clearly: "the spec requires this because..." not "you might want to consider..."');
   lines.push('You ARE currently teaching these modules. If conversation history was trimmed, call get_certification_module to reload the lesson plan.');
   lines.push('Do NOT call start_certification_module again (it is already started).');
   lines.push('');
@@ -710,7 +715,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
+    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
     usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "sponsored intelligence"',
     input_schema: {
       type: 'object',
@@ -855,7 +860,7 @@ const DOCS_BASE = 'https://docs.adcontextprotocol.org';
 // ILLUSTRATION REGISTRY — single source of truth for all walkthrough images
 // =====================================================
 // Topic tags determine which illustrations are relevant to each module.
-// When teaching, Addie receives matching illustrations automatically.
+// When teaching, Sage receives matching illustrations automatically.
 
 interface Illustration {
   filename: string;
@@ -940,7 +945,7 @@ const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
 };
 
 // =====================================================
-// LEARNING RESOURCES — links Addie can share with learners
+// LEARNING RESOURCES — links Sage can share with learners
 // =====================================================
 
 export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
@@ -1373,10 +1378,10 @@ export function createCertificationToolHandlers(
 
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
-        // Include target module context so Addie can name specific mechanisms even in prereq redirects
+        // Include target module context so Sage can name specific mechanisms even in prereq redirects
         const lp = mod.lesson_plan as certDb.LessonPlan | null;
         const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
-        // Extract key concept topics so Addie knows what mechanisms to reference
+        // Extract key concept topics so Sage knows what mechanisms to reference
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
         // Frame as destination-first, not as a gate
@@ -1402,7 +1407,7 @@ export function createCertificationToolHandlers(
 
       await certDb.startModule(userId, moduleId);
 
-      // Return the lesson plan so Addie can teach it
+      // Return the lesson plan so Sage can teach it
       const lines: string[] = [
         `Module ${mod.id} started: **${mod.title}**`,
         '',
@@ -1890,7 +1895,7 @@ export function createCertificationToolHandlers(
 
       // Teaching instructions
       lines.push(CAPSTONE_METHODOLOGY);
-      // Inject full rubric for Addie's internal use
+      // Inject full rubric for Sage's internal use
       if (criteria?.dimensions?.length) {
         lines.push('');
         lines.push('**Internal scoring rubric** (do not share with learner):');
@@ -1926,9 +1931,8 @@ export function createCertificationToolHandlers(
       if (!attemptId || !scores || typeof scores !== 'object') return 'attempt_id and scores are required.';
 
       // Look up the active attempt: accept the UUID directly, or resolve from module ID
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
       let attempt: certDb.CertificationAttempt | null;
-      if (isUuid) {
+      if (isUuid(attemptId)) {
         attempt = await certDb.getAttempt(attemptId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
@@ -2170,7 +2174,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/client test-mcp get_products '{"brief":"<your campaign brief>"}'
+npx @adcp/client@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
@@ -2197,7 +2201,7 @@ The learner adds a new capability to their buyer agent, then re-runs the buying 
         // B4 is always build-seller-agent
         ? `The skill for B4 (publisher track) is \`build-seller-agent\`. The skill file URL is:
 https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md`
-        // D4: Addie must look up the right skill
+        // D4: Sage must look up the right skill
         : `Look up the matching skill for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL}
 The page has a table mapping each agent type to its skill file. If you're unsure which skill matches, use search_docs to look up "build an agent skill" and find the table. Skill files are at:
 https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/<skill-name>/SKILL.md`;
@@ -2226,11 +2230,11 @@ DO NOT rewrite these instructions. DO NOT write your own build prompt. The skill
     if (phase === 'validate') {
       const storyboardNote = moduleId === 'B4'
         ? 'The storyboard for B4 is `media_buy_seller`.'
-        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client storyboard list\` to see all options.`;
+        : `Look up the matching storyboard for the learner's agent type on the Build an Agent page: ${BUILD_AN_AGENT_URL} — the skill-to-storyboard table shows which storyboard to run. You can also run \`npx @adcp/client@latest storyboard list\` to see all options.`;
 
       const storyboardCmd = moduleId === 'B4'
-        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
 
       const placeholderNote = moduleId !== 'B4'
         ? '\n\nIMPORTANT: Replace `<STORYBOARD_NAME>` with the actual storyboard name before presenting to the learner.'
@@ -2244,7 +2248,7 @@ PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
 Save your agent and run the storyboard:
 \`\`\`
-npx @adcp/client --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
 ${storyboardCmd}
 \`\`\`
 
@@ -2260,8 +2264,8 @@ DO NOT ask the learner to run individual tool calls. DO NOT ask them to paste JS
 
     if (phase === 'extend') {
       const extendCmd = moduleId === 'B4'
-        ? 'npx @adcp/client storyboard run my-agent media_buy_seller'
-        : 'npx @adcp/client storyboard run my-agent <STORYBOARD_NAME>';
+        ? 'npx @adcp/client@latest storyboard run my-agent media_buy_seller'
+        : 'npx @adcp/client@latest storyboard run my-agent <STORYBOARD_NAME>';
       const extendNote = moduleId !== 'B4'
         ? ' Replace `<STORYBOARD_NAME>` with the storyboard used in the Validate phase.'
         : '';

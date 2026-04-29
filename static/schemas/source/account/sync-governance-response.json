@@ -27,7 +27,7 @@
               },
               "governance_agents": {
                 "type": "array",
-                "description": "Governance agents now synced on this account. Reflects the persisted state after sync.",
+                "description": "Governance agent now synced on this account. Reflects the persisted state after sync. Exactly one entry; the array shape mirrors the request schema and the one-agent-per-account invariant. See sync_governance request schema.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -36,17 +36,13 @@
                       "format": "uri",
                       "pattern": "^https://",
                       "description": "Governance agent endpoint URL."
-                    },
-                    "categories": {
-                      "type": "array",
-                      "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
-                      "description": "Governance categories this agent handles.",
-                      "maxItems": 20
                     }
                   },
                   "required": ["url"],
                   "additionalProperties": false
-                }
+                },
+                "minItems": 1,
+                "maxItems": 1
               },
               "errors": {
                 "type": "array",
@@ -110,8 +106,7 @@
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/budget",
-                "categories": ["budget_authority"]
+                "url": "https://governance.pinnacle-media.com"
               }
             ]
           },
@@ -120,8 +115,7 @@
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/compliance",
-                "categories": ["geo_compliance"]
+                "url": "https://governance.acme-buyer.com"
               }
             ]
           }
@@ -137,8 +131,7 @@
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/budget",
-                "categories": ["budget_authority"]
+                "url": "https://governance.pinnacle-media.com"
               }
             ]
           },

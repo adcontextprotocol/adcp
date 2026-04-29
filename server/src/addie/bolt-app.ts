@@ -28,8 +28,10 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { logger } from '../logger.js';
+import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { buildSlackCostScope } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -72,11 +74,18 @@ import {
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
 import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from './mcp/auth-grader-tools.js';
+import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
+import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -132,6 +141,11 @@ import {
   getErrorChannel,
   getAdminChannel,
 } from '../db/system-settings-db.js';
+import {
+  handleAnnouncementApproveSlack,
+  handleAnnouncementMarkLinkedIn,
+  handleAnnouncementSkip,
+} from './jobs/announcement-handlers.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -234,6 +248,22 @@ const NEGATIVE_REACTIONS = new Set([
   'thumbsdown', '-1', 'x', 'negative_squared_cross_mark', 'no_entry',
   'no_entry_sign', 'octagonal_sign', 'stop_sign', 'hand', 'raised_hand',
 ]);
+
+/**
+ * Resolve a display name for a Slack speaker from member context.
+ *
+ * Stamped on every user-role thread message so conversation history sent to
+ * the LLM can name the speaker — necessary to disambiguate participants in
+ * multi-human channel threads. Prefers full WorkOS name, falls back to
+ * Slack display name.
+ */
+function resolveSpeakerDisplayName(mc: MemberContext | null | undefined): string | undefined {
+  if (!mc) return undefined;
+  const first = mc.workos_user?.first_name;
+  const last = mc.workos_user?.last_name;
+  const candidate = first && last ? `${first} ${last}` : (first || mc.slack_user?.display_name || undefined);
+  return sanitizeSpeakerName(candidate);
+}
 
 /**
  * Record a person's inbound message in the relationship system.
@@ -704,6 +734,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   boltApp.action('marketing_optin_yes', handleMarketingOptIn);
   boltApp.action('marketing_optin_no', handleMarketingOptIn);
 
+  // Register new-member announcement review-card action handlers (Workflow B Stage 2)
+  boltApp.action('announcement_approve_slack', handleAnnouncementApproveSlack);
+  boltApp.action('announcement_mark_linkedin', handleAnnouncementMarkLinkedIn);
+  boltApp.action('announcement_skip', handleAnnouncementSkip);
+
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
 
@@ -744,14 +779,19 @@ export function invalidateAddieRulesCache(): void {
   }
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
@@ -923,6 +963,16 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
+
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Available
+  // to every user; the underlying graders only probe the target agent's
+  // public surface and live-side-effect vectors are opt-in.
+  const authGraderHandlers = createAuthGraderToolHandlers();
+  allTools.push(...AUTH_GRADER_TOOLS);
+  for (const [name, handler] of authGraderHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Auth grader tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
@@ -1432,13 +1482,22 @@ async function handleUserMessage({
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for thread creation');
   }
 
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  // Reuses the memberContext lookup above to avoid a second DB round-trip.
+  const matchedRuleId = matchRuleIdFromMessage(messageText);
+  const clickWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && clickWorkosUserId) {
+    void recordPromptClicked(clickWorkosUserId, matchedRuleId);
+  }
+
   // Get or create unified thread (including user_display_name for admin UI)
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: slackThreadContext,
   });
 
@@ -1457,7 +1516,7 @@ async function handleUserMessage({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -1500,6 +1559,9 @@ async function handleUserMessage({
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleId ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -1522,13 +1584,23 @@ async function handleUserMessage({
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
+  // Prefers a mapped WorkOS user ID (member_paid for active subs);
+  // falls back to `slack:${userId}` at member_free when no mapping
+  // exists, bounding an individual Slack user's Addie spend.
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude using streaming
@@ -1652,20 +1724,32 @@ async function handleUserMessage({
           const fallbackValidation = validateOutput(guarded.text);
           const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
           const slackText = wrapUrlsForSlack(fallbackText);
-          await say({
-            text: slackText,
-            blocks: [
-              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
-              ...fallbackImages.slice(0, 3).map(img => ({
-                type: 'image' as const,
-                image_url: img.url,
-                alt_text: img.alt,
-              })),
-              buildFeedbackBlock(),
-            ],
-          });
+          // Slack rejects section blocks with empty mrkdwn text. If streaming
+          // produced nothing (e.g. upstream overload before any deltas), fall
+          // back to a plain apology so the user isn't left silent.
+          if (!slackText.trim()) {
+            const apology = isRetriesExhaustedError(stopError)
+              ? `${stopError.reason}. Please try again in a moment.`
+              : "I'm sorry, I encountered an error. Please try again.";
+            await say(apology);
+          } else {
+            await say({
+              text: slackText,
+              blocks: [
+                { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+                ...fallbackImages.slice(0, 3).map(img => ({
+                  type: 'image' as const,
+                  image_url: img.url,
+                  alt_text: img.alt,
+                })),
+                buildFeedbackBlock(),
+              ],
+            });
+          }
         } catch (sayError) {
-          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+          const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+          const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+          logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
         }
       }
     } else {
@@ -1680,24 +1764,31 @@ async function handleUserMessage({
       const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
       const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
-        await say({
-          text: slackText,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: slackText,
+        // Slack rejects section blocks with empty mrkdwn text. If the model
+        // returned nothing (or everything was sanitized/extracted), fall back
+        // to a plain apology instead of a malformed blocks payload.
+        if (!slackText.trim()) {
+          await say("I'm sorry, I encountered an error. Please try again.");
+        } else {
+          await say({
+            text: slackText,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: slackText,
+                },
               },
-            },
-            ...images.slice(0, 3).map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
-            buildFeedbackBlock(),
-          ],
-        });
+              ...images.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        }
       } catch (error) {
         logger.error({ error }, 'Addie Bolt: Failed to send response');
       }
@@ -1774,7 +1865,11 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const dmEffectiveModel = (routedTools.requiresPrecision || routedTools.requiresDepth) ? ModelConfig.precision : AddieModelConfig.chat;
+  const dmEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2013,13 +2108,23 @@ async function handleAppMention({
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for mention');
   }
 
+  // Stamp the current speaker on the thread context block when the thread
+  // already contains messages from other humans. Without this, Addie can
+  // mistake the thread starter (or the most prominent prior speaker) for
+  // the person who just @-mentioned her — e.g. an admin replying mid-thread
+  // to a non-member's question.
+  const mentionSpeakerName = resolveSpeakerDisplayName(mentionMemberContext);
+  if (threadContext && mentionSpeakerName) {
+    threadContext += `\nThe message you are responding to is from **${mentionSpeakerName}**, who may or may not be the original thread starter — address them, not earlier speakers.\n`;
+  }
+
   // Get or create unified thread for this mention
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(mentionMemberContext),
     context: {
       mention_channel_id: channelId,
       channel_name: mentionChannelContext.viewing_channel_name,
@@ -2039,7 +2144,7 @@ async function handleAppMention({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -2082,6 +2187,9 @@ async function handleAppMention({
       content_sanitized: isEmptyMention ? '' : inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -2108,14 +2216,24 @@ async function handleAppMention({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
   const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
+  const mentionModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || mentionIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
+  // namespaced Slack ID so unmapped users still get a bounded
+  // daily Addie spend budget.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
   // Process with Claude
@@ -2150,7 +2268,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2996,7 +3114,7 @@ async function handleDirectMessage(
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_type: 'im',
     },
@@ -3013,7 +3131,7 @@ async function handleDirectMessage(
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -3040,6 +3158,7 @@ async function handleDirectMessage(
   }
 
   // Log user message to unified thread
+  const matchedRuleIdDm = matchRuleIdFromMessage(messageText);
   const userMessageFlagged = inputValidation.flagged;
   try {
     await threadService.addMessage({
@@ -3049,6 +3168,9 @@ async function handleDirectMessage(
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleIdDm ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3067,13 +3189,20 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
+    ...(routedTools.requiresPrecision
+      ? { modelOverride: ModelConfig.precision }
+      : routedTools.requiresDepth
+        ? { modelOverride: ModelConfig.depth }
+        : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
@@ -3338,7 +3467,7 @@ async function handleActiveThreadReply({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_id: channelId,
       channel_name: channelContext?.viewing_channel_name,
@@ -3358,7 +3487,7 @@ async function handleActiveThreadReply({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_DB_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -3403,6 +3532,9 @@ async function handleActiveThreadReply({
       content_sanitized: inputValidation.sanitized,
       flagged: userMessageFlagged,
       flag_reason: inputValidation.reason || undefined,
+      user_id: userId,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3444,14 +3576,22 @@ async function handleActiveThreadReply({
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
   const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
+  const threadModelOverride = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : (routedTools.requiresDepth || threadIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
 
-  // Admin users get higher iteration limit
+  // Admin users get higher iteration limit.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+    ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, userId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
@@ -3473,11 +3613,17 @@ async function handleActiveThreadReply({
   const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
   const outputValidation = validateOutput(activeThreadGuarded.text);
 
-  // Send response in the thread
+  // Send response in the thread. Slack rejects postMessage with an empty
+  // `text` (no_text). If the model returned nothing or everything was
+  // sanitized away, fall back to a plain apology so the user isn't ignored.
+  const activeThreadSlackText = wrapUrlsForSlack(outputValidation.sanitized);
+  const activeThreadOutgoing = activeThreadSlackText.trim().length > 0
+    ? activeThreadSlackText
+    : "I'm sorry, I encountered an error. Please try again.";
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
+      text: activeThreadOutgoing,
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -3487,7 +3633,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -3852,7 +3998,7 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
-      user_display_name: memberContext?.slack_user?.display_name || undefined,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
       context: {
         channel_id: channelId,
         channel_name: channelContext?.viewing_channel_name,
@@ -3873,6 +4019,9 @@ async function handleChannelMessage({
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
         router_decision: buildRouterDecision(plan),
+        user_id: userId,
+        user_display_name: resolveSpeakerDisplayName(memberContext),
+        message_source: 'typed',
       });
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -4025,13 +4174,21 @@ async function handleChannelMessage({
     // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
     const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
     const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
-    const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
+    const channelModelOverride = plan.requires_precision
+      ? ModelConfig.precision
+      : (plan.requires_depth || channelIsDepthChannel)
+        ? ModelConfig.depth
+        : undefined;
+    const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
+    // Cost cap scope follows the mention-handler pattern above.
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
+      ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
+      costScope: await buildSlackCostScope(memberContext, userId),
+      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4756,11 +4913,15 @@ async function handleReactionAdded({
 
   // Log the reaction as a user message
   try {
+    const reactingMemberContext = await getMemberContext(reactingUserId).catch(() => null);
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'user',
       content: userInput,
       content_sanitized: userInput,
+      user_id: reactingUserId,
+      user_display_name: resolveSpeakerDisplayName(reactingMemberContext),
+      message_source: 'unknown',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save reaction message');
@@ -4777,7 +4938,7 @@ async function handleReactionAdded({
         .filter(msg => msg.role === 'user' || msg.role === 'assistant')
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
-          user: msg.role === 'user' ? 'User' : 'Addie',
+          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
           text: msg.content_sanitized || msg.content,
           toolCalls: msg.tool_calls ?? undefined,
         }));
@@ -4811,12 +4972,15 @@ async function handleReactionAdded({
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
-  // Admin users get higher iteration limit for bulk operations
+  // Admin users get higher iteration limit for bulk operations.
+  // Cost cap scope follows the mention-handler pattern above.
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
+    costScope: await buildSlackCostScope(memberContext, reactingUserId),
+    currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude

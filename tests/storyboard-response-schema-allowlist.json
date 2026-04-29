@@ -1,0 +1,4 @@
+{
+  "$comment": "Known storyboard sample_response schema drift. Regenerate with `node scripts/lint-storyboard-response-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only.",
+  "entries": {}
+}

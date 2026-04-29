@@ -18,14 +18,21 @@ import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
-import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
+import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
+import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
+import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
+import { resolveUserRole } from "../utils/resolve-user-role.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
+import { createEscalation } from "../db/escalation-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
@@ -55,10 +62,13 @@ export interface MemberProfileRoutesConfig {
 
 /**
  * Resolve brand identity from the brand registry for a given domain.
- * Resolves brand identity from the unified brands table.
+ * Skips orphaned manifests — when a prior owner relinquished, the manifest
+ * is preserved for adoption but should not surface on member-facing reads
+ * until a new claim adopts (or clears) it. See updateBrandIdentity.
  */
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
   const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (brand?.manifest_orphaned) return undefined;
   if (brand?.brand_manifest) {
     return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
   }
@@ -110,15 +120,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         userId: user.id,
       });
 
-      // Auto-link: if no memberships, check for verified domain match
-      if (memberships.data.length === 0) {
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          // Re-fetch memberships after auto-link
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
+      // Auto-link any verified-domain orgs the user isn't yet in.
+      // Helper short-circuits when the user is already a cached member.
+      const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+      if (linked) {
+        memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
       }
 
       if (memberships.data.length === 0) {
@@ -242,14 +250,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {
@@ -457,14 +464,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        // Auto-link: if no memberships, check for verified domain match
-        if (memberships.data.length === 0) {
-          const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-          if (linked) {
-            memberships = await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-          }
+        // Auto-link any verified-domain orgs the user isn't yet in.
+        // Helper short-circuits when the user is already a cached member.
+        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
+        if (linked) {
+          memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
         }
 
         if (memberships.data.length === 0) {
@@ -680,6 +686,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   > {
     const pool = getPool();
     const client = await pool.connect();
+
+    // Computed inside the tx, applied outside after the profile COMMIT.
+    // The brand.json manifest write (`brandDb.updateManifestAgents`) is
+    // against an external-ish surface (separate connection, different
+    // table, different consumers). Keeping it inside the tx means a
+    // manifest write that succeeds followed by a failed COMMIT orphans
+    // the manifest entry — the exact drift the `/check` endpoint
+    // exists to detect (#2825, mirror of the demote path's rewrite
+    // in #2822). So we stage the manifest work during the tx, commit
+    // the JSONB change, then execute manifest + log a structured
+    // drift event on post-commit failure.
+    type ManifestOp =
+      | { kind: 'add'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string; description?: string }>; summary: string }
+      | { kind: 'remove'; domain: string; updatedAgents: Array<{ type: string; url: string; id: string }>; summary: string };
+    let manifestOp: ManifestOp | null = null;
+    let snippet: { type: string; url: string; id: string; description?: string } | undefined;
+    let finalTarget: AgentVisibility = target;
+
     try {
       await client.query('BEGIN');
 
@@ -706,21 +730,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // ROLLBACK. The Stripe demote path locks member_profiles via
       // FOR UPDATE, so it can't interleave past our own lock.
       if (target === 'public') {
-        const orgRow = await client.query<{
-          membership_tier: string | null;
-          subscription_price_lookup_key: string | null;
-          subscription_status: string | null;
-          subscription_amount: number | null;
-          subscription_interval: string | null;
-          is_personal: boolean;
-        }>(
-          `SELECT membership_tier, subscription_price_lookup_key, subscription_status,
-                  subscription_amount, subscription_interval, is_personal
-           FROM organizations
-           WHERE workos_organization_id = $1`,
-          [orgId]
-        );
-        const currentTier = resolveMembershipTier(orgRow.rows[0] ?? null);
+        const currentTier = await readMembershipTierFromClient(client, orgId);
         if (!hasApiAccess(currentTier)) {
           await client.query('ROLLBACK');
           return {
@@ -794,8 +804,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         ...(agent.name ? { description: agent.name } : {}),
       };
 
-      let snippet: typeof agentEntry | undefined;
-
       if (target === 'public' && domain) {
         if (isSelfHosted) {
           snippet = agentEntry;
@@ -804,11 +812,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           const currentAgents = Array.isArray(manifest.agents)
             ? manifest.agents as Array<{ type: string; url: string; id: string; description?: string }>
             : [];
-          const updatedAgents = [...currentAgents.filter(a => a.url !== agent.url), agentEntry];
-          await brandDb.updateManifestAgents(domain, updatedAgents, {
-            ...actor,
+          manifestOp = {
+            kind: 'add',
+            domain,
+            updatedAgents: [...currentAgents.filter(a => a.url !== agent.url), agentEntry],
             summary: `Published ${agent.type || 'brand'} agent to brand.json`,
-          });
+          };
         }
       } else if (domain && discovered && !isSelfHosted) {
         const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
@@ -816,11 +825,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           ? manifest.agents as Array<{ type: string; url: string; id: string }>
           : [];
         if (currentAgents.some(a => a.url === agent.url)) {
-          const updatedAgents = currentAgents.filter(a => a.url !== agent.url);
-          await brandDb.updateManifestAgents(domain, updatedAgents, {
-            ...actor,
+          manifestOp = {
+            kind: 'remove',
+            domain,
+            updatedAgents: currentAgents.filter(a => a.url !== agent.url),
             summary: `Removed ${agent.type || 'brand'} agent from brand.json`,
-          });
+          };
         }
       }
 
@@ -832,37 +842,81 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         [JSON.stringify(agents), row.id]
       );
       await client.query('COMMIT');
-
-      if (target === 'public' && snippet) {
-        return {
-          status: 200,
-          body: {
-            action: 'snippet',
-            message: 'Add this to the agents array in your brand.json',
-            visibility: target,
-            snippet,
-          },
-        };
-      }
-      return {
-        status: 200,
-        body: {
-          action: target === 'public' ? 'published' : target === 'private' ? 'unpublished' : 'members_only',
-          message:
-            target === 'public'
-              ? 'Agent published to brand.json'
-              : target === 'members_only'
-                ? 'Agent is visible to members with API access'
-                : 'Agent removed from brand.json',
-          visibility: target,
-        },
-      };
+      finalTarget = target;
     } catch (err) {
+      // Safe to attempt rollback whether we got here before or after
+      // a successful COMMIT — pg no-ops a ROLLBACK on a finished tx
+      // and the .catch swallows any driver noise.
       await client.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
-      client.release();
+      // Don't let a release() failure mask whatever the try block threw
+      // (e.g. a COMMIT error we actually want to surface to the caller).
+      try {
+        client.release();
+      } catch (releaseErr) {
+        logger.warn({ err: releaseErr, orgId }, 'pg client release failed');
+      }
     }
+
+    // Profile JSONB is committed. Apply the manifest change outside
+    // the tx — if this throws, the JSONB is already authoritative and
+    // the `/check` endpoint's drift detection will surface the
+    // divergence. Logging as structured drift so reconciliation can
+    // pick it up automatically.
+    if (manifestOp) {
+      try {
+        await brandDb.updateManifestAgents(manifestOp.domain, manifestOp.updatedAgents, {
+          ...actor,
+          summary: manifestOp.summary,
+        });
+      } catch (manifestErr) {
+        // Narrow the error shape. pg driver errors and other library
+        // errors can carry `error.query` / `error.parameters` that
+        // pino's default err-serializer would emit — keep diagnostic
+        // logs free of raw SQL + parameter values.
+        const errPayload = manifestErr instanceof Error
+          ? { message: manifestErr.message, name: manifestErr.name }
+          : { message: String(manifestErr) };
+        logger.warn(
+          {
+            err: errPayload,
+            domain: manifestOp.domain,
+            orgId,
+            agentIndex: index,
+            target: finalTarget,
+            kind: manifestOp.kind,
+            event: 'brand_json_drift',
+          },
+          'Profile visibility committed but brand.json manifest write failed — /check will surface as drift',
+        );
+      }
+    }
+
+    if (finalTarget === 'public' && snippet) {
+      return {
+        status: 200,
+        body: {
+          action: 'snippet',
+          message: 'Add this to the agents array in your brand.json',
+          visibility: finalTarget,
+          snippet,
+        },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        action: finalTarget === 'public' ? 'published' : finalTarget === 'private' ? 'unpublished' : 'members_only',
+        message:
+          finalTarget === 'public'
+            ? 'Agent published to brand.json'
+            : finalTarget === 'members_only'
+              ? 'Agent is visible to members with API access'
+              : 'Agent removed from brand.json',
+        visibility: finalTarget,
+      },
+    };
   }
 
   /**
@@ -871,11 +925,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
    * already been sent.
    */
   async function resolveUserOrgId(req: any, res: any): Promise<string | null> {
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [req.user!.id]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(req.user!.id);
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated' });
       return null;
@@ -1050,11 +1100,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // POST /api/me/member-profile/verify-brand - Check if member's domain pointer is live and mark verified
   router.post('/verify-brand', requireAuth, async (req, res) => {
     try {
-      const userRow = await query<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user!.id]
-      );
-      const orgId = userRow.rows[0]?.primary_organization_id;
+      const orgId = await resolvePrimaryOrganization(req.user!.id);
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with this account' });
       }
@@ -1101,12 +1147,21 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
             return res.status(403).json({ error: 'This domain is verified by another organization' });
           }
-          // Proof of domain control: transfer ownership and mark verified
-          await brandDb.updateHostedBrand(hosted.id, {
-            domain_verified: true,
-            workos_organization_id: orgId,
-          });
-          return res.json({ domain, verified: true });
+          // Proof of domain control: claim ownership and mark verified.
+          // If the brand is orphaned (prior owner relinquished), atomically
+          // clear the orphan flag and reset the prior manifest — otherwise
+          // the new owner silently inherits the prior org's visual identity.
+          // The orphan-aware path is the only safe route for claim+verify;
+          // updateHostedBrand by itself doesn't touch the orphan columns.
+          if (hosted.manifest_orphaned) {
+            await brandDb.claimOrphanedHostedBrand(hosted.id, orgId);
+          } else {
+            await brandDb.updateHostedBrand(hosted.id, {
+              domain_verified: true,
+              workos_organization_id: orgId,
+            });
+          }
+          return res.json({ domain, verified: true, claimed_orphaned: !!hosted.manifest_orphaned });
         }
         return res.json({ domain, verified: false, variant: result.variant ?? null, reason: 'pointer_mismatch' });
       }
@@ -1118,6 +1173,151 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
+  /**
+   * Resolve the caller's primary org and verify they have admin/owner role —
+   * brand-claim is org-scoped state-mutation and shouldn't be reachable by
+   * rank-and-file members. Returns the orgId, or sends an appropriate error
+   * response and returns null. Both /issue and /verify gate through this.
+   */
+  async function resolveBrandClaimOrgOr401(req: import('express').Request, res: import('express').Response): Promise<string | null> {
+    const orgId = await resolvePrimaryOrganization(req.user!.id);
+    if (!orgId) {
+      res.status(400).json({ error: 'No organization associated with this account' });
+      return null;
+    }
+    if (!workos) {
+      res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      return null;
+    }
+    // Role check: only org admins/owners can issue or verify a brand claim.
+    // resolveUserOrgMembership applies the same active-membership filter as
+    // resolveUserRole did, plus a dev-mode bypass — a removed admin can't
+    // claim a brand on the org that removed them.
+    try {
+      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
+        res.status(403).json({
+          error: 'Not authorized',
+          message: 'Only organization admins or owners can issue or verify a brand-domain claim.',
+        });
+        return null;
+      }
+    } catch (err) {
+      logger.error({ err, orgId }, 'brand-claim role check failed');
+      res.status(500).json({ error: 'Failed to verify caller role' });
+      return null;
+    }
+    return orgId;
+  }
+
+  // POST /api/me/member-profile/brand-claim/issue — start a WorkOS-backed
+  // domain ownership challenge (#3176). Service does the WorkOS calls + error
+  // disambiguation; this handler just translates the result to HTTP.
+  router.post('/brand-claim/issue', requireAuth, async (req, res) => {
+    try {
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const result = await issueDomainChallenge({
+        workos,
+        brandDb,
+        orgId,
+        rawDomain,
+      });
+      if (!result.ok) {
+        if (result.code === 'collision') {
+          return res.status(409).json({
+            error: 'Domain already registered',
+            code: 'collision',
+            message: 'This domain is already registered to another organization. Open a brand-ownership escalation if the assignment is wrong.',
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        if (result.code === 'invalid_domain') {
+          return res.status(400).json({
+            error: 'Invalid brand domain',
+            code: 'invalid_domain',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
+      }
+      return res.json({
+        domain: result.domain,
+        workos_domain_id: result.workos_domain_id,
+        state: result.state,
+        verification_strategy: result.verification_strategy,
+        verification_token: result.verification_token,
+        verification_prefix: result.verification_prefix,
+        prior_manifest_exists: result.prior_manifest_exists,
+        instructions: result.already_verified
+          ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
+          : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to issue brand claim challenge');
+      return res.status(500).json({ error: 'Failed to issue brand claim challenge' });
+    }
+  });
+
+  // POST /api/me/member-profile/brand-claim/verify — ask WorkOS to run the
+  // DNS lookup against its issued challenge. On success WorkOS marks the
+  // domain Verified, emits an organization_domain.verified webhook, and the
+  // service mirrors state into the brand registry — webhook handler also
+  // writes through idempotently via markBrandDomainVerified.
+  router.post('/brand-claim/verify', requireAuth, async (req, res) => {
+    try {
+      const orgId = await resolveBrandClaimOrgOr401(req, res);
+      if (!orgId) return;
+      if (!workos) {
+        return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
+      }
+      const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const result = await verifyDomainChallenge({
+        workos,
+        brandDb,
+        orgId,
+        rawDomain,
+        adoptPriorManifest: req.body?.adopt_prior_manifest === true,
+      });
+      if (!result.ok) {
+        const canonical = rawDomain ? canonicalizeBrandDomain(rawDomain) : '';
+        if (result.code === 'no_challenge') {
+          return res.status(404).json({
+            error: 'No outstanding domain challenge for this organization. Call /brand-claim/issue first.',
+            code: 'no_challenge',
+            domain: canonical,
+          });
+        }
+        if (result.code === 'still_pending') {
+          return res.status(400).json({
+            error: 'Domain still pending',
+            code: 'still_pending',
+            message: result.message,
+            domain: canonical,
+            state: result.state,
+            ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
+          });
+        }
+        return res.status(500).json({ error: 'Failed to verify brand claim challenge', code: 'workos_error' });
+      }
+      return res.json({
+        domain: result.domain,
+        verified: true,
+        newly_verified: result.newly_verified,
+        adopted_prior_manifest: result.adopted_prior_manifest,
+        brand: result.brand,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to verify brand claim challenge');
+      return res.status(500).json({ error: 'Failed to verify brand claim challenge' });
+    }
+  });
+
   // PUT /api/me/member-profile/brand-identity - Update logo URL and brand color inline
   router.put('/brand-identity', requireAuth, async (req, res) => {
     const startTime = Date.now();
@@ -1125,33 +1325,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
-      const { logo_url, brand_color } = req.body;
-
-      // Validate inputs
-      if (!logo_url && !brand_color) {
-        return res.status(400).json({
-          error: 'Missing fields',
-          message: 'Provide at least one of logo_url or brand_color.',
-        });
-      }
-
-      if (logo_url) {
-        try {
-          const parsed = new URL(logo_url);
-          if (parsed.protocol !== 'https:') {
-            return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must use HTTPS.' });
-          }
-        } catch {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be a valid URL.' });
-        }
-        if (logo_url.length > 2000) {
-          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be 2000 characters or less.' });
-        }
-      }
-
-      if (brand_color && !/^#[0-9a-fA-F]{6}$/.test(brand_color)) {
-        return res.status(400).json({ error: 'Invalid brand color', message: 'brand_color must be a hex color (e.g., #FF5733).' });
-      }
+      const { logo_url, brand_color, adopt_prior_manifest } = req.body;
 
       // Auth: resolve target org (same pattern as /visibility route)
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
@@ -1181,7 +1355,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
 
-      // Resolve org name for brand_json (profile display_name if available, else org table)
+      // Resolve display name: profile if available, else org name
       let displayName: string;
       if (profile?.display_name) {
         displayName = profile.display_name;
@@ -1193,119 +1367,103 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         displayName = org.name;
       }
 
-      // Derive brand domain: profile fields first, then logo URL hostname
-      let brandDomain = profile?.primary_brand_domain;
-      if (!brandDomain && profile?.contact_website) {
-        try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
-      }
-      if (!brandDomain && logo_url) {
+      // If no brand domain on file, fall back to the logo URL hostname (only if
+      // the candidate domain isn't already owned by another org)
+      let fallbackDomainHint: string | undefined;
+      if (!profile?.primary_brand_domain && !profile?.contact_website && logo_url) {
         try {
-          const candidate = new URL(logo_url).hostname;
+          const candidate = canonicalizeBrandDomain(new URL(logo_url).hostname);
           const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
           if (!existingBrand || !existingBrand.workos_organization_id || existingBrand.workos_organization_id === targetOrgId) {
-            brandDomain = candidate;
+            fallbackDomainHint = candidate;
           }
         } catch { /* ignore */ }
       }
-      if (!brandDomain) {
-        return res.status(400).json({
-          error: 'No brand domain',
-          message: 'Provide a logo URL hosted on your own domain so we can determine your brand domain.',
-        });
-      }
-      brandDomain = brandDomain.toLowerCase();
 
-      // Transaction: update/create hosted brand + link profile if it exists
-      const pool = getPool();
-      const client = await pool.connect();
+      let result;
       try {
-        await client.query('BEGIN');
-
-        // Read inside transaction with row lock to prevent concurrent insert race
-        const existingResult = await client.query(
-          'SELECT id, workos_organization_id, brand_manifest AS brand_json FROM brands WHERE domain = $1 FOR UPDATE',
-          [brandDomain]
-        );
-        const existing = existingResult.rows[0] || null;
-
-        // Ownership check: don't let one org overwrite another org's brand
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== targetOrgId) {
-          throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
-        }
-
-        if (existing) {
-          const bj = { ...(existing.brand_json as Record<string, unknown>) };
-          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
-          if (brands.length > 0) {
-            const primaryBrand = { ...brands[0] };
-            if (logo_url) {
-              const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
-              primaryBrand.logos = logos.length > 0
-                ? [{ ...logos[0], url: logo_url }, ...logos.slice(1)]
-                : [{ url: logo_url }];
-            }
-            if (brand_color) {
-              primaryBrand.colors = { ...(primaryBrand.colors as Record<string, unknown> || {}), primary: brand_color };
-            }
-            bj.brands = [primaryBrand, ...brands.slice(1)];
-          } else {
-            bj.brands = [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }];
+        result = await updateBrandIdentity({
+          workosOrganizationId: targetOrgId,
+          displayName,
+          profile: profile ?? null,
+          logoUrl: logo_url,
+          brandColor: brand_color,
+          fallbackDomainHint,
+          // Preserve undefined so the service can require an explicit decision
+          // when the brand is orphaned. Booleans only — anything else is a
+          // bad-request shape, but we let the service treat it as undefined.
+          adoptPriorManifest: typeof adopt_prior_manifest === 'boolean' ? adopt_prior_manifest : undefined,
+        });
+      } catch (err: any) {
+        if (err instanceof BrandIdentityError) {
+          if (err.code === 'orphan_manifest_decision_required') {
+            // Force the caller to pick adopt-or-clear before we apply the write.
+            // The response carries the prior owner's org id so a UI / agent can
+            // surface the choice ("this domain was previously registered by
+            // {prior_org} — adopt their identity, or start fresh?").
+            const meta = err.meta as { brandDomain: string; priorOwnerOrgId: string | null };
+            return res.status(409).json({
+              error: 'Orphan manifest decision required',
+              code: 'orphan_manifest_decision_required',
+              message: err.message,
+              brand_domain: meta.brandDomain,
+              prior_owner_org_id: meta.priorOwnerOrgId,
+            });
           }
-          await client.query(
-            'UPDATE brands SET brand_manifest = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id, targetOrgId]
-          );
-        } else {
-          const brandJson = {
-            house: { domain: brandDomain, name: displayName },
-            brands: [{
-              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: displayName }],
-              logos: logo_url ? [{ url: logo_url }] : [],
-              colors: brand_color ? { primary: brand_color } : {},
-            }],
-          };
-          await client.query(
-            `INSERT INTO brands (workos_organization_id, domain, brand_manifest, brand_name, source_type, review_status, is_public, has_brand_manifest)
-             VALUES ($1, $2, $3, COALESCE($3::jsonb->>'name', $2), 'community', 'approved', $4, true)
-             ON CONFLICT (domain) DO UPDATE SET
-               brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-               workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-               is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
-               has_brand_manifest = true,
-               updated_at = NOW()`,
-            [targetOrgId, brandDomain, JSON.stringify(brandJson), true]
-          );
+          if (err.isCrossOrgOwnership()) {
+            // Convert the bare 403 into a routed escalation so an admin can
+            // resolve via transfer_brand_ownership instead of the user dead-ending.
+            // Categorized as sensitive_topic because the dispute may involve
+            // trademark or commercial claims; the framing stays neutral so an
+            // admin reading it doesn't anchor to either party.
+            const { brandDomain, currentOwnerOrgId } = err.meta;
+            const callerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+            // Resolve the incumbent org's display name so the queue summary
+            // names both parties — admins shouldn't have to open the ticket
+            // to find out who's being claimed against.
+            const incumbentOrg = await orgDb.getOrganization(currentOwnerOrgId).catch(() => null);
+            const incumbentName = incumbentOrg?.name ?? currentOwnerOrgId;
+            const escalation = await createEscalation({
+              workos_user_id: user.id,
+              user_email: user.email,
+              user_display_name: callerName,
+              category: 'sensitive_topic',
+              priority: 'normal',
+              summary: `Brand ownership review: ${brandDomain} — claim by ${displayName} vs current owner ${incumbentName}`,
+              original_request: `Update brand identity for ${brandDomain} (logo=${logo_url ?? 'unchanged'}, color=${brand_color ?? 'unchanged'}).`,
+              addie_context: `Caller: ${callerName} <${user.email}>, org ${targetOrgId} (${displayName}). Current owner org: ${currentOwnerOrgId} (${incumbentName}). Could be an acquisition, naming overlap, or someone backfilling on behalf of the registered org — verify intent before adjudicating. Resolve via transfer_brand_ownership if the claim checks out, or close as won't-do if not.`,
+            }).catch(escalErr => {
+              logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
+              return null;
+            });
+            return res.status(409).json({
+              error: 'Brand domain is managed by another organization',
+              code: 'cross_org_ownership',
+              message: escalation
+                ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST /api/me/member-profile/brand-claim/issue and follow the instructions.`
+                : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
+              escalation_id: escalation?.id ?? null,
+              brand_domain: brandDomain,
+              self_service_path: '/api/me/member-profile/brand-claim/issue',
+            });
+          }
+          return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });
         }
-
-        // Link brand domain back to profile if profile exists and doesn't have one
-        if (profile && !profile.primary_brand_domain) {
-          await client.query(
-            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-            [brandDomain, profile.id]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
+        throw err;
       }
 
-      const resolvedBrand = await resolveBrand(brandDb, brandDomain);
+      const resolvedBrand = await resolveBrand(brandDb, result.brandDomain);
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain, durationMs: duration }, 'Brand identity updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain: result.brandDomain, claimedOrphanedBrand: result.claimedOrphanedBrand, keptPriorManifest: result.keptPriorManifest, durationMs: duration }, 'Brand identity updated');
 
-      res.json({ brand: resolvedBrand, brand_domain: brandDomain });
+      res.json({
+        brand: resolvedBrand,
+        brand_domain: result.brandDomain,
+        claimed_orphaned_brand: result.claimedOrphanedBrand ?? false,
+        kept_prior_manifest: result.keptPriorManifest ?? false,
+      });
     } catch (error: any) {
       const duration = Date.now() - startTime;
       const statusCode = error?.statusCode || 500;

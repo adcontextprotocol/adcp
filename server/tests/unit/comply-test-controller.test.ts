@@ -34,9 +34,11 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
   // Unwrap adcp_error envelope for error responses (L3 compliance format)
-  const result = parsed.adcp_error ?? parsed;
+  const result = (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
   return { result, isError: response.isError };
 }
 
@@ -160,14 +162,28 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(true);
       const scenarios = result.scenarios as string[];
-      expect(scenarios).toEqual([
+      // Order-agnostic: the controller does not promise a specific ordering and
+      // the SDK is free to reshuffle CONTROLLER_SCENARIOS. Assert membership of
+      // every advertised scenario (SDK-native + LOCAL_SCENARIOS appended by the
+      // training-agent wrapper) without coupling to enumeration order.
+      expect(scenarios).toEqual(expect.arrayContaining([
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
         'force_session_status',
         'simulate_delivery',
         'simulate_budget_spend',
-      ]);
+        // Local scenarios — see LOCAL_SCENARIOS in
+        // server/src/training-agent/comply-test-controller.ts.
+        'force_create_media_buy_arm',
+        'force_task_completion',
+        'seed_creative_format',
+      ]));
+      // Catch silent drift in either direction (entries removed, or new ones
+      // not yet documented in this assertion).
+      expect(scenarios.length).toBe(9);
+      // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
+      expect(new Set(scenarios).size).toBe(scenarios.length);
     });
   });
 
@@ -242,6 +258,51 @@ describe('comply_test_controller', () => {
       });
       expect((result as any).success).toBe(false);
       expect((result as any).error).toBe('INVALID_PARAMS');
+    });
+
+    it('seeded product + pricing option resolves via create_media_buy (overlay consumer side)', async () => {
+      // seed_product writes to session.complyExtensions.seededProducts;
+      // handleCreateMediaBuy overlays those entries onto its catalog lookup.
+      // Without the overlay, create_media_buy returns PRODUCT_NOT_FOUND.
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_auction_product',
+          pricing_option_id: 'seeded_cpm_auction',
+          bid_price: 8.50,
+          budget: 10000,
+        }],
+      });
+      expect(result.media_buy_id).toBeDefined();
+      const pkgs = result.packages as Array<Record<string, unknown>>;
+      expect(pkgs).toHaveLength(1);
+      expect(pkgs[0].package_id).toBe('pkg-0');
     });
   });
 
@@ -351,7 +412,10 @@ describe('comply_test_controller', () => {
       expect(result.current_state).toBeNull();
     });
 
-    it('rejects transition to rejected from approved (no valid path)', async () => {
+    it('rejects transition to rejected from approved without a rejection_reason', async () => {
+      // approved → rejected is a valid path (brand-safety flagging an
+      // already-approved creative is a real lifecycle edge); but rejecting
+      // still requires a reason, so the call must fail with INVALID_PARAMS.
       const creativeId = await syncCreative(server);
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_creative_status',
@@ -360,7 +424,25 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(result.success).toBe(false);
-      expect(result.error).toBe('INVALID_TRANSITION');
+      expect(result.error).toBe('INVALID_PARAMS');
+      expect(result.error_detail).toContain('rejection_reason');
+    });
+
+    it('allows approved -> rejected with a rejection_reason (post-approval brand-safety flag)', async () => {
+      const creativeId = await syncCreative(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: {
+          creative_id: creativeId,
+          status: 'rejected',
+          rejection_reason: 'Brand safety policy violation discovered post-approval',
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(true);
+      expect(result.previous_state).toBe('approved');
+      expect(result.current_state).toBe('rejected');
     });
 
     it('allows approved -> pending_review (seller re-review)', async () => {

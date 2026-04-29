@@ -7,6 +7,8 @@ description: Execute AdCP Media Buy Protocol operations with sales agents - disc
 
 This skill enables you to execute the AdCP Media Buy Protocol with sales agents. Use the standard MCP tools (`get_products`, `create_media_buy`, `sync_creatives`, etc.) exposed by the connected agent.
 
+> **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
+
 ## Overview
 
 The Media Buy Protocol provides 11 standardized tasks for managing advertising campaigns:

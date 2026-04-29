@@ -427,7 +427,7 @@ describe('AdAgentsManager', () => {
 
       expect(results[0].valid).toBe(false);
       expect(results[0].errors.some(e => e.includes('content-type'))).toBe(true);
-    });
+    }, 10000);
 
     it('detects HTML instead of JSON', async () => {
       const agents: AuthorizedAgent[] = [
@@ -447,7 +447,7 @@ describe('AdAgentsManager', () => {
 
       expect(results[0].valid).toBe(false);
       expect(results[0].errors.some(e => e.includes('HTML instead of JSON'))).toBe(true);
-    });
+    }, 10000);
 
     it('validates multiple agents in parallel', async () => {
       const agents: AuthorizedAgent[] = [

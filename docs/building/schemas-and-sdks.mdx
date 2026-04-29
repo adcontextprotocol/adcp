@@ -12,7 +12,7 @@ AdCP schemas are available from two sources:
 
 | Source | URL | Best For |
 |--------|-----|----------|
-| Website | `https://adcontextprotocol.org/schemas/latest/` | Runtime fetching, version aliases |
+| Website | `https://adcontextprotocol.org/schemas/v3/` | Runtime fetching, version aliases |
 | GitHub | `https://github.com/adcontextprotocol/adcp/tree/main/dist/schemas` | Offline access, CI/CD pipelines |
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
@@ -21,13 +21,13 @@ Both sources contain identical schemas. The GitHub repository includes all relea
 
 Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
 
-| Path | Contents | Stability |
-|------|----------|-----------|
+| Path | Contents | Notes |
+|------|----------|-------|
 | `https://adcontextprotocol.org/protocol/latest.tgz` | Current development bundle | Changes with every merge |
 | `https://adcontextprotocol.org/protocol/{version}.tgz` | Pinned release bundle | Immutable once published |
 | `https://adcontextprotocol.org/protocol/{version}.tgz.sha256` | SHA-256 checksum | Use to verify download integrity |
-| `https://adcontextprotocol.org/protocol/{version}.tgz.sig` | Sigstore detached signature | Use to verify publisher identity |
-| `https://adcontextprotocol.org/protocol/{version}.tgz.crt` | Fulcio-issued signing certificate | Pairs with the signature for `cosign verify-blob` |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.sig` | Sigstore detached signature | Use to verify publisher identity. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.crt` | Fulcio-issued signing certificate | Pairs with `.sig` for `cosign verify-blob`. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
 
 Every tarball extracts into a single `adcp-{version}/` directory (safe extraction, no tarbomb). Inside:
 
@@ -78,7 +78,7 @@ cosign verify-blob \
 
 `cosign verify-blob` exits non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid. Use this in any pipeline that ingests the protocol bundle as an enforcement source. The `@adcp/client` `sync-schemas` command performs this verification automatically when the sidecars are present.
 
-Older releases that predate signing remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
+Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 
 ### Compliance storyboards
 
@@ -97,10 +97,10 @@ Declare `supported_protocols` (for protocol baselines) and `specialisms` (for na
 
 | Schema | URL |
 |--------|-----|
-| Product | `https://adcontextprotocol.org/schemas/latest/core/product.json` |
-| Media Buy | `https://adcontextprotocol.org/schemas/latest/core/media-buy.json` |
-| Creative Format | `https://adcontextprotocol.org/schemas/latest/core/format.json` |
-| Schema Registry | `https://adcontextprotocol.org/schemas/latest/index.json` |
+| Product | `https://adcontextprotocol.org/schemas/v3/core/product.json` |
+| Media Buy | `https://adcontextprotocol.org/schemas/v3/core/media-buy.json` |
+| Creative Format | `https://adcontextprotocol.org/schemas/v3/core/format.json` |
+| Schema Registry | `https://adcontextprotocol.org/schemas/v3/index.json` |
 
 ### For AI Coding Agents
 
@@ -111,6 +111,18 @@ Point your AI coding agent to **[https://docs.adcontextprotocol.org/mcp](https:/
 ## Client SDKs
 
 AdCP provides official SDKs for JavaScript/TypeScript, Python, and Go. These work for both client and server implementations.
+
+### AdCP 3.0 support
+
+All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/docs/building/validate-your-agent).
+
+| SDK | 3.0-compatible from | Package |
+|---|---|---|
+| `@adcp/client` (JS/TS) | `5.13.0` | [npm](https://www.npmjs.com/package/@adcp/client) · [releases](https://github.com/adcontextprotocol/adcp-client/releases) |
+| `adcp` (Python) | `4.0.0` | [PyPI](https://pypi.org/project/adcp/) · [releases](https://github.com/adcontextprotocol/adcp-python/releases) |
+| `adcp-go` (Go) | `v1.0.0` | [releases](https://github.com/adcontextprotocol/adcp-go/releases) |
+
+If you are on an earlier major version, upgrade before working through the [3.0 migration guide](/docs/reference/migration/index).
 
 ### JavaScript / TypeScript
 
@@ -193,8 +205,8 @@ The JavaScript and Python SDKs include command-line tools for testing and develo
 ### JavaScript CLI
 
 ```bash
-npx @adcp/client --help
-npx @adcp/client get-products --agent https://sales.example.com --brief "CTV campaign"
+npx @adcp/client@latest --help
+npx @adcp/client@latest get-products --agent https://sales.example.com --brief "CTV campaign"
 ```
 
 ### Python CLI
@@ -210,9 +222,9 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 | Path | Example | Best For |
 |------|---------|----------|
-| Exact version | `/schemas/2.5.3/`, `/compliance/2.5.3/`, `/protocol/2.5.3.tgz` | Production, SDK generation |
-| Major version | `/schemas/latest/`, `/compliance/v3/` | Development, documentation |
-| Minor version | `/schemas/v2.5/`, `/compliance/v2.5/` | Stable development (patch updates only) |
+| Exact version | `/schemas/3.0.0/`, `/compliance/3.0.0/`, `/protocol/3.0.0.tgz` | Production, SDK generation |
+| Major version | `/schemas/v3/`, `/compliance/v3/` | Development, documentation |
+| Minor version | `/schemas/v3.0/`, `/compliance/v3.0/` | Stable development (patch updates only) |
 
 The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{version}.tgz` — one release cuts all three.
 
@@ -221,7 +233,7 @@ The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{v
 Pin to an exact version for stability:
 
 ```javascript
-const SCHEMA_VERSION = '2.5.3';
+const SCHEMA_VERSION = '3.0.0';
 const schema = await fetch(
   `https://adcontextprotocol.org/schemas/${SCHEMA_VERSION}/core/product.json`
 );
@@ -233,7 +245,7 @@ Use the major version alias to stay current with backward-compatible updates:
 
 ```javascript
 const schema = await fetch(
-  'https://adcontextprotocol.org/schemas/latest/core/product.json'
+  'https://adcontextprotocol.org/schemas/v3/core/product.json'
 );
 ```
 
@@ -242,12 +254,12 @@ const schema = await fetch(
 ```bash
 # TypeScript
 npx json-schema-to-typescript \
-  https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
+  https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
   --output types/product.d.ts
 
 # Python
 datamodel-codegen \
-  --url https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
+  --url https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
   --output models/product.py
 ```
 
@@ -258,7 +270,7 @@ For tools that don't support `$ref` resolution, use bundled schemas with all ref
 ### Website Access
 
 ```
-https://adcontextprotocol.org/schemas/2.5.3/bundled/media-buy/create-media-buy-request.json
+https://adcontextprotocol.org/schemas/3.0.0/bundled/media-buy/create-media-buy-request.json
 ```
 
 ### GitHub Access
@@ -268,10 +280,10 @@ Bundled schemas are committed to the repository at `dist/schemas/{VERSION}/bundl
 ```bash
 # Clone and access locally
 git clone https://github.com/adcontextprotocol/adcp.git
-ls adcp/dist/schemas/2.5.3/bundled/media-buy/
+ls adcp/dist/schemas/3.0.0/bundled/media-buy/
 
 # Or fetch directly via GitHub raw
-curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/2.5.3/bundled/media-buy/get-products-request.json
+curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/3.0.0/bundled/media-buy/get-products-request.json
 ```
 
 ### Directory Structure
@@ -307,13 +319,13 @@ All request/response task schemas are bundled:
 | `bundled/protocol/` | get-adcp-capabilities |
 | `bundled/core/` | tasks-get, tasks-list |
 
-See the [schema registry](https://adcontextprotocol.org/schemas/latest/index.json) for all available schemas.
+See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) for all available schemas.
 
 ## Version Discovery
 
 ```bash
 # Get current version
-curl https://adcontextprotocol.org/schemas/latest/index.json | jq '.adcp_version'
+curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.adcp_version'
 ```
 
 Check [Release Notes](/docs/reference/release-notes) for version history and migration guides.

@@ -1,0 +1,437 @@
+id: media_buy_state_machine
+version: "1.0.0"
+title: "Media buy state machine lifecycle"
+category: media_buy_state_machine
+summary: "Validates media buy state transitions: create, pause, resume, cancel, and terminal state enforcement."
+track: media_buy
+required_tools:
+  - create_media_buy
+  - update_media_buy
+
+narrative: |
+  A media buy has a well-defined state machine: pending_creatives, pending_start, active,
+  paused, completed, rejected, canceled. Transitions between states must follow the spec — you cannot
+  resume a canceled buy or pause a completed one.
+
+  This storyboard creates a media buy, walks it through pause/resume/cancel transitions, then
+  verifies that the agent rejects updates to a buy in a terminal state (canceled or completed).
+  It also tests package-level pause/resume independent of the media buy status.
+
+  The state machine is the backbone of media buy reliability. If an agent allows invalid
+  transitions, buyers cannot trust the status field and automation breaks down.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+  examples:
+    - "Any AdCP seller with media buy support"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for account setup. The test creates a media buy
+    using discovered products, then exercises state transitions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "media_buy_state_machine--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: setup
+    title: "Create a media buy"
+    narrative: |
+      Discover products and create a media buy to use for state transition testing.
+      The media buy ID is captured and passed to subsequent phases.
+
+    steps:
+      - id: discover_products
+        title: "Discover products for media buy"
+        narrative: |
+          Send a brief to get available products with pricing options. The first product
+          with a pricing option will be used to create the test media buy.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products with:
+          - product_id
+          - pricing_options with pricing_option_id
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display advertising products for state machine testing"
+          brand:
+            domain: "acmeoutdoor.example"
+
+          context:
+            correlation_id: "media_buy_state_machine--discover_products"
+        context_outputs:
+          - name: product_id
+            path: 'products[0].product_id'
+          - name: pricing_option_id
+            path: 'products[0].pricing_options[0].pricing_option_id'
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product with a product_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--discover_products"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
+      - id: create_buy
+        title: "Create the test media buy"
+        narrative: |
+          Create a media buy using the discovered product. This buy will be used for
+          all subsequent state transition tests.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return an active media buy with:
+          - media_buy_id
+          - status: active
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 10000
+              pricing_option_id: "test-pricing"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_create_buy"
+          context:
+            correlation_id: "media_buy_state_machine--create_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: 'media_buy_id'
+          - name: package_id
+            path: 'packages[0].package_id'
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response includes a media_buy_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--create_buy"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns package_id — must be echoed in update_media_buy"
+  - id: state_transitions
+    title: "Valid state transitions"
+    narrative: |
+      Exercise the valid state transitions: pause, resume, and cancel. Each transition
+      must update the status field correctly.
+
+    steps:
+      - id: pause_buy
+        title: "Pause the media buy"
+        narrative: |
+          Pause the active media buy. The status should transition to paused.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions to paused.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          paused: true
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_pause_buy"
+          context:
+            correlation_id: "media_buy_state_machine--pause_buy"
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes updated status"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--pause_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: resume_buy
+        title: "Resume the media buy"
+        narrative: |
+          Resume the paused media buy. The status should transition back to active.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions back to active.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          paused: false
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_resume_buy"
+          context:
+            correlation_id: "media_buy_state_machine--resume_buy"
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes updated status"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--resume_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: cancel_buy
+        title: "Cancel the media buy"
+        narrative: |
+          Cancel the media buy. This is a terminal transition — the buy cannot be
+          resumed or modified after cancellation.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Media buy status transitions to canceled. This is terminal.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          canceled: true
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_state_transitions_cancel_buy"
+          context:
+            correlation_id: "media_buy_state_machine--cancel_buy"
+        validations:
+          - check: field_present
+            path: "status"
+            description: "Response includes canceled status"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--cancel_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: terminal_enforcement
+    title: "Terminal state enforcement"
+    narrative: |
+      Verify that the agent rejects state transitions on a canceled media buy. Pausing
+      or resuming a terminal buy returns INVALID_STATE (generic terminal-state rule).
+      Re-canceling a terminal buy returns NOT_CANCELLABLE — the cancellation-specific
+      code takes precedence over the generic INVALID_STATE when the attempted
+      transition is itself a cancellation. Non-cancellation illegal transitions into
+      or out of terminal states still return INVALID_STATE.
+
+    steps:
+      - id: pause_canceled_buy
+        title: "Reject pause on canceled buy"
+        narrative: |
+          Attempt to pause a canceled media buy. The agent must reject this with
+          INVALID_STATE.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        expect_error: true
+        stateful: true
+        expected: |
+          Reject with INVALID_STATE — cannot pause a canceled buy.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          paused: true
+
+          context:
+            correlation_id: "media_buy_state_machine--pause_canceled_buy"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_STATE"]
+            description: "Invalid transition rejected with INVALID_STATE"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--pause_canceled_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: resume_canceled_buy
+        title: "Reject resume on canceled buy"
+        narrative: |
+          Attempt to resume a canceled media buy. The agent must reject this with
+          INVALID_STATE.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        expect_error: true
+        stateful: true
+        expected: |
+          Reject with INVALID_STATE — cannot resume a canceled buy.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          paused: false
+
+          context:
+            correlation_id: "media_buy_state_machine--resume_canceled_buy"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_STATE"]
+            description: "Invalid transition rejected with INVALID_STATE"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--resume_canceled_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: recancel_buy
+        title: "Reject re-cancel of canceled buy with NOT_CANCELLABLE"
+        narrative: |
+          Attempt to cancel an already-canceled media buy. The agent MUST reject
+          this with NOT_CANCELLABLE. The cancellation-specific code takes
+          precedence over the generic terminal-state INVALID_STATE when the
+          terminal update is itself a cancellation attempt — see §128/§129 of
+          the media-buy specification and media_buy_seller/invalid_transitions
+          for the canonical vector. Idempotent acceptance is NOT conformant for
+          this case.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: terminal_state_enforcement
+        expect_error: true
+        stateful: true
+        expected: |
+          Reject with:
+          - code: NOT_CANCELLABLE
+          - recovery: correctable
+          - context echoed unchanged
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          canceled: true
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_terminal_enforcement_recancel_buy"
+          context:
+            correlation_id: "media_buy_state_machine--recancel_buy"
+        validations:
+          - check: error_code
+            value: "NOT_CANCELLABLE"
+            description: "Error code is NOT_CANCELLABLE on re-cancel of canceled buy"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--recancel_buy"
+            description: "Context correlation_id returned unchanged"

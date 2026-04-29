@@ -14,10 +14,10 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 | Area | v2.x | v3.x |
 |------|------|------|
-| **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence |
+| **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence (experimental) |
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
 | **Governance** | No brand suitability protocol | Property lists, content standards, campaign governance, policy registry, and brand calibration |
-| **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
+| **Sponsored Intelligence** (experimental) | No conversational brand protocol | Consent-first brand sessions in AI assistants |
 | **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
@@ -50,6 +50,55 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 ---
 
 ## New capabilities
+
+### Trust surface: idempotency, request signing, and signed governance
+
+3.0 makes agent-to-agent transactions safe for real money by turning three operational disciplines into first-class protocol primitives.
+
+**`idempotency_key` is required on every mutating request.** Buyers generate a fresh key per logical operation — the schema requires `^[A-Za-z0-9_.:-]{16,255}$`; AdCP Verified additionally requires a cryptographically-random UUID v4. Sellers declare dedup semantics on `get_adcp_capabilities` as either `adcp.idempotency = { supported: true, replay_ttl_seconds: <1h–7d, 24h recommended> }` or `{ supported: false }`. When `supported: true`, replay is safe: the seller returns `replayed: true` on exact replay, `IDEMPOTENCY_CONFLICT` when the same key accompanies a different payload, and `IDEMPOTENCY_EXPIRED` after the TTL. **When `supported: false`, sending an `idempotency_key` is a no-op — naive retries double-process**, and buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. Clients MUST NOT assume a default; a seller missing this block is non-compliant. Since `supported: true` is a trust-bearing claim, conformance runners probe it with a deliberate payload-mutation replay — sellers claiming support MUST pass this probe before the declaration is considered verified.
+
+**RFC 9421 HTTP Message Signatures are optional in 3.0 and mandatory under AdCP Verified.** Agents sign mutating requests with Ed25519 over a canonicalized covered-component list (method, target URI, `content-digest`, protocol-level fields). The spec pins sf-binary encoding and URL canonicalization so independent implementations produce bit-identical canonical inputs. A 15-step verification checklist defines the seller's path: `alg` allowlist, `keyid` cap-before-crypto (defense against unbounded verification), JWKS resolution via SSRF-validated fetch, `jti` replay dedup, audience binding. Published test vectors at `static/compliance/source/test-vectors/request-signing/` let implementers validate correctness offline.
+
+**Webhooks are signed under the same RFC 9421 profile — baseline-required for sellers.** Webhook authentication unifies on the AdCP 9421 profile as a symmetric variant of request signing: the seller signs outbound webhook requests with a key published in its JWKS at `jwks_uri` (discoverable via `brand.json` `agents[]`). The JWK itself carries `adcp_use: "webhook-signing"` (distinct from `adcp_use: "request-signing"`); `kid` values MUST be unique across purposes within a JWKS. No shared secret crosses the wire. The buyer verifies the signature using the seller's JWKS. A 14-step webhook verifier checklist — documented in the [Security guide](/docs/building/implementation/security) — covers trust-anchor scoping, downgrade-and-injection resistance, and per-keyid replay dedup (100K per keyid, 10M aggregate); verification failures return typed reason codes defined there. HMAC-SHA256 remains a legacy fallback through 3.x (opt-in via `push_notification_config.authentication.credentials`); the entire `authentication` object is removed in 4.0.
+
+**Every webhook payload carries a required `idempotency_key`.** Webhooks use at-least-once delivery, so receivers must dedupe. Every webhook payload — MCP, collection-list changes, property-list changes, content-standards artifacts, rights revocations — carries a sender-generated, cryptographically-random UUID v4 `idempotency_key` stable across retries of the same event. Same name and format as the request-side field. Predictable keys allow pre-seeding a receiver's dedup cache to suppress legitimate events, so sellers MUST generate keys from a cryptographic source.
+
+**`governance_context` is a signed JWS.** When a governance agent approves a plan it returns a JWS — not an opaque string — signed with the governance agent's key. The buyer echoes it in the media-buy envelope. Sellers verify the signature using the governance agent's JWKS (resolved via `sync_governance`) and bind decisions to a specific buyer, plan, phase, and time without a round-trip. Stale or forged decisions are rejected at the transport layer. When a governance agent is configured on the plan, sellers MUST invoke `check_governance` before committing budget and MUST reject a spend-commit lacking a valid `governance_context` with `PERMISSION_DENIED`.
+
+**The compliance runner validates all of this.** Every agent runs `/compliance/{version}/universal/security.yaml` regardless of which protocols or specialisms it claims — covering unauthenticated rejection, API key enforcement, OAuth discovery per RFC 9728, and audience binding. Agents that declare signing run the `signed_requests` and `signed_webhooks` harnesses: positive flows, tampering (header injection, body mutation, timestamp skew), replay (`jti` reuse), and the `keyid`-cap-before-crypto path. Runner output is a structured, verifiable `runner-output.json` artifact with a hash chain over the test-kit corpus so tampering is detectable.
+
+**Cross-instance state persistence is now a spec requirement.** Agent state — tasks, media buys, plans, signed artifacts, idempotency keys — MUST be persistent across horizontally-scaled instances. In-memory-only state is non-compliant for production.
+
+See the [Security implementation guide](/docs/building/implementation/security) for the full threat model, principal roles (brand / operator / agent), and step-by-step verification paths.
+
+<Card title="Security implementation" icon="arrow-right" href="/docs/building/implementation/security">
+  Threat model, signing profile, verification paths, and the universal security storyboard.
+</Card>
+
+---
+
+### Specialisms and storyboard-driven compliance
+
+Storyboards — scripted compliance scenarios that agents must pass — now live in the protocol at `/compliance/{version}/`, alongside schemas and task definitions. Agents declare two things in `get_adcp_capabilities`:
+
+- **`supported_protocols`** — broad domain claims (`media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`). Each commits the agent to the domain's baseline storyboard.
+- **`specialisms`** — 19 narrow capability claims across the 6 domains. Examples: `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`, `property-lists`, `signal-marketplace`, `brand-rights`. Each rolls up to one parent protocol.
+
+Compliance runs have three tiers: **universal** storyboards every agent runs (capability discovery, schema validation, error compliance), **domain baselines** for each declared protocol, and **specialism storyboards** for each narrow claim. A per-version protocol tarball at `/protocol/{version}.tgz` lets clients bulk-sync schemas, storyboards, and examples in one request.
+
+<Note>
+**AdCP Verified is self-attested in 3.0.** Agents run the storyboard suite and publish a signed `runner-output.json` with a hash chain over the test-kit corpus. AAO does not audit the output or gate issuance — the Verified stamp means "this agent published passing runner output," not "an auditor confirmed the claim." Verifying parties (buyers, integrators, regulators) can re-run any claim against the referenced storyboards and compare output hashes.
+
+The compliance runner and the storyboards are themselves software shipping at 3.0 — they have bugs, coverage gaps, and in a few places they encode our best guess at spec intent where the working group is still refining the exact rule. When an implementer sees a storyboard failure, three things are possible: their agent has a bug, the storyboard has a bug, or the spec is ambiguous. All three are legitimate issues to file.
+
+**Why self-attested and not audited at 3.0:** the reference implementations AAO operates — the training agent and the `@adcp/client` / Python / Go SDKs — aren't fully clean against the 3.0 storyboard suite yet. The training agent currently passes 32 of 55 applicable storyboards; SDK coverage is similar. We are working those pass rates to 100% over the 3.0 → 3.1 window on a 4–6 week cadence. When the reference implementations pass cleanly and the remaining spec ambiguities are resolved, **the formal AdCP Verified program launches with 3.1** — agents will be able to submit runner output for independent re-execution by AAO, with a public registry of verified agents. Self-attestation in 3.0 is the bridge, not the end state.
+</Note>
+
+<Card title="Compliance Catalog" icon="arrow-right" href="/docs/building/compliance-catalog">
+  Full index of domains and specialisms with status flags and storyboard sources.
+</Card>
+
+---
 
 ### Brand Protocol
 
@@ -268,6 +317,46 @@ For the exhaustive rc.2 change list, see the [Release Notes](/docs/reference/rel
 
 ## rc.3 to 3.0 highlights
 
+<Info>
+**Upgrading from rc.3?** See [rc.3 → 3.0 prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) for the breaking changes table, before/after examples, and migration steps.
+</Info>
+
+### Specialisms and compliance catalog
+
+Storyboards move into the protocol at `/compliance/{version}/` with a new `specialisms` field on `get_adcp_capabilities`. 21 specialisms roll up to 6 domains; four 3.1 archetypes ship with `status: preview`. See the [Compliance Catalog](/docs/building/compliance-catalog). Renames: `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`. Merge: `property-governance` + `collection-governance` → `inventory-lists`. Promotion: `sponsored_intelligence` specialism → full protocol.
+
+### Capabilities model simplification
+
+The capabilities model is streamlined for 3.0: redundant boolean gates are removed. If a `content_standards` object exists in `get_adcp_capabilities`, the agent supports content standards — no separate boolean needed.
+
+`reporting_capabilities` is now required on every product. Geo capability fields keep their typed shapes: `geo_countries` and `geo_regions` as booleans, `geo_metros` and `geo_postal_areas` as structured objects.
+
+See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full list of removed fields and migration steps.
+
+### Governance across purchase types
+
+Campaign governance extends beyond media buys to cover brand rights licensing, signal activation, and creative services — any purchase where budget or policy rules apply. `governance_context` replaces `media_buy_id` as the identifier that ties governance actions together across a campaign's lifecycle. A `purchase_type` field on `check_governance` and `report_plan_outcome` distinguishes the governed activity.
+
+### GOVERNANCE_DENIED error and schema consistency
+
+`GOVERNANCE_DENIED` is added to the standard error codes with correctable recovery, enabling governance-rejected operations to return structured errors. All request/response schemas across governance, collection, property, sponsored-intelligence, and content-standards protocols gain optional `context` and `ext` fields for application metadata and protocol extensions. `signal_id` is now required on signal items in `get_signals` responses. The `comply_test_controller` schema is flattened from a oneOf union to a flat object with `scenario` discriminant.
+
+### Per-request version declaration
+
+All request schemas now include `adcp_major_version`, allowing v3 buyers to declare which major version their payloads conform to. Sellers validate against their `major_versions` and return `VERSION_UNSUPPORTED` if unsupported. When omitted, sellers default to their highest supported version.
+
+Note: `adcp_major_version` is a v3 field — v2 clients cannot set it (the field does not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by this field.
+
+### Collection lists
+
+Collection lists extend brand safety from properties to content programs. Like property lists, collection lists are curated sets — but they target shows, series, and other content programs across platforms using distribution identifiers (IMDb, Gracenote, EIDR) for cross-publisher matching.
+
+New targeting overlay fields `collection_list` and `collection_list_exclude` enable both inclusion and exclusion targeting. A new genre taxonomy enum normalizes genre classification across buyers and sellers.
+
+<Card title="Collection lists" icon="arrow-right" href="/docs/governance/collection/tasks/collection_lists">
+  Task reference for collection list creation and management.
+</Card>
+
 ### Broadcast TV support
 
 Linear TV sellers can now fully participate in AdCP. This release adds the protocol primitives that distinguish broadcast from digital:
@@ -282,19 +371,33 @@ Linear TV sellers can now fully participate in AdCP. This release adds the proto
   Channel guide covering spot formats, Ad-ID, measurement windows, and how broadcast differs from CTV.
 </Card>
 
-### Structured video requirements
+### Structured measurement terms
 
-Format `requirements` for video assets now use schema-defined field names that match `video-asset-requirements.json`. Creative agents can mechanically validate assets against format requirements without interpreting freeform fields.
+Guaranteed buys gain a formal negotiation surface: `measurement_terms` defines billing measurement vendor, IVT threshold, and viewability floor. Sellers declare defaults on products, buyers propose overrides at `create_media_buy`, sellers accept/reject/adjust. A `cancellation_policy` schema declares notice periods and penalties for guaranteed products.
 
-New fields on `video-asset-requirements.json`: `frame_rate_type`, `scan_type`, `gop_type`, `min_gop_interval_seconds`, `max_gop_interval_seconds`, `moov_atom_position`, `audio_codecs`, `audio_sample_rates`, `audio_channels`, `loudness_lufs`, `loudness_tolerance_db`, `true_peak_dbfs`.
+### Unified vendor pricing
 
-### Third-party tracker transparency
+Pricing models extend from signals to creative, governance, and property list agents. Creative agents return `pricing_options[]` on `list_creatives` and `build_creative` responses. Property lists carry `pricing_options[]`. All vendor pricing uses a shared `vendor-pricing-option.json` schema (cpm, percent_of_media, flat_fee).
 
-Whether a format supports third-party measurement is determined by whether its assets include a tracker slot (`tracker_pixel` or `tracker_script`). Buyer agents should check format assets before proposing performance standards that require creative-level verification. Formats without tracker slots (broadcast, some DOOH) rely on measurement vendors declared in `billing_measurement`.
+### Offline reporting delivery
 
-<Card title="Format definitions" icon="arrow-right" href="/docs/creative/formats#third-party-tracker-support">
-  How to determine tracker support from format asset definitions.
-</Card>
+Sellers can declare offline reporting delivery methods (SFTP, S3, GCS, Azure Blob) in `get_adcp_capabilities` via `reporting_delivery_methods`. Accounts specify a `reporting_bucket` for file delivery. Products declare `supports_offline_delivery` in `reporting_capabilities`. File formats include CSV, JSON, Parquet, Avro, and ORC.
+
+### Trusted Match Protocol extensions
+
+TMP gains a provider registration schema (`provider-registration.json`) formalizing provider endpoints, capabilities, lifecycle status (active/inactive/draining), and per-provider timeout budgets. A `GET /health` endpoint enables router-side health monitoring. TMPX adds exposure tracking with country-partitioned identity resolution and macro connectivity.
+
+Identity Match requests now accept an `identities` array (1-3 tokens per request) instead of a single `user_token` + `uid_type` pair. Publishers send every identity token they have; buyers resolve on whichever graph matches. The router filters `identities` per provider (minimum-necessary-data) and re-signs before forwarding — the forwarded set must be a subset of what the publisher sent. RFC 8785 JCS canonicalization is used for both signature and cache-key derivation, and `consent_hash` partitions the cache by consent state. `rampid_derived` is added to the `uid-type` enum.
+
+TMP remains pre-release in 3.0. The stable surface is targeted for 3.1.0.
+
+### Brand schema extensions
+
+`brand.json` gains a generic `agents` array for declaring brand-associated agents, visual tokens (`border_radius`, `elevation`, `spacing`, extended color roles), and structured font definitions with `weight`, `style`, `stretch`, `optical_size`, and `usage` fields.
+
+### Required tasks reference
+
+A new [Required tasks by protocol](/docs/protocol/required-tasks) reference page consolidates required, conditional, and optional tasks across all AdCP protocols by agent role — a single page to verify your implementation covers the minimum surface.
 
 ### Experimental surfaces
 
@@ -658,6 +761,10 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `get_property_features` task | Property list filters + `get_adcp_capabilities` for feature discovery |
 | `tone` as string on brand.json | Object only: `{ voice, attributes, dos, donts }` |
 | `FormatCategory` enum / `type` on formats | Filter by `asset_types` or `format_ids` instead |
+| `broadcast-platform` specialism | Renamed to `sales-broadcast-tv` |
+| `social-platform` specialism | Renamed to `sales-social` |
+| `property-governance` + `collection-governance` specialisms | Merged into `inventory-lists` |
+| `sponsored_intelligence` specialism | Promoted to full protocol in `supported_protocols` |
 
 ---
 
@@ -828,11 +935,11 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement campaign governance tasks (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) when offering plan-level governance
   </Accordion>
 
-  <Accordion title="Sponsored Intelligence agents (new in v3)">
-    Implement conversational brand experiences. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol).
+  <Accordion title="Sponsored Intelligence agents (new in v3 — experimental)">
+    Implement conversational brand experiences. SI ships in 3.0 as an [experimental surface](/docs/reference/experimental-status) (`sponsored_intelligence.core`) — session lifecycle, UI components, and capability negotiation may change between 3.x releases with 6 weeks' notice. Sellers MUST declare `sponsored_intelligence.core` in `experimental_features`. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol).
 
     - [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
-    - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`
+    - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols` and `sponsored_intelligence.core` in `experimental_features`
   </Accordion>
 </AccordionGroup>
 

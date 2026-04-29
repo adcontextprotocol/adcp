@@ -60,12 +60,7 @@
                 "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
               },
               "billing": {
-                "type": "string",
-                "enum": [
-                  "operator",
-                  "agent",
-                  "advertiser"
-                ],
+                "$ref": "/schemas/enums/billing-party.json",
                 "description": "Who is invoiced on this account. Matches the requested billing model."
               },
               "billing_entity": {
@@ -73,9 +68,7 @@
                 "description": "Business entity details for the party responsible for payment, echoed from the request. Sellers MAY add fields the agent omitted (e.g., filling in registration_number from a credit check), but MUST NOT return data from a different entity. Bank details are omitted (write-only)."
               },
               "account_scope": {
-                "type": "string",
-                "enum": ["operator", "brand", "operator_brand", "agent"],
-                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to this operator+brand pair. agent: the agent's default account."
+                "$ref": "/schemas/enums/account-scope.json"
               },
               "setup": {
                 "type": "object",
@@ -106,15 +99,7 @@
                 "description": "Rate card applied to this account"
               },
               "payment_terms": {
-                "type": "string",
-                "enum": [
-                  "net_15",
-                  "net_30",
-                  "net_45",
-                  "net_60",
-                  "net_90",
-                  "prepay"
-                ],
+                "$ref": "/schemas/enums/payment-terms.json",
                 "description": "Payment terms agreed for this account. When the account is active, these are the binding terms for all invoices on this account."
               },
               "credit_limit": {
@@ -151,6 +136,10 @@
               "sandbox": {
                 "type": "boolean",
                 "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
+              },
+              "authorization": {
+                "$ref": "/schemas/core/account-authorization.json",
+                "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope — callers MUST NOT infer access from absence."
               }
             },
             "required": [

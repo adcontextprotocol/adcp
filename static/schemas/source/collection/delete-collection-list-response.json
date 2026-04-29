@@ -14,6 +14,11 @@
       "description": "ID of the deleted list",
       "x-entity": "collection_list"
     },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -25,5 +30,5 @@
     "deleted",
     "list_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

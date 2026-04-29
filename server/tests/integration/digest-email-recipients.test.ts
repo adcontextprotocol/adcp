@@ -86,10 +86,15 @@ describe('getDigestEmailRecipients — active track scoping', () => {
       [TEST_USER]
     );
 
+    const trackBTotal = (await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM certification_modules WHERE track_id = 'B'`,
+    )).rows[0].count;
+
     const r = await recipient();
-    // Track B has 3 seeded modules (B1, B2, B3); 1 is completed.
+    // Track B's module count comes from the live curriculum, not a hard-coded
+    // fixture; new modules land in main and would otherwise drift this test.
     expect(r.cert_modules_completed).toBe(1);
-    expect(r.cert_total_modules).toBe(3);
+    expect(r.cert_total_modules).toBe(Number(trackBTotal));
   });
 
   it('counts tested_out the same as completed', async () => {
@@ -117,11 +122,16 @@ describe('getDigestEmailRecipients — active track scoping', () => {
       [TEST_USER]
     );
 
+    const trackBTotal = (await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM certification_modules WHERE track_id = 'B'`,
+    )).rows[0].count;
+    const expectedTotal = Number(trackBTotal);
+
     // Run several times to make sure the pick is stable (non-deterministic
     // behavior would show up as flakes here).
     for (let i = 0; i < 5; i++) {
       const r = await recipient();
-      expect(r.cert_total_modules).toBe(3); // track B has 3 modules
+      expect(r.cert_total_modules).toBe(expectedTotal);
       expect(r.cert_modules_completed).toBe(0);
     }
   });

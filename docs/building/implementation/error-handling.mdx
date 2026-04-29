@@ -54,7 +54,7 @@ Malformed requests that fail schema validation:
 
 ## Error Response Format
 
-Failed operations return status `failed` with error details. The error object follows the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
+Failed operations return status `failed` with error details. The error object follows the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
 
 ```json
 {
@@ -82,8 +82,8 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 | Layer | Key | When to populate | Shape |
 |---|---|---|---|
-| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
-| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) |
+| **Task payload** | `payload.errors[]` (or top-level `errors[]`, depending on transport) | The task ran; the payload reports one or more issues (fatal or non-fatal) | Array of error objects per [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) |
+| **Transport envelope** | `adcp_error` | The task failed and the transport needs a typed, extractable signal | Single error object per [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) |
 
 **A fatal task failure SHOULD populate both layers.** The payload carries the structured `errors[]` array that any protocol can read verbatim, and the transport envelope carries `adcp_error` so MCP/A2A clients can extract a typed error without re-parsing the payload. Populating only one of the two is the source-of-truth for most interop bugs — a runner that reads the transport envelope sees no error, and a runner that reads the payload sees no error signal on the transport:
 
@@ -123,7 +123,7 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 ### Error Object Fields
 
-These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
+These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -137,7 +137,7 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 
 ## Standard Error Codes
 
-Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
 
 **Not-found precedence.** When a referenced identifier does not resolve, sellers SHOULD return the resource-specific code when the resolved type is known from the request: `PRODUCT_NOT_FOUND` for `product_id`, `PACKAGE_NOT_FOUND` for `package_id`, `MEDIA_BUY_NOT_FOUND` for `media_buy_id`, `CREATIVE_NOT_FOUND` for `creative_id`, `SIGNAL_NOT_FOUND` for `signal_id`, `SESSION_NOT_FOUND` for SI `session_id`, `ACCOUNT_NOT_FOUND` for `account_id`, `PLAN_NOT_FOUND` for governance `plan_id`. Fall back to `REFERENCE_NOT_FOUND` for resource types without a dedicated code (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST use `REFERENCE_NOT_FOUND` rather than minting a custom `*_NOT_FOUND` code — the vocabulary grows by upstream spec change, not by per-seller inflation. Clients SHOULD switch on `error.code` first; the resource-specific codes let clients dispatch without parsing `error.field`.
 
@@ -173,6 +173,60 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
+
+### Authorization (RBAC)
+
+Returned when the caller is authenticated but lacks the specific scope for the request. Enforcement is seller-local; discoverability is via the `authorization` object on per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape.
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `PERMISSION_DENIED` | correctable | Generic authorization failure, or a required signed credential (e.g., `governance_context`) is missing, failed verification, or was issued for a different plan/seller/phase | Call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission |
+| `SCOPE_INSUFFICIENT` | correctable | The invoked task is not in the caller's `allowed_tasks` for this account | Re-read `authorization` on the account via `sync_accounts` or `list_accounts` to discover the caller's actual `allowed_tasks`; use a permitted task or request a broader scope |
+| `READ_ONLY_SCOPE` | correctable | Caller's scope is `read_only: true`; the invoked task would mutate state | Use a non-mutating alternative, or request a scope that permits mutation |
+| `FIELD_NOT_PERMITTED` | correctable | A request field is not in the caller's `field_scopes` allowlist for this task | Drop the disallowed field, or request broader field scope |
+
+Normative requirements:
+
+- **`FIELD_NOT_PERMITTED` MUST populate `error.field`** with the exact offending field path (e.g., `packages[0].budget`, `end_time`). Without it, agents cannot reliably auto-recover by stripping the field and retrying. When multiple fields are disallowed, sellers SHOULD return one error per offending field so each `error.field` is unambiguous; if returning a single error, `error.details.fields` MAY contain the full list.
+- **`SCOPE_INSUFFICIENT` SHOULD include `error.details.introspection_hint`** when the seller supports the `authorization` object on sync/list. Strawman shape: `{ "task": "sync_accounts", "account": { ... } }` pointing the caller at where to rediscover scope. This closes the "I hit an error; what do I do?" loop for coding agents.
+- **All four codes MUST populate both the `adcp_error` envelope field and the payload `errors[]` array** per the two-layer model above — scope errors carry through to typed client libraries the same way schema errors do.
+
+`SCOPE_INSUFFICIENT` vs. `PERMISSION_DENIED`: use `SCOPE_INSUFFICIENT` when the task itself is not granted to this caller on this account. Reserve `PERMISSION_DENIED` for credential-shaped failures (missing signed context, failed signature verification) and for generic seller policy rejections where scope is not the right abstraction.
+
+`SCOPE_INSUFFICIENT` vs. `UNSUPPORTED_FEATURE`: when both apply — the seller doesn't implement the task AND the caller wouldn't be scoped for it anyway — sellers SHOULD return `SCOPE_INSUFFICIENT` because it is more actionable (the caller can request broader scope) than `UNSUPPORTED_FEATURE` (the caller must switch sellers). A seller that returns `UNSUPPORTED_FEATURE` for a task it *does* implement but is not exposed to this caller is leaking capability information the caller cannot act on.
+
+`FIELD_NOT_PERMITTED` vs. `VALIDATION_ERROR`: the field is valid per the task schema and would be accepted from a differently-scoped caller; it is rejected specifically because this caller's `field_scopes` does not include it.
+
+**About `recovery: correctable` on authorization errors.** All four authz codes classify as `correctable`, meaning *the request can be fixed and re-sent*. This does NOT mean the agent can fix the request autonomously — the "correction" for `SCOPE_INSUFFICIENT` and `READ_ONLY_SCOPE` is an out-of-band scope grant from the operator, which the agent cannot perform on its own. Agents SHOULD surface authz errors to the operator rather than auto-retrying against the same credential; a retry loop against a fixed scope is a bug, not defensive posture. Only `FIELD_NOT_PERMITTED` has an agent-autonomous recovery path (strip the disallowed field and resubmit).
+
+**`FIELD_NOT_PERMITTED` — example envelope and payload populating both layers:**
+
+```json
+{
+  "adcp_error": {
+    "code": "FIELD_NOT_PERMITTED",
+    "message": "Caller's field_scopes for update_media_buy does not include this field",
+    "recovery": "correctable",
+    "field": "packages[0].budget"
+  },
+  "payload": {
+    "errors": [
+      {
+        "code": "FIELD_NOT_PERMITTED",
+        "message": "Caller's field_scopes for update_media_buy does not include this field",
+        "recovery": "correctable",
+        "field": "packages[0].budget",
+        "details": {
+          "task": "update_media_buy",
+          "permitted_fields": ["reporting_webhook"]
+        }
+      }
+    ]
+  }
+}
+```
+
+The `field` value identifies exactly what to strip; `details.permitted_fields` (optional, advisory) lists the allowlist for the offending task so an agent can verify before retrying. For `SCOPE_INSUFFICIENT`, populate `details.introspection_hint: { "task": "list_accounts", "account": { ... } }` to point the caller at where to rediscover scope.
 
 ### Request Validation
 
@@ -246,14 +300,14 @@ function isRetryable(error) {
 
 ### Normative throttling behavior
 
-These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape):
+These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape):
 
 - Callers **MUST** honor `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated number of seconds.
 - Callers **SHOULD** use exponential backoff with jitter when `retry_after` is absent. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
 - Callers **MUST NOT** treat non-throttling errors (e.g., `INVALID_REQUEST`, `CREATIVE_REJECTED`) as if they were throttled. Retrying a rejected-for-other-reasons response at backoff cadence is a bug, not a defensive posture.
 - Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent `RATE_LIMITED` response is a capacity or policy signal, not a transient blip.
 - Sellers **SHOULD** return `RATE_LIMITED` with a populated `retry_after` rather than silently queuing or dropping requests, so well-behaved callers can back off intentionally.
-- Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/latest/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
+- Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
 
 ### Exponential Backoff
 

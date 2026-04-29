@@ -101,11 +101,17 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].verified).toBe(false);
   });
 
-  it('excludes preview specialisms from badge issuance', () => {
-    // sales-exchange is `status: preview` in the catalog; sales-broadcast-tv is stable
-    const declared = ['sales-exchange', 'sales-broadcast-tv'];
+  it('excludes preview specialisms from badge issuance (when any are marked preview)', () => {
+    // No specialisms are marked `status: preview` in the catalog as of merge into main —
+    // the previously-preview ones (sales-exchange, sales-retail-media, sales-streaming-tv,
+    // measurement-verification) were removed from the enum entirely. The preview-handling
+    // path (deriveVerificationStatus filters via isStableSpecialism) still exists for when
+    // future specialisms ship with status: preview. This test exercises the filter by
+    // mocking an unknown specialism — isStableSpecialism returns true for unknown
+    // (safe default) so it doesn't substitute, but the overall pipeline should drop
+    // unknowns from the catalog mapping below.
+    const declared = ['not-a-real-specialism', 'sales-broadcast-tv'];
     const statuses = [
-      makeStatus('sales_exchange', 'passing'),
       makeStatus('sales_broadcast_tv', 'passing'),
     ];
     const result = deriveVerificationStatus(declared, statuses);
@@ -113,18 +119,14 @@ describe('deriveVerificationStatus', () => {
     expect(result.verified).toBe(true);
     expect(result.roles).toHaveLength(1);
     expect(result.roles[0].role).toBe('media-buy');
-    // Only the stable specialism shows up in the badge
+    // Only the known specialism shows up in the badge
     expect(result.roles[0].specialisms).toEqual(['sales-broadcast-tv']);
     expect(result.roles[0].passing).toEqual(['sales-broadcast-tv']);
   });
 
-  it('does not issue a badge when only preview specialisms are declared', () => {
-    // All declared specialisms are preview — no stable badge should issue
-    const declared = ['sales-exchange', 'sales-streaming-tv'];
-    const statuses = [
-      makeStatus('sales_exchange', 'passing'),
-      makeStatus('sales_streaming_tv', 'passing'),
-    ];
+  it('does not issue a badge when no declared specialisms are known to the catalog', () => {
+    const declared = ['fake-specialism-1', 'fake-specialism-2'];
+    const statuses: StoryboardStatusEntry[] = [];
     const result = deriveVerificationStatus(declared, statuses);
 
     expect(result.verified).toBe(false);

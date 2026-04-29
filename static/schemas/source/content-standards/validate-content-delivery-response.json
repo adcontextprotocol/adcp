@@ -30,9 +30,7 @@
                 "description": "Which delivery record was evaluated"
               },
               "verdict": {
-                "type": "string",
-                "enum": ["pass", "fail"],
-                "description": "Overall pass/fail verdict for this record"
+                "$ref": "/schemas/enums/binary-verdict.json"
               },
               "features": {
                 "type": "array",
@@ -45,8 +43,7 @@
                       "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'image_dpi'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact', 'delivery:authorization'. Reserved prefixes: 'record:', 'delivery:'."
                     },
                     "status": {
-                      "type": "string",
-                      "enum": ["passed", "failed", "warning", "unevaluated"]
+                      "$ref": "/schemas/enums/feature-check-status.json"
                     },
                     "policy_id": {
                       "type": "string",

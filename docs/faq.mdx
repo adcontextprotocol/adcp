@@ -50,7 +50,7 @@ AI assistants, search copilots, and conversational platforms are live today. The
 </Accordion>
 
 <Accordion title="Do I need to change my measurement stack?">
-No. AdCP supports standard measurement integrations — your existing IAS, DV, attribution, and brand safety tools work alongside protocol-native reporting.
+AdCP does not specify attribution or viewability — it is not an MRC-accredited measurement standard. The protocol carries the delivery and usage data that your existing IAS, DV, Nielsen, Comscore, or attribution tools consume; you keep your existing measurement contracts and accreditations. See [Known Limitations](/docs/reference/known-limitations) for the full list of what AdCP does not standardize.
 </Accordion>
 
 <Accordion title="Can I use my existing agency?">
@@ -94,13 +94,13 @@ Three pillars support the mission: [open standards](https://docs.adcontextprotoc
 </Accordion>
 
 <Accordion title="Is AdCP free and open to implement?">
-Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0). There is no cost to use, implement, or license the protocol, and no permission required. The specification, [JSON schemas](https://adcontextprotocol.org/schemas/latest/), and documentation are freely available — no fee, no license agreement, no membership requirement.
+Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0). There is no cost to use, implement, or license the protocol, and no permission required. The specification, [JSON schemas](https://adcontextprotocol.org/schemas/v3/), and documentation are freely available — no fee, no license agreement, no membership requirement.
 </Accordion>
 
 <Accordion title="How mature is the protocol?">
-AdCP is in the 3.0 release-candidate cycle (current: **3.0.0-rc.4**), with 3.0 GA targeted for April 2026. See [Release notes](/docs/reference/release-notes) for the per-RC change log. The protocol design is stable and suitable for pilot implementations; schemas may still receive minor refinements based on implementer feedback before GA.
+AdCP is at **3.0.1 — General Availability**, with 3.0 released April 2026. The protocol is stable and production-ready. See [Release notes](/docs/reference/release-notes) for the full change log and [What's new in v3](/docs/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
 
-The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. For production use prior to 3.0 GA, we recommend implementing against [v2.5](/docs/reference/v2-sunset).
+The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. AdCP 2.5 remains security-patched until 2026-08-01 — see the [v2 sunset page](/docs/reference/v2-sunset) for the end-of-life timeline.
 </Accordion>
 
 <Accordion title="I built against AdCP 2.5 — what changed?">
@@ -127,24 +127,29 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 </Accordion>
 
 <Accordion title="What is AdCP's relationship to IAB Tech Lab?">
-AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+AdCP is maintained by AgenticAdvertising.org (AAO), an independent specification body — not a subsidiary or working group of IAB Tech Lab. The two organizations sit at different layers of the advertising stack and run on different cadences.
+
+- **Layer.** AdCP describes the campaign layer — the buyer/seller workflow above the impression-level auction (product discovery, media buy creation, creative, signals, governance). IAB Tech Lab's portfolio (OpenRTB, VAST, `ads.txt`/`sellers.json`, Open Measurement SDK, content taxonomy, audience taxonomy, GPP) standardizes the impression layer and the supply-chain primitives below. AdCP coexists with all of them — content taxonomy fields align with IAB content categories, audience segments can reference IAB audience taxonomy IDs, and [`adagents.json`](/docs/governance/property/adagents) extends the `ads.txt`/`sellers.json` relationship semantics rather than replacing them.
+- **Cadence.** AAO works through public RFCs and working groups on GitHub on a monthly cycle, suited to an agentic surface that is still moving. IAB Tech Lab's standardization process is built for slower, broader-consensus deliberation across a much larger membership.
+
+AdCP is Apache 2.0 — IAB Tech Lab or any other body is free to adopt, reference, or align with the specification. See [Industry landscape](/docs/building/understanding/industry-landscape) for the full picture of how AdCP, OpenRTB, MCP, and A2A relate.
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
 AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). Based on AAMP materials published to date, AdCP and AAMP appear to operate at different layers of the stack and can coexist.
 
-Our read of the distinction: AdCP describes how a buyer agent and a seller agent negotiate, transact, and govern a media buy — product discovery, pricing, creative, governance, and execution. AAMP's work streams, as currently described, address impression-level concerns: how agents are discovered and identified inside the existing programmatic auction, and how agentic audiences move across that layer. A platform could implement both, with AdCP handling the buyer/seller workflow and AAMP's components plugging into the impression-level layer alongside OpenRTB.
+Put simply: **AAMP is agentic bidding; AdCP is agentic buying.** AAMP's work streams, as currently described, address impression-level concerns — how agents are discovered and identified inside the programmatic auction, and how agentic audiences move across it — and sit alongside OpenRTB at the impression layer (sub-200ms, single auction). AdCP describes the campaign layer above: how a buyer agent and a seller agent negotiate, transact, and govern a media buy across product discovery, pricing, creative, signals, and governance. The layers compose — a single AdCP `create_media_buy` can spawn thousands of impression-layer events. A platform can implement both.
 
 As of April 2026:
 
 | | AAMP | AdCP |
 |---|---|---|
-| **Layer** | Impression-level (within the RTB stack, per published work streams) | Buyer/seller workflow (product discovery, media buy, creative, governance, execution) |
+| **Layer** | Impression layer — agentic bidding | Campaign layer — agentic buying |
 | **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
-| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 release candidate (3.0.0-rc.4), 3.0 GA targeted April 2026 |
+| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 GA (released April 2026) |
 | **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
 | **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/understanding/security-model)) |
-| **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/latest/), Apache 2.0 |
+| **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/v3/), Apache 2.0 |
 
 We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
 </Accordion>
@@ -202,6 +207,12 @@ AdCP 3.0 GA will require campaigns declaring a regulated policy category to run 
 AdCP is governed by AgenticAdvertising.Org (AAO), a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
 
 The interim board (as of 2026-04-18) has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The elected board — first Annual General Meeting on **May 6, 2026** — has equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers), with a target of ten seats per class. Day-to-day protocol work happens in [working groups](/docs/community/working-group); change proposals flow through this repository.
+
+**Reference sell-side implementation lives at Prebid.** Development of the sell-side AI agent reference code was handed to the [Prebid community](https://www.prebid.org/) in February 2026, [reported by AdExchanger](https://www.adexchanger.com/ad-exchange-news/the-agentic-advertising-organization-hands-development-of-its-sell-side-agent-to-prebid/). AAO owns the specification; Prebid owns the reference software. Spec governance and reference-implementation development are intentionally separate organizations.
+</Accordion>
+
+<Accordion title="Do AdCP examples use real brand names?">
+No. All examples in docs, storyboards, and test vectors use fictional entities — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names registered in `static/compliance/source/universal/fictional-entities.yaml`. Real brands, agencies, publishers, and vendors do not appear in normative examples. The editorial rule is enforced in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and called out in [CONTRIBUTING.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md). Reviewers flag real-brand usage the same way they flag vendor leakage in schemas. This is a deliberate choice to keep the protocol neutral: the spec shouldn't favor one seller, agency, or vendor by name.
 </Accordion>
 
 <Accordion title="How is AAO related to Scope3?">
@@ -307,7 +318,7 @@ Read the [introduction](/docs/intro) for an overview, then explore the domain th
 - **Data providers**: Start with [signals](/docs/signals/overview) to make audiences addressable by agents
 - **Orchestrators and agencies**: Start with the [integration guide](/docs/building/integration) to connect to existing AdCP agents
 
-JSON schemas for all tasks are available at [adcontextprotocol.org/schemas](https://adcontextprotocol.org/schemas/latest/).
+JSON schemas for all tasks are available at [adcontextprotocol.org/schemas](https://adcontextprotocol.org/schemas/v3/).
 </Accordion>
 
 <Accordion title="Is this for individual practitioners, or just businesses and engineers?">

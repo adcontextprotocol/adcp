@@ -204,13 +204,8 @@
             "additionalProperties": true
           },
           "snapshot_unavailable_reason": {
-            "type": "string",
-            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative.",
-            "enum": [
-              "SNAPSHOT_UNSUPPORTED",
-              "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
-              "SNAPSHOT_PERMISSION_DENIED"
-            ]
+            "$ref": "/schemas/enums/snapshot-unavailable-reason.json",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative."
           },
           "items": {
             "type": "array",

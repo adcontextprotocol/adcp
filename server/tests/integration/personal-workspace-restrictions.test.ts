@@ -1,38 +1,61 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 
-const TEST_USER_ID = 'user_personal_test';
-const TEST_PERSONAL_ORG_ID = 'org_personal_test';
-const TEST_TEAM_ORG_ID = 'org_team_test';
+// vi.hoisted ensures constants and mock fns are available inside vi.mock factories.
+// Env vars must be set here so AUTH_ENABLED resolves true before organizations.ts loads
+// and calls new WorkOS() — without them workos is null and every workos!. call throws.
+const {
+  TEST_USER_ID,
+  TEST_PERSONAL_ORG_ID,
+  TEST_TEAM_ORG_ID,
+  listOrganizationMemberships,
+  sendInvitation,
+} = vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
+  process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
+  process.env.WORKOS_COOKIE_PASSWORD ||= 'test-cookie-password-32chars-min-len-1234';
+  return {
+    TEST_USER_ID: 'user_personal_test',
+    TEST_PERSONAL_ORG_ID: 'org_personal_test',
+    TEST_TEAM_ORG_ID: 'org_team_test',
+    listOrganizationMemberships: vi.fn(),
+    sendInvitation: vi.fn().mockResolvedValue({ id: 'inv_test' }),
+  };
+});
+
+// organizations.ts calls new WorkOS() directly; mocking @workos-inc/node intercepts that
+// constructor so every new WorkOS() returns the same shared mock methods.
+vi.mock('@workos-inc/node', () => ({
+  WorkOS: class {
+    userManagement = {
+      listOrganizationMemberships,
+      sendInvitation,
+    };
+    organizations = {
+      getOrganization: vi.fn().mockImplementation((orgId: string) => Promise.resolve({
+        id: orgId,
+        name: orgId === TEST_PERSONAL_ORG_ID ? 'Personal Workspace' : 'Team Workspace',
+      })),
+    };
+    adminPortal = {
+      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
+    };
+  },
+}));
 
 // Mock WorkOS client BEFORE any imports that use it
 vi.mock('../../src/auth/workos-client.js', () => ({
   workos: {
     userManagement: {
-      listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }) => {
-        if (organizationId === TEST_PERSONAL_ORG_ID || organizationId === TEST_TEAM_ORG_ID) {
-          return Promise.resolve({
-            data: [{
-              id: 'om_test',
-              userId: TEST_USER_ID,
-              organizationId: organizationId,
-              role: { slug: 'owner' },
-              status: 'active'
-            }]
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
-      sendInvitation: vi.fn().mockResolvedValue({ id: 'inv_test' }),
+      listOrganizationMemberships,
+      sendInvitation,
     },
     organizations: {
-      getOrganization: vi.fn().mockImplementation((orgId) => {
-        return Promise.resolve({
-          id: orgId,
-          name: orgId === TEST_PERSONAL_ORG_ID ? 'Personal Workspace' : 'Team Workspace',
-        });
-      }),
+      getOrganization: vi.fn().mockImplementation((orgId: string) => Promise.resolve({
+        id: orgId,
+        name: orgId === TEST_PERSONAL_ORG_ID ? 'Personal Workspace' : 'Team Workspace',
+      })),
     },
-    portal: {
+    adminPortal: {
       generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
     },
   },
@@ -45,8 +68,9 @@ import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_USER_ID,
       email: 'owner@test.com',
@@ -56,9 +80,13 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => {
+  requireAdmin: (_req: any, res: any) => {
     return res.status(403).json({ error: 'Admin required' });
   },
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock Stripe client
@@ -100,6 +128,18 @@ describe('Personal Workspace Restrictions', () => {
   });
 
   beforeEach(async () => {
+    // Reset per-test: handler calls workos!.userManagement.listOrganizationMemberships via the new
+    // WorkOS() instance; return owner membership for test user in known org IDs.
+    // Note: the invitation test (team org) relies on community_only seat limit = 1 from DEFAULT_SEAT_LIMITS.
+    listOrganizationMemberships.mockReset().mockImplementation(({ organizationId }: { organizationId: string }) => {
+      if (organizationId === TEST_PERSONAL_ORG_ID || organizationId === TEST_TEAM_ORG_ID) {
+        return Promise.resolve({
+          data: [{ id: 'om_test', userId: TEST_USER_ID, organizationId, role: { slug: 'owner' }, status: 'active' }],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
     // Create fresh test organizations before each test
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
@@ -117,7 +157,8 @@ describe('Personal Workspace Restrictions', () => {
   });
 
   afterEach(async () => {
-    // Clean up test data
+    // Clean up test data; invitation_seat_types has no FK to organizations so must be deleted explicitly.
+    await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id LIKE $1', ['org_team%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_personal%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_team%']);
   });

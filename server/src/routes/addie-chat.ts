@@ -17,18 +17,21 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { sanitizeSpeakerName } from "../addie/prompts.js";
+import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   sanitizeInput,
   validateOutput,
 } from "../addie/security.js";
+import { matchRuleIdFromMessage } from "../addie/home/builders/rules/prompt-rules.js";
+import { recordPromptClicked } from "../db/addie-prompt-telemetry-db.js";
 import {
   isKnowledgeReady,
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
-// Note: ANONYMOUS_SAFE_KNOWLEDGE_TOOLS is used by the MCP chat-tool.ts (separate client).
-// Web chat anonymous users get directory tools only; knowledge tools require login.
+import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from "../mcp/chat-tool.js";
 import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
@@ -101,6 +104,10 @@ import {
   IMAGE_TOOLS,
   createImageToolHandlers,
 } from "../addie/mcp/image-tools.js";
+import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from "../addie/mcp/auth-grader-tools.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
@@ -139,6 +146,10 @@ let initialized = false;
 let authenticatedOnlyTools: RequestTools | null = null;
 
 const ANONYMOUS_MAX_ITERATIONS = 5;
+
+// Sources the web client is permitted to assert. Voice / email / unknown are
+// set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
+const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
 
 /**
  * Merge per-request member tools with cached authenticated-only tools,
@@ -205,16 +216,47 @@ async function initializeChatClient(): Promise<void> {
     claudeClient.registerTool(searchMembersTool, searchMembersHandler);
   }
 
+  // Two handler maps: anonymous-scoped (for global registration — restricts
+  // user-submitted resources and strips Addie-generated notes) and full
+  // (for the authenticated-only set). The split happens at handler-creation
+  // time because handler closures don't carry per-call scope.
+  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
+  const authedKnowledgeHandlers = createKnowledgeToolHandlers();
+
+  // Register anonymous-safe knowledge tools globally — search_docs, get_doc,
+  // search_repos, search_resources, get_recent_news. All read-only over public
+  // content. Without these the anonymous chat falls back to in-prompt knowledge
+  // and improvises when asked about specific spec mechanics. The MCP chat path
+  // already exposes the same set; this aligns the web chat path with it.
+  for (const tool of KNOWLEDGE_TOOLS) {
+    if (!ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
+    const handler = anonymousKnowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   // Build authenticated-only tools (cached, reused per request).
-  // Includes: all knowledge tools, billing, schema, brand, property.
+  // Includes: full knowledge surface, billing, schema, brand, property.
   const authTools: typeof KNOWLEDGE_TOOLS = [];
   const authHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // All knowledge tools require authentication (doc search needs Sonnet to synthesize well)
-  const knowledgeHandlers = createKnowledgeToolHandlers();
+  // Add ALL knowledge tool handlers to the authenticated set — including the
+  // anonymous-safe names. This is the override path: globally-registered
+  // anonymous-scoped handlers (set above) are shadowed for authenticated
+  // requests because claude-client.processMessage merges per-request handlers
+  // LAST (claude-client.ts:594, "last wins"). Result: anonymous gets the
+  // restricted handler globally, authenticated users get the full handler
+  // via this per-request override.
   for (const tool of KNOWLEDGE_TOOLS) {
-    const handler = knowledgeHandlers.get(tool.name);
-    if (handler) {
+    const handler = authedKnowledgeHandlers.get(tool.name);
+    if (!handler) continue;
+    if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
+      // Tool definition is already on the global registry; only the handler
+      // needs to override. Don't push to authTools — that would duplicate
+      // the tool in the API request — only set the handler.
+      authHandlers.set(tool.name, handler);
+    } else {
       authTools.push(tool);
       authHandlers.set(tool.name, handler);
     }
@@ -269,7 +311,9 @@ async function initializeChatClient(): Promise<void> {
 
   initialized = true;
   logger.info({
-    anonymousTools: DIRECTORY_TOOLS.length,
+    // Use the registry as the source of truth — globally-registered tool count
+    // drifts otherwise (e.g. if more tools graduate to anonymous access).
+    anonymousTools: claudeClient.getRegisteredTools().length,
     authenticatedTools: authTools.length,
     anonymousModel: AddieModelConfig.anonymousChat,
     authenticatedModel: AddieModelConfig.chat,
@@ -525,6 +569,17 @@ export async function prepareRequestWithMemberTools(
     }
   }
 
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
+  // users only on the web path; each call spawns a child Node process and
+  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
+  if (userId) {
+    allTools.push(...AUTH_GRADER_TOOLS);
+    for (const [name, handler] of createAuthGraderToolHandlers()) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
   // Permission-gated tools (for authenticated users)
   if (userId) {
     const workingGroupDb = new WorkingGroupDatabase();
@@ -666,7 +721,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource } = req.body;
 
       if (!message || typeof message !== "string") {
         return res.status(400).json({ error: "Message is required" });
@@ -678,12 +733,34 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
 
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
+      }
+
+      // Accept message_source from client (chip click vs typed); fall back to
+      // heuristic detection so old clients without the field still tag correctly.
+      const messageSource: 'typed' | 'cta_chip' =
+        typeof rawMessageSource === 'string' && VALID_WEB_SOURCES.has(rawMessageSource as 'typed' | 'cta_chip')
+          ? rawMessageSource as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
+
       // Get or create thread using unified service
       // For web chat, the external_id is the conversation_id (UUID)
       // If no conversation_id provided, we'll generate a new one via the thread
       const impersonator = req.user?.impersonator;
       const userId = req.user?.id || null;
-      const displayName = user_name || req.user?.firstName || null;
+      // `user_name` from req.body is attacker-controlled on the anonymous web
+      // path. Only honor it for authenticated requests; for everyone else
+      // fall back to the WorkOS first name (auth) or undefined (anon).
+      // sanitizeSpeakerName then strips brackets/control chars and caps
+      // length so no name we accept can break out of the `[name] text`
+      // prompt envelope downstream.
+      const displayName = sanitizeSpeakerName(
+        req.user ? (user_name || req.user.firstName) : null
+      ) ?? null;
 
       // Build web-specific context
       const webContext: ThreadContext = {
@@ -739,6 +816,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
+        user_id: userId || undefined,
+        user_display_name: displayName || undefined,
+        message_source: messageSource,
       });
 
       // Record inbound message in the relationship system
@@ -762,7 +842,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
-          user: m.role === "user" ? "User" : "Addie",
+          user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
           toolCalls: m.tool_calls ?? undefined,
         }));
@@ -781,6 +861,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
+      // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
+      // off the WorkOS user ID and resolve their tier from
+      // subscription status — paying members land on member_paid
+      // ($25/day), free accounts on member_free ($5). Anonymous
+      // callers key off a hashed IP; the client-generated
+      // `externalId` alone was a bypass vector (an attacker could
+      // rotate it to get a fresh budget per request). The per-IP 50
+      // msg/day limiter above bounds rotation within a single host.
+      const authedScope = req.user?.id
+        ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
+        : null;
+
       // Process with Claude
       let response;
       try {
@@ -789,6 +881,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           requestContext,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
+          currentSpeakerName: displayName || undefined,
+          costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
         // Provide user-friendly error message based on error type
@@ -922,7 +1016,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream } = req.body;
 
       if (!message || typeof message !== "string") {
         sendEvent("error", { error: "Message is required" });
@@ -936,10 +1030,30 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
       }
 
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
+      }
+
+      const messageSourceStream: 'typed' | 'cta_chip' =
+        typeof rawMessageSourceStream === 'string' && VALID_WEB_SOURCES.has(rawMessageSourceStream as 'typed' | 'cta_chip')
+          ? rawMessageSourceStream as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
+
       // Get or create thread
       const impersonator = req.user?.impersonator;
       const userId = req.user?.id || null;
-      const displayName = user_name || req.user?.firstName || null;
+      // `user_name` from req.body is attacker-controlled on the anonymous web
+      // path. Only honor it for authenticated requests; for everyone else
+      // fall back to the WorkOS first name (auth) or undefined (anon).
+      // sanitizeSpeakerName then strips brackets/control chars and caps
+      // length so no name we accept can break out of the `[name] text`
+      // prompt envelope downstream.
+      const displayName = sanitizeSpeakerName(
+        req.user ? (user_name || req.user.firstName) : null
+      ) ?? null;
 
       const webContext: ThreadContext = {
         user_agent: req.get("user-agent"),
@@ -990,6 +1104,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
+        user_id: userId || undefined,
+        user_display_name: displayName || undefined,
+        message_source: messageSourceStream,
       });
 
       // Record inbound message in the relationship system
@@ -1012,7 +1129,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
-          user: m.role === "user" ? "User" : "Addie",
+          user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
           toolCalls: m.tool_calls ?? undefined,
         }));
@@ -1036,11 +1153,22 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       let response;
       const toolsUsed: string[] = [];
 
+      // Cost cap — see matching block in the non-streaming path.
+      const streamAuthedScope = req.user?.id
+        ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
+        : null;
+
       for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
         requestContext,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
+        currentSpeakerName: displayName || undefined,
+        ...(streamAuthedScope
+          ? { costScope: streamAuthedScope }
+          : externalId
+            ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
+            : {}),
       })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {

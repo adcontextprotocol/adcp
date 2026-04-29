@@ -12,8 +12,8 @@ Upload and manage creative assets in a creative library. Supports bulk uploads, 
 
 {/* Using latest because these schemas are not yet released in any version.
      Update to correct version alias after the next release. */}
-**Request Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json)
-**Response Schema**: [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
+**Request Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json)
+**Response Schema**: [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json)
 
 ## Quick start
 
@@ -202,11 +202,11 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - All request fields
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
-- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/latest/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`). **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`). **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 
-**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
+**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json)
 
 ## Common scenarios
 

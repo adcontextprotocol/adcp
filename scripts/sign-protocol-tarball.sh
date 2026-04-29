@@ -59,6 +59,17 @@ for tar in "${tarballs[@]}"; do
     --output-signature "${tar}.sig" \
     --output-certificate "${tar}.crt" \
     "$tar"
+
+  # cosign writes --output-certificate as base64-encoded PEM by convention.
+  # Downstream tooling (adcp-go's download.sh, anything doing a PEM-header
+  # sniff before passing to cosign verify-blob) expects raw PEM. Decode in
+  # place so the .crt on disk matches Sigstore's standard PEM layout.
+  # See adcp#2900.
+  if [ "$(head -c 5 "${tar}.crt")" != "-----" ]; then
+    base64 -d < "${tar}.crt" > "${tar}.crt.pem"
+    mv "${tar}.crt.pem" "${tar}.crt"
+  fi
+
   signed+=("${tar}.sig" "${tar}.crt")
 done
 

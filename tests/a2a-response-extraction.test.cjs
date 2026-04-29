@@ -13,16 +13,56 @@ const assert = require('node:assert/strict');
 const vectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'a2a-response-extraction.json');
 const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
 
-const FINAL_STATES = ['completed', 'failed', 'canceled'];
-const INTERIM_STATES = ['working', 'submitted', 'input-required'];
+const FINAL_STATES = ['completed', 'failed', 'canceled', 'rejected'];
+const INTERIM_STATES = ['working', 'submitted', 'input-required', 'auth-required'];
+
+/**
+ * A2A 1.0 wraps SSE frames and push-notification payloads in a StreamResponse
+ * oneof: { task }, { message }, { statusUpdate }, { artifactUpdate }.
+ * Unwrap to the inner object; bare objects (v0.3, or non-streaming `tasks/get`
+ * responses in 1.0) pass through unchanged.
+ */
+const ENVELOPE_KEYS = ['task', 'message', 'statusUpdate', 'artifactUpdate'];
+
+function unwrapStreamEnvelope(input) {
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const keys = Object.keys(input);
+  if (keys.length !== 1 || !ENVELOPE_KEYS.includes(keys[0])) return input;
+  const inner = input[keys[0]];
+  // Inner value must be a non-null, non-array object.
+  if (inner == null || typeof inner !== 'object' || Array.isArray(inner)) return input;
+  // Reject nested envelopes — exactly-once unwrap per spec §Extraction Algorithm step 0.
+  const innerKeys = Object.keys(inner);
+  if (innerKeys.some((k) => ENVELOPE_KEYS.includes(k))) return null;
+  return inner;
+}
+
+/**
+ * Normalize an A2A task state to the canonical lowercase form.
+ * Accepts both A2A 1.0 ("TASK_STATE_COMPLETED") and v0.3 ("completed") wire values.
+ */
+function normalizeState(state) {
+  if (typeof state !== 'string') return null;
+  return state.replace(/^TASK_STATE_/, '').toLowerCase().replace(/_/g, '-');
+}
+
+/**
+ * Test whether a Part is a DataPart. Field presence is authoritative:
+ * A2A 1.0 Parts carry no `kind`, v0.3 Parts carry `kind: "data"`. Both set `data`.
+ */
+function isDataPart(p) {
+  return p != null
+    && p.data != null
+    && typeof p.data === 'object'
+    && !Array.isArray(p.data);
+}
 
 /**
  * Extract the last DataPart with non-null data from an array of parts.
  */
 function lastDataPart(parts) {
   if (!Array.isArray(parts)) return null;
-  const dataParts = parts.filter(p => p.kind === 'data' && p.data != null
-    && typeof p.data === 'object' && !Array.isArray(p.data));
+  const dataParts = parts.filter(isDataPart);
   return dataParts.length > 0 ? dataParts[dataParts.length - 1] : null;
 }
 
@@ -31,18 +71,23 @@ function lastDataPart(parts) {
  */
 function firstDataPart(parts) {
   if (!Array.isArray(parts)) return null;
-  return parts.find(p => p.kind === 'data' && p.data != null
-    && typeof p.data === 'object' && !Array.isArray(p.data)) || null;
+  return parts.find(isDataPart) || null;
 }
 
 /**
  * Detect framework wrapper objects.
- * Returns true if the payload is wrapped in { response: {...} }.
+ * Returns true if the payload is wrapped in { response: {...} } — a single key
+ * `response` whose value is a non-null, non-array object. `{ response: null }`
+ * and `{ response: [] }` are NOT wrappers — they're legitimate single-field payloads.
  */
 function isWrapped(data) {
-  if (!data || typeof data !== 'object') return false;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
   const keys = Object.keys(data);
-  return keys.length === 1 && keys[0] === 'response' && typeof data.response === 'object';
+  return keys.length === 1
+    && keys[0] === 'response'
+    && data.response !== null
+    && typeof data.response === 'object'
+    && !Array.isArray(data.response);
 }
 
 /**
@@ -52,8 +97,10 @@ function isWrapped(data) {
  * Returns the extracted data, or null if no DataPart is found.
  * Throws if a wrapper object is detected (server-side bug).
  */
-function extractAdcpResponseFromA2A(task) {
-  const state = task.status?.state;
+function extractAdcpResponseFromA2A(input) {
+  const task = unwrapStreamEnvelope(input);
+  if (task == null) return null;  // nested envelope rejected
+  const state = normalizeState(task?.status?.state);
   if (!state) return null;
 
   // Final states: extract from artifacts[0].parts[] (last DataPart)
@@ -134,6 +181,8 @@ describe('A2A response extraction test vectors', () => {
     assert.ok(statuses.has('input-required'), 'must have input-required vector');
     assert.ok(statuses.has('submitted'), 'must have submitted vector');
     assert.ok(statuses.has('canceled'), 'must have canceled vector');
+    assert.ok(statuses.has('rejected'), 'must have rejected vector (1.0)');
+    assert.ok(statuses.has('auth-required'), 'must have auth-required vector (1.0)');
   });
 
   it('should cover both extraction paths', () => {
@@ -283,6 +332,259 @@ describe('Validation and safety', () => {
       status: {
         state: 'working',
         message: { role: 'agent' }
+      }
+    });
+    assert.equal(result, null);
+  });
+});
+
+describe('A2A 1.0 wire-format compatibility', () => {
+  it('should normalize TASK_STATE_COMPLETED to completed', () => {
+    assert.equal(normalizeState('TASK_STATE_COMPLETED'), 'completed');
+    assert.equal(normalizeState('TASK_STATE_INPUT_REQUIRED'), 'input-required');
+    assert.equal(normalizeState('TASK_STATE_WORKING'), 'working');
+    assert.equal(normalizeState('TASK_STATE_CANCELED'), 'canceled');
+    assert.equal(normalizeState('TASK_STATE_SUBMITTED'), 'submitted');
+    assert.equal(normalizeState('TASK_STATE_FAILED'), 'failed');
+  });
+
+  it('should pass v0.3 lowercase state values through unchanged', () => {
+    assert.equal(normalizeState('completed'), 'completed');
+    assert.equal(normalizeState('input-required'), 'input-required');
+    assert.equal(normalizeState('working'), 'working');
+  });
+
+  it('should extract from 1.0 Part without kind discriminator', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{
+        parts: [
+          { text: 'Done' },
+          { data: { products: [{ product_id: 'p1' }] } }
+        ]
+      }]
+    });
+    assert.deepStrictEqual(result, { products: [{ product_id: 'p1' }] });
+  });
+
+  it('should extract from v0.3 Part with kind discriminator (backward compat)', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'completed' },
+      artifacts: [{
+        parts: [
+          { kind: 'text', text: 'Done' },
+          { kind: 'data', data: { products: [{ product_id: 'p1' }] } }
+        ]
+      }]
+    });
+    assert.deepStrictEqual(result, { products: [{ product_id: 'p1' }] });
+  });
+
+  it('should extract from mixed 1.0 and v0.3 Parts in same artifact', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{
+        parts: [
+          { kind: 'text', text: 'Legacy text part' },
+          { data: { products: [{ product_id: 'new' }] } }
+        ]
+      }]
+    });
+    assert.deepStrictEqual(result, { products: [{ product_id: 'new' }] });
+  });
+
+  it('should reject wrapper in 1.0 Parts without kind', () => {
+    assert.throws(
+      () => extractAdcpResponseFromA2A({
+        status: { state: 'TASK_STATE_COMPLETED' },
+        artifacts: [{
+          parts: [
+            { data: { response: { products: [] } } }
+          ]
+        }]
+      }),
+      /wrapper/i
+    );
+  });
+
+  it('should return null for unknown TASK_STATE_* value', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_UNKNOWN_FUTURE' },
+      artifacts: [{ parts: [{ data: { foo: 'bar' } }] }]
+    });
+    assert.equal(result, null);
+  });
+});
+
+describe('A2A 1.0 StreamResponse envelope unwrapping', () => {
+  it('should unwrap { statusUpdate: ... } for interim states', () => {
+    const result = extractAdcpResponseFromA2A({
+      statusUpdate: {
+        taskId: 'task_wrap_1',
+        contextId: 'ctx_wrap_1',
+        status: {
+          state: 'TASK_STATE_WORKING',
+          message: {
+            role: 'ROLE_AGENT',
+            parts: [
+              { text: 'Processing' },
+              { data: { percentage: 60 } }
+            ]
+          }
+        }
+      }
+    });
+    assert.deepStrictEqual(result, { percentage: 60 });
+  });
+
+  it('should unwrap { artifactUpdate: ... } but return null when state is absent', () => {
+    // artifactUpdate events carry artifact data but no task status; extractor
+    // returns null (they're delta events, not placement-authoritative).
+    const result = extractAdcpResponseFromA2A({
+      artifactUpdate: {
+        taskId: 'task_wrap_2',
+        artifact: {
+          artifactId: 'a1',
+          parts: [{ data: { partial: true } }]
+        }
+      }
+    });
+    assert.equal(result, null);
+  });
+
+  it('should unwrap { task: ... } for final states (push notification payload)', () => {
+    const result = extractAdcpResponseFromA2A({
+      task: {
+        id: 'task_wrap_3',
+        status: { state: 'TASK_STATE_COMPLETED' },
+        artifacts: [{
+          parts: [
+            { text: 'Done' },
+            { data: { products: [{ product_id: 'wrapped' }] } }
+          ]
+        }]
+      }
+    });
+    assert.deepStrictEqual(result, { products: [{ product_id: 'wrapped' }] });
+  });
+
+  it('should leave bare Task objects alone (non-streaming tasks/get response)', () => {
+    const result = extractAdcpResponseFromA2A({
+      id: 'task_bare',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{ parts: [{ data: { ok: true } }] }]
+    });
+    assert.deepStrictEqual(result, { ok: true });
+  });
+
+  it('should NOT unwrap objects with multiple top-level keys', () => {
+    // A bare Task with only { task: ..., foo: ... } is not an envelope — don't unwrap.
+    const result = extractAdcpResponseFromA2A({
+      id: 'task_not_env',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{ parts: [{ data: { ok: true } }] }],
+      contextId: 'ctx'
+    });
+    assert.deepStrictEqual(result, { ok: true });
+  });
+});
+
+describe('A2A 1.0 new task states', () => {
+  it('should extract adcp_error from TASK_STATE_REJECTED artifacts (terminal)', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_REJECTED' },
+      artifacts: [{
+        parts: [
+          { text: 'Request rejected by policy' },
+          { data: { adcp_error: { code: 'POLICY_VIOLATION', message: 'Budget exceeds tier limit' } } }
+        ]
+      }]
+    });
+    assert.deepStrictEqual(result, {
+      adcp_error: { code: 'POLICY_VIOLATION', message: 'Budget exceeds tier limit' }
+    });
+  });
+
+  it('should extract auth data from TASK_STATE_AUTH_REQUIRED status.message (interim)', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: {
+        state: 'TASK_STATE_AUTH_REQUIRED',
+        message: {
+          role: 'ROLE_AGENT',
+          parts: [
+            { text: 'Re-authentication required to access Peer39 data' },
+            { data: { auth_scheme: 'oauth2', challenge_url: 'https://auth.example/challenge' } }
+          ]
+        }
+      }
+    });
+    assert.deepStrictEqual(result, {
+      auth_scheme: 'oauth2',
+      challenge_url: 'https://auth.example/challenge'
+    });
+  });
+
+  it('should normalize TASK_STATE_REJECTED and TASK_STATE_AUTH_REQUIRED', () => {
+    assert.equal(normalizeState('TASK_STATE_REJECTED'), 'rejected');
+    assert.equal(normalizeState('TASK_STATE_AUTH_REQUIRED'), 'auth-required');
+  });
+});
+
+describe('A2A 1.0 safety hardening', () => {
+  it('should reject nested { task: { task: ... } } envelopes (return null)', () => {
+    const result = extractAdcpResponseFromA2A({
+      task: {
+        task: {
+          status: { state: 'TASK_STATE_COMPLETED' },
+          artifacts: [{ parts: [{ data: { smuggled: true } }] }]
+        }
+      }
+    });
+    assert.equal(result, null);
+  });
+
+  it('should reject envelopes with array inner value', () => {
+    const result = extractAdcpResponseFromA2A({ task: [] });
+    assert.equal(result, null);
+  });
+
+  it('should reject envelopes with null inner value', () => {
+    const result = extractAdcpResponseFromA2A({ task: null });
+    assert.equal(result, null);
+  });
+
+  it('should not treat { response: null } as a wrapper', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{ parts: [{ data: { response: null } }] }]
+    });
+    assert.deepStrictEqual(result, { response: null });
+  });
+
+  it('should not treat { response: [] } as a wrapper', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'TASK_STATE_COMPLETED' },
+      artifacts: [{ parts: [{ data: { response: [] } }] }]
+    });
+    assert.deepStrictEqual(result, { response: [] });
+  });
+
+  it('should still reject { response: {...} } single-key object wrappers', () => {
+    assert.throws(
+      () => extractAdcpResponseFromA2A({
+        status: { state: 'TASK_STATE_COMPLETED' },
+        artifacts: [{ parts: [{ data: { response: { products: [] } } }] }]
+      }),
+      /wrapper/i
+    );
+  });
+
+  it('should require exact-match normalized state (not collapse extra separators)', () => {
+    // TASK_STATE_INPUT__REQUIRED (double underscore) normalizes to 'input--required' — not allowlisted.
+    const result = extractAdcpResponseFromA2A({
+      status: {
+        state: 'TASK_STATE_INPUT__REQUIRED',
+        message: { role: 'ROLE_AGENT', parts: [{ data: { foo: 'bar' } }] }
       }
     });
     assert.equal(result, null);

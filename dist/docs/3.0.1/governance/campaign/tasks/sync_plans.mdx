@@ -1,0 +1,238 @@
+---
+title: sync_plans
+description: "sync_plans pushes campaign plans with budget limits, channels, flight dates, and compliance policies to an AdCP governance agent."
+"og:title": "AdCP — sync_plans"
+---
+
+
+# sync_plans
+
+<Note>
+**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/dist/docs/3.0.1/reference/experimental-status) for the full contract.
+</Note>
+
+Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, authorized markets, and compliance policies -- and serves as the source of truth for all validation.
+
+## Request
+
+```json
+{
+  "tool": "sync_plans",
+  "arguments": {
+    "plans": [
+      {
+        "plan_id": "plan_q1_2026_launch",
+        "brand": {
+          "domain": "acmecorp.com"
+        },
+        "objectives": "Drive awareness for spring product launch among 25-54 adults in the US, focusing on premium video and high-impact display.",
+        "budget": {
+          "total": 500000,
+          "currency": "USD",
+          "reallocation_threshold": 25000,
+          "per_seller_max_pct": 40,
+          "allocations": {
+            "media_buy": { "amount": 400000 },
+            "rights_license": { "amount": 75000 },
+            "signal_activation": { "amount": 25000 }
+          }
+        },
+        "channels": {
+          "required": ["olv"],
+          "allowed": ["olv", "display", "ctv", "audio"],
+          "mix_targets": {
+            "olv": { "min_pct": 40, "max_pct": 70 },
+            "display": { "min_pct": 10, "max_pct": 30 },
+            "ctv": { "min_pct": 0, "max_pct": 20 },
+            "audio": { "min_pct": 0, "max_pct": 10 }
+          }
+        },
+        "flight": {
+          "start": "2026-03-15T00:00:00Z",
+          "end": "2026-06-15T00:00:00Z"
+        },
+        "countries": ["US"],
+        "policy_categories": ["age_restricted"],
+        "audience": {
+          "include": [
+            { "type": "description", "description": "Adults 25-54 interested in home improvement" }
+          ],
+          "exclude": [
+            { "type": "description", "description": "Children under 13" }
+          ]
+        },
+        "restricted_attributes": ["health_data"],
+        "min_audience_size": 1000,
+        "policy_ids": ["us_coppa", "alcohol_advertising"],
+        "custom_policies": [
+          {
+            "policy_id": "no_competitor_adjacency",
+            "enforcement": "must",
+            "policy": "No advertising adjacent to competitor content."
+          }
+        ],
+        "approved_sellers": null,
+        "ext": {}
+      }
+    ]
+  }
+}
+```
+
+## Response
+
+```json
+{
+  "plans": [
+    {
+      "plan_id": "plan_q1_2026_launch",
+      "status": "active",
+      "version": 1,
+      "categories": [
+        { "category_id": "budget_authority", "status": "active" },
+        { "category_id": "strategic_alignment", "status": "active" },
+        { "category_id": "bias_fairness", "status": "active" },
+        { "category_id": "regulatory_compliance", "status": "active" },
+        { "category_id": "seller_verification", "status": "active" },
+        { "category_id": "brand_policy", "status": "active" }
+      ],
+      "resolved_policies": [
+        { "policy_id": "us_coppa", "source": "explicit", "enforcement": "must", "reason": "Referenced in plan policy_ids" },
+        { "policy_id": "alcohol_advertising", "source": "explicit", "enforcement": "should", "reason": "Referenced in plan policy_ids" }
+      ]
+    }
+  ]
+}
+```
+
+## How it works
+
+Plans originate in external systems -- an agency's planning tool, a brand's budget system, an insertion order. `sync_plans` pushes them to the governance agent so it knows what to validate against.
+
+Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards versions follow a separate pinned-at-buy rule — see [content standards versioning](/dist/docs/3.0.1/governance/content-standards/index#versioning-and-mid-flight-amendments).
+
+Multiple campaigns (identified by `governance_context` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
+
+The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. The governance agent resolves applicable policies from the brand's compliance configuration, but plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`. This supports both centralized policy management (brand-level) and campaign-specific overrides when the buying team needs additional requirements for a particular campaign.
+
+`countries` and `regions` serve two purposes:
+
+1. **Geo enforcement** -- The governance agent rejects governed actions targeting outside the plan's markets. A plan with `regions: ["US-MA"]` blocks actions that don't explicitly target Massachusetts.
+2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
+
+These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
+
+## Plan-hash preimage
+
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/dist/docs/3.0.1/building/implementation/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/dist/docs/3.0.1/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plans` | array | Yes | One or more campaign plans to sync. |
+| `plans[].plan_id` | string | Yes | Unique identifier for this plan. |
+| `plans[].brand` | BrandRef | Yes | Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies. |
+| `plans[].objectives` | string | Yes | Natural language campaign objectives. Used for strategic alignment validation. |
+| `plans[].budget` | object | Yes | Budget parameters. |
+| `plans[].budget.total` | number | Yes | Total authorized budget. |
+| `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
+| `plans[].budget.reallocation_threshold` | number | Yes | Amount the agent may reallocate without escalation. `0` requires human approval for every reallocation; a value at or above `budget.total` is effectively unlimited. See [specification](/dist/docs/3.0.1/governance/campaign/specification#budget-reallocation). |
+| `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
+| `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |
+| `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
+| `plans[].flight` | object | Yes | Authorized flight dates. Governed actions with dates outside this window are rejected. |
+| `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
+| `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
+| `plans[].policy_categories` | array | No | Regulatory categories that apply to this campaign (e.g., `children_directed`, `fair_housing`). Determines which policy regimes the governance agent enforces. When omitted, governance agents MAY infer from the brand's industries and campaign objectives. |
+| `plans[].audience` | object | No | Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). See [audience constraints](#audience-constraints). |
+| `plans[].restricted_attributes` | array | No | Personal data categories that must not be used for targeting (e.g., `health_data`, `racial_ethnic_origin`). GDPR Article 9 special categories. The governance agent flags any audience targeting referencing these attributes. |
+| `plans[].restricted_attributes_custom` | array | No | Additional restricted attributes not covered by the enum. Freeform strings for jurisdiction-specific restrictions (e.g., `financial_status`). |
+| `plans[].min_audience_size` | integer | No | Minimum audience segment size for k-anonymity. Applies to the estimated intersection audience when multiple criteria are used. |
+| `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
+| `plans[].custom_policies` | array | No | Campaign-specific policies using the `PolicyEntry` shape (`policy_id`, `enforcement`, `policy` text required). Additive only — cannot relax or override registry-sourced policies. See [policy resolution](/dist/docs/3.0.1/governance/campaign/specification#policy-resolution). |
+| `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
+| `plans[].delegations` | array | No | Agents authorized to execute against this plan. See [specification](/dist/docs/3.0.1/governance/campaign/specification#delegations). |
+| `plans[].delegations[].agent_url` | string | Yes | URL of the delegated agent. |
+| `plans[].delegations[].authority` | enum | Yes | `full`, `execute_only`, or `propose_only`. |
+| `plans[].delegations[].budget_limit` | object | No | Maximum budget this agent can commit. |
+| `plans[].delegations[].markets` | array | No | ISO country/region codes this agent is authorized for. |
+| `plans[].delegations[].expires_at` | string | No | ISO 8601 delegation expiration. |
+| `plans[].portfolio` | object | No | Portfolio-level governance constraints. See [specification](/dist/docs/3.0.1/governance/campaign/specification#portfolio-governance). |
+| `plans[].portfolio.member_plan_ids` | array | Yes | Plan IDs governed by this portfolio plan. |
+| `plans[].portfolio.total_budget_cap` | object | No | Maximum aggregate budget across member plans. |
+| `plans[].portfolio.shared_policy_ids` | array | No | Registry policy IDs enforced across all member plans. |
+| `plans[].portfolio.shared_exclusions` | array | No | Bespoke exclusion policies applied to all member plans, using the `PolicyEntry` shape (`policy_id`, `enforcement`, `policy` text required). |
+| `plans[].ext` | object | No | Extension data. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plans` | array | Status for each synced plan. |
+| `plans[].plan_id` | string | Plan identifier. |
+| `plans[].status` | enum | `active` (sync succeeded) or `error` (sync failed). This is the sync result status, not the plan lifecycle status. |
+| `plans[].version` | number | Plan version (increments on each sync). |
+| `plans[].categories` | array | Validation categories active for this plan. Depends on the governance agent's declared capabilities. |
+| `plans[].categories[].category_id` | string | Validation category identifier. |
+| `plans[].categories[].status` | enum | `active` or `inactive`. |
+| `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
+| `plans[].resolved_policies[].policy_id` | string | Registry policy ID. |
+| `plans[].resolved_policies[].source` | enum | `explicit` (referenced in config or plan) or `auto_applied` (matched by jurisdiction/policy category). |
+| `plans[].resolved_policies[].enforcement` | enum | `must`, `should`, or `may`. |
+| `plans[].resolved_policies[].reason` | string | Why this policy was included. |
+
+## Audience constraints
+
+Plans can declare audience targeting constraints using the `audience` field. Each constraint is an **audience selector** — either a reference to a specific signal or a natural language description.
+
+**Signal reference** — points to a specific signal in a data provider's catalog:
+
+```json
+{
+  "type": "signal",
+  "catalog_url": "https://signals.dataprovider.com/catalog.json",
+  "signal_id": "likely_ev_buyers",
+  "value": true
+}
+```
+
+**Description** — natural language for constraints that don't map to a specific signal:
+
+```json
+{
+  "type": "description",
+  "description": "Adults aged 25-54 in urban areas",
+  "category": "demographic"
+}
+```
+
+The governance agent evaluates seller targeting against these constraints during `check_governance`. Signal references enable structural matching; descriptions require semantic comparison.
+
+### Restricted attributes
+
+The `restricted_attributes` field declares personal data categories that must not be used for targeting. Values are GDPR Article 9 special categories: `racial_ethnic_origin`, `political_opinions`, `religious_beliefs`, `trade_union_membership`, `health_data`, `sex_life_sexual_orientation`, `genetic_data`, `biometric_data`.
+
+The governance agent matches these against signal definitions that declare their own `restricted_attributes`. Signals with matching attributes are blocked from targeting. For signals without declared attributes, the governance agent falls back to semantic inference from the signal name and description.
+
+### Policy categories
+
+The `policy_categories` field declares which regulatory regimes apply. Categories are defined in the [policy registry](/dist/docs/3.0.1/governance/policy-registry) and group related regulations — for example, `children_directed` covers COPPA, UK AADC, and GDPR Article 8.
+
+Policy categories are distinct from `brand.industries`. Industries describe what a company does; policy categories describe what regulatory regimes apply to a specific campaign. A pharmaceutical company (`industries: ["pharmaceuticals"]`) running a general awareness campaign might not need `pharmaceutical_advertising` as a policy category if the campaign doesn't promote specific drugs.
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
+| `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
+| `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
+
+## Related tasks
+
+- [`check_governance`](./check_governance) -- Validate actions against this plan
+- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes back to update plan state
+- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail

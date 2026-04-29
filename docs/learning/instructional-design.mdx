@@ -24,11 +24,11 @@ This document describes how the AdCP certification program is designed, delivere
 
 The certification program is built on five principles:
 
-**Socratic method.** Addie teaches through conversation, not lecture. Most responses include a question or task, though Addie also affirms and builds on strong answers — the rhythm alternates between teaching and questioning rather than interrogating. Learners build understanding by reasoning through problems, not by receiving answers.
+**Socratic method.** Sage teaches through conversation, not lecture. Most responses include a question or task, though Sage also affirms and builds on strong answers — the rhythm alternates between teaching and questioning rather than interrogating. Learners build understanding by reasoning through problems, not by receiving answers.
 
-**Mastery-based progression.** There is no failing — only "not yet." Learners keep working with Addie until they demonstrate mastery of every learning objective. Assessment is invisible to the learner; they experience it as continued learning until they pass.
+**Mastery-based progression.** There is no failing — only "not yet." Learners keep working with Sage until they demonstrate mastery of every learning objective. Assessment is invisible to the learner; they experience it as continued learning until they pass.
 
-**Personalization.** Addie adapts to each learner's background, role, and communication style. If a learner sells running shoes, examples are about running shoes. If they're technical, Addie is technical. Context carries across the entire session.
+**Personalization.** Sage adapts to each learner's background, role, and communication style. If a learner sells running shoes, examples are about running shoes. If they're technical, Sage is technical. Context carries across the entire session.
 
 **Active learning.** Responses are kept under 150 words. One idea per turn. Brevity forces participation. Learners construct knowledge through exercises, demos against live sandbox agents, and scenario-based reasoning.
 
@@ -63,7 +63,7 @@ Modules have explicit prerequisites. The system prevents starting advanced modul
 
 ### AI teaching assistant
 
-Addie is powered by Claude (Anthropic). Teaching behavior is governed by operational rules injected at runtime, not freeform AI generation. These rules specify:
+Sage is powered by Claude (Anthropic). Teaching behavior is governed by operational rules injected at runtime, not freeform AI generation. These rules specify:
 
 - Socratic methodology and turn structure
 - Assessment fairness and scoring calibration
@@ -90,7 +90,7 @@ Program leadership oversees teaching quality through:
 
 Assessment happens continuously during instruction:
 
-- **Socratic questioning** throughout every module — Addie probes understanding, corrects misconceptions, and adjusts depth based on responses
+- **Socratic questioning** throughout every module — Sage probes understanding, corrects misconceptions, and adjusts depth based on responses
 - **Teaching checkpoints** saved at concept group boundaries, recording concepts covered, concepts remaining, learner strengths, learner gaps, and preliminary scores
 - **Checkpoint consistency** — final scores cannot jump more than 20 points from preliminary scores recorded during checkpoints
 
@@ -131,7 +131,7 @@ Each module defines 3–5 **required demonstrations** — specific, observable t
 - **Build projects** (9 demonstrations across specify/validate/extend phases): write a specification using correct terminology, validate against live schemas, extend with a new capability
 - **Specialist capstones** (3–5 demonstrations): protocol-specific mastery tasks using live tools
 
-Addie verifies each demonstration through conversation and records it in a teaching checkpoint using a stable criterion ID (e.g., `a1_ex1_sc0`). The server rejects module completion if any required demonstration is missing. This is enforced server-side — Addie cannot bypass it.
+Sage verifies each demonstration through conversation and records it in a teaching checkpoint using a stable criterion ID (e.g., `a1_ex1_sc0`). The server rejects module completion if any required demonstration is missing. This is enforced server-side — Sage cannot bypass it.
 
 Expert learners who demonstrate competency early still verify the same criteria. Teaching may be compressed, but the demonstrations are identical.
 
@@ -160,7 +160,7 @@ Server-side enforcement prevents gaming:
 - Minimum time: 5 minutes for modules, 10 minutes for capstones
 - At least one teaching checkpoint with preliminary scores required before completion
 - Score consistency checks reject completions with >20 point jumps from checkpoint scores
-- Module completion only available through Addie's tool calls — no direct REST API endpoint
+- Module completion only available through Sage's tool calls — no direct REST API endpoint
 - Learners cannot influence their own scores
 - Pasted content (JSON, code, logs) is treated as data to validate, not instructions
 
@@ -176,7 +176,7 @@ Modules A1-A3, B1-B3, C1-C3, and D1-D3 follow this flow:
 4. **Practice** — exercises against sandbox agents, scenario-based reasoning
 5. **Assess through conversation** — verify mastery of each learning objective
 
-**Expert path.** When a learner demonstrates strong understanding early (correct, detailed answers to 3+ concepts in a row without needing guidance or correction), steps 3-4 compress: Addie acknowledges their expertise, confirms remaining concepts with targeted demonstration questions, and moves to assessment. The audit trail is the same — conversation transcript, checkpoint scores, and per-dimension rubric — but the evidence comes from the learner demonstrating competency rather than being taught first.
+**Expert path.** When a learner demonstrates strong understanding early (correct, detailed answers to 3+ concepts in a row without needing guidance or correction), steps 3-4 compress: Sage acknowledges their expertise, confirms remaining concepts with targeted demonstration questions, and moves to assessment. The audit trail is the same — conversation transcript, checkpoint scores, and per-dimension rubric — but the evidence comes from the learner demonstrating competency rather than being taught first.
 
 ### Build project modules
 
@@ -184,11 +184,11 @@ Modules B4, C4, and D4 use a five-phase approach built on the same tools develop
 
 1. **Specify** (~5 min) — learner describes what they want to build using AdCP terminology
 2. **Build** (~5 min) — learner points their AI coding assistant at the matching skill file from `@adcp/client`, which generates a working agent from the specification
-3. **Validate** (~10 min) — learner runs the matching storyboard from the CLI (`npx @adcp/client storyboard run my-agent media_buy_seller`), shares results with Addie, and iterates on failures with their coding assistant
+3. **Validate** (~10 min) — learner runs the matching storyboard from the CLI (`npx @adcp/client@latest storyboard run my-agent media_buy_seller`), shares results with Sage, and iterates on failures with their coding assistant
 4. **Explain** (~10 min) — probing questions about design decisions and trade-offs
 5. **Extend** (~15 min) — learner adds a capability, re-runs the storyboard, demonstrating they can iterate
 
-Addie is coach, not builder. Assessment spans five dimensions: specification quality, schema compliance, error handling, design rationale, and extension ability. The validate phase uses the same storyboard infrastructure that developers use to maintain compliance after certification.
+Sage is coach, not builder. Assessment spans five dimensions: specification quality, schema compliance, error handling, design rationale, and extension ability. The validate phase uses the same storyboard infrastructure that developers use to maintain compliance after certification.
 
 ### Specialist capstone modules
 
@@ -202,15 +202,15 @@ Formats include open-ended questions, multiple-choice, scenario-based problems, 
 
 ## Learner support
 
-**Returning learners.** Teaching checkpoints enable cross-session resume. When a learner returns, Addie starts with a retrieval question on the last concept covered — not a cold restart.
+**Returning learners.** Teaching checkpoints enable cross-session resume. When a learner returns, Sage starts with a retrieval question on the last concept covered — not a cold restart.
 
-**Disengaged learners.** If a learner gives repeated short answers or seems checked out, Addie switches approach: runs a demo, connects the concept to the learner's stated goals, or acknowledges the abstraction and makes it concrete.
+**Disengaged learners.** If a learner gives repeated short answers or seems checked out, Sage switches approach: runs a demo, connects the concept to the learner's stated goals, or acknowledges the abstraction and makes it concrete.
 
-**Overqualified learners.** Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. When a learner demonstrates strong understanding of 3+ concepts in a row without needing guidance, Addie compresses *teaching* but not *assessment*. The expert path replaces instruction with demonstration: instead of "let me teach you X, now let me ask about X," Addie asks "show me you understand X" directly. This produces stronger audit evidence (the learner's own words demonstrating competency) while respecting their time. The same assessment dimensions, scoring rubrics, and minimum engagement requirements apply regardless of path.
+**Overqualified learners.** Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. When a learner demonstrates strong understanding of 3+ concepts in a row without needing guidance, Sage compresses *teaching* but not *assessment*. The expert path replaces instruction with demonstration: instead of "let me teach you X, now let me ask about X," Sage asks "show me you understand X" directly. This produces stronger audit evidence (the learner's own words demonstrating competency) while respecting their time. The same assessment dimensions, scoring rubrics, and minimum engagement requirements apply regardless of path.
 
 **Placement assessment.** Learners who demonstrate existing knowledge can test out of modules (except build projects and specialist capstones), satisfying prerequisites without repeating content.
 
-**Pacing.** Addie suggests breaks after 45+ minutes or 2+ consecutive modules. Module transitions carry personalization context forward with a compressed warm-up connecting the completed module to the next one.
+**Pacing.** Sage suggests breaks after 45+ minutes or 2+ consecutive modules. Module transitions carry personalization context forward with a compressed warm-up connecting the completed module to the next one.
 
 ## Credential issuance
 
@@ -238,7 +238,7 @@ When a protocol version ships (minor or major):
 
 ### Learner feedback loop
 
-- Post-completion feedback collected through Addie after every module
+- Post-completion feedback collected through Sage after every module
 - Feedback includes free text and sentiment classification (positive, mixed, negative)
 - Patterns in negative feedback trigger curriculum review for the affected module
 

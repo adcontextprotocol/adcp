@@ -95,7 +95,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Example Publisher Ad Operations",
     "email": "adops@example.com",
@@ -199,7 +199,7 @@ For publishers with complex infrastructure or CDN distribution, `adagents.json` 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
   "last_updated": "2025-01-15T10:00:00Z"
 }
@@ -221,7 +221,7 @@ A publisher with multiple domains can maintain one authoritative file:
 **On each domain** (`https://domain1.com/.well-known/adagents.json`, `https://domain2.com/.well-known/adagents.json`, etc.):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "authoritative_location": "https://cdn.publisher.com/adagents/v2/adagents.json",
   "last_updated": "2025-01-15T10:00:00Z"
 }
@@ -230,7 +230,7 @@ A publisher with multiple domains can maintain one authoritative file:
 **Authoritative file** (`https://cdn.publisher.com/adagents/v2/adagents.json`):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Publisher Ad Operations",
     "email": "adops@publisher.com"
@@ -733,7 +733,7 @@ Publishers can declare which governance agents have data about their properties 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Premium News Publisher",
     "email": "adops@news.example.com",
@@ -1000,6 +1000,20 @@ The Python library handles validation automatically when fetching - if the adage
 - Absence of file does not mean agent is unauthorized
 - Use adagents.json as verification, not requirement
 
+### 5. Handle Per-Property Validation Failures Gracefully
+
+File-level failures (unparseable JSON, missing required top-level `authorized_agents`) MUST abort processing for that domain — the file is unusable. Per-property validation failures are a separate tier: a single property object in an otherwise-valid file may omit `identifiers` or another required field due to a publisher-side templating error or a partial write.
+
+Per-property validation failures MUST NOT prevent processing of remaining properties in the same file. Treat a non-conforming property as absent from the array — never as a reason to abort the run:
+
+- **Skip** the non-conforming property
+- **Log** a warning including the source domain, the property's index in the array, and the reason (e.g., `missing required field: identifiers`)
+- **Continue** processing all remaining properties in the file
+
+Aborting the full crawl on a per-property failure is a common implementation error. A single malformed property in a managed-network file that covers hundreds of publisher domains can silently zero out an entire discovery run, making this failure mode disproportionately disruptive relative to the size of the underlying data problem. This follows the same principle as IAB Tech Lab ads.txt 1.1 §3.1, which specifies that a malformed line MUST be ignored and processing of subsequent lines MUST continue.
+
+This applies to all surfaces where property objects appear: the top-level `properties` array, inline properties inside `authorized_agents[*].properties` (the `inline_properties` authorization type), and properties fetched and resolved from remote domains during `publisher_properties` resolution.
+
 ## Next Steps
 
 After implementing adagents.json validation:
@@ -1013,5 +1027,5 @@ After implementing adagents.json validation:
 
 - [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) - Accessible introduction to AdCP authorization
 - [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) - Discover agent capabilities and portfolio
-- [Property Schema](https://adcontextprotocol.org/schemas/latest/core/property.json) - Property definition structure
+- [Property Schema](https://adcontextprotocol.org/schemas/v3/core/property.json) - Property definition structure
 - [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) - Web-based validator and creator

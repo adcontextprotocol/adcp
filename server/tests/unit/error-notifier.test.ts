@@ -37,9 +37,14 @@ describe('error-notifier', () => {
 
       await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
 
-      expect(mockSendChannelMessage).toHaveBeenCalledWith('C123', {
-        text: expect.stringContaining(name),
-      });
+      expect(mockSendChannelMessage).toHaveBeenCalledWith(
+        'C123',
+        { text: expect.stringContaining(name) },
+        // error_slack_channel is admin-configured. 'strict-public-only'
+        // drops only on confirmed drift — transient Slack failures
+        // don't silence system-error alerting (#2735 follow-up).
+        { requirePrivate: 'strict-public-only' },
+      );
     });
 
     it('includes user and thread info when provided', async () => {

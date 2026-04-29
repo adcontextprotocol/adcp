@@ -43,17 +43,13 @@ export type AdcpSpecialism =
   | 'governance-aware-seller'
   | 'governance-delivery-monitor'
   | 'governance-spend-authority'
-  | 'measurement-verification'
   | 'property-lists'
   | 'sales-broadcast-tv'
   | 'sales-catalog-driven'
-  | 'sales-exchange'
   | 'sales-guaranteed'
   | 'sales-non-guaranteed'
   | 'sales-proposal-mode'
-  | 'sales-retail-media'
   | 'sales-social'
-  | 'sales-streaming-tv'
   | 'signal-marketplace'
   | 'signal-owned'
   | 'signed-requests';
@@ -69,17 +65,13 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'governance-aware-seller',
   'governance-delivery-monitor',
   'governance-spend-authority',
-  'measurement-verification',
   'property-lists',
   'sales-broadcast-tv',
   'sales-catalog-driven',
-  'sales-exchange',
   'sales-guaranteed',
   'sales-non-guaranteed',
   'sales-proposal-mode',
-  'sales-retail-media',
   'sales-social',
-  'sales-streaming-tv',
   'signal-marketplace',
   'signal-owned',
   'signed-requests',

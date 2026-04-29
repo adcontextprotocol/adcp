@@ -22,15 +22,25 @@ export class FederatedIndexService {
   /**
    * List all agents (registered + discovered), optionally filtered by type.
    * Registered agents take precedence for deduplication.
+   *
+   * `includeMembersOnly` expands the visibility filter to also include
+   * `members_only` agents — for authenticated member callers the registry
+   * should surface them; for anonymous callers / crawlers it must not.
    */
-  async listAllAgents(type?: AgentType): Promise<FederatedAgent[]> {
+  async listAllAgents(
+    type?: AgentType,
+    options: { includeMembersOnly?: boolean } = {},
+  ): Promise<FederatedAgent[]> {
+    const { includeMembersOnly = false } = options;
     // Get registered agents from member profiles
     const profiles = await this.memberDb.listProfiles({ is_public: true });
     const registeredAgents = new Map<string, FederatedAgent>();
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
-        if (agentConfig.visibility !== 'public') continue;
+        const v = agentConfig.visibility;
+        const visible = v === 'public' || (includeMembersOnly && v === 'members_only');
+        if (!visible) continue;
 
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;

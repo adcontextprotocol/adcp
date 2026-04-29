@@ -13,8 +13,9 @@ import type { Pool } from 'pg';
  */
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin',
       email: 'admin@test.com',
@@ -22,64 +23,80 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
-  optionalAuth: (req: any, res: any, next: any) => next(),
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (_req: any, _res: any, next: any) => next(),
 }));
 
-// Mock WorkOS client to avoid external API calls
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
-    userManagement: {
-      getUser: vi.fn().mockImplementation((userId: string) => {
-        if (userId === 'user_test_workos') {
-          return Promise.resolve({
-            id: 'user_test_workos',
-            email: 'test@example.com',
-            firstName: 'Test',
-            lastName: 'User',
-            emailVerified: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        if (userId === 'user_nonexistent') {
-          return Promise.reject(new Error('User not found'));
-        }
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
+}));
+
+// Mock WorkOS client to avoid external API calls.
+// workos-client.ts exports getWorkos() (a function), not a `workos` singleton —
+// so we export both: `workos` for any direct property access and `getWorkos` for
+// the call sites in member-context.ts (getWorkos().userManagement.*).
+vi.mock('../../src/auth/workos-client.js', () => {
+  const mockUserManagement = {
+    getUser: vi.fn().mockImplementation((userId: string) => {
+      if (userId === 'user_test_workos') {
         return Promise.resolve({
-          id: userId,
-          email: `${userId}@example.com`,
-          firstName: 'Unknown',
+          id: 'user_test_workos',
+          email: 'test@example.com',
+          firstName: 'Test',
           lastName: 'User',
           emailVerified: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-      }),
-      listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }: any) => {
-        if (userId === 'user_test_workos') {
-          return Promise.resolve({
-            data: [
-              {
-                organizationId: 'org_test_context',
-                role: { slug: 'admin' },
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          });
-        }
-        if (organizationId === 'org_test_context') {
-          return Promise.resolve({
-            data: [
-              { organizationId: 'org_test_context', userId: 'user_test_workos' },
-              { organizationId: 'org_test_context', userId: 'user_test_2' },
-            ],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
-    },
-  },
-}));
+      }
+      if (userId === 'user_nonexistent') {
+        const err: any = new Error('User not found');
+        err.status = 404;
+        return Promise.reject(err);
+      }
+      return Promise.resolve({
+        id: userId,
+        email: `${userId}@example.com`,
+        firstName: 'Unknown',
+        lastName: 'User',
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }),
+    // getWebMemberContext calls this twice: once with { userId } for the user's own
+    // memberships, and once with { organizationId } for the org's full member list.
+    listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }: any) => {
+      if (userId === 'user_test_workos') {
+        return Promise.resolve({
+          data: [
+            {
+              organizationId: 'org_test_context',
+              userId: 'user_test_workos',
+              role: { slug: 'admin' },
+              status: 'active',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        });
+      }
+      if (organizationId === 'org_test_context') {
+        return Promise.resolve({
+          data: [
+            { organizationId: 'org_test_context', userId: 'user_test_workos', status: 'active', role: { slug: 'admin' } },
+            { organizationId: 'org_test_context', userId: 'user_test_2', status: 'active', role: { slug: 'member' } },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    }),
+  };
+  const mockInstance = { userManagement: mockUserManagement };
+  return {
+    workos: mockInstance,
+    getWorkos: () => mockInstance,
+  };
+});
 
 // Mock Stripe client
 vi.mock('../../src/billing/stripe-client.js', () => ({

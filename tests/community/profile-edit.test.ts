@@ -75,10 +75,11 @@ describe('profile-edit: pure helpers', () => {
     expect(win.ProfileEdit.slugify('CAPS & symbols!')).toBe('caps-symbols');
   });
 
-  it('escapeHtml escapes HTML entities', () => {
+  it('escapeHtml escapes HTML entities including quotes for attribute safety', () => {
     expect(win.ProfileEdit.escapeHtml('<script>alert("xss")</script>')).toBe(
-      '&lt;script&gt;alert("xss")&lt;/script&gt;'
+      '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;'
     );
+    expect(win.ProfileEdit.escapeHtml("O'Brien")).toBe('O&#39;Brien');
     expect(win.ProfileEdit.escapeHtml('')).toBe('');
     expect(win.ProfileEdit.escapeHtml(null as unknown as string)).toBe('');
   });

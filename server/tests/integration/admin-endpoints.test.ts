@@ -5,9 +5,11 @@ import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
-// Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+// Override only the auth gates; spread the real module so HTTPServer setup
+// still finds optionalAuth and other exports it imports.
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin',
       email: 'admin@test.com',
@@ -15,7 +17,11 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock Stripe client to control subscription checks
@@ -354,25 +360,18 @@ describe('Admin Endpoints Integration Tests', () => {
       expect(afterResult.rows.length).toBe(0);
     });
 
+    // OrganizationDatabase.getSubscriptionInfo reads subscription_status from the DB row;
+    // mocking the stripe-client import has no effect. Seed the column directly.
+    // The active-subscription guard applies to admin-initiated deletes too; force-deletion
+    // of a subscribed org requires a DB-level intervention (clear subscription_status).
     it('should prevent deletion of organization with active subscription', async () => {
-      // Create org with active subscription
       const SUB_ORG_ID = 'org_delete_test_sub';
       await pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
-         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
-        [SUB_ORG_ID, 'Subscribed Test Org', 'cus_sub_admin_test']
+        `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+         VALUES ($1, $2, 'active', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, subscription_status = 'active'`,
+        [SUB_ORG_ID, 'Subscribed Test Org']
       );
-
-      // Mock getSubscriptionInfo to return active subscription
-      const { getSubscriptionInfo } = await import('../../src/billing/stripe-client.js');
-      vi.mocked(getSubscriptionInfo).mockResolvedValueOnce({
-        status: 'active',
-        product_id: 'prod_test',
-        product_name: 'Test Product',
-        current_period_end: Math.floor(Date.now() / 1000) + 86400,
-        cancel_at_period_end: false,
-      });
 
       const response = await request(app)
         .delete(`/api/admin/accounts/${SUB_ORG_ID}`)
@@ -390,7 +389,7 @@ describe('Admin Endpoints Integration Tests', () => {
       );
       expect(checkResult.rows.length).toBe(1);
 
-      // Clean up
+      // SUB_ORG_ID is not covered by the inner afterEach; clean up inline.
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_ORG_ID]);
     });
   });
@@ -549,6 +548,59 @@ describe('Admin Endpoints Integration Tests', () => {
       // Should not have linked anything since the email doesn't match any AAO user
       expect(response.body.linked).toBe(0);
       expect(response.body.errors).toEqual([]);
+    });
+  });
+
+  describe('GET /api/admin/accounts/:orgId (subscription fields)', () => {
+    const SUB_TEST_ORG_ID = 'org_sub_field_test';
+
+    beforeEach(async () => {
+      await pool.query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, stripe_customer_id,
+           subscription_status, stripe_subscription_id, subscription_price_lookup_key,
+           subscription_product_name, subscription_amount, subscription_interval,
+           subscription_currency, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           subscription_status = $4, stripe_subscription_id = $5,
+           subscription_price_lookup_key = $6`,
+        [
+          SUB_TEST_ORG_ID, 'Sub Field Test Org', 'cus_sub_field_test',
+          'active', 'sub_test123', 'member_annual',
+          'AgenticAdvertising.org Membership', 29900, 'year', 'usd',
+        ]
+      );
+    });
+
+    afterEach(async () => {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_TEST_ORG_ID]);
+    });
+
+    it('should include stripe_subscription_id and price_lookup_key in subscription object', async () => {
+      const response = await request(app)
+        .get(`/api/admin/accounts/${SUB_TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(response.body.subscription).not.toBeNull();
+      expect(response.body.subscription.stripe_subscription_id).toBe('sub_test123');
+      expect(response.body.subscription.price_lookup_key).toBe('member_annual');
+    });
+
+    it('should return null (not undefined) for stripe fields when absent in DB', async () => {
+      await pool.query(
+        `UPDATE organizations SET stripe_subscription_id = NULL, subscription_price_lookup_key = NULL
+         WHERE workos_organization_id = $1`,
+        [SUB_TEST_ORG_ID]
+      );
+      const response = await request(app)
+        .get(`/api/admin/accounts/${SUB_TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(Object.prototype.hasOwnProperty.call(response.body.subscription, 'stripe_subscription_id')).toBe(true);
+      expect(response.body.subscription.stripe_subscription_id).toBeNull();
+      expect(Object.prototype.hasOwnProperty.call(response.body.subscription, 'price_lookup_key')).toBe(true);
+      expect(response.body.subscription.price_lookup_key).toBeNull();
     });
   });
 

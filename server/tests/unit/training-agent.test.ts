@@ -91,8 +91,13 @@ async function simulateCallTool(
     { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
     {},
   );
+  // Success responses carry the body on `structuredContent`; error / replay
+  // paths additionally stuff a JSON-stringified copy in `content[0].text`.
+  // Prefer structuredContent and fall back to content text for error paths.
   const text = response.content?.[0]?.text;
-  const parsed = text ? JSON.parse(text) : {};
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
   // Unwrap adcp_error envelope (MCP isError responses) and errors-in-body
   // responses (spec-compliant oneOf error variant) uniformly so tests can
   // assert against `result.code` regardless of surface.
@@ -1072,6 +1077,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('preview_creative');
     expect(toolNames).toContain('report_usage');
     expect(toolNames).toContain('sync_accounts');
+    expect(toolNames).toContain('list_accounts');
     expect(toolNames).toContain('sync_governance');
     expect(toolNames).toContain('sync_catalogs');
     expect(toolNames).toContain('sync_event_sources');
@@ -1082,7 +1088,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(48);
+    expect(toolNames).toHaveLength(49);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -1772,11 +1778,63 @@ describe('sync_creatives handler', () => {
     const { result } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
         creative_id: 'cr_bad_format',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
+        format_id: { agent_url: getAgentUrl(), id: 'nonexistent_format' },
       }],
     });
     expect(result.code).toBeDefined();
     expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('accepts format_id referencing a remote creative agent without local validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_remote_format',
+        format_id: { agent_url: 'https://creative.adcontextprotocol.org', id: 'product_carousel_3_to_10' },
+      }],
+    });
+    const creatives = result.creatives as Array<Record<string, unknown>> | undefined;
+    expect(creatives).toHaveLength(1);
+    expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
+  });
+
+  it('validates a local format_id when agent_url is omitted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_no_url_bad',
+        format_id: { id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('treats a trailing-slash / uppercase local agent_url as local for format validation', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const ownUrl = getAgentUrl();
+    // Uppercase host + trailing slash — same origin, different string.
+    const variant = ownUrl.replace(/^https?:\/\/([^/]+)/i, (_m, h) => `https://${h.toUpperCase()}`) + '/';
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_local_variant',
+        format_id: { agent_url: variant, id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('Unknown format_id');
+  });
+
+  it('rejects a non-http(s) format_id.agent_url before persisting the creative', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      creatives: [{
+        creative_id: 'cr_evil_url',
+        format_id: { agent_url: 'javascript:alert(1)', id: 'anything' },
+      }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toMatch(/http:\/\/ or https:\/\//);
   });
 
   it('processes creative-to-package assignments', async () => {
@@ -1937,6 +1995,109 @@ describe('get_media_buys handler', () => {
     const pkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(pkgs[0].snapshot_unavailable_reason).toBe('SNAPSHOT_UNSUPPORTED');
   });
+
+  it('paginates broad-scope queries: first page → cursor → terminal page', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'paginationmb.example' }, operator: 'paginationmb.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (let i = 1; i <= 3; i++) {
+      await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'paginationmb.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 5000 + 1000 * i,
+        }],
+      });
+    }
+
+    // First page: 3 buys, max_results=2 → non-terminal
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page1 } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { max_results: 2 },
+    });
+    const page1Buys = page1.media_buys as Array<Record<string, unknown>>;
+    expect(page1Buys).toHaveLength(2);
+    const pg1 = page1.pagination as Record<string, unknown>;
+    expect(pg1.has_more).toBe(true);
+    expect(typeof pg1.cursor).toBe('string');
+    expect(pg1.total_count).toBe(3);
+
+    // Terminal page: follow cursor → one remaining buy, no cursor
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: page2 } = await simulateCallTool(server3, 'get_media_buys', {
+      account,
+      status_filter: ['pending_creatives', 'pending_start', 'active'],
+      pagination: { cursor: pg1.cursor as string, max_results: 2 },
+    });
+    const page2Buys = page2.media_buys as Array<Record<string, unknown>>;
+    expect(page2Buys).toHaveLength(1);
+    const pg2 = page2.pagination as Record<string, unknown>;
+    expect(pg2.has_more).toBe(false);
+    expect(pg2.cursor).toBeUndefined();
+    expect(pg2.total_count).toBe(3);
+  });
+
+  it('returns INVALID_REQUEST on malformed cursor', async () => {
+    const account = { brand: { domain: 'badcursor.example' }, operator: 'badcursor.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      status_filter: ['active'],
+      pagination: { cursor: 'not-a-valid-cursor' },
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+  });
+
+  it('media_buy_ids bypasses pagination — returns all requested IDs regardless of max_results', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'idlookup.example' }, operator: 'idlookup.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: { domain: 'idlookup.example' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 5000 + 1000 * i,
+        }],
+      });
+      ids.push(result.media_buy_id as string);
+    }
+
+    // Fetch all 3 by ID with max_results=2 — ID lookup ignores max_results
+    // and returns all matching IDs. Pagination block is still emitted (per
+    // the cursor↔has_more invariant) but signals terminal: has_more=false,
+    // no cursor.
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: ids,
+      pagination: { max_results: 2 },
+    });
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys).toHaveLength(3);
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(3);
+    expect(pg.cursor).toBeUndefined();
+  });
 });
 
 // ── list_creatives handler ─────────────────────────────────────────
@@ -1981,20 +2142,31 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
-  it('returns zero counts when no creatives synced', async () => {
+  it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'list_creatives', { account });
 
-    expect(result.creatives).toEqual([]);
+    // Empty sessions fall back to compliance creative fixtures (e.g.
+    // campaign_hero_video) so conformance storyboards can resolve stable IDs
+    // without controller_seeding auto-fire. Sessions with synced creatives
+    // return only those.
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+  });
 
+  it('skips the compliance fallback when creative_ids filter is explicit', async () => {
+    const account = { brand: { domain: 'filter-empty.example' }, operator: 'filter-empty.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      creative_ids: ['nonexistent_id'],
+    });
+
+    expect(result.creatives).toEqual([]);
     const qs = result.query_summary as Record<string, unknown>;
     expect(qs.total_matching).toBe(0);
     expect(qs.returned).toBe(0);
-
-    const pg = result.pagination as Record<string, unknown>;
-    expect(pg.has_more).toBe(false);
-    expect(pg.total_count).toBe(0);
   });
 
   it('query_summary reflects filtered count', async () => {
@@ -2086,6 +2258,25 @@ describe('list_creatives pricing', () => {
 
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives[0].pricing_options).toBeUndefined();
+  });
+
+  it('includes pricing_options on an ad-server-capable seller when include_pricing is omitted', async () => {
+    // creative.has_creative_library: true sellers quote per-creative pricing
+    // against the account rate card automatically — the SDK's list_creatives
+    // request builder does not forward include_pricing, so storyboards rely
+    // on capability-based emission for creative_ad_server conformance.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncCreative(server);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    const options = creatives[0].pricing_options as Array<Record<string, unknown>>;
+    expect(options).toBeDefined();
+    expect(options[0].pricing_option_id).toBe('po_display_300x250_cpm');
   });
 
   it('includes pricing_options when both include_pricing and account are provided', async () => {
@@ -4446,6 +4637,75 @@ describe('get_adcp_capabilities handler', () => {
   });
 });
 
+// ── Governance: tool inputSchema (#2845) ───────────────────────────
+//
+// The @adcp/client storyboard runner strips request fields the server's
+// inputSchema does not declare. Governance handlers use account.brand.domain
+// and brand.domain for session keying (see state.ts::sessionKeyFromArgs), so
+// these fields must appear in the declared schema — otherwise sync_plans and
+// check_governance land in different sessions and the plan lookup returns
+// "Plan not found".
+
+describe('governance tools expose session-key fields in inputSchema', () => {
+  const server = createTrainingAgentServer(DEFAULT_CTX);
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const listHandler = requestHandlers.get('tools/list')!;
+
+  it.each(['check_governance', 'report_plan_outcome', 'get_plan_audit_logs'])(
+    '%s declares account and brand at the top level',
+    async (toolName) => {
+      const response = await listHandler({ method: 'tools/list', params: {} }, {}) as {
+        tools: Array<{ name: string; inputSchema: { properties?: Record<string, unknown> } }>;
+      };
+      const tool = response.tools.find((t) => t.name === toolName);
+      expect(tool, `${toolName} not registered`).toBeDefined();
+      const props = tool!.inputSchema.properties ?? {};
+      expect(props, `${toolName} missing 'account' property`).toHaveProperty('account');
+      expect(props, `${toolName} missing 'brand' property`).toHaveProperty('brand');
+    },
+  );
+});
+
+// Cross-tool session keying contract: a plan synced under one brand.domain MUST
+// be visible to a subsequent check_governance call carrying the same tenant.
+// The storyboard runner injects `account` at the top level on every step, so
+// this is what "sync_plans ... check_governance" looks like in a real flow.
+describe('governance tools share session via account.brand.domain', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('check_governance finds a plan synced with the same brand.domain', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const tenant = { account: { brand: { domain: 'acme.example' } } };
+
+    await simulateCallTool(server, 'sync_plans', {
+      ...tenant,
+      plans: [{
+        plan_id: 'plan-session-key',
+        brand: { domain: 'acme.example' },
+        objectives: 'verify session sharing across governance tools',
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 100000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      ...tenant,
+      plan_id: 'plan-session-key',
+      caller: 'https://buyer.example',
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.findings).toBeUndefined();
+  });
+});
+
 // ── Governance: seller compliance ──────────────────────────────────
 
 describe('check_governance seller compliance', () => {
@@ -4877,12 +5137,10 @@ describe('MCP Tasks protocol', () => {
     const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
 
     const result = await simulateGetTaskResult(server, taskId);
-    expect(result.content).toBeDefined();
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0].type).toBe('text');
-    const parsed = JSON.parse(content[0].text);
-    expect(Array.isArray(parsed.products)).toBe(true);
-    expect(parsed.products.length).toBeGreaterThan(0);
+    const parsed = result.structuredContent as Record<string, unknown> | undefined;
+    expect(parsed).toBeDefined();
+    expect(Array.isArray(parsed!.products)).toBe(true);
+    expect((parsed!.products as unknown[]).length).toBeGreaterThan(0);
 
     // Must include related-task metadata
     const meta = result._meta as Record<string, unknown>;
@@ -5740,7 +5998,7 @@ describe('governance audit logs by governance_context', () => {
     expect(plans[0].plan_id).toBe('plan-ctx-filter');
   });
 
-  it('infers binding from field presence', async () => {
+  it('infers check_type from field presence', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const plan = {
       plan_id: 'plan-infer',
@@ -5751,7 +6009,7 @@ describe('governance audit logs by governance_context', () => {
     };
     await simulateCallTool(server, 'sync_plans', { plans: [plan] });
 
-    // Intent check: tool+payload, no binding field
+    // Intent check: tool+payload, no binding field — infers check_type: "intent"
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-infer',
       caller: 'https://buyer.example',
@@ -5760,7 +6018,16 @@ describe('governance audit logs by governance_context', () => {
     });
 
     expect(result.status).toBe('approved');
-    expect(result.binding).toBe('proposed');
+
+    // The inference is observable on the audit entry (canonical schema field).
+    const { result: logs } = await simulateCallTool(server, 'get_plan_audit_logs', {
+      plan_ids: ['plan-infer'],
+      include_entries: true,
+    });
+    const plans = logs.plans as Array<Record<string, unknown>>;
+    const entries = plans[0].entries as Array<Record<string, unknown>>;
+    const checkEntry = entries.find(e => e.type === 'check');
+    expect(checkEntry?.check_type).toBe('intent');
   });
 });
 
@@ -6369,7 +6636,10 @@ async function simulateCallToolRaw(
     {},
   );
   const text = response.content?.[0]?.text;
-  return { parsed: text ? JSON.parse(text) : {}, isError: response.isError };
+  const parsed: Record<string, unknown> = response.structuredContent
+    ? (response.structuredContent as Record<string, unknown>)
+    : (text ? JSON.parse(text) : {});
+  return { parsed, isError: response.isError };
 }
 
 describe('context echo', () => {
@@ -7525,5 +7795,32 @@ describe('human_review registry parity and edge cases', () => {
       }],
     });
     expect(isError).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2841 — security_baseline conformance
+// ---------------------------------------------------------------------------
+// Two regressions the security_baseline storyboard was catching silently:
+//   1. Success responses omitted `structuredContent`, so the storyboard
+//      runner's rawMcpProbe (which validates `context.correlation_id` via
+//      JSON-pointer paths) saw only `content[].text` and couldn't resolve
+//      field paths.
+//   2. The bearer authenticator only accepted the env-configured token, so
+//      the `demo-<kit>-v<n>` handle documented in every test-kit header was
+//      rejected and the `probe_api_key` phase failed against the canonical
+//      conformance handle the storyboard asserts against.
+describe('issue #2841 — security_baseline conformance surface', () => {
+  it('success responses include structuredContent mirroring the body', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requestHandlers = (server as unknown as { _requestHandlers: Map<string, (req: unknown, ctx: unknown) => Promise<unknown>> })._requestHandlers;
+    const handler = requestHandlers.get('tools/call');
+    if (!handler) throw new Error('CallTool handler not found');
+    const response = await handler(
+      { method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { context: { correlation_id: 'security_baseline--probe_api_key' } } } },
+      {},
+    ) as { structuredContent?: Record<string, unknown>; content?: unknown[] };
+    expect(response.structuredContent).toBeDefined();
+    expect((response.structuredContent as { context?: { correlation_id?: string } }).context?.correlation_id).toBe('security_baseline--probe_api_key');
   });
 });

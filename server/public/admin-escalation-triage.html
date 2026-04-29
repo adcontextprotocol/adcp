@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Admin - Escalation Triage - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container { max-width: var(--container-lg); margin: var(--space-8) auto; padding: 0 var(--space-5); }
+    .card { background: var(--color-bg-card); border-radius: var(--radius-md); padding: var(--space-6); margin-bottom: var(--space-5); box-shadow: var(--shadow-xs); }
+    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); gap: var(--space-4); }
+    .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+    .stat-card { background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); text-align: center; }
+    .stat-value { font-size: var(--text-2xl); font-weight: 700; color: var(--color-text-heading); }
+    .stat-label { font-size: var(--text-xs); color: var(--color-text-secondary); text-transform: uppercase; margin-top: var(--space-1); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: var(--space-3) var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border-subtle); vertical-align: top; font-size: var(--text-sm); }
+    th { font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.05em; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: var(--text-xs); font-weight: 600; }
+    .tag-high { background: #fee2e2; color: #991b1b; }
+    .tag-medium { background: #fef3c7; color: #92400e; }
+    .tag-low { background: #dbeafe; color: #1e40af; }
+    .tag-bucket { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
+    .tag-issue { background: #ede9fe; color: #5b21b6; }
+    .draft {
+      margin-top: var(--space-2);
+      background: var(--color-bg-subtle);
+      border-left: 3px solid #7c3aed;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .draft .draft-title { font-weight: 700; color: var(--color-text-primary); font-family: var(--font-mono); }
+    .draft .draft-body { white-space: pre-wrap; color: var(--color-text-secondary); margin-top: var(--space-1); }
+    .draft-repo { font-family: var(--font-mono); color: var(--color-text-secondary); }
+    .actions { display: flex; gap: var(--space-2); }
+    button { border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
+    .btn-accept { background: #16a34a; color: white; }
+    .btn-reject { background: var(--color-bg-subtle); color: var(--color-text-primary); }
+    .btn-run { background: var(--color-accent); color: white; }
+    .evidence { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1); }
+    .summary-cell { max-width: 420px; }
+    .summary-cell .title { font-weight: 600; color: var(--color-text-primary); }
+    .reasoning { color: var(--color-text-secondary); margin-top: var(--space-1); font-size: var(--text-xs); }
+    .empty { text-align: center; padding: var(--space-8); color: var(--color-text-secondary); }
+  </style>
+</head>
+<body>
+  <div id="nav-placeholder"></div>
+  <div id="admin-sidebar-placeholder"></div>
+
+  <div class="container">
+    <div class="header-bar">
+      <div>
+        <h1>Escalation Triage</h1>
+        <div class="subtitle">Auto-generated suggestions for open escalations. Accept applies the proposed status; reject leaves it open.</div>
+      </div>
+      <button id="run-btn" class="btn-run">Run triage now</button>
+    </div>
+
+    <div class="card">
+      <div class="stats-grid" id="stats"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th class="summary-cell">Escalation</th>
+            <th>Suggested</th>
+            <th>Confidence</th>
+            <th>Bucket</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty" style="display:none">No pending suggestions.</div>
+    </div>
+  </div>
+
+  <script>
+    async function load() {
+      const res = await fetch('/api/admin/addie/escalations/suggestions?pending_only=true&limit=100');
+      if (!res.ok) { document.getElementById('rows').innerHTML = '<tr><td colspan="6">Failed to load</td></tr>'; return; }
+      const data = await res.json();
+      renderStats(data.stats);
+      renderRows(data.suggestions);
+    }
+
+    function renderStats(stats) {
+      const box = document.getElementById('stats');
+      const pending = stats?.pending ?? 0;
+      const byConf = stats?.by_confidence ?? {};
+      const byBucket = stats?.by_bucket ?? {};
+      const bucketLine = Object.entries(byBucket).map(([k, v]) => `${k}:${v}`).join(' · ') || '—';
+      box.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${pending}</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-value">${byConf.high ?? 0}</div><div class="stat-label">High confidence</div></div>
+        <div class="stat-card"><div class="stat-value">${byConf.medium ?? 0}</div><div class="stat-label">Medium</div></div>
+        <div class="stat-card"><div class="stat-value">${byConf.low ?? 0}</div><div class="stat-label">Low</div></div>
+        <div class="stat-card"><div class="stat-value" style="font-size:var(--text-sm)">${bucketLine}</div><div class="stat-label">Buckets</div></div>
+      `;
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderRows(suggestions) {
+      const tbody = document.getElementById('rows');
+      const empty = document.getElementById('empty');
+      if (!suggestions?.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+      empty.style.display = 'none';
+      tbody.innerHTML = suggestions.map(s => {
+        const e = s.escalation || {};
+        const evidence = (s.evidence || []).map(esc).join(' · ');
+        const isFile = s.suggested_status === 'file_as_issue';
+        const statusTag = isFile
+          ? `<span class="tag tag-issue">file_as_issue</span>`
+          : `<span class="tag tag-${esc(s.confidence)}">${esc(s.suggested_status)}</span>`;
+        const acceptLabel = isFile ? 'File as issue' : 'Accept';
+        const draft = s.proposed_github_issue;
+        const draftBlock = isFile && draft
+          ? `<div class="draft">
+              <div><span class="draft-repo">${esc(draft.repo)}</span> — <span class="draft-title">${esc(draft.title)}</span></div>
+              <div class="draft-body">${esc((draft.body || '').slice(0, 500))}</div>
+            </div>`
+          : '';
+        const linkBlock = e.github_issue_url
+          ? `<div class="reasoning">Filed: <a href="${esc(e.github_issue_url)}" target="_blank" rel="noopener">${esc(e.github_issue_url)}</a></div>`
+          : '';
+        return `
+          <tr data-id="${s.id}">
+            <td>${e.id ?? '?'}</td>
+            <td class="summary-cell">
+              <div class="title">${esc(e.summary?.slice(0, 180) ?? '')}</div>
+              <div class="reasoning">${esc(s.reasoning)}</div>
+              <div class="evidence">${evidence}</div>
+              ${draftBlock}
+              ${linkBlock}
+            </td>
+            <td>${statusTag}</td>
+            <td><span class="tag tag-${esc(s.confidence)}">${esc(s.confidence)}</span></td>
+            <td><span class="tag tag-bucket">${esc(s.bucket ?? '—')}</span></td>
+            <td class="actions">
+              <button class="btn-accept" data-action="accept" data-id="${s.id}">${acceptLabel}</button>
+              <button class="btn-reject" data-action="reject" data-id="${s.id}">Reject</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    document.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/addie/escalations/suggestions/${id}/${action}`, { method: 'POST' });
+      if (res.ok) { await load(); } else { btn.disabled = false; alert('Action failed: ' + res.status); }
+    });
+
+    document.getElementById('run-btn').addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      try {
+        const res = await fetch('/api/admin/addie/escalations/suggestions/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!res.ok) throw new Error('run failed');
+        const data = await res.json();
+        btn.textContent = `+${data.result.suggested} (scanned ${data.result.scanned})`;
+        await load();
+      } catch (err) {
+        btn.textContent = 'Run failed';
+      } finally {
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Run triage now'; }, 3000);
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
