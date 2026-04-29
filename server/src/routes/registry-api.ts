@@ -3714,7 +3714,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         url: fa.url,
         type: isValidAgentType(fa.type) ? fa.type : ("unknown" as const),
         protocol: fa.protocol || "mcp",
-        description: fa.member?.display_name || fa.discovered_from?.publisher_domain || "",
+        // Description prefers registered member, then publisher endorsement,
+        // then bare publisher_domain — surfaces the strongest trust signal we
+        // have for this agent.
+        description:
+          fa.member?.display_name ||
+          fa.endorsed_by_publisher_member?.display_name ||
+          fa.discovered_from?.publisher_domain ||
+          "",
         mcp_endpoint: fa.url,
         contact: {
           name: fa.member?.display_name || "",
@@ -3725,6 +3732,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         source: fa.source,
         member: fa.member,
         discovered_from: fa.discovered_from,
+        // Publisher-side endorsement (option C from #3547). Mutually
+        // exclusive with `member`: registered agents never carry it.
+        endorsed_by_publisher_member: fa.endorsed_by_publisher_member,
       }));
 
       const bySource = {
