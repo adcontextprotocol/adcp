@@ -52,7 +52,9 @@ async function seedPayingOrg(pool: Pool, orgId: string, domain: string, opts: {
            subscription_status = EXCLUDED.subscription_status,
            subscription_canceled_at = EXCLUDED.subscription_canceled_at,
            auto_provision_verified_domain = EXCLUDED.auto_provision_verified_domain,
-           auto_provision_brand_hierarchy_children = EXCLUDED.auto_provision_brand_hierarchy_children`,
+           auto_provision_brand_hierarchy_children = EXCLUDED.auto_provision_brand_hierarchy_children,
+           auto_provision_hierarchy_enabled_at = NULL,
+           auto_provision_hierarchy_disabled_at = NULL`,
     [
       orgId,
       `Org ${orgId}`,
@@ -421,15 +423,19 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
     );
     expect(after.rows[0].enabled_at).not.toBeNull();
 
-    // Flip back to false → trigger clears the timestamp.
+    // Flip back to false → trigger preserves enabled_at and sets disabled_at.
     await pool.query(
       'UPDATE organizations SET auto_provision_brand_hierarchy_children = false WHERE workos_organization_id = $1',
       [TEST_PARENT_ORG],
     );
-    const cleared = await pool.query<{ enabled_at: Date | null }>(
-      'SELECT auto_provision_hierarchy_enabled_at AS enabled_at FROM organizations WHERE workos_organization_id = $1',
+    const cleared = await pool.query<{ enabled_at: Date | null; disabled_at: Date | null }>(
+      `SELECT auto_provision_hierarchy_enabled_at AS enabled_at,
+              auto_provision_hierarchy_disabled_at AS disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
       [TEST_PARENT_ORG],
     );
-    expect(cleared.rows[0].enabled_at).toBeNull();
+    // enabled_at is preserved (authoritative cohort-gate input); disabled_at is set.
+    expect(cleared.rows[0].enabled_at).not.toBeNull();
+    expect(cleared.rows[0].disabled_at).not.toBeNull();
   });
 });

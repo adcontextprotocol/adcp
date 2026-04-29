@@ -1,5 +1,6 @@
 import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
+import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
@@ -647,27 +648,15 @@ export class CrawlerService {
     authorizedFor?: string,
     limitToPropertyIds?: string[]
   ): Promise<void> {
-    for (const prop of properties) {
+    for (const rawProp of properties) {
+      const prop = sanitizeAdagentsProperty(rawProp, { publisherDomain, agentUrl });
+      if (!prop) continue;
+
       // If agent has specific property_ids, only record those
       if (limitToPropertyIds && limitToPropertyIds.length > 0) {
         if (!prop.property_id || !limitToPropertyIds.includes(prop.property_id)) {
           continue;
         }
-      }
-
-      // discovered_properties has NOT NULL on property_type, name, and the
-      // (publisher_domain, name, property_type) unique key; an adagents.json
-      // entry missing either column would crash the writer and abort the
-      // whole publisher's crawl. @adcp/client 5.22.0 strips entries with
-      // missing identifiers at parse time, but property_type/name aren't
-      // filtered upstream — drop them here with a warning so one malformed
-      // entry can't take out the rest.
-      if (!prop.property_type || !prop.name) {
-        log.warn(
-          { domain: publisherDomain, agent: agentUrl, name: prop.name, property_type: prop.property_type },
-          'Skipping property in adagents.json: missing property_type or name',
-        );
-        continue;
       }
 
       await this.federatedIndex.recordProperty(

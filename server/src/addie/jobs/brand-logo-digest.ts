@@ -2,13 +2,12 @@
  * Brand Logo Pending-Review Digest
  *
  * Daily summary of brand logos sitting in the moderation queue, posted to
- * the configured admin Slack channel. The pending queue is otherwise
- * invisible — `getPendingLogos` had zero callers before #3137, and admins
- * won't poll `list_pending_brand_logos` on their own. This job is the
- * "you have N items waiting" nudge.
+ * the configured admin Slack channel.
  *
- * Skips items younger than ~12h to give #3154's auto-approve path time to
- * land owner uploads without a digest needing to mention them.
+ * As of #2568, all new uploads auto-approve at insert time, so the pending
+ * queue is permanently empty for any logo uploaded after that change ships.
+ * This job remains useful only as a drain for logos that queued before the
+ * deploy. It will silently no-op once those historical items clear.
  */
 
 import { logger } from '../../logger.js';

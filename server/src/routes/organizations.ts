@@ -1835,13 +1835,18 @@ export function createOrganizationsRouter(): Router {
       await orgDb.updateOrganization(orgId, updates);
 
       // Record audit log
+      const rawUA = req.get('user-agent');
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
-        details: updates,
+        details: {
+          ip_address: req.ip ?? null,
+          user_agent: rawUA ? rawUA.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512) : null,
+          ...updates,
+        },
       });
 
       logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');
