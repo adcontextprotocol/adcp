@@ -154,6 +154,9 @@ export interface CreateMessageInput {
   // the thread starter. Optional for assistant/system rows and legacy paths.
   user_id?: string;
   user_display_name?: string;
+  // How the user initiated this message. Only populated on role='user' rows.
+  // NULL on rows predating migration 451 (2026-04-28).
+  message_source?: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown';
 }
 
 export interface ThreadMessage {
@@ -211,6 +214,7 @@ export interface ThreadMessage {
   // Per-message speaker identity (see CreateMessageInput).
   user_id: string | null;
   user_display_name: string | null;
+  message_source: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown' | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -456,8 +460,8 @@ export class ThreadService {
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
           router_decision, config_version_id, email_message_id,
-          user_id, user_display_name
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+          user_id, user_display_name, message_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
         RETURNING *`,
         [
           input.thread_id,
@@ -486,6 +490,7 @@ export class ThreadService {
           input.email_message_id != null ? stripNullBytesString(input.email_message_id) : null,
           input.user_id ?? null,
           input.user_display_name != null ? stripNullBytesString(input.user_display_name) : null,
+          input.message_source ?? null,
         ]
       );
 

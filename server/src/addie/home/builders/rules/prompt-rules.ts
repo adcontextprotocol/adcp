@@ -481,6 +481,18 @@ export const MEMBER_RULES: PromptRule[] = [
     label: "What's new?",
     prompt: "What's new at AgenticAdvertising.org?",
   },
+  // Sentinel rule for Sage module-start CTAs (e.g. "Start module A1").
+  // These strings are synthesized at runtime from URL params in chat.html
+  // and never appear in PROMPT_TO_RULE_ID, so they need a matchClick callback.
+  // when: () => false means this rule never renders in the suggestion list.
+  {
+    id: 'sage.start_module',
+    priority: 0,
+    when: () => false,
+    label: 'Start module',
+    prompt: 'Start module',
+    matchClick: (msg) => /^Start module \w+$/.test(msg),
+  },
 ];
 
 export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];

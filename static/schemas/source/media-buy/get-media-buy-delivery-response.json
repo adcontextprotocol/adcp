@@ -280,6 +280,19 @@
                       "description": "Which measurement window this data replaces. Present on window_update notifications to indicate progression (e.g., 'live' when reporting C3 data that supersedes live-only numbers). Absent on the first report for a period. Buyers should replace stored data for the superseded window with this report's data.",
                       "examples": ["live", "c3"]
                     },
+                    "missing_metrics": {
+                      "type": "array",
+                      "description": "Metrics that the product's `reporting_capabilities.available_metrics` declared but that are NOT populated in this report. Empty array (or absent) indicates clean delivery against the declared contract. Non-empty signals an accountability breach — the seller advertised the capability at discovery but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
+                      "items": {
+                        "$ref": "/schemas/enums/available-metric.json"
+                      },
+                      "uniqueItems": true,
+                      "examples": [
+                        [],
+                        ["completed_views"],
+                        ["completed_views", "engagements"]
+                      ]
+                    },
                     "by_catalog_item": {
                       "type": "array",
                       "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",

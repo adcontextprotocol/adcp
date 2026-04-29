@@ -202,7 +202,7 @@ function formatSlackMessage(record: ConversationInsightsRecord) {
   if (analysis.question_themes.length > 0) {
     sections.push('\n*Top question themes (from sampled threads, organic only)*');
     for (const theme of analysis.question_themes.slice(0, 5)) {
-      sections.push(`• *${theme.theme}* (~${theme.estimated_count}x sampled) – ${theme.description}`);
+      sections.push(`• *${theme.theme}* (${theme.sample_count}× in sample) – ${theme.description}`);
     }
   }
 

@@ -151,6 +151,18 @@ async function applyMigration(migration: Migration): Promise<void> {
 }
 
 /**
+ * Stable session-scoped pg advisory lock key. Any concurrent caller of
+ * runMigrations() blocks on this key until the holder releases — prevents
+ * two processes (release_command + a stray app boot, two devs locally,
+ * etc.) from racing on schema_migrations or applying the same migration
+ * twice.
+ *
+ * 0x6D696772 = ASCII "migr". Fits in int32 so it routes to the
+ * pg_advisory_lock(bigint) overload without ambiguity.
+ */
+const MIGRATION_LOCK_KEY = 0x6d696772;
+
+/**
  * Run all pending migrations
  */
 export async function runMigrations(config?: DatabaseConfig): Promise<void> {
@@ -159,6 +171,24 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
     initializeDatabase(config);
   }
 
+  const pool = getPool();
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+    await runMigrationsLocked();
+  } finally {
+    // Don't let unlock failures shadow a real migration error. Session-scoped
+    // locks are released automatically by pg when the connection closes.
+    try {
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+    } catch (err) {
+      console.warn("Failed to release migration advisory lock:", err);
+    }
+    lockClient.release();
+  }
+}
+
+async function runMigrationsLocked(): Promise<void> {
   // Create migrations table
   await createMigrationsTable();
 

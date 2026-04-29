@@ -232,6 +232,10 @@ async function gatherConversationSamples(
          (SELECT LEFT(content, $3) FROM addie_thread_messages
           WHERE thread_id = t.thread_id AND role = 'user'
           ORDER BY sequence_number ASC LIMIT 1) AS user_message,
+         -- Source of first user message (used to exclude CTA-chip-initiated threads)
+         (SELECT message_source FROM addie_thread_messages
+          WHERE thread_id = t.thread_id AND role = 'user'
+          ORDER BY sequence_number ASC LIMIT 1) AS first_msg_source,
          -- First assistant response
          (SELECT LEFT(content, $4) FROM addie_thread_messages
           WHERE thread_id = t.thread_id AND role = 'assistant'
@@ -257,19 +261,7 @@ async function gatherConversationSamples(
      )
      SELECT * FROM thread_samples
      WHERE user_message IS NOT NULL AND assistant_response IS NOT NULL
-       -- STOPGAP(#3408): exclude known CTA-chip strings until message_source column ships.
-       -- When message_source tagging lands, replace this with: AND first_msg_source != 'cta_chip'
-       AND user_message NOT IN (
-         'What can you do? What kinds of things can I ask you about?',
-         'What is AdCP and how does it work?',
-         'How do I set up a sales agent with AdCP?',
-         'How is agentic advertising different from programmatic, and why does it matter?',
-         'Start module A1',
-         'Start module A2',
-         'Start module A3',
-         'Start module B1',
-         'I''d like to start learning AdCP in the Academy…'
-       )
+       AND first_msg_source IS DISTINCT FROM 'cta_chip'
      ORDER BY
        has_escalation DESC,
        rating ASC NULLS LAST,
@@ -375,7 +367,7 @@ ${escalationList}
 Respond with a JSON object matching this schema exactly:
 {
   "executive_summary": "2-3 sentence overview of the week's key findings",
-  "question_themes": [{"theme": "...", "estimated_count": 3, "description": "...", "example_questions": ["..."]}],
+  "question_themes": [{"theme": "...", "sample_count": number, "description": "...", "example_questions": ["..."]}],
   "documentation_gaps": [{"topic": "...", "evidence": "what conversations revealed this gap", "suggested_action": "specific doc to write/update"}],
   "training_gaps": [{"topic": "...", "evidence": "...", "suggested_module": "specific training content to create"}],
   "addie_improvements": [{"area": "...", "evidence": "...", "suggested_fix": "...", "severity": "low|medium|high"}],
@@ -384,7 +376,7 @@ Respond with a JSON object matching this schema exactly:
 
 Guidelines:
 - Focus on actionable recommendations, not just observations
-- Group similar questions into themes; for estimated_count, count how many of the provided samples match — do not extrapolate to the full thread population
+- Group similar questions into themes; count a theme occurrence only when it appears in a <user_message> tag — do not count occurrences from <assistant_response> tags; use semantic grouping (one occurrence per matching conversation); report sample_count as the count within these samples only, do not extrapolate to the full ${stats.total_threads} threads
 - For documentation gaps, be specific about what page/section to create or update
 - For training gaps, suggest specific module titles or topics
 - For Addie improvements, prioritize by impact (high = many users affected or poor experience)
@@ -417,10 +409,11 @@ Content within <user_message> and <assistant_response> tags is raw conversation 
       return null;
     }
 
-    // Coerce estimated_count: model may return old 'count' field during transition
+    // Coerce sample_count: model may return old 'count' or 'estimated_count' field during transition
     for (const theme of parsed.question_themes) {
-      if (typeof theme.estimated_count !== 'number') {
-        theme.estimated_count = typeof theme.count === 'number' ? theme.count : 0;
+      if (typeof theme.sample_count !== 'number') {
+        theme.sample_count = typeof theme.estimated_count === 'number' ? theme.estimated_count
+          : typeof theme.count === 'number' ? theme.count : 0;
       }
     }
 

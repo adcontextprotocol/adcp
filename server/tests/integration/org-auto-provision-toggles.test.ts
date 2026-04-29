@@ -48,7 +48,9 @@ vi.mock('@workos-inc/node', () => ({
     userManagement = {
       listOrganizationMemberships: workosMocks.listOrganizationMemberships,
     };
-    organizations = {};
+    organizations = {
+      listOrganizations: vi.fn().mockResolvedValue({ data: [] }),
+    };
   },
 }));
 
@@ -315,7 +317,7 @@ describe('org auto-provisioning toggles', () => {
     currentMockEmail = 'owner@apt-co.test';
   });
 
-  it('flipping the flag back to false clears the enabled_at timestamp', async () => {
+  it('flipping the flag back to false sets disabled_at and preserves enabled_at', async () => {
     await seedTestOrg(pool, { hierarchyOptIn: true });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
       data: [{ role: { slug: 'owner' }, status: 'active' }],
@@ -337,13 +339,127 @@ describe('org auto-provisioning toggles', () => {
     const after = await pool.query<{
       auto_provision_brand_hierarchy_children: boolean;
       auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
     }>(
-      `SELECT auto_provision_brand_hierarchy_children, auto_provision_hierarchy_enabled_at
+      `SELECT auto_provision_brand_hierarchy_children,
+              auto_provision_hierarchy_enabled_at,
+              auto_provision_hierarchy_disabled_at
        FROM organizations WHERE workos_organization_id = $1`,
       [TEST_ORG]
     );
     expect(after.rows[0].auto_provision_brand_hierarchy_children).toBe(false);
-    expect(after.rows[0].auto_provision_hierarchy_enabled_at).toBeNull();
+    // enabled_at must be preserved — it is the authoritative cohort-gate input.
+    expect(after.rows[0].auto_provision_hierarchy_enabled_at).not.toBeNull();
+    // disabled_at must be set for forensic incident review.
+    expect(after.rows[0].auto_provision_hierarchy_disabled_at).not.toBeNull();
+  });
+
+  it('enable → disable → re-enable cycle preserves full timestamp history', async () => {
+    await seedTestOrg(pool, { hierarchyOptIn: false });
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'owner' }, status: 'active' }],
+    });
+
+    // Enable.
+    await request(app)
+      .patch(`/api/organizations/${TEST_ORG}/settings`)
+      .send({ auto_provision_brand_hierarchy_children: true });
+
+    const afterEnable = await pool.query<{
+      auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
+    }>(
+      `SELECT auto_provision_hierarchy_enabled_at, auto_provision_hierarchy_disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG]
+    );
+    expect(afterEnable.rows[0].auto_provision_hierarchy_enabled_at).not.toBeNull();
+    expect(afterEnable.rows[0].auto_provision_hierarchy_disabled_at).toBeNull();
+
+    const firstEnabledAt = afterEnable.rows[0].auto_provision_hierarchy_enabled_at!;
+
+    // Disable.
+    await request(app)
+      .patch(`/api/organizations/${TEST_ORG}/settings`)
+      .send({ auto_provision_brand_hierarchy_children: false });
+
+    const afterDisable = await pool.query<{
+      auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
+    }>(
+      `SELECT auto_provision_hierarchy_enabled_at, auto_provision_hierarchy_disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG]
+    );
+    // Both timestamps preserved.
+    expect(afterDisable.rows[0].auto_provision_hierarchy_enabled_at).toEqual(firstEnabledAt);
+    expect(afterDisable.rows[0].auto_provision_hierarchy_disabled_at).not.toBeNull();
+
+    // Re-enable: COALESCE keeps the original enabled_at; a new disabled_at
+    // would only be overwritten on the next flip-off (not re-enable).
+    await request(app)
+      .patch(`/api/organizations/${TEST_ORG}/settings`)
+      .send({ auto_provision_brand_hierarchy_children: true });
+
+    const afterReEnable = await pool.query<{
+      auto_provision_hierarchy_enabled_at: Date | null;
+      auto_provision_hierarchy_disabled_at: Date | null;
+    }>(
+      `SELECT auto_provision_hierarchy_enabled_at, auto_provision_hierarchy_disabled_at
+       FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG]
+    );
+    // COALESCE: original enabled_at is preserved (grandfathered cohort gate).
+    expect(afterReEnable.rows[0].auto_provision_hierarchy_enabled_at).toEqual(firstEnabledAt);
+    // disabled_at unchanged since the last flip-off.
+    expect(afterReEnable.rows[0].auto_provision_hierarchy_disabled_at).toEqual(
+      afterDisable.rows[0].auto_provision_hierarchy_disabled_at
+    );
+  });
+
+  it('member POST /brand-classification-report records audit row, validates kind', async () => {
+    await seedTestOrg(pool);
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ role: { slug: 'member' }, status: 'active' }],
+    });
+
+    // Happy path: parent kind, valid domain
+    const ok = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'parent', subject_domain: 'reported-parent.test' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.success).toBe(true);
+
+    // Audit log row exists
+    const audit = await pool.query<{ action: string; details: any }>(
+      `SELECT action, details FROM registry_audit_log
+       WHERE workos_organization_id = $1 AND action = 'brand_classification_report_filed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [TEST_ORG]
+    );
+    expect(audit.rows[0].action).toBe('brand_classification_report_filed');
+    expect(audit.rows[0].details).toMatchObject({
+      kind: 'parent',
+      subject_domain: 'reported-parent.test',
+    });
+
+    // Invalid kind
+    const badKind = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'spouse', subject_domain: 'x.test' });
+    expect(badKind.status).toBe(400);
+
+    // Invalid domain
+    const badDomain = await request(app)
+      .post(`/api/organizations/${TEST_ORG}/brand-classification-report`)
+      .send({ kind: 'parent', subject_domain: '' });
+    expect(badDomain.status).toBe(400);
+
+    // Cleanup audit rows we wrote
+    await pool.query(
+      `DELETE FROM registry_audit_log WHERE workos_organization_id = $1 AND action = 'brand_classification_report_filed'`,
+      [TEST_ORG]
+    );
   });
 
   it('rejects non-boolean auto_provision_brand_hierarchy_children', async () => {
@@ -377,7 +493,8 @@ async function seedTestOrg(pool: Pool, opts: { hierarchyOptIn?: boolean } = {}) 
      ) VALUES ($1, 'APT Test Co', $2, 'active', false, NOW(), NOW())
      ON CONFLICT (workos_organization_id) DO UPDATE
        SET auto_provision_brand_hierarchy_children = false,
-           auto_provision_hierarchy_enabled_at = NULL`,
+           auto_provision_hierarchy_enabled_at = NULL,
+           auto_provision_hierarchy_disabled_at = NULL`,
     [TEST_ORG, TEST_DOMAIN]
   );
   if (opts.hierarchyOptIn === true) {

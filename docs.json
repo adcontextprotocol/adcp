@@ -123,6 +123,7 @@
                   "docs/building/operating-an-agent",
                   "docs/building/compliance-catalog",
                   "docs/building/conformance",
+                  "docs/building/aao-verified",
                   {
                     "group": "Foundations",
                     "pages": [
@@ -492,6 +493,7 @@
               },
               "docs/faq",
               "docs/ai-disclosure",
+              "docs/trust",
               {
                 "group": "Reference",
                 "expanded": false,
@@ -633,6 +635,7 @@
               "docs/building/operating-an-agent",
               "docs/building/compliance-catalog",
               "docs/building/conformance",
+              "docs/building/aao-verified",
               {
                 "group": "Foundations",
                 "pages": [
@@ -969,14 +972,18 @@
           {
             "group": "Using AAO",
             "pages": [
-              "docs/aao/connect-addie"
+              "docs/aao/connect-addie",
+              "docs/aao/users",
+              "docs/aao/org-admins",
+              "docs/aao/addie-tools"
             ]
           },
           {
             "group": "FAQ",
             "pages": [
               "docs/faq",
-              "docs/ai-disclosure"
+              "docs/ai-disclosure",
+              "docs/trust"
             ]
           },
           {

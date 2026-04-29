@@ -6,12 +6,7 @@
  * pick a privileged dev user. These tests lock in the integrity check.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-}));
-
+import { describe, it, expect } from 'vitest';
 import { encodeDevSessionCookie, getDevUser } from '../../src/middleware/auth.js';
 
 describe('dev-session cookie signing', () => {

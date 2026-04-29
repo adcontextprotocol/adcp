@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/signal-pricing.json",
+  "title": "Vendor Pricing",
+  "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), 'per_unit' (fixed price per unit of work), or 'custom' (escape hatch for models not covered by the enumerated forms — requires a description and structured metadata).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "CpmPricing",
+      "description": "Fixed cost per thousand impressions",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "cpm"
+        },
+        "cpm": {
+          "type": "number",
+          "description": "Cost per thousand impressions",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["model", "cpm", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "PercentOfMediaPricing",
+      "description": "Percentage of media spend charged for this signal. When max_cpm is set, the effective rate is capped at that CPM — useful for platforms like The Trade Desk that use percent-of-media pricing with a CPM ceiling.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "percent_of_media"
+        },
+        "percent": {
+          "type": "number",
+          "description": "Percentage of media spend, e.g. 15 = 15%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max_cpm": {
+          "type": "number",
+          "description": "Optional CPM cap. When set, the effective charge is min(percent × media_spend_per_mille, max_cpm).",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code for the resulting charge",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["model", "percent", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "FlatFeePricing",
+      "description": "Fixed charge per billing period, regardless of impressions or spend. Used for licensed data bundles and audience subscriptions.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "flat_fee"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Fixed charge for the billing period",
+          "minimum": 0
+        },
+        "period": {
+          "type": "string",
+          "enum": ["monthly", "quarterly", "annual", "campaign"],
+          "description": "Billing period for the flat fee."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["model", "amount", "period", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "PerUnitPricing",
+      "description": "Fixed price per unit of work. Used for creative transformation (per format), AI generation (per image, per token), and rendering (per variant). The unit field describes what is counted; unit_price is the cost per one unit.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "per_unit"
+        },
+        "unit": {
+          "type": "string",
+          "description": "What is counted — e.g. 'format', 'image', 'token', 'variant', 'render', 'evaluation'."
+        },
+        "unit_price": {
+          "type": "number",
+          "description": "Cost per one unit",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["model", "unit", "unit_price", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "CustomPricing",
+      "description": "Escape hatch for pricing constructs that do not fit cpm, percent_of_media, flat_fee, or per_unit. Use when a vendor prices via performance kickers, tiered volume, hybrid formulas, outcome-sharing, or any other model the standard forms cannot express. Requires a human-readable description and a structured metadata object that captures the parameters a buyer needs to reason about the charge. Buyers SHOULD route custom pricing through operator review before commitment — automatic selection is not recommended.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "custom"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Structured parameters for the custom model. Keys follow lowercase_snake_case. Values may be primitives, arrays, or nested objects. Must be sufficient for a human to understand the pricing basis and for a downstream system to reconstruct the charge. Vendors SHOULD include a `summary_for_operator` string (one or two sentences, suitable for display in a buyer's operator-review UI) so reviewers across vendors see a consistent prompt. Required operator-review fields (approver role, dollar threshold for automatic approval, escalation contact) MAY be surfaced via additional keys the buyer's review surface recognizes.",
+          "additionalProperties": true,
+          "minProperties": 1,
+          "properties": {
+            "summary_for_operator": {
+              "type": "string",
+              "description": "One or two sentences describing the pricing construct in plain language, displayed to the buyer's operator when requesting approval. Should not repeat the top-level `description` verbatim — summarize the charge mechanic instead (e.g., 'Base $12 CPM plus $0.50 per qualifying post-view conversion, capped at $45 CPM').",
+              "minLength": 1
+            }
+          }
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["model", "description", "metadata"],
+      "additionalProperties": true
+    }
+  ]
+}

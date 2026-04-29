@@ -49,7 +49,10 @@
     "VERSION_UNSUPPORTED",
     "CAMPAIGN_SUSPENDED",
     "GOVERNANCE_UNAVAILABLE",
-    "PERMISSION_DENIED"
+    "PERMISSION_DENIED",
+    "SCOPE_INSUFFICIENT",
+    "READ_ONLY_SCOPE",
+    "FIELD_NOT_PERMITTED"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -96,6 +99,9 @@
     "VERSION_UNSUPPORTED": "The declared adcp_major_version is not supported by this seller. Recovery: correctable (call get_adcp_capabilities without adcp_major_version to discover supported major_versions, then retry with a supported version).",
     "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
     "GOVERNANCE_UNAVAILABLE": "A registered governance agent is unreachable (timeout, network error, or repeated failure) and the seller cannot obtain a governance decision for the spend-commit. Distinct from `GOVERNANCE_DENIED` (agent reachable and explicitly denied). Recovery: transient (retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator — the seller MUST NOT proceed with the media buy without a valid decision).",
-    "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented) and `GOVERNANCE_DENIED` (governance agent denied). Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission)."
+    "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented) and `GOVERNANCE_DENIED` (governance agent denied). Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission).",
+    "SCOPE_INSUFFICIENT": "The authenticated caller is not authorized for the invoked task — the task is not in the caller's `allowed_tasks` for this account (discoverable via the `authorization` object on sync_accounts / list_accounts responses). Distinct from `PERMISSION_DENIED` (generic authz failure, often credential-shaped) by being narrowly about task-level scope. Sellers SHOULD populate `error.details.introspection_hint` pointing at where the caller can re-read its scope (strawman: `{ task: 'list_accounts', account: {...} }`). Recovery: correctable in the sense that the request can be re-sent after the scope is broadened, but the agent cannot broaden its own scope — this requires operator intervention, and agents SHOULD surface rather than auto-retry.",
+    "READ_ONLY_SCOPE": "The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from `SCOPE_INSUFFICIENT` (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.",
+    "FIELD_NOT_PERMITTED": "A request field is not in the caller's `field_scopes` allowlist for this task. Sellers declaring `field_scopes` on the account's `authorization` object MUST reject any request that sets a non-allowlisted field with this code. Distinct from `VALIDATION_ERROR` (schema/business-rule violation) — the field is valid, just not writable by this caller. `error.field` MUST identify the exact offending field path (e.g., `packages[0].budget`); when multiple fields are disallowed, sellers SHOULD return one error per field, or MAY enumerate them in `error.details.fields`. Recovery: correctable and agent-autonomous — agent may drop the disallowed field(s) and retry."
   }
 }

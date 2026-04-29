@@ -45,7 +45,6 @@ interface AccountState {
 
 interface GovernanceAgentEntry {
   url: string;
-  categories?: string[];
 }
 
 interface SyncGovernanceInput extends ToolArgs {
@@ -60,7 +59,6 @@ interface SyncGovernanceAccountInput {
 interface GovernanceAgentInput {
   url: string;
   authentication: { schemes: string[]; credentials: string };
-  categories?: string[];
 }
 
 // ── Session state extension ──────────────────────────────────────
@@ -282,6 +280,8 @@ export const ACCOUNT_TOOLS = [
               account: ACCOUNT_REF_SCHEMA,
               governance_agents: {
                 type: 'array',
+                minItems: 1,
+                maxItems: 1,
                 items: {
                   type: 'object',
                   properties: {
@@ -294,7 +294,6 @@ export const ACCOUNT_TOOLS = [
                       },
                       required: ['schemes', 'credentials'],
                     },
-                    categories: { type: 'array', items: { type: 'string' } },
                   },
                   required: ['url', 'authentication'],
                 },
@@ -505,6 +504,23 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  // Schema-shape invariant: governance_agents has maxItems: 1 (#3015). A
+  // multi-agent payload is a request-shape violation, not a per-account
+  // business failure — return a top-level error envelope so the runner sees
+  // success=false. Per-account errors[] are reserved for valid-shape but
+  // business-fail cases (account-not-found, business-rule violations).
+  const multiAgentAccounts = req.accounts.filter(
+    a => Array.isArray(a.governance_agents) && a.governance_agents.length !== 1,
+  );
+  if (multiAgentAccounts.length > 0) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: `governance_agents must contain exactly 1 entry per account; ${multiAgentAccounts.length} account(s) violated this constraint. An account binds to a single governance agent that owns the full lifecycle (purchase / modification / delivery phases). Specialist review composes inside the agent, not across multiple registrations.`,
+      }],
+    };
+  }
+
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const accounts = getAccountMap(sessionKey);
   const results: Record<string, unknown>[] = [];
@@ -529,26 +545,17 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    // Validate governance agent URLs
-    const validAgents: GovernanceAgentEntry[] = [];
-    let hasFailed = false;
-    for (const agent of input.governance_agents) {
-      if (!agent.url) {
-        results.push({
-          account: acctRef,
-          status: 'failed',
-          errors: [{ code: 'INVALID_REQUEST', message: 'governance_agents[].url is required' }],
-        });
-        hasFailed = true;
-        break;
-      }
-      validAgents.push({
-        url: agent.url,
-        categories: agent.categories,
+    // Validate governance agent URL
+    const agent = input.governance_agents[0];
+    if (!agent.url) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{ code: 'INVALID_REQUEST', message: 'governance_agents[].url is required' }],
       });
+      continue;
     }
-
-    if (hasFailed) continue;
+    const validAgents: GovernanceAgentEntry[] = [{ url: agent.url }];
 
     // Replace semantics — overwrite previous governance agents
     acct.governanceAgents = validAgents;
@@ -556,10 +563,7 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     results.push({
       account: acctRef,
       status: 'synced',
-      governance_agents: validAgents.map(a => ({
-        url: a.url,
-        ...(a.categories && { categories: a.categories }),
-      })),
+      governance_agents: validAgents.map(a => ({ url: a.url })),
     });
   }
 

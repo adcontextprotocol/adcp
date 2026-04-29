@@ -489,6 +489,7 @@ export function createTavusRouter() {
         content: currentMessage,
         user_id: voiceUserId ?? undefined,
         user_display_name: voiceSpeakerName,
+        message_source: 'voice',
       }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
     }
 

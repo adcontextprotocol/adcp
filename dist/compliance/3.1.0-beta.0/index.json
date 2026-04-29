@@ -1,0 +1,324 @@
+{
+  "adcp_version": "3.1.0-beta.0",
+  "generated_at": "2026-04-28T18:38:51.264Z",
+  "universal": [
+    "capability-discovery",
+    "collection-lists-pagination-integrity",
+    "content-standards-pagination-integrity",
+    "deterministic-testing",
+    "error-compliance",
+    "fictional-entities",
+    "get-media-buys-pagination-integrity",
+    "get-signals-pagination-integrity",
+    "idempotency",
+    "pagination-integrity",
+    "pagination-integrity-creative-formats",
+    "pagination-integrity-list-accounts",
+    "property-lists-pagination-integrity",
+    "runner-output-contract",
+    "schema-validation",
+    "security",
+    "signed-requests",
+    "storyboard-schema",
+    "v3-envelope-integrity",
+    "webhook-emission"
+  ],
+  "protocols": [
+    {
+      "id": "brand",
+      "title": "Brand baseline",
+      "has_baseline": true,
+      "path": "protocols/brand/"
+    },
+    {
+      "id": "creative",
+      "title": "Creative lifecycle",
+      "has_baseline": true,
+      "path": "protocols/creative/"
+    },
+    {
+      "id": "governance",
+      "title": "Governance denial and human escalation",
+      "has_baseline": true,
+      "path": "protocols/governance/"
+    },
+    {
+      "id": "media-buy",
+      "title": "Media buy seller agent",
+      "has_baseline": true,
+      "path": "protocols/media-buy/"
+    },
+    {
+      "id": "signals",
+      "title": "Signals baseline",
+      "has_baseline": true,
+      "path": "protocols/signals/"
+    },
+    {
+      "id": "sponsored-intelligence",
+      "title": "Sponsored intelligence baseline",
+      "has_baseline": true,
+      "path": "protocols/sponsored-intelligence/"
+    }
+  ],
+  "domains": [
+    {
+      "id": "brand",
+      "title": "Brand baseline",
+      "has_baseline": true,
+      "path": "domains/brand/"
+    },
+    {
+      "id": "creative",
+      "title": "Creative lifecycle",
+      "has_baseline": true,
+      "path": "domains/creative/"
+    },
+    {
+      "id": "governance",
+      "title": "Governance denial and human escalation",
+      "has_baseline": true,
+      "path": "domains/governance/"
+    },
+    {
+      "id": "media-buy",
+      "title": "Media buy seller agent",
+      "has_baseline": true,
+      "path": "domains/media-buy/"
+    },
+    {
+      "id": "signals",
+      "title": "Signals baseline",
+      "has_baseline": true,
+      "path": "domains/signals/"
+    },
+    {
+      "id": "sponsored-intelligence",
+      "title": "Sponsored intelligence baseline",
+      "has_baseline": true,
+      "path": "domains/sponsored-intelligence/"
+    }
+  ],
+  "specialisms": [
+    {
+      "id": "audience-sync",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Audience sync",
+      "status": "stable",
+      "required_tools": [
+        "list_accounts",
+        "sync_audiences"
+      ],
+      "path": "specialisms/audience-sync/"
+    },
+    {
+      "id": "brand-rights",
+      "protocol": "brand",
+      "domain": "brand",
+      "title": "Brand identity and rights licensing",
+      "status": "stable",
+      "required_tools": [
+        "get_brand_identity"
+      ],
+      "path": "specialisms/brand-rights/"
+    },
+    {
+      "id": "collection-lists",
+      "protocol": "governance",
+      "domain": "governance",
+      "title": "Collection lists",
+      "status": "stable",
+      "required_tools": [
+        "create_collection_list"
+      ],
+      "path": "specialisms/collection-lists/"
+    },
+    {
+      "id": "content-standards",
+      "protocol": "governance",
+      "domain": "governance",
+      "title": "Content standards",
+      "status": "stable",
+      "required_tools": [
+        "list_content_standards"
+      ],
+      "path": "specialisms/content-standards/"
+    },
+    {
+      "id": "creative-ad-server",
+      "protocol": "creative",
+      "domain": "creative",
+      "title": "Creative ad server",
+      "status": "stable",
+      "required_tools": [
+        "build_creative"
+      ],
+      "path": "specialisms/creative-ad-server/"
+    },
+    {
+      "id": "creative-generative",
+      "protocol": "creative",
+      "domain": "creative",
+      "title": "Generative creative agent",
+      "status": "stable",
+      "required_tools": [
+        "build_creative"
+      ],
+      "path": "specialisms/creative-generative/"
+    },
+    {
+      "id": "creative-template",
+      "protocol": "creative",
+      "domain": "creative",
+      "title": "Creative template and transformation agent",
+      "status": "stable",
+      "required_tools": [
+        "build_creative"
+      ],
+      "path": "specialisms/creative-template/"
+    },
+    {
+      "id": "governance-aware-seller",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Governance-aware seller",
+      "status": "stable",
+      "required_tools": [
+        "sync_governance",
+        "create_media_buy"
+      ],
+      "path": "specialisms/governance-aware-seller/"
+    },
+    {
+      "id": "governance-delivery-monitor",
+      "protocol": "governance",
+      "domain": "governance",
+      "title": "Campaign governance — delivery monitoring with drift detection",
+      "status": "stable",
+      "required_tools": [
+        "check_governance"
+      ],
+      "path": "specialisms/governance-delivery-monitor/"
+    },
+    {
+      "id": "governance-spend-authority",
+      "protocol": "governance",
+      "domain": "governance",
+      "title": "Campaign governance — conditional approval",
+      "status": "stable",
+      "required_tools": [
+        "sync_plans",
+        "check_governance"
+      ],
+      "path": "specialisms/governance-spend-authority/"
+    },
+    {
+      "id": "property-lists",
+      "protocol": "governance",
+      "domain": "governance",
+      "title": "Property lists",
+      "status": "stable",
+      "required_tools": [
+        "create_property_list"
+      ],
+      "path": "specialisms/property-lists/"
+    },
+    {
+      "id": "sales-broadcast-tv",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Broadcast linear TV seller agent",
+      "status": "stable",
+      "required_tools": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "path": "specialisms/sales-broadcast-tv/"
+    },
+    {
+      "id": "sales-catalog-driven",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Catalog-driven creative and conversion tracking",
+      "status": "stable",
+      "required_tools": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "path": "specialisms/sales-catalog-driven/"
+    },
+    {
+      "id": "sales-guaranteed",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Guaranteed media buy with human IO approval",
+      "status": "stable",
+      "required_tools": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "path": "specialisms/sales-guaranteed/"
+    },
+    {
+      "id": "sales-non-guaranteed",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Non-guaranteed auction-based media buy",
+      "status": "stable",
+      "required_tools": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "path": "specialisms/sales-non-guaranteed/"
+    },
+    {
+      "id": "sales-proposal-mode",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Media buy via proposal acceptance",
+      "status": "stable",
+      "required_tools": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "path": "specialisms/sales-proposal-mode/"
+    },
+    {
+      "id": "sales-social",
+      "protocol": "media-buy",
+      "domain": "media-buy",
+      "title": "Social platform",
+      "status": "stable",
+      "required_tools": [
+        "sync_audiences",
+        "sync_catalogs",
+        "sync_creatives",
+        "sync_event_sources"
+      ],
+      "path": "specialisms/sales-social/"
+    },
+    {
+      "id": "signal-marketplace",
+      "protocol": "signals",
+      "domain": "signals",
+      "title": "Marketplace signal agent",
+      "status": "stable",
+      "required_tools": [
+        "get_signals"
+      ],
+      "path": "specialisms/signal-marketplace/"
+    },
+    {
+      "id": "signal-owned",
+      "protocol": "signals",
+      "domain": "signals",
+      "title": "Owned signal agent",
+      "status": "stable",
+      "required_tools": [
+        "get_signals"
+      ],
+      "path": "specialisms/signal-owned/"
+    }
+  ]
+}

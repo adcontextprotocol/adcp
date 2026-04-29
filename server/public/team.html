@@ -1270,7 +1270,7 @@
         // Render the auto-provision toggle whenever there is at least one
         // verified domain. With no verified domain the toggle is a no-op
         // (autoLinkByVerifiedDomain has nothing to match), so we hide it.
-        renderBrandHierarchy(data);
+        renderBrandHierarchy(orgId, data);
         renderAutoProvisionToggle(orgId, data);
         renderAutoProvisionHierarchyToggle(orgId, data);
       } catch (error) {
@@ -1283,7 +1283,7 @@
       }
     }
 
-    function renderBrandHierarchy(data) {
+    function renderBrandHierarchy(orgId, data) {
       const row = document.getElementById('brandHierarchyRow');
       const content = document.getElementById('brandHierarchyContent');
       const classification = data.hierarchy_classification;
@@ -1305,6 +1305,21 @@
           `Please describe the correct classification:\n\n`
         );
         return `mailto:hello@agenticadvertising.org?subject=${subject}&body=${body}`;
+      };
+
+      // Fire-and-forget audit ping when a member clicks "Report wrong" so
+      // we have a triage queue + can detect "10 different members reported
+      // the same domain". The mailto opens regardless — sendBeacon doesn't
+      // block navigation/window-events.
+      const reportClickHandler = (kind, domain) => (ev) => {
+        try {
+          const payload = JSON.stringify({ kind, subject_domain: domain });
+          const blob = new Blob([payload], { type: 'application/json' });
+          navigator.sendBeacon(`/api/organizations/${orgId}/brand-classification-report`, blob);
+        } catch {
+          // Non-blocking — beacon failure shouldn't get in the way of the user.
+        }
+        // Don't preventDefault — let the mailto open.
       };
 
       // Source badge: brand_json self-asserted is authoritative ("they told
@@ -1329,7 +1344,7 @@
             <strong style="color: var(--color-text-heading);">${escapeHtml(p.brand_name || p.domain)}</strong>
             <span style="color: var(--color-text-tertiary);">— ${escapeHtml(p.domain)}</span>
             ${sourceBadge(p.source)}
-            <a href="${reportLink('parent', p.domain)}" style="margin-left: auto; color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+            <a href="${reportLink('parent', p.domain)}" data-report-kind="parent" data-report-domain="${escapeHtml(p.domain)}" style="margin-left: auto; color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
           </div>
           <div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>
         `);
@@ -1376,7 +1391,7 @@
                   <span style="color: var(--color-text-tertiary);">— ${escapeHtml(s.domain)}</span>
                   ${sourceBadge(s.source)}
                   <span style="margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs);">last validated ${fmtDate(s.last_validated)}</span>
-                  <a href="${reportLink('child', s.domain)}" style="color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
+                  <a href="${reportLink('child', s.domain)}" data-report-kind="child" data-report-domain="${escapeHtml(s.domain)}" style="color: var(--color-primary-600); font-size: var(--text-xs);">Report wrong</a>
                 </li>
               `).join('')}
             </ul>
@@ -1392,6 +1407,14 @@
       }
 
       content.innerHTML = parts.join('');
+
+      // Wire fire-and-forget audit beacons to each Report-wrong link. The
+      // anchor's mailto: still opens normally — sendBeacon doesn't block.
+      content.querySelectorAll('a[data-report-kind]').forEach((a) => {
+        const kind = a.getAttribute('data-report-kind');
+        const domain = a.getAttribute('data-report-domain');
+        if (kind && domain) a.addEventListener('click', reportClickHandler(kind, domain));
+      });
     }
 
     function renderAutoProvisionToggle(orgId, data) {

@@ -1638,7 +1638,10 @@
           });
           const result = await resp.json();
           if (resp.ok) {
-            status.innerHTML = '<span style="color:var(--color-success-600);">Logo uploaded — pending review.</span>';
+            const uploadMsg = result.review_status === 'approved'
+              ? 'Logo uploaded and live.'
+              : 'Logo uploaded — pending review.';
+            status.innerHTML = `<span style="color:var(--color-success-600);">${uploadMsg}</span>`;
             setTimeout(() => {
               hideUploadModal();
               window.location.reload();

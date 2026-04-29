@@ -69,84 +69,86 @@ describe('Training Agent webhook emission', () => {
   });
 
   it('delivers a signed completion webhook when push_notification_config.url is set', async () => {
-    // Capture the delivery
     const deliveries: CapturedDelivery[] = [];
-    const done = new Promise<void>(resolve => {
-      const srv = startReceiver((d, res) => {
-        deliveries.push(d);
-        res.writeHead(200); res.end();
-        srv.then(s => s.close());
-        resolve();
-      });
-      // Kick off MCP request once the receiver is listening
-      srv.then(async s => {
-        const addr = s.address() as AddressInfo;
-        const webhookUrl = `http://127.0.0.1:${addr.port}/hook/create_media_buy`;
-        const catalog = buildCatalog();
-        const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
-        await request(app)
-          .post('/api/training-agent/mcp')
-          .set('Authorization', AUTH)
-          .set('Content-Type', 'application/json')
-          .set('Accept', 'application/json, text/event-stream')
-          .send({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'tools/call',
-            params: {
-              name: 'create_media_buy',
-              arguments: {
-                idempotency_key: randomUUID(),
-                adcp_major_version: 3,
-                account: { brand: { domain: 'webhook-test.example' }, operator: 'webhook-test.example' },
-                brand: { domain: 'webhook-test.example' },
-                start_time: '2027-06-01T00:00:00Z',
-                end_time: '2027-07-01T00:00:00Z',
-                packages: [{
-                  product_id: product.product_id,
-                  pricing_option_id: product.pricing_options[0].pricing_option_id,
-                  budget: 50000,
+    let srv: http.Server | undefined;
+    try {
+      const done = new Promise<void>(resolve => {
+        startReceiver((d, res) => {
+          deliveries.push(d);
+          res.writeHead(200); res.end();
+          resolve();
+        }).then(s => {
+          srv = s;
+          const addr = s.address() as AddressInfo;
+          const webhookUrl = `http://127.0.0.1:${addr.port}/hook/create_media_buy`;
+          const catalog = buildCatalog();
+          const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
+          return request(app)
+            .post('/api/training-agent/mcp')
+            .set('Authorization', AUTH)
+            .set('Content-Type', 'application/json')
+            .set('Accept', 'application/json, text/event-stream')
+            .send({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'tools/call',
+              params: {
+                name: 'create_media_buy',
+                arguments: {
+                  idempotency_key: randomUUID(),
+                  adcp_major_version: 3,
+                  account: { brand: { domain: 'webhook-test.example' }, operator: 'webhook-test.example' },
+                  brand: { domain: 'webhook-test.example' },
                   start_time: '2027-06-01T00:00:00Z',
                   end_time: '2027-07-01T00:00:00Z',
-                }],
-                push_notification_config: { url: webhookUrl },
+                  packages: [{
+                    product_id: product.product_id,
+                    pricing_option_id: product.pricing_options[0].pricing_option_id,
+                    budget: 50000,
+                    start_time: '2027-06-01T00:00:00Z',
+                    end_time: '2027-07-01T00:00:00Z',
+                  }],
+                  push_notification_config: { url: webhookUrl },
+                },
               },
-            },
-          });
+            });
+        });
       });
-    });
 
-    // Cap the wait so a silent drop doesn't hang the suite.
-    await Promise.race([
-      done,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 5000)),
-    ]);
+      await Promise.race([
+        done,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 5000)),
+      ]);
 
-    expect(deliveries.length).toBe(1);
-    const delivery = deliveries[0];
-    const body = JSON.parse(delivery.body) as Record<string, unknown>;
-    expect(body.task_id).toBeDefined();
-    expect(body.task_type).toBe('create_media_buy');
-    expect(body.status).toBe('completed');
-    expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
-    expect(delivery.headers['signature-input']).toBeDefined();
-    expect(delivery.headers['signature']).toBeDefined();
-    expect(delivery.headers['content-digest']).toBeDefined();
+      expect(deliveries.length).toBe(1);
+      const delivery = deliveries[0];
+      const body = JSON.parse(delivery.body) as Record<string, unknown>;
+      expect(body.task_id).toBeDefined();
+      expect(body.task_type).toBe('create_media_buy');
+      expect(body.status).toBe('completed');
+      expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
+      expect(delivery.headers['signature-input']).toBeDefined();
+      expect(delivery.headers['signature']).toBeDefined();
+      expect(delivery.headers['content-digest']).toBeDefined();
 
-    // Verify against the agent's published JWKS — end-to-end proof the
-    // signature is actually valid, not just present.
-    const jwks = getPublicJwks();
-    const jwksResolver = new StaticJwksResolver(jwks.keys as AdcpJsonWebKey[]);
-    await expect(verifyWebhookSignature({
-      method: 'POST',
-      url: delivery.url,
-      headers: delivery.headers as Record<string, string>,
-      body: delivery.body,
-    }, {
-      jwks: jwksResolver,
-      replayStore: new InMemoryReplayStore(),
-      revocationStore: new InMemoryRevocationStore(),
-    })).resolves.toMatchObject({ keyid: expect.any(String) });
+      const jwks = getPublicJwks();
+      const jwksResolver = new StaticJwksResolver(jwks.keys as AdcpJsonWebKey[]);
+      await expect(verifyWebhookSignature({
+        method: 'POST',
+        url: delivery.url,
+        headers: delivery.headers as Record<string, string>,
+        body: delivery.body,
+      }, {
+        jwks: jwksResolver,
+        replayStore: new InMemoryReplayStore(),
+        revocationStore: new InMemoryRevocationStore(),
+      })).resolves.toMatchObject({ keyid: expect.any(String) });
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(r => srv!.close(() => r()));
+      }
+    }
   }, 15000);
 
   it('publishes its webhook-signing public key at /.well-known/jwks.json', async () => {
