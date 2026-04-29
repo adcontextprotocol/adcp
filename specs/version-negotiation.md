@@ -95,6 +95,23 @@ The negotiation field uses **release precision** (`"3.0"`, `"3.1"`), not patch (
 
 For operational visibility — "which build patch is this server on" — servers MAY emit `build_version` in the capabilities response as advisory metadata.
 
+#### `adcp_version` canonical wire shape
+
+`adcp_version` MUST match `^\d+\.\d+(-[a-zA-Z0-9.-]+)?$` — `MAJOR.MINOR` optionally followed by a pre-release tag. **No patch component is ever valid on the wire**, even alongside a pre-release.
+
+| Wire value | Status |
+|---|---|
+| `"3.1"` | Valid (release). |
+| `"3.1-beta"` | Valid (release with pre-release tag). |
+| `"3.1-beta.1"` | Valid (release with dot-extended pre-release tag). |
+| `"3.1-rc.1"` | Valid. |
+| `"3.1.2"` | **Invalid** — patch on the wire. Use release `"3.1"` and surface the patch as `build_version`. |
+| `"3.1.0-beta.1"` | **Invalid** — patch component present. Normalize to `"3.1-beta.1"` before emitting. |
+| `"v3.1"` | **Invalid** — no `v` prefix. |
+| `"3"` | **Invalid** — major-only. Use `adcp_major_version: 3` for major-precision pinning. |
+
+SDKs that internally key bundles using the full semver patch-precision string (e.g. `"3.1.0-beta.1"` as a bundle key) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting on the wire. Internal keying can stay exact; the wire is release-only by construction.
+
 #### `build_version` canonical format
 
 `build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9):
@@ -225,3 +242,12 @@ Cadence rationale: buyer-side pinning is only useful once sellers actually echo 
 - Validators key off the *response's* `adcp_version` (with the constructor pin as fallback when servers don't yet emit it).
 - On `VERSION_UNSUPPORTED`, SDKs SHOULD raise a typed error exposing `error.data.supported_versions` rather than silently retrying — silent downshift changes wire shape under the caller. Auto-retry is an opt-in knob, not a default.
 - Per-tool wire adapters become the escape hatch for the rare breaking-release case; envelope negotiation handles the steady state.
+
+### Dual-emit timeline for SDKs
+
+The SDK transition story for the deprecated `adcp_major_version` field is intentionally simple:
+
+- **3.x branch of an SDK**: always emit both `adcp_version` and `adcp_major_version` on every request. This holds for the entire 3.x lifespan, including the v3 support window after 4.0 GA (12 months per the cadence policy). 3.x SDKs continue to dual-emit forever — they will not see the integer-removed schemas.
+- **4.0 branch of an SDK**: emit `adcp_version` only. The 4.0 schemas no longer carry `adcp_major_version`, so dual-emit is a category error there.
+
+SDK authors do not need to detect the seller's version to decide which fields to emit. The decision is determined by which spec major the SDK was built against. A 3.x SDK pointing at a 4.0 server will dual-emit; the 4.0 server reads `adcp_version` and ignores `adcp_major_version` (allowed by `additionalProperties: true`). A 4.0 SDK pointing at a 3.x server will emit only `adcp_version`; the 3.x server reads it directly (3.x sellers MUST honor `adcp_version` when present per §6).
