@@ -137,6 +137,64 @@
         "additionalProperties": false
       }
     },
+    "filter_diagnostics": {
+      "type": "object",
+      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only — products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
+      "properties": {
+        "semantics": {
+          "type": "string",
+          "enum": ["only", "any", "approximate"],
+          "description": "How `excluded_by[*].count` values are computed across multiple filters. `only`: counts products that would have been included if not for THIS filter alone (deterministic; the right value for 'which filter killed my result set' triage — recommended when feasible). `any`: counts products excluded by ANY filter (so multiple filters' counts may overlap and sum to more than `total_candidates`). `approximate`: sellers SHOULD use this when their pipeline can't cleanly attribute exclusions to a single filter. Buyers SHOULD inspect `semantics` before doing arithmetic on counts."
+        },
+        "total_candidates": {
+          "type": "integer",
+          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate — sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline catalog size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
+          "minimum": 0
+        },
+        "excluded_by": {
+          "type": "object",
+          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "description": "Number of products excluded by this filter, interpreted per the parent `semantics` field.",
+                "minimum": 0
+              },
+              "values": {
+                "type": "array",
+                "description": "Optional list of the specific filter values that contributed to exclusions, when meaningful. For `required_metrics`: the metric names that excluded products (strings). For `required_vendor_metrics`: the vendor/metric pin entries (objects). Item shape is filter-specific; the schema admits string OR object items. Buyers without filter-specific knowledge SHOULD treat as opaque.",
+                "items": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "object" }
+                  ]
+                }
+              },
+              "notes": {
+                "type": "string",
+                "description": "Optional human-readable note about why this filter narrowed the set (e.g., 'no products in this brief support DV viewability at the requested threshold')."
+              }
+            },
+            "required": ["count"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "semantics": "only",
+          "total_candidates": 47,
+          "excluded_by": {
+            "required_metrics": { "count": 31, "values": ["completed_views"] },
+            "required_geo_targeting": { "count": 9 },
+            "budget_range": { "count": 7 }
+          }
+        }
+      ]
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },
