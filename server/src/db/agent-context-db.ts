@@ -989,7 +989,7 @@ export class AgentContextDatabase {
    */
   inferAgentType(tools: string[]): AgentType {
     if (tools.includes('get_products') || tools.includes('create_media_buy')) {
-      return 'buying';
+      return 'sales';
     }
     if (tools.includes('list_creative_formats') && !tools.includes('get_products')) {
       return 'creative';
