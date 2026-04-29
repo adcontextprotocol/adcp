@@ -149,9 +149,9 @@ When the product's `trusted_match` config declares creative as the response type
 
 ## Identity Match
 
-The TMP SDK sends an Identity Match request with a publisher-scoped device token. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation (a random delay of 100-2000ms).
+The TMP SDK sends an Identity Match request with a publisher-scoped device token and the publisher's `seller_agent_url`. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation (a random delay of 100-2000ms).
 
-The `package_ids` list includes all active packages for the buyer, not just the packages from the current placement. Sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
+The buyer resolves its active package set from `seller_agent_url`. When the SDK sends `package_ids` explicitly (as below), the list MUST include all active packages for the buyer, not just the packages from the current placement — sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
 
 #### Request
 
@@ -159,6 +159,7 @@ The `package_ids` list includes all active packages for the buyer, not just the 
 {
   "type": "identity_match_request",
   "request_id": "id-mob-e4d782",
+  "seller_agent_url": "https://mobile-publisher.example",
   "identities": [
     { "user_token": "tok_idfv_a9c3e7", "uid_type": "publisher_first_party" },
     { "user_token": "A1B2C3D4-E5F6-7890-1234-567890ABCDEF", "uid_type": "maid" }

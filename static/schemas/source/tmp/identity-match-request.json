@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-request.json",
   "title": "Identity Match Request",
-  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, it MUST include ALL active packages for this buyer at this publisher (not just those on the current page) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
   "x-status": "experimental",
   "properties": {
@@ -35,6 +35,11 @@
     "request_id": {
       "type": "string",
       "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. Compared using the AdCP URL canonicalization rules, not byte-equality — see docs/reference/url-canonicalization. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`."
     },
     "identities": {
       "type": "array",
@@ -85,7 +90,7 @@
     },
     "package_ids": {
       "type": "array",
-      "description": "ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",
+      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, MUST include ALL active package identifiers for this buyer at this publisher — not just those on the current page — to prevent correlation with Context Match requests.",
       "items": {
         "type": "string"
       },
@@ -100,8 +105,8 @@
   "required": [
     "type",
     "request_id",
-    "identities",
-    "package_ids"
+    "seller_agent_url",
+    "identities"
   ],
   "additionalProperties": false
 }

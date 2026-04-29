@@ -16,7 +16,7 @@ A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /co
 | Message type | Receives | Returns |
 |---|---|---|
 | `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
-| `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + TTL |
+| `identity_match_request` | Seller agent URL, opaque user token, optional package ID list | Eligible package IDs + TTL |
 
 Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
@@ -90,13 +90,14 @@ The router sends you page context. You evaluate your active packages against tha
 
 ## Responding to Identity Match
 
-The router sends you one or more opaque identity tokens and a list of ALL your active package IDs for this publisher. You resolve on whichever tokens you support, then check each package's eligibility rules against the resolved user.
+The router sends you the seller's `seller_agent_url` and one or more opaque identity tokens. Use `seller_agent_url` to look up the active package set you have registered for that seller, resolve identities on whichever tokens you support, then check each package's eligibility rules against the resolved user. The publisher MAY also send `package_ids` to scope evaluation explicitly; when present, treat it as the candidate set for this request.
 
 ```json
 // Request you receive
 {
   "type": "identity_match_request",
   "request_id": "id-9c4e",
+  "seller_agent_url": "https://publisher.example",
   "identities": [
     { "user_token": "opaque-token-abc123", "uid_type": "publisher_first_party" },
     { "user_token": "ID5*7xYp...", "uid_type": "id5" }

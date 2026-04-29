@@ -560,6 +560,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-7c9e1d",
+      "seller_agent_url": "https://streamhaus.example",
       "identities": [
         { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
         { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
@@ -637,6 +638,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-9b2c",
+      "seller_agent_url": "https://publisher.example",
       "identities": [
         { "user_token": "tok_hk82mfp1", "uid_type": "uid2" },
         { "user_token": "ID5*aB3xY...", "uid_type": "id5" },
@@ -657,6 +659,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-e5f6g7h8",
+      "seller_agent_url": "https://ai-assistant.example",
       "identities": [
         { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
       ],
@@ -671,6 +674,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-boundary-4",
+      "seller_agent_url": "https://seller.example",
       "identities": [
         { "user_token": "a", "uid_type": "uid2" },
         { "user_token": "b", "uid_type": "id5" },

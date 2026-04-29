@@ -87,12 +87,13 @@ The buyer's offer includes `package_id` (required) along with optional fields: `
 
 ## Identity Match
 
-The platform sends an Identity Match request with a session token. The `package_ids` include ALL active packages for this buyer — not just the ones on the current page — to prevent the buyer from correlating this request with the context match by comparing package sets:
+The platform sends an Identity Match request with a session token and the platform's `seller_agent_url`. The buyer resolves its active package set from `seller_agent_url`; when the platform sends `package_ids` explicitly (as below), the list MUST include ALL active packages for this buyer — not just the ones on the current page — to prevent the buyer from correlating this request with the context match by comparing package sets:
 
 ```json
 {
   "type": "identity_match_request",
   "request_id": "id-e5f6g7h8",
+  "seller_agent_url": "https://ai-assistant.example",
   "identities": [
     { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
   ],
