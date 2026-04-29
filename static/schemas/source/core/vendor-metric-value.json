@@ -19,7 +19,7 @@
     },
     "unit": {
       "type": "string",
-      "description": "Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics (e.g., `score`, `seconds`, `persons`, `gCO2e`, `USD`, `lift_percent`). When the value is monetary, use the ISO 4217 code (e.g., `USD`, `EUR`); for non-monetary, use whatever the vendor publishes.",
+      "description": "Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics (e.g., `score`, `seconds`, `persons`, `gCO2e`, `USD`, `lift_percent`). When the value is monetary, use the ISO 4217 code (e.g., `USD`, `EUR`); for non-monetary, use whatever the vendor publishes. Optional on every row — the canonical unit lives at the vendor's measurement-agent metric definition (`brand.json` `agents[type='measurement']`); when sellers populate it inline they SHOULD match the vendor's published unit. Will become redundant (and may be deprecated) once the measurement-agent surface formalizes a per-metric unit declaration that buyers resolve from the agent.",
       "examples": ["score", "seconds", "persons", "gCO2e", "USD", "lift_percent", "index"]
     },
     "measurable_impressions": {
