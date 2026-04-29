@@ -34,6 +34,7 @@ import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
+import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
@@ -92,6 +93,46 @@ export async function resolveAgentTypes(agents: unknown): Promise<unknown> {
     }
     return agent;
   });
+}
+
+/**
+ * Diff the pre/post `resolveAgentTypes` agent arrays and write one
+ * `type_reclassification_log` row per flipped agent. Only the audit-log
+ * row matters here — the actual type write happens in the caller via
+ * memberDb.updateProfile / createProfile. Closes #3550.
+ *
+ * `before` and `after` are expected to be aligned by index: `resolveAgentTypes`
+ * preserves array order. `null`/`undefined` types serialize to the literal
+ * string 'unknown' in the audit log so the column is never NULL when we
+ * actually saw a row but couldn't classify it.
+ */
+export async function logResolvedTypeChanges(
+  before: unknown,
+  after: unknown,
+  memberId: string | null,
+): Promise<void> {
+  if (!Array.isArray(before) || !Array.isArray(after)) return;
+  const len = Math.min(before.length, after.length);
+  for (let i = 0; i < len; i++) {
+    const b = before[i];
+    const a = after[i];
+    if (!a || typeof a !== 'object') continue;
+    const url = (a as { url?: unknown }).url;
+    if (typeof url !== 'string') continue;
+    const beforeType = (b && typeof b === 'object' ? (b as { type?: unknown }).type : undefined);
+    const afterType = (a as { type?: unknown }).type;
+    const fromStr = typeof beforeType === 'string' ? beforeType : 'unknown';
+    const toStr = typeof afterType === 'string' ? afterType : 'unknown';
+    if (fromStr === toStr) continue;
+    await insertTypeReclassification({
+      agentUrl: url,
+      memberId,
+      oldType: fromStr,
+      newType: toStr,
+      source: 'member_write',
+      notes: { reason: 'resolve_agent_types' },
+    });
+  }
 }
 
 /**
@@ -386,6 +427,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // can't smuggle a wrong type (e.g. registering a sales agent as
       // 'buying'). See resolveAgentTypes() docstring + issue #3495.
       const typedGatedAgents = await resolveAgentTypes(gatedAgents);
+      // Audit-log any flips. Helper swallows insert failures — observability
+      // must not block the profile create. Closes #3550.
+      await logResolvedTypeChanges(gatedAgents, typedGatedAgents, targetOrgId);
 
       // Same tier gate for the profile-level `is_public` flag. The
       // `/visibility` PUT route gates this through hasActiveSubscription
@@ -606,7 +650,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         // client cannot pin a misclassification (e.g. sales agent typed
         // 'buying') — the inferred_type from the crawler probe wins. See
         // resolveAgentTypes() + issue #3495.
+        const typedAgentsBeforeWrite = gated.agents;
         updates.agents = await resolveAgentTypes(gated.agents);
+        // Audit-log any flips (closes #3550). Helper swallows insert failures.
+        await logResolvedTypeChanges(typedAgentsBeforeWrite, updates.agents, targetOrgId);
         warnings = gated.warnings;
       }
 
@@ -1781,7 +1828,11 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       // Even an admin caller cannot pin an agent type that contradicts the
       // probed capability snapshot — see resolveAgentTypes() + issue #3495.
       if (Array.isArray(updates.agents)) {
+        const adminAgentsBeforeWrite = updates.agents;
         updates.agents = await resolveAgentTypes(updates.agents);
+        // Audit-log any flips (closes #3550). `id` here is the profile id
+        // (route param), used as the member identifier for admin writes.
+        await logResolvedTypeChanges(adminAgentsBeforeWrite, updates.agents, id);
       }
 
       const profile = await memberDb.updateProfile(id, updates);
