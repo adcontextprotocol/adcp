@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add `adcp_version` (release-precision semver string, e.g. `"3.0"`, `"3.1"`, `"3.1-beta"`) as a top-level envelope field on every request and response. Clients send the release they're pinned to; servers echo the release they actually served. Augments the existing `adcp_major_version` (integer per-request) with finer precision and adds **response-side echo**, which the spec lacks today. Transport-uniform across MCP (streamable-HTTP and stdio) and A2A.
+Add `adcp_version` (release-precision semver string, e.g. `"3.0"`, `"3.1"`, `"3.1-beta"`) as a top-level envelope field on every request and response. Clients send the release they're pinned to; servers echo the release they actually served. Augments the existing `adcp_major_version` (integer per-request) with finer precision and adds **response-side echo**, which the spec lacks today. Transport-uniform across MCP (streamable-HTTP and stdio) and A2A. Composed via `allOf $ref` to a single shared schema (`core/version-envelope.json`) so the field's definition lives in one place across all 127 task schemas.
 
 ## Motivation
 
@@ -23,28 +23,61 @@ The signal must be:
 - **Not in `extensions.*`.** Version is meta-protocol, not a feature. A versioned extension surface can't carry the signal that selects its own version.
 - **Top-level on the AdCP payload.** First-class field on every request and response schema.
 
+### Relationship to MCP `protocolVersion` (initialize handshake)
+
+MCP carries its own `protocolVersion` field on the `initialize` request/response (e.g. `"2024-11-05"`, `"2025-06-18"`). That handshake versions the **MCP wire** — JSON-RPC framing, capability negotiation, transport semantics. `adcp_version` versions the **AdCP payload** — the schema of `params` and `result` content.
+
+The two are independent and both required:
+
+- An MCP-2025-06-18 server can speak AdCP 3.0 *or* AdCP 3.1.
+- An MCP-2025-06-18 client pinning AdCP `"3.1"` will fail (with `VERSION_UNSUPPORTED`) against a server that only speaks AdCP 3.0, even though the MCP handshake succeeded.
+
+A2A has no equivalent to MCP's `initialize`, which is the reason `adcp_version` rides on the payload (where both transports can carry it) rather than replacing MCP's mechanism.
+
 ## Spec changes
 
-### 1. New protocol envelope field
+### 1. Shared envelope schema
 
-Define a meta-schema `core/protocol-envelope.json`:
+Define `core/version-envelope.json`:
 
 ```json
 {
-  "$id": "/schemas/core/protocol-envelope.json",
+  "$id": "/schemas/core/version-envelope.json",
   "type": "object",
   "properties": {
     "adcp_version": {
       "type": "string",
-      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. On a response: the release the seller actually served. Patches are not negotiated — they don't change the wire contract by definition; surface them as build_version on capabilities for operational visibility.",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. On a response: the release the seller actually served.",
       "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
       "examples": ["3.0", "3.1", "3.1-beta", "3.1-rc.1"]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED — see migration table. Removed in 4.0."
     }
   }
 }
 ```
 
-The field has the same name on both sides of the wire — semantics fall out of context (request body vs response body).
+Every AdCP request and response schema composes this via `allOf`:
+
+```json
+{
+  "$id": "/schemas/<task>-request.json",
+  "type": "object",
+  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
+  "properties": { /* task-specific */ },
+  "additionalProperties": true
+}
+```
+
+The single source of truth for both fields lives in `core/version-envelope.json`. Bundled schema output (used by code generators that don't follow `$ref`) inlines the envelope at build time.
+
+> **Note:** distinct from the existing `core/protocol-envelope.json`, which describes the protocol-layer wrapper (`context_id`, `task_id`, `status`, `payload`) added by MCP/A2A/REST. `version-envelope.json` is part of the payload itself.
+
+The field has the same name on both sides of the wire — semantics fall out of context (request body vs response body), matching the Stripe-Version model.
 
 Placement per transport:
 
@@ -58,56 +91,99 @@ The negotiation field uses **release precision** (`"3.0"`, `"3.1"`), not patch (
 - Per the spec's own three-tier model, **patch** = bug fixes, always safe to upgrade, no contract change. Negotiation is about contract compatibility — patches don't qualify.
 - Patch precision on the wire would force every server to declare its build patch; every client's `supported_versions` list would churn on releases that don't affect interop.
 
-For operational visibility — "which build patch is this server on" — servers MAY include `build_version` (full VERSION.RELEASE.PATCH, e.g. `"3.1.2"`) in the capabilities response as advisory metadata. Useful for incident triage; not part of the contract.
+For operational visibility — "which build patch is this server on" — servers MAY emit `build_version` in the capabilities response as advisory metadata.
+
+#### `build_version` canonical format
+
+`build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9):
+
+```
+build_version    = MAJOR "." MINOR "." PATCH [ "-" pre-release ] [ "+" build-metadata ]
+```
+
+Examples:
+- `"3.1.2"` — minimum
+- `"3.1.0-beta.3"` — pre-release
+- `"3.1.2+scope3.deploy.4821"` — vendor build lineage
+- `"3.1.0-beta.3+sha.a1b2c3d"` — both
+
+Pattern: `^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$`
+
+Buyers MUST NOT use `build_version` for negotiation. It exists solely so a buyer reporting an incident can name the seller's exact build, and so a seller can correlate a buyer-side report to a specific deployment lineage.
 
 ### 3. Resolution algorithm (server-side)
 
-A server MUST honor `adcp_version` when present and SHOULD fall back to `adcp_major_version` (integer) when only that is provided:
+A server MUST honor `adcp_version` when present, falling back to `adcp_major_version` (integer) when only that is provided. When **both** are sent (the recommended steady state during 3.x — see §6), `adcp_version` takes precedence; if they disagree at the major level, the server MUST treat the request as cross-major and return `VERSION_UNSUPPORTED`.
 
 | Client request | Server action |
 |---|---|
-| `adcp_version` present, exact match | Serve in that release. Echo on response. |
+| `adcp_version` present, exact match in `supported_versions` | Serve in that release. Echo on response. |
 | `adcp_version` present, same major, server's max release < client's pin | Serve highest supported release ≤ client's pin. Echo actual release. |
-| `adcp_version` present, same major, server's min release > client's pin | Serve client's pin (server downshifts to client's contract). |
-| `adcp_version` present, different major | `VERSION_UNSUPPORTED` error. |
+| `adcp_version` present, same major, no server release ≤ client's pin (gap or sub-min) | `VERSION_UNSUPPORTED`. The seller is not obligated to maintain validators for releases below its supported window. |
+| `adcp_version` present, different major | `VERSION_UNSUPPORTED`. |
+| both fields present, majors disagree | `VERSION_UNSUPPORTED` (treat as malformed). |
 | `adcp_version` absent, `adcp_major_version` present | Serve highest supported release in that major. Echo response. |
 | both absent | Serve in server's default release. Echo on response. |
 
-In all non-error cases, the response's `adcp_version` is authoritative — it tells the client exactly what contract was served. Clients SHOULD validate the response against that release's schema, not against their pin.
+In all non-error cases, the response's `adcp_version` is authoritative — it tells the client exactly what contract was served. Clients SHOULD validate the response against that release's schema, not against their pin. The seller's `adcp_version` on the response is the **release served**, never the seller's own latest release: if a 3.1 seller serves a 3.0 buyer at 3.0, the response echoes `"3.0"`.
 
-### 4. Reuse VERSION_UNSUPPORTED with standardized error data
+#### Pre-release pins
 
-The existing `VERSION_UNSUPPORTED` error code stays. Standardize the `error.data` payload:
+Pre-release tags (e.g. `"3.1-beta"`) are matched **exactly** against `supported_versions`. They are not range-resolved:
+
+- Buyer pins `"3.1-beta"` against server with `supported_versions: ["3.0", "3.1-beta"]` → match, serve `"3.1-beta"`.
+- Buyer pins `"3.1-beta"` against server with `supported_versions: ["3.0", "3.1"]` → no match in same major (pre-release ≠ release), fall through to "no release ≤ client's pin" row → `VERSION_UNSUPPORTED`.
+- Buyer pins `"3.1"` (release) against server with `supported_versions: ["3.0", "3.1-beta"]` → exact-match fails; same-major downshift → serve `"3.0"`.
+- Buyer pins `"3.0"` against server with `supported_versions: ["3.1-beta"]` → no release ≤ `"3.0"` in same major → `VERSION_UNSUPPORTED`.
+
+SDKs that internally key off pre-release tags MUST emit them verbatim on the wire. Servers MUST NOT downshift release pins onto pre-releases (a buyer asking for `"3.1"` should not be silently served `"3.1-beta"`).
+
+### 4. Reuse `VERSION_UNSUPPORTED` with standardized error data
+
+The existing `VERSION_UNSUPPORTED` error code stays. The `error.data` payload SHOULD follow `error-details/version-unsupported.json`:
 
 ```json
 {
-  "adcp_version": "3.0",
-  "supported_majors": [3],
+  "adcp_version": "4.0",
+  "adcp_major_version": 4,
   "supported_versions": ["3.0", "3.1"],
-  "build_version": "3.1.2"
+  "supported_majors": [3],
+  "build_version": "3.1.2+scope3.deploy.4821"
 }
 ```
 
-`supported_versions` is authoritative; `build_version` is optional diagnostic metadata.
+- `adcp_version` and `adcp_major_version` echo the buyer's failing pin (whichever was sent) so the client can correlate.
+- `supported_versions` is **authoritative** — the client SHOULD select a value from this list and retry.
+- `supported_majors` is deprecated, retained through 3.x.
+- `build_version` is optional diagnostic metadata.
 
 ### 5. Capability advertisement
 
 Augment the capabilities response with:
 
-- `supported_versions: ["3.0", "3.1"]` — releases the server speaks. Authoritative for release-level negotiation.
-- `build_version: "3.1.2"` — full VERSION.RELEASE.PATCH of the server's actual build. Optional, for operational visibility only.
+- `adcp.supported_versions: ["3.0", "3.1"]` — releases the server speaks. Authoritative for release-level negotiation. Pre-release tags appear inline (e.g. `["3.0", "3.1-beta"]` for a seller running only the 3.1 beta).
+- `adcp.build_version: "3.1.2+scope3.deploy.4821"` — full semver build of the server's actual build. Optional, for operational visibility only.
 
-The existing `adcp.major_versions: integer[]` is **deprecated** but kept through 3.x; servers SHOULD emit both. Removed in 4.0.
+The existing `adcp.major_versions: integer[]` is **deprecated** but kept through 3.x; servers MUST emit both during the deprecation window so legacy buyers stay functional. Removed in 4.0.
 
 The existing `extensions.adcp.adcp_version` (capability-only string) is **deprecated** in favor of the new top-level `adcp_version` envelope field; kept as an alias through 3.x. Removed in 4.0.
 
 Capability pre-flight is **optional optimization, not required discovery.** Clients MAY query capabilities before pinning; clients that don't can rely on `VERSION_UNSUPPORTED` as the discovery mechanism.
 
-### 6. Deprecation of `adcp_major_version`
+### 6. Deprecation of `adcp_major_version` and dual-emit during 3.x
 
-The integer `adcp_major_version` field on requests is **deprecated** in favor of the release-precision `adcp_version` string. Servers MUST continue to honor it through 3.x for backwards compat. Removed in 4.0.
+The integer `adcp_major_version` field on requests is **deprecated** in favor of the release-precision `adcp_version` string. Removed in 4.0.
 
-Mechanically: schemas keep both fields through 3.x. The string field's description marks the integer as deprecated and points to the new field.
+**Buyer obligations through 3.x:**
+- A buyer that emits `adcp_version` MUST also emit `adcp_major_version` on the same request (with the major component of its pin), so legacy 3.x sellers that only read the integer continue to negotiate correctly.
+- A buyer SHOULD prefer `adcp_version` once it has any signal that the seller speaks 3.1+ (response echo or capabilities).
+
+**Seller obligations through 3.x:**
+- A seller MUST honor `adcp_version` when present.
+- A seller SHOULD echo `adcp_version` on every response from 3.1 onward (see migration table for the SHOULD/MUST gates).
+- A seller MUST emit both `adcp.major_versions` (integer) and `adcp.supported_versions` (release string) on capabilities responses through 3.x.
+
+Mechanically: the shared `core/version-envelope.json` carries both fields as optional. Generated SDKs surface both as nullable; the SDK constructor sets both from a single user-provided release pin.
 
 ## Backwards compatibility
 
@@ -119,11 +195,13 @@ Fully additive on the wire:
 
 ## Migration
 
-| Phase | Spec status | Compliance grader |
-|---|---|---|
-| 3.1 (additive ship) | RECOMMENDED on both sides | Reports presence as advisory |
-| 3.2 | SHOULD implement on both sides | Non-blocking warning on absence |
-| 4.0 | MUST implement on both sides; legacy `adcp_major_version`, `adcp.major_versions`, and `extensions.adcp.adcp_version` removed | Blocking failure on absence |
+| Phase | Buyer obligation | Seller obligation | Compliance grader |
+|---|---|---|---|
+| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror). | SHOULD honor and echo `adcp_version`. MUST emit `supported_versions` on capabilities. | Reports presence as advisory; flags missing echo on responses. |
+| **3.2** | MUST emit `adcp_version` (with `adcp_major_version` mirror through 3.x). | MUST honor and echo `adcp_version`. MUST emit `supported_versions` on capabilities. | Blocking failure when sellers don't echo. |
+| **4.0** | MUST emit `adcp_version`. `adcp_major_version` removed. | MUST honor and echo `adcp_version`. `adcp.major_versions` and `extensions.adcp.adcp_version` removed. | Blocking failure on absence; legacy fields rejected. |
+
+Cadence rationale: the 3.1 → 3.2 SHOULD/MUST gap (one minor) is intentionally tighter than the surrounding cadence policy. Buyer-side pinning is only useful once sellers actually echo the served release; leaving response echo at RECOMMENDED for two minors gives buyer SDKs nothing to key off and stalls the migration. The wire change is zero-cost (additive, optional via `additionalProperties: true`); the compliance gate is what produces real adoption.
 
 ## Out of scope (future RFCs)
 
@@ -133,7 +211,8 @@ Fully additive on the wire:
 
 ## SDK consequences (informational)
 
-- Client SDKs add a constructor option (`adcpVersion` / `adcp_version`) accepting release-precision strings, that maps directly to the outbound `adcp_version` field.
+- Client SDKs add a constructor option (`adcpVersion` / `adcp_version`) accepting release-precision strings, that maps directly to the outbound `adcp_version` field. The SDK SHOULD also populate `adcp_major_version` from the major component of the pin for the duration of 3.x.
 - The SDK's `COMPATIBLE_ADCP_VERSIONS` list is release strings (`["3.0", "3.1"]`).
 - Validators key off the *response's* `adcp_version` (with the constructor pin as fallback when servers don't yet emit it).
+- On `VERSION_UNSUPPORTED`, SDKs SHOULD raise a typed error exposing `error.data.supported_versions` rather than silently retrying — silent downshift changes wire shape under the caller. Auto-retry is an opt-in knob, not a default.
 - Per-tool wire adapters become the escape hatch for the rare breaking-release case; envelope negotiation handles the steady state.

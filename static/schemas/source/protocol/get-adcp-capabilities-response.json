@@ -4,18 +4,12 @@
   "title": "Get AdCP Capabilities Response",
   "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
-      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-      "examples": [
-        "3.0",
-        "3.1",
-        "3.1-beta",
-        "3.1-rc.1"
-      ]
-    },
     "adcp": {
       "type": "object",
       "description": "Core AdCP protocol information",
@@ -37,13 +31,31 @@
             "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
           },
           "minItems": 1,
-          "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]]
+          "examples": [
+            [
+              "3.0"
+            ],
+            [
+              "3.0",
+              "3.1"
+            ],
+            [
+              "3.0",
+              "3.1-beta"
+            ]
+          ]
         },
         "build_version": {
           "type": "string",
-          "description": "Optional advisory metadata: full VERSION.RELEASE.PATCH of the seller's actual build (e.g. `\"3.1.2\"`). Patches are not part of the wire contract — semver patch by definition introduces no contract change — but surfacing the build patch helps buyers triage incidents and bug reports against a specific seller deployment. Buyers MUST NOT use this field for negotiation; use `supported_versions` (release-precision) instead.",
-          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-          "examples": ["3.0.1", "3.1.2", "3.1.0-beta.3"]
+          "description": "Optional advisory metadata: full semver build identifier of the seller's deployment — MAJOR.MINOR.PATCH plus optional pre-release and build-metadata segments per semver §9–§10. Patches are not part of the wire contract — semver patch by definition introduces no contract change — but surfacing the build helps buyers triage incidents and bug reports against a specific seller deployment lineage. Buyers MUST NOT use this field for negotiation; use `supported_versions` (release-precision) instead.",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
+          "examples": [
+            "3.0.1",
+            "3.1.2",
+            "3.1.0-beta.3",
+            "3.1.2+scope3.deploy.4821",
+            "3.1.0-beta.3+sha.a1b2c3d"
+          ]
         },
         "idempotency": {
           "type": "object",

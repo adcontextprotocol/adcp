@@ -4,6 +4,11 @@
   "title": "Get Account Financials Response",
   "description": "Financial status for an operator-billed account. Returns spend summary, credit/balance status, payment status, and invoice history. The level of detail varies by seller — only account, currency, and period are guaranteed on success.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "GetAccountFinancialsSuccess",
@@ -250,12 +255,12 @@
         },
         "timezone": "America/New_York",
         "spend": {
-          "total_spend": 45230.0,
+          "total_spend": 45230,
           "media_buy_count": 3
         },
         "credit": {
-          "credit_limit": 100000.0,
-          "available_credit": 54770.0,
+          "credit_limit": 100000,
+          "available_credit": 54770,
           "utilization_percent": 45.23
         },
         "payment_status": "current",
@@ -267,7 +272,7 @@
               "start": "2026-01-01",
               "end": "2026-01-31"
             },
-            "amount": 38500.0,
+            "amount": 38500,
             "status": "paid",
             "due_date": "2026-02-28",
             "paid_date": "2026-02-15"
@@ -291,13 +296,13 @@
         },
         "timezone": "America/Los_Angeles",
         "spend": {
-          "total_spend": 8200.0,
+          "total_spend": 8200,
           "media_buy_count": 2
         },
         "balance": {
-          "available": 1800.0,
+          "available": 1800,
           "last_top_up": {
-            "amount": 10000.0,
+            "amount": 10000,
             "date": "2026-02-01"
           }
         },
@@ -317,17 +322,5 @@
       }
     }
   ],
-  "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
-      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-      "examples": [
-        "3.0",
-        "3.1",
-        "3.1-beta",
-        "3.1-rc.1"
-      ]
-    }
-  }
+  "properties": {}
 }

@@ -4,6 +4,11 @@
   "title": "Update Media Buy Response",
   "description": "Response payload for update_media_buy task. Exactly one of three shapes: (1) synchronous success — media_buy_id and updated state are issued in-line; (2) terminal failure — an errors array with no changes applied; (3) submitted task envelope — status 'submitted' with task_id when the update is queued for async processing (e.g., awaiting operator re-approval for mid-flight changes). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "UpdateMediaBuySuccess",
@@ -171,17 +176,5 @@
       }
     }
   ],
-  "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
-      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-      "examples": [
-        "3.0",
-        "3.1",
-        "3.1-beta",
-        "3.1-rc.1"
-      ]
-    }
-  }
+  "properties": {}
 }

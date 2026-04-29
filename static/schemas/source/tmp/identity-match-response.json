@@ -3,20 +3,14 @@
   "$id": "/schemas/tmp/identity-match-response.json",
   "title": "Identity Match Response",
   "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
-      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-      "examples": [
-        "3.0",
-        "3.1",
-        "3.1-beta",
-        "3.1-rc.1"
-      ]
-    },
     "type": {
       "type": "string",
       "const": "identity_match_response",
