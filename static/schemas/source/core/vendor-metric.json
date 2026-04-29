@@ -2,53 +2,35 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/vendor-metric.json",
   "title": "Vendor Metric",
-  "description": "A vendor-defined metric available on a product, beyond the closed `available-metric.json` enum. Used in `reporting_capabilities.vendor_metrics` to declare proprietary metrics like Adelaide `attention_units`, Scope3 `gco2e_per_impression`, or Nielsen DAR demographic reach. The vendor's `brand.json` is the canonical anchor: agent capabilities (when measurement-agent surfaces ship), human-readable description, and metric documentation are resolved from `brand.json` `agents[type='measurement']` rather than duplicated inline. Promotion path: when the industry converges on a metric (e.g., via the IAB Attention Task Force), the spec adds it to the closed `available-metric.json` enum and the vendor extensions become historical aliases. The `standard_reference` field anchors that promotion to published standards rather than ad-hoc vendor convergence counts.",
+  "description": "Pointer to a vendor-defined metric available on a product, beyond the closed `available-metric.json` enum. The seller declares 'I support this vendor's metric'; everything else (category, standard alignment, methodology, description, documentation) lives at the vendor — `brand.json` `agents[type='measurement']` is the canonical anchor, queried once per vendor (cacheable) when the buyer needs metadata. Used in `reporting_capabilities.vendor_metrics` for proprietary metrics not yet in the standard enum. Promotion path: when the industry converges on a metric via a published standard, the spec adds it to the closed `available-metric.json` enum and the vendor extensions become historical aliases.",
   "type": "object",
   "properties": {
     "vendor": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Vendor that defines and computes this metric. The vendor's `brand.json` is the discovery anchor for the measurement agent (entry with `type: 'measurement'` in the `agents[]` array) — agent_url is NOT inlined here to avoid duplicating the canonical record."
+      "description": "Vendor that defines and computes this metric. The vendor's `brand.json` is the discovery anchor for the measurement agent (entry with `type: 'measurement'` in the `agents[]` array), the metric's category and standard alignment, and human-readable methodology — none of those are duplicated inline here."
     },
     "metric_name": {
       "type": "string",
-      "description": "Metric name within the vendor's vocabulary (e.g., `attention_units`, `gco2e_per_impression`, `dar_age_25_54`). Lowercase with underscores so a future enum promotion is a literal string lift. When multiple vendors converge on the same `metric_name`, buyers can do cross-vendor matching with no vendor pin via `required_vendor_metrics` — but cross-vendor querying via `metric_category` is more reliable in practice since vendors rarely converge on names before standardization.",
+      "description": "Metric name within the vendor's vocabulary (e.g., `attention_units`, `gco2e_per_impression`, `demographic_reach`). Lowercase with underscores so a future enum promotion is a literal string lift. Cross-vendor querying typically goes through `vendor` enumeration in the buyer agent (which knows or discovers which vendors offer e.g. attention measurement) rather than name matching, since vendors rarely converge on names before standardization.",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[a-z][a-z0-9_]*$"
-    },
-    "metric_category": {
-      "$ref": "/schemas/enums/measurement-category.json",
-      "description": "Coarse classification for cross-vendor discovery. Buyers query by category (e.g., `metric_category: 'attention'`) to match products that report ANY vendor's attention metric, regardless of metric_name."
-    },
-    "standard_reference": {
-      "type": "string",
-      "format": "uri",
-      "description": "Reference URI to a published measurement standard this metric implements (e.g., IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Anchors promotion of vendor extensions into the standard `available-metric.json` enum on standards-body publication, not on vendor-count thresholds.",
-      "examples": [
-        "https://iabtechlab.com/standards/attention-measurement",
-        "https://mediaratingcouncil.org/standards/viewable-impression-measurement",
-        "https://garmadvertising.com/sustainability-framework"
-      ]
     }
   },
   "required": ["vendor", "metric_name"],
   "additionalProperties": false,
   "examples": [
     {
-      "vendor": { "domain": "adelaide.com" },
-      "metric_name": "attention_units",
-      "metric_category": "attention",
-      "standard_reference": "https://iabtechlab.com/standards/attention-measurement"
+      "vendor": { "domain": "attentionvendor.example" },
+      "metric_name": "attention_units"
     },
     {
-      "vendor": { "domain": "scope3.com" },
-      "metric_name": "gco2e_per_impression",
-      "metric_category": "emissions"
+      "vendor": { "domain": "emissionsvendor.example" },
+      "metric_name": "gco2e_per_impression"
     },
     {
-      "vendor": { "domain": "nielsen.com" },
-      "metric_name": "dar_demographic_reach",
-      "metric_category": "audience"
+      "vendor": { "domain": "panelmeasurement.example" },
+      "metric_name": "demographic_reach"
     }
   ]
 }
