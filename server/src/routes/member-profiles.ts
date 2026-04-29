@@ -62,6 +62,12 @@ const logger = createLogger("member-profile-routes");
  *    client's value, but only if it validates against the AgentType
  *    enum. Drop legacy strings like 'buyer' / 'seller' to 'unknown' so
  *    they cannot land in JSONB.
+ *
+ * Contract: returns a NEW array, never mutates the input. The audit-log
+ * diff in `logResolvedTypeChanges` (call sites in this file) captures the
+ * `before` array by reference and compares it against the resolved array;
+ * a future refactor that switches this to in-place mutation would silently
+ * zero out audit log entries. Closes #3550.
  */
 export async function resolveAgentTypes(agents: unknown): Promise<unknown> {
   if (!Array.isArray(agents) || agents.length === 0) return agents;
