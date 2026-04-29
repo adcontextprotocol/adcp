@@ -43,14 +43,24 @@ const snapshotDb = new AgentSnapshotDatabase();
 const logger = createLogger("member-profile-routes");
 
 /**
- * Server-authoritative agent type. The crawler's capability snapshot is the
- * source of truth — when we have probed the URL, its inferred_type wins
- * regardless of what the client sent. When no snapshot exists, fall back to
- * the client value only if it validates against the AgentType enum (so
- * legacy strings like 'buyer' / 'seller' or arbitrary values can't land in
- * JSONB). This is the prevention layer for issue #3495 — without it, a
- * client can register a sales agent as type 'buying' simply by sending it
- * in the request body.
+ * Server-authoritative agent type for issue #3495.
+ *
+ * Three cases, in priority order:
+ *
+ * 1. We have a capability snapshot AND its inferred_type is a valid
+ *    AgentType — use it. This is ground truth from the crawler probe.
+ *
+ * 2. We have a snapshot but inferred_type is null (probe failed,
+ *    OAuth-required, or all tools were unrecognised) — force 'unknown'.
+ *    Deliberately do NOT fall back to the client's value here: a
+ *    snapshot row with null inferred_type means "we tried and could not
+ *    classify", which is exactly the case where a malicious client could
+ *    smuggle a wrong type. Trust silence over the client.
+ *
+ * 3. No snapshot at all (URL has never been probed) — fall back to the
+ *    client's value, but only if it validates against the AgentType
+ *    enum. Drop legacy strings like 'buyer' / 'seller' to 'unknown' so
+ *    they cannot land in JSONB.
  */
 async function resolveAgentTypes(agents: unknown): Promise<unknown> {
   if (!Array.isArray(agents) || agents.length === 0) return agents;
@@ -65,10 +75,18 @@ async function resolveAgentTypes(agents: unknown): Promise<unknown> {
     if (!agent || typeof agent !== 'object') return agent;
     const a = agent as Record<string, unknown>;
     if (typeof a.url !== 'string') return agent;
-    const inferred = snapshots.get(a.url)?.inferred_type;
-    if (inferred && isValidAgentType(inferred)) {
-      return { ...a, type: inferred as AgentType };
+    const snapshot = snapshots.get(a.url);
+    if (snapshot) {
+      const inferred = snapshot.inferred_type;
+      if (inferred && isValidAgentType(inferred)) {
+        return { ...a, type: inferred as AgentType };
+      }
+      // Snapshot exists but probe couldn't classify the agent. Reject the
+      // client's claimed type: a probed-but-unknown URL is the exact attack
+      // window for type smuggling.
+      return { ...a, type: 'unknown' as AgentType };
     }
+    // No snapshot — trust validated client value, drop the rest.
     if (typeof a.type === 'string' && !isValidAgentType(a.type)) {
       return { ...a, type: 'unknown' as AgentType };
     }

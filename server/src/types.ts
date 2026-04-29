@@ -1018,7 +1018,7 @@ export interface AgentCompliance {
 export interface FederatedAgent {
   url: string;
   name?: string;
-  type?: AgentType | 'buyer';
+  type?: AgentType;
   protocol?: 'mcp' | 'a2a';
   source: 'registered' | 'discovered';
   // For registered agents
