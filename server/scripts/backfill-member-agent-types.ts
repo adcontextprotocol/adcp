@@ -18,6 +18,7 @@
 
 import { MemberDatabase } from '../src/db/member-db.js';
 import { resolveAgentTypes } from '../src/routes/member-profiles.js';
+import { insertTypeReclassification } from '../src/db/type-reclassification-log-db.js';
 import type { AgentConfig } from '../src/types.js';
 
 const dryRun = process.argv.includes('--dry-run');
@@ -25,6 +26,12 @@ const dryRun = process.argv.includes('--dry-run');
 async function main(): Promise<void> {
   const memberDb = new MemberDatabase();
   const profiles = await memberDb.listProfiles({});
+
+  // run_id groups every audit-log row from this single backfill invocation,
+  // so an operator can answer "what did the 2026-04-29 backfill change?" with
+  // SELECT * FROM type_reclassification_log WHERE run_id = '...'. Closes #3550.
+  // Skipped in dry-run mode (no writes — no audit rows).
+  const runId = `backfill-${Date.now()}`;
 
   let scanned = 0;
   let profilesUpdated = 0;
@@ -60,6 +67,20 @@ async function main(): Promise<void> {
 
     if (!dryRun) {
       await memberDb.updateProfile(profile.id, { agents: resolved });
+      // Audit-log every flip we just persisted. Real-mode only — dry-run
+      // does not write to the audit log (closes #3550). Helper swallows
+      // insert failures so an audit-log outage cannot block the backfill.
+      for (const d of diffs) {
+        await insertTypeReclassification({
+          agentUrl: d.url,
+          memberId: profile.id,
+          oldType: d.from,
+          newType: d.to,
+          source: 'backfill_script',
+          runId,
+          notes: { profile_label: profileLabel },
+        });
+      }
     }
   }
 
@@ -68,6 +89,9 @@ async function main(): Promise<void> {
   console.log(`Profiles with type changes: ${profilesUpdated}`);
   console.log(`Agent rows flipped:         ${agentsFlipped}`);
   console.log(`Mode:                       ${dryRun ? 'DRY RUN (no writes)' : 'WRITE'}`);
+  if (!dryRun) {
+    console.log(`Audit run_id:               ${runId}`);
+  }
 
   if (dryRun && agentsFlipped > 0) {
     console.log('');
