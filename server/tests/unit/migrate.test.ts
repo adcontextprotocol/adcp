@@ -16,7 +16,7 @@ describe("Database Migrations", () => {
     vi.clearAllMocks();
 
     mockClient = {
-      query: vi.fn(),
+      query: vi.fn().mockResolvedValue({}),
       release: vi.fn(),
     };
 
@@ -27,6 +27,12 @@ describe("Database Migrations", () => {
 
     vi.mocked(clientModule.getPool).mockReturnValue(mockPool);
   });
+
+  /** runMigrations always grabs one client for pg_advisory_lock. Tests that
+   * want to verify "no migration was applied" should check for BEGIN, not
+   * raw connect() count. */
+  const wasMigrationApplied = () =>
+    mockClient.query.mock.calls.some((call: any[]) => call[0] === "BEGIN");
 
   describe("migration filename validation", () => {
     it("should reject invalid migration filenames", async () => {
@@ -88,8 +94,7 @@ describe("Database Migrations", () => {
 
       await runMigrations();
 
-      // Should not apply migration (no client connection needed)
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
     });
 
     it("should apply pending migrations in transaction", async () => {
@@ -116,9 +121,15 @@ describe("Database Migrations", () => {
         .mockResolvedValueOnce({}) // CREATE migrations table
         .mockResolvedValueOnce({ rows: [] }); // No applied migrations
 
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockRejectedValueOnce(new Error("SQL error")); // Migration fails
+      // First call to mockClient.query is the advisory lock; default mock
+      // (resolves to {}) handles it. Override the migration SQL itself to
+      // reject so applyMigration triggers ROLLBACK.
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "CREATE TABLE test;") {
+          return Promise.reject(new Error("SQL error"));
+        }
+        return Promise.resolve({});
+      });
 
       await expect(runMigrations()).rejects.toThrow();
 
@@ -208,7 +219,7 @@ describe("Database Migrations", () => {
         expect.stringContaining("Historical migration filename mismatches")
       );
       // Should NOT re-apply the mismatched migration
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
 
       consoleSpy.mockRestore();
     });
@@ -230,7 +241,7 @@ describe("Database Migrations", () => {
       );
 
       // Should NOT re-apply the mismatched migration
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
     });
   });
 
@@ -294,6 +305,39 @@ describe("Database Migrations", () => {
       mockPool.query.mockResolvedValue({ rows: [] });
 
       await expect(runMigrations()).rejects.toThrow();
+    });
+  });
+
+  describe("advisory lock", () => {
+    it("acquires and releases pg_advisory_lock around the run", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [] });
+
+      await runMigrations();
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_lock($1)",
+        expect.any(Array),
+      );
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_unlock($1)",
+        expect.any(Array),
+      );
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it("releases the lock even when migrations throw", async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error("boom"));
+
+      await expect(runMigrations()).rejects.toThrow("boom");
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_unlock($1)",
+        expect.any(Array),
+      );
+      expect(mockClient.release).toHaveBeenCalled();
     });
   });
 });
