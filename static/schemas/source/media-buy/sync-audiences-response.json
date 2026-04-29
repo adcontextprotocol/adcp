@@ -31,7 +31,13 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["created", "updated", "unchanged", "deleted", "failed"],
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "deleted",
+                  "failed"
+                ],
                 "description": "Action taken for this audience. 'status' is present when action is created, updated, or unchanged. 'status' is absent when action is deleted or failed."
               },
               "status": {
@@ -86,7 +92,12 @@
                       "maximum": 1
                     }
                   },
-                  "required": ["id_type", "submitted", "matched", "match_rate"],
+                  "required": [
+                    "id_type",
+                    "submitted",
+                    "matched",
+                    "match_rate"
+                  ],
                   "additionalProperties": true
                 },
                 "minItems": 1
@@ -109,7 +120,10 @@
                 }
               }
             },
-            "required": ["audience_id", "action"],
+            "required": [
+              "audience_id",
+              "action"
+            ],
             "additionalProperties": true
           }
         },
@@ -124,10 +138,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["audiences"],
+      "required": [
+        "audiences"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -150,14 +168,37 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["audiences"] },
-          { "required": ["sandbox"] }
+          {
+            "required": [
+              "audiences"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    }
+  }
 }

@@ -215,7 +215,10 @@
         "accounts": [
           {
             "account_id": "acc_spark_001",
-            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
             "action": "created",
@@ -225,7 +228,10 @@
           },
           {
             "account_id": "acc_glow_pending",
-            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
             "operator": "pinnacle-media.com",
             "name": "Glow",
             "action": "created",
@@ -246,7 +252,10 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com", "brand_id": "clearance" },
+            "brand": {
+              "domain": "acme-corp.com",
+              "brand_id": "clearance"
+            },
             "operator": "acme-corp.com",
             "action": "created",
             "status": "rejected",
@@ -262,7 +271,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "action": "failed",
             "status": "rejected",
@@ -282,7 +293,9 @@
         "accounts": [
           {
             "account_id": "acc_acme_direct_bill",
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "pinnacle-media.com",
             "name": "Acme Corp (billed direct)",
             "action": "created",
@@ -317,7 +330,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "action": "failed",
             "status": "rejected",
@@ -331,5 +346,18 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    }
+  }
 }

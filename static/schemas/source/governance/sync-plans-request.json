@@ -9,9 +9,20 @@
   "properties": {
     "adcp_major_version": {
       "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original: The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
       "minimum": 1,
       "maximum": 99
+    },
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
     },
     "idempotency_key": {
       "type": "string",
@@ -96,13 +107,29 @@
             ],
             "oneOf": [
               {
-                "required": ["reallocation_threshold"],
-                "not": { "required": ["reallocation_unlimited"] }
+                "required": [
+                  "reallocation_threshold"
+                ],
+                "not": {
+                  "required": [
+                    "reallocation_unlimited"
+                  ]
+                }
               },
               {
-                "required": ["reallocation_unlimited"],
-                "properties": { "reallocation_unlimited": { "const": true } },
-                "not": { "required": ["reallocation_threshold"] }
+                "required": [
+                  "reallocation_unlimited"
+                ],
+                "properties": {
+                  "reallocation_unlimited": {
+                    "const": true
+                  }
+                },
+                "not": {
+                  "required": [
+                    "reallocation_threshold"
+                  ]
+                }
               }
             ],
             "additionalProperties": false
@@ -191,7 +218,7 @@
           },
           "policy_categories": {
             "type": "array",
-            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum \u2014 new categories are added as regulations evolve).",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
             "items": {
               "type": "string"
             },
@@ -365,17 +392,28 @@
                 "policy_categories": {
                   "type": "array",
                   "contains": {
-                    "enum": ["fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising"]
+                    "enum": [
+                      "fair_housing",
+                      "fair_lending",
+                      "fair_employment",
+                      "pharmaceutical_advertising"
+                    ]
                   }
                 }
               },
-              "required": ["policy_categories"]
+              "required": [
+                "policy_categories"
+              ]
             },
             "then": {
               "properties": {
-                "human_review_required": { "const": true }
+                "human_review_required": {
+                  "const": true
+                }
               },
-              "required": ["human_review_required"]
+              "required": [
+                "human_review_required"
+              ]
             }
           },
           {
@@ -383,16 +421,24 @@
               "properties": {
                 "policy_ids": {
                   "type": "array",
-                  "contains": { "const": "eu_ai_act_annex_iii" }
+                  "contains": {
+                    "const": "eu_ai_act_annex_iii"
+                  }
                 }
               },
-              "required": ["policy_ids"]
+              "required": [
+                "policy_ids"
+              ]
             },
             "then": {
               "properties": {
-                "human_review_required": { "const": true }
+                "human_review_required": {
+                  "const": true
+                }
               },
-              "required": ["human_review_required"]
+              "required": [
+                "human_review_required"
+              ]
             }
           }
         ],

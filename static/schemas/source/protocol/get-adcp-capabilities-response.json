@@ -5,18 +5,45 @@
   "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
     "adcp": {
       "type": "object",
       "description": "Core AdCP protocol information",
       "properties": {
         "major_versions": {
           "type": "array",
-          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. When multiple versions are listed, the buyer declares its version via the adcp_major_version field on requests.",
+          "description": "DEPRECATED in favor of `supported_versions` (release-precision strings). Servers MUST continue to emit this field through 3.x for backwards compatibility. Removed in 4.0. Original semantics: AdCP major versions supported by this seller. Major versions indicate breaking changes.",
           "items": {
             "type": "integer",
             "minimum": 1
           },
           "minItems": 1
+        },
+        "supported_versions": {
+          "type": "array",
+          "description": "Release-precision (VERSION.RELEASE) AdCP versions this seller speaks. Authoritative for buyer-side release pinning — buyers SHOULD declare `adcp_version` (release-precision string) on each request. Sellers downshift to the highest supported release ≤ the buyer's pin within the same major; cross-major mismatch returns VERSION_UNSUPPORTED. Pre-release tags (e.g. `\"3.1-beta\"`) hang off release.",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+          },
+          "minItems": 1,
+          "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]]
+        },
+        "build_version": {
+          "type": "string",
+          "description": "Optional advisory metadata: full VERSION.RELEASE.PATCH of the seller's actual build (e.g. `\"3.1.2\"`). Patches are not part of the wire contract — semver patch by definition introduces no contract change — but surfacing the build patch helps buyers triage incidents and bug reports against a specific seller deployment. Buyers MUST NOT use this field for negotiation; use `supported_versions` (release-precision) instead.",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+          "examples": ["3.0.1", "3.1.2", "3.1.0-beta.3"]
         },
         "idempotency": {
           "type": "object",
@@ -127,7 +154,9 @@
           "default": false
         }
       },
-      "required": ["supported_billing"]
+      "required": [
+        "supported_billing"
+      ]
     },
     "media_buy": {
       "type": "object",
@@ -147,7 +176,10 @@
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
           "items": {
             "type": "string",
-            "enum": ["webhook", "offline"]
+            "enum": [
+              "webhook",
+              "offline"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -178,7 +210,17 @@
                   "description": "Surface types this seller supports via TMP.",
                   "items": {
                     "type": "string",
-                    "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio", "ai_assistant"]
+                    "enum": [
+                      "website",
+                      "mobile_app",
+                      "ctv_app",
+                      "desktop_app",
+                      "dooh",
+                      "podcast",
+                      "radio",
+                      "streaming_audio",
+                      "ai_assistant"
+                    ]
                   }
                 }
               }
@@ -237,10 +279,18 @@
                   "type": "object",
                   "description": "Metro area targeting. Properties indicate which classification systems are supported.",
                   "properties": {
-                    "nielsen_dma": { "type": "boolean" },
-                    "uk_itl1": { "type": "boolean" },
-                    "uk_itl2": { "type": "boolean" },
-                    "eurostat_nuts2": { "type": "boolean" }
+                    "nielsen_dma": {
+                      "type": "boolean"
+                    },
+                    "uk_itl1": {
+                      "type": "boolean"
+                    },
+                    "uk_itl2": {
+                      "type": "boolean"
+                    },
+                    "eurostat_nuts2": {
+                      "type": "boolean"
+                    }
                   },
                   "additionalProperties": false
                 },
@@ -248,17 +298,39 @@
                   "type": "object",
                   "description": "Postal area targeting. Properties indicate which postal code systems are supported.",
                   "properties": {
-                    "us_zip": { "type": "boolean" },
-                    "us_zip_plus_four": { "type": "boolean" },
-                    "gb_outward": { "type": "boolean" },
-                    "gb_full": { "type": "boolean" },
-                    "ca_fsa": { "type": "boolean" },
-                    "ca_full": { "type": "boolean" },
-                    "de_plz": { "type": "boolean" },
-                    "fr_code_postal": { "type": "boolean" },
-                    "au_postcode": { "type": "boolean" },
-                    "ch_plz": { "type": "boolean" },
-                    "at_plz": { "type": "boolean" }
+                    "us_zip": {
+                      "type": "boolean"
+                    },
+                    "us_zip_plus_four": {
+                      "type": "boolean"
+                    },
+                    "gb_outward": {
+                      "type": "boolean"
+                    },
+                    "gb_full": {
+                      "type": "boolean"
+                    },
+                    "ca_fsa": {
+                      "type": "boolean"
+                    },
+                    "ca_full": {
+                      "type": "boolean"
+                    },
+                    "de_plz": {
+                      "type": "boolean"
+                    },
+                    "fr_code_postal": {
+                      "type": "boolean"
+                    },
+                    "au_postcode": {
+                      "type": "boolean"
+                    },
+                    "ch_plz": {
+                      "type": "boolean"
+                    },
+                    "at_plz": {
+                      "type": "boolean"
+                    }
                   },
                   "additionalProperties": false
                 },
@@ -296,7 +368,9 @@
                       "minItems": 1
                     }
                   },
-                  "required": ["supported_match_types"]
+                  "required": [
+                    "supported_match_types"
+                  ]
                 },
                 "negative_keywords": {
                   "type": "object",
@@ -311,7 +385,9 @@
                       "minItems": 1
                     }
                   },
-                  "required": ["supported_match_types"]
+                  "required": [
+                    "supported_match_types"
+                  ]
                 },
                 "geo_proximity": {
                   "type": "object",
@@ -352,7 +428,10 @@
               "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
                 "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "enum": [
+                  "hashed_email",
+                  "hashed_phone"
+                ]
               },
               "minItems": 1
             },
@@ -377,13 +456,22 @@
               "type": "object",
               "description": "Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring push_notification_config.",
               "properties": {
-                "min": { "type": "integer", "minimum": 0 },
-                "max": { "type": "integer", "minimum": 0 }
+                "min": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               },
               "additionalProperties": false
             }
           },
-          "required": ["supported_identifier_types", "minimum_audience_size"],
+          "required": [
+            "supported_identifier_types",
+            "minimum_audience_size"
+          ],
           "additionalProperties": true
         },
         "conversion_tracking": {
@@ -415,7 +503,10 @@
               "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
               "items": {
                 "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "enum": [
+                  "hashed_email",
+                  "hashed_phone"
+                ]
               },
               "minItems": 1
             },
@@ -833,7 +924,11 @@
         },
         "covers_content_digest": {
           "type": "string",
-          "enum": ["required", "forbidden", "either"],
+          "enum": [
+            "required",
+            "forbidden",
+            "either"
+          ],
           "description": "Policy for content-digest coverage in request signatures. 'required': signers MUST cover content-digest (body is bound to the signature); body-unbound signatures rejected with request_signature_components_incomplete. 'forbidden': signers MUST NOT cover content-digest; body-bound signatures rejected with request_signature_components_unexpected. This is an opt-out for the narrow case of legacy infrastructure that cannot preserve body bytes. 'either' (default): signer chooses per-request; verifier accepts both covered and uncovered forms. 'required' is recommended for spend-committing operations in production; 4.0 recommends 'required' for those operations.",
           "default": "either"
         },
@@ -861,7 +956,9 @@
           }
         }
       },
-      "required": ["supported"]
+      "required": [
+        "supported"
+      ]
     },
     "webhook_signing": {
       "type": "object",
@@ -873,7 +970,9 @@
         },
         "profile": {
           "type": "string",
-          "enum": ["adcp/webhook-signing/v1"],
+          "enum": [
+            "adcp/webhook-signing/v1"
+          ],
           "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
@@ -881,7 +980,10 @@
           "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
           "items": {
             "type": "string",
-            "enum": ["ed25519", "ecdsa-p256-sha256"]
+            "enum": [
+              "ed25519",
+              "ecdsa-p256-sha256"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -892,7 +994,9 @@
           "default": false
         }
       },
-      "required": ["supported"]
+      "required": [
+        "supported"
+      ]
     },
     "identity": {
       "type": "object",
@@ -971,7 +1075,9 @@
           "minItems": 1
         }
       },
-      "required": ["scenarios"],
+      "required": [
+        "scenarios"
+      ],
       "additionalProperties": true
     },
     "specialisms": {

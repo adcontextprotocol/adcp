@@ -10,7 +10,10 @@
       "description": "Lists which scenarios this seller's test controller supports",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": true },
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
         "scenarios": {
           "type": "array",
           "items": {
@@ -34,35 +37,111 @@
           },
           "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."
         },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success", "scenarios"],
+      "required": [
+        "success",
+        "scenarios"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }, { "required": ["forced"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          }
+        ]
+      }
     },
     {
       "title": "StateTransitionSuccess",
       "description": "A force_* scenario successfully transitioned the entity to the target state",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": true },
-        "previous_state": { "type": "string", "description": "State before this transition" },
-        "current_state": { "type": "string", "description": "State after this transition" },
-        "message": { "type": "string", "description": "Human-readable description of the transition" },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "previous_state": {
+          "type": "string",
+          "description": "State before this transition"
+        },
+        "current_state": {
+          "type": "string",
+          "description": "State after this transition"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of the transition"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success", "previous_state", "current_state"],
+      "required": [
+        "success",
+        "previous_state",
+        "current_state"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["simulated"] }, { "required": ["forced"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          }
+        ]
+      }
     },
     {
       "title": "SimulationSuccess",
       "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains impressions/clicks/reported_spend/conversions and cumulative contains running totals. For budget: simulated contains spend_percentage/computed_spend/budget.",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": true },
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
         "simulated": {
           "type": "object",
           "description": "Values injected or applied by this call. Shape depends on scenario.",
@@ -73,27 +152,65 @@
           "description": "Running totals across all simulation calls (simulate_delivery only)",
           "additionalProperties": true
         },
-        "message": { "type": "string" },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "message": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success", "simulated"],
+      "required": [
+        "success",
+        "simulated"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["forced"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          }
+        ]
+      }
     },
     {
       "title": "ForcedDirectiveSuccess",
       "description": "A force_create_media_buy_arm directive was registered. The directive shapes the next create_media_buy call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned — there is no media buy yet — so this branch carries 'forced' rather than previous_state/current_state.",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": true },
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
         "forced": {
           "type": "object",
           "description": "Echo of the registered directive. The next create_media_buy call from this sandbox account will return the named arm.",
           "properties": {
             "arm": {
               "type": "string",
-              "enum": ["submitted", "input-required"],
+              "enum": [
+                "submitted",
+                "input-required"
+              ],
               "description": "Arm the seller will emit on the next create_media_buy response."
             },
             "task_id": {
@@ -103,50 +220,175 @@
               "x-entity": "task"
             }
           },
-          "required": ["arm"],
+          "required": [
+            "arm"
+          ],
           "additionalProperties": false
         },
-        "message": { "type": "string", "description": "Human-readable acknowledgement." },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "message": {
+          "type": "string",
+          "description": "Human-readable acknowledgement."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success", "forced"],
+      "required": [
+        "success",
+        "forced"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          }
+        ]
+      }
     },
     {
       "title": "SeedSuccess",
       "description": "A seed_* scenario successfully pre-populated a fixture in the seller's test state",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": true },
-        "message": { "type": "string", "description": "Human-readable acknowledgement." },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable acknowledgement."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success"],
+      "required": [
+        "success"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }, { "required": ["forced"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          }
+        ]
+      }
     },
     {
       "title": "ControllerError",
       "description": "The scenario failed — invalid transition, unknown entity, unsupported scenario, or invalid params",
       "type": "object",
       "properties": {
-        "success": { "type": "boolean", "const": false },
+        "success": {
+          "type": "boolean",
+          "const": false
+        },
         "error": {
           "type": "string",
-          "enum": ["INVALID_TRANSITION", "INVALID_STATE", "NOT_FOUND", "UNKNOWN_SCENARIO", "INVALID_PARAMS", "FORBIDDEN", "INTERNAL_ERROR"],
+          "enum": [
+            "INVALID_TRANSITION",
+            "INVALID_STATE",
+            "NOT_FOUND",
+            "UNKNOWN_SCENARIO",
+            "INVALID_PARAMS",
+            "FORBIDDEN",
+            "INTERNAL_ERROR"
+          ],
           "description": "Structured error code"
         },
-        "error_detail": { "type": "string", "description": "Human-readable explanation of the failure" },
-        "current_state": { "type": ["string", "null"], "description": "Current state of the entity, or null if not found" },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
+        "error_detail": {
+          "type": "string",
+          "description": "Human-readable explanation of the failure"
+        },
+        "current_state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Current state of the entity, or null if not found"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
       },
-      "required": ["success", "error"],
+      "required": [
+        "success",
+        "error"
+      ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["scenarios"] }, { "required": ["simulated"] }, { "required": ["previous_state"] }, { "required": ["forced"] }] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          }
+        ]
+      }
     }
   ],
   "examples": [
@@ -154,7 +396,11 @@
       "description": "List scenarios response",
       "data": {
         "success": true,
-        "scenarios": ["force_creative_status", "force_account_status", "force_media_buy_status"]
+        "scenarios": [
+          "force_creative_status",
+          "force_account_status",
+          "force_media_buy_status"
+        ]
       }
     },
     {
@@ -173,12 +419,18 @@
         "simulated": {
           "impressions": 10000,
           "clicks": 150,
-          "reported_spend": { "amount": 150.00, "currency": "USD" }
+          "reported_spend": {
+            "amount": 150.0,
+            "currency": "USD"
+          }
         },
         "cumulative": {
           "impressions": 25000,
           "clicks": 380,
-          "reported_spend": { "amount": 375.00, "currency": "USD" }
+          "reported_spend": {
+            "amount": 375.0,
+            "currency": "USD"
+          }
         },
         "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
       }
@@ -189,8 +441,14 @@
         "success": true,
         "simulated": {
           "spend_percentage": 95,
-          "computed_spend": { "amount": 950.00, "currency": "USD" },
-          "budget": { "amount": 1000.00, "currency": "USD" }
+          "computed_spend": {
+            "amount": 950.0,
+            "currency": "USD"
+          },
+          "budget": {
+            "amount": 1000.0,
+            "currency": "USD"
+          }
         },
         "message": "Budget for mb-789 set to 95% consumed ($950.00 of $1000.00)"
       }
@@ -224,5 +482,18 @@
         "current_state": null
       }
     }
-  ]
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    }
+  }
 }

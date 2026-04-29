@@ -5,6 +5,17 @@
   "description": "Response payload for get_media_buys task. Returns media buy configuration, creative approval state, and optional delivery snapshots.",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version this party is operating at (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
     "media_buys": {
       "type": "array",
       "description": "Array of media buys with status, creative approval state, and optional delivery snapshots",
@@ -60,7 +71,10 @@
           "cancellation": {
             "type": "object",
             "description": "Cancellation metadata. Present only when status is 'canceled'.",
-            "required": ["canceled_at", "canceled_by"],
+            "required": [
+              "canceled_at",
+              "canceled_by"
+            ],
             "properties": {
               "canceled_at": {
                 "type": "string",
@@ -152,7 +166,7 @@
             "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
             "items": {
               "title": "PackageStatus",
-              "description": "Current status of a package within a media buy \u2014 includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
+              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
               "type": "object",
               "properties": {
                 "package_id": {
@@ -210,7 +224,10 @@
                 "cancellation": {
                   "type": "object",
                   "description": "Cancellation metadata. Present only when canceled is true.",
-                  "required": ["canceled_at", "canceled_by"],
+                  "required": [
+                    "canceled_at",
+                    "canceled_by"
+                  ],
                   "properties": {
                     "canceled_at": {
                       "type": "string",
@@ -273,7 +290,7 @@
                 },
                 "snapshot": {
                   "type": "object",
-                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform \u2014 not billing-grade data.",
+                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
                   "properties": {
                     "as_of": {
                       "type": "string",
@@ -312,7 +329,7 @@
                     },
                     "delivery_status": {
                       "type": "string",
-                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle \u2014 the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
+                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
                       "enum": [
                         "delivering",
                         "not_delivering",

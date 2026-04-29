@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/version-unsupported.json",
+  "title": "Version Unsupported Details",
+  "description": "Recommended details shape for VERSION_UNSUPPORTED errors. Returned when the buyer's declared `adcp_version` (release) or `adcp_major_version` (integer) is not supported by the seller. Provides the seller's supported versions so the buyer can re-pin and retry without a separate capabilities round-trip.",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "The release-precision version the buyer declared on the failing request (echoed back so callers can correlate). Absent when the buyer declared only `adcp_major_version`.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": ["3.0", "4.0"]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The major version the buyer declared (legacy field, echoed back). Absent when the buyer declared only `adcp_version`.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "supported_versions": {
+      "type": "array",
+      "description": "Release-precision versions the seller speaks. Authoritative — buyers SHOULD select a value from this list and retry.",
+      "items": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+      },
+      "minItems": 1,
+      "examples": [["3.0", "3.1"]]
+    },
+    "supported_majors": {
+      "type": "array",
+      "description": "DEPRECATED in favor of `supported_versions`. Major versions the seller supports. Servers SHOULD emit both through 3.x; removed in 4.0.",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "build_version": {
+      "type": "string",
+      "description": "Optional advisory: full VERSION.RELEASE.PATCH of the seller's build, for incident triage. Buyers MUST NOT use this field for negotiation.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": ["3.1.2"]
+    }
+  },
+  "required": ["supported_versions"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "adcp_version": "4.0",
+      "supported_versions": ["3.0", "3.1"],
+      "supported_majors": [3],
+      "build_version": "3.1.2"
+    },
+    {
+      "adcp_major_version": 4,
+      "supported_versions": ["3.0", "3.1"],
+      "supported_majors": [3]
+    }
+  ]
+}
