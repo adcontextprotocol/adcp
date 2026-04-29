@@ -373,5 +373,40 @@ describe("Database Migrations", () => {
 
       warnSpy.mockRestore();
     });
+
+    it("bounds lock acquisition with statement_timeout, then clears it", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [] });
+
+      await runMigrations();
+
+      const calls = mockClient.query.mock.calls.map((c: any[]) => c[0]);
+      const setTimeoutIdx = calls.findIndex((q: string) => /SET statement_timeout = '5min'/.test(q));
+      const lockIdx = calls.findIndex((q: string) => q === "SELECT pg_advisory_lock($1)");
+      const clearTimeoutIdx = calls.findIndex((q: string) => /SET statement_timeout = 0/.test(q));
+
+      expect(setTimeoutIdx).toBeGreaterThanOrEqual(0);
+      expect(lockIdx).toBeGreaterThan(setTimeoutIdx);
+      expect(clearTimeoutIdx).toBeGreaterThan(lockIdx);
+    });
+
+    it("surfaces a clear error when lock acquisition times out (pg 57014)", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "SELECT pg_advisory_lock($1)") {
+          const err = new Error("canceling statement due to statement timeout") as Error & { code: string };
+          err.code = "57014";
+          return Promise.reject(err);
+        }
+        return Promise.resolve({});
+      });
+
+      await expect(runMigrations()).rejects.toThrow(/A prior runMigrations\(\) session is likely wedged/);
+
+      // Even on the timeout path, the connection must be released.
+      expect(mockClient.release).toHaveBeenCalled();
+    });
   });
 });
