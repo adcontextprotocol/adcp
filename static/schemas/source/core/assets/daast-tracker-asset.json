@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/daast-tracker-asset.json",
+  "title": "DAAST Tracker Asset",
+  "description": "A single tracker URL bound to a DAAST `TrackingEvents` event. Audio-side analogue of vast-tracker-asset. The `Impression` URL MUST be modeled as a `url` asset with `url_type: \"tracker_pixel\"`, not as a daast_tracker with `daast_event: \"impression\"`.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "daast_tracker",
+      "description": "Discriminator identifying this as a DAAST tracker asset. See /schemas/creative/asset-types for the registry."
+    },
+    "daast_event": {
+      "allOf": [
+        {
+          "$ref": "/schemas/enums/daast-tracking-event.json"
+        },
+        {
+          "not": {
+            "enum": [
+              "impression",
+              "clickTracking",
+              "customClick",
+              "error"
+            ]
+          }
+        }
+      ],
+      "description": "The DAAST tracking event this URL fires on. MUST NOT be `impression` (model as `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (click-tracking trackers go on their own URL asset), or `error`."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Tracker URL that fires when `daast_event` occurs. May carry AdCP universal macros; the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+    },
+    "offset": {
+      "type": "string",
+      "description": "DAAST `offset` attribute for `daast_event: \"progress\"`. Format: `HH:MM:SS[.mmm]` for absolute time, or an integer percentage suffixed with `%`. Ignored for other events.",
+      "pattern": "^-?\\d+:\\d{2}:\\d{2}(\\.\\d{3})?$|^(100|\\d{1,2})%$"
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type",
+    "daast_event",
+    "url"
+  ],
+  "additionalProperties": true
+}

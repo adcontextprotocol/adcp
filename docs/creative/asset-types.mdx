@@ -246,6 +246,34 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - Video ad networks
 - VPAID interactive video ads
 
+### VAST Tracker Asset
+
+A single URL bound to a VAST `TrackingEvents` event. Use this when the creative agent emits decomposed per-event URLs and the sales agent is responsible for assembling the VAST `TrackingEvents` block at serve time — as an alternative to shipping a complete VAST tag.
+
+**Example:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "start",
+  "url": "https://tracker.example.com/start?cid={CREATIVE_ID}&mb={MEDIA_BUY_ID}"
+}
+```
+
+**Progress with offset:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "progress",
+  "offset": "00:00:15.000",
+  "url": "https://tracker.example.com/15s"
+}
+```
+
+**Properties:**
+- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` — those live in other VAST elements (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `viewableImpression`.
+- `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
+- `offset`: Required for `vast_event: "progress"`. VAST 4.x offset format: `HH:MM:SS` or `HH:MM:SS.mmm` (exactly 3 fractional digits) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative time offsets (measured from end of ad) are allowed per VAST 4.x.
+
 ### DAAST Asset
 
 DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
@@ -292,6 +320,71 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 - Podcast advertising networks
 - Streaming audio platforms
 - Radio-style digital audio ads
+
+### DAAST Tracker Asset
+
+Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEvents` event.
+
+**Example:**
+```json
+{
+  "asset_type": "daast_tracker",
+  "daast_event": "complete",
+  "url": "https://tracker.example.com/complete?cid={CREATIVE_ID}"
+}
+```
+
+**Properties:**
+- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, and `error` (same routing rule as `vast_tracker`).
+- `url`: Tracker URL. Supports AdCP universal macros.
+- `offset`: Required for `daast_event: "progress"`. Same format as VAST offset.
+
+## Creative / Sales Agent Boundary (VAST Assembly)
+
+AdCP separates **creative agents** (produce the assets a creative is made of) from **sales agents** (assemble those assets into the serving format the ad server expects). For VAST and DAAST, the boundary is normative:
+
+### Complete tag vs decomposed trackers
+
+A creative manifest MAY emit VAST trackers in **one** of two shapes. The creative agent chooses; the sales agent handles either.
+
+**Complete tag** — the creative agent hands off a hosted or inline VAST tag and the sales agent wraps it:
+
+```json
+{
+  "asset_type": "vast",
+  "delivery_type": "url",
+  "url": "https://adserver.example.com/vast.xml",
+  "vast_version": "4.2"
+}
+```
+
+**Decomposed trackers** — the creative agent emits per-event URLs; the sales agent assembles the `TrackingEvents` block:
+
+```json
+[
+  { "asset_type": "vast_tracker", "vast_event": "start",         "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "firstQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "midpoint",      "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "thirdQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "complete",      "url": "..." }
+]
+```
+
+### Normative rules
+
+1. **Wrapper is a sales-agent concern.** The creative agent MUST NOT emit a VAST `Wrapper` element. `Wrapper` is a multi-hop chaining construct — if the served VAST needs to be wrapped (for macro signing, SSAI-compatible envelope, or ad-server redirection), the **sales agent** constructs the wrapper at serve time around the creative agent's output. Emitting an inline VAST document with `Ad > InLine > Creatives` content (the pattern shown in [Universal Macros](/docs/creative/universal-macros)) is permitted and unchanged.
+2. **Assembly responsibilities.** The sales agent is responsible for constructing VAST envelope elements that assemble resources from the creative agent: `TrackingEvents` (from `vast_tracker` assets), `AdVerifications` (from OMID verification resources), and `Wrapper` / `VASTAdTagURI` (if chaining). The creative agent supplies the resources; the sales agent places them in the correct element. A dedicated `omid_verification` asset type for decomposing OMID resources is a planned follow-up.
+3. **Tracker routing by element.** VAST's tracker URLs live in three different elements and AdCP models them with three different asset shapes — don't cross the streams:
+   - `Impression` URL → `url` asset with `url_type: "tracker_pixel"` (not a `vast_tracker`).
+   - `TrackingEvents` events (start, quartiles, complete, pause, etc.) → `vast_tracker` asset with `vast_event`.
+   - `VideoClicks` URLs (`ClickThrough`, `ClickTracking`, `CustomClick`) → `url` asset (`url_type: "clickthrough"` for `ClickThrough`; click-tracker URLs use `url_type: "tracker_pixel"`).
+
+   The `vast_tracker` schema enforces this split: `vast_event` MUST NOT be `impression`, `clickTracking`, `customClick`, or `error`. The same rule applies to DAAST.
+4. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression / click) assets — the sales agent merges them into one VAST document at serve time.
+
+### SSAI caveat
+
+In server-side ad insertion (SSAI) environments — Yospace, AWS Elemental, MediaTailor — the stream-stitcher rewrites and re-signs the VAST XML before it reaches the player. Trackers that must survive SSAI need to be in the VAST document **before** stitching. AdCP does not today specify an SSAI-specific manifest shape; this is a known gap and a follow-on RFC topic.
 
 ## Common Properties
 
