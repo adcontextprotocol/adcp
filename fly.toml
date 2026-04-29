@@ -64,7 +64,9 @@ primary_region = 'iad'
   processes = ["worker"]
   auto_start_machines = true
   auto_stop_machines = "off"
-  min_machines_running = 2
+  # Workers run scheduled jobs only — no external traffic, no HA story.
+  # One worker is plenty; brief gaps during deploys are invisible.
+  min_machines_running = 1
 
   [[services.http_checks]]
     interval = "15s"
