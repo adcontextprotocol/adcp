@@ -254,7 +254,7 @@ function collectVendorMetricExamples(obj, schemaPath, out = []) {
   // If this object has vendor_metric_values or vendor_metrics, scan them.
   for (const field of ['vendor_metric_values', 'vendor_metrics']) {
     const arr = obj[field];
-    if (!Array.isArray(arr) || arr.length === 0) continue;
+    if (!Array.isArray(arr) || arr.length < 2) continue;
     const tuples = [];
     for (const entry of arr) {
       if (!entry || typeof entry !== 'object' || !entry.vendor) continue;

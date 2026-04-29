@@ -96,6 +96,13 @@ function findDuplicatesInPayload(payload) {
   return duplicates;
 }
 
+// Scope note: lint() checks sample_request (buyer/agent call payloads) and params
+// (comply_test_controller scenario params) but does NOT scan expected_response or any
+// assert_response/response fields. Seller-side response fixtures authored in those
+// fields are intentionally out of scope here — they are not authored by storyboard
+// writers as fixtures, and no existing storyboard uses them with vendor metrics.
+// If storyboard conventions change to include inline response fixtures, extend this
+// function to also check step.expected_response and step.assert_response.
 function lint() {
   const files = walkYaml(SOURCE_DIR);
   const violations = [];

@@ -28,12 +28,13 @@ test('vendorMetricKey: absent brand_id normalizes to empty string', () => {
   assert.equal(vendorMetricKey(entry), 'acme.example||gco2e_per_impression');
 });
 
-test('vendorMetricKey: {domain:"x"} and {domain:"x",brand_id:""} produce different keys from {domain:"x",brand_id:"sub"}', () => {
-  const noId  = vendorMetricKey({ vendor: { domain: 'x.example' }, metric_id: 'm' });
+test('vendorMetricKey: absent brand_id and explicit empty string normalize identically; both differ from a populated brand_id', () => {
+  const noId    = vendorMetricKey({ vendor: { domain: 'x.example' }, metric_id: 'm' });
   const emptyId = vendorMetricKey({ vendor: { domain: 'x.example', brand_id: '' }, metric_id: 'm' });
-  const subId = vendorMetricKey({ vendor: { domain: 'x.example', brand_id: 'sub' }, metric_id: 'm' });
-  // Both absent and explicit-empty stringify to the same normalized form.
+  const subId   = vendorMetricKey({ vendor: { domain: 'x.example', brand_id: 'sub' }, metric_id: 'm' });
+  // Absent and explicit-empty both normalize to "x.example||m".
   assert.equal(noId, emptyId);
+  // A populated brand_id is a distinct subsidiary — not the same key.
   assert.notEqual(noId, subId);
 });
 
