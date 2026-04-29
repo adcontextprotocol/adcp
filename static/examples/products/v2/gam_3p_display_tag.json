@@ -1,0 +1,42 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "gam_publisher_3p_display_tag_300x250",
+  "name": "GAM Publisher — 3P Display Tag (300×250)",
+  "description": "Third-party-served display tag (JS or iframe) on a GAM-managed publisher placement. Buyer's adserver hosts the creative; the publisher calls the tag URL at impression time. 200KB max-snippet-size and a runtime allowlist (no eval, no document.write, no setTimeout, no javascript: / data: URLs in click trackers) apply at the GAM level — these are publisher-policy constraints, not protocol-level.",
+  "publisher_properties": [
+    { "publisher_domain": "examplepublisher.example", "selection_type": "all" }
+  ],
+  "channels": ["display"],
+  "format": {
+    "format_kind": "display_tag",
+    "params": {
+      "width": 300,
+      "height": 250,
+      "supported_tag_types": ["iframe", "javascript", "1x1_redirect"],
+      "ssl_required": true,
+      "max_redirect_depth": 4,
+      "max_response_time_ms": 1500,
+      "backup_image_required": true,
+      "backup_image_max_size_kb": 50,
+      "om_sdk_required": false,
+      "composition_model": "deterministic",
+      "slots": [
+        { "asset_group_id": "tag_url", "asset_type": "url", "required": true },
+        { "asset_group_id": "backup_image", "asset_type": "image", "required": true, "max_size_kb": 50 },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ]
+    }
+  },
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "floor_price": 1.50 }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 240,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability"],
+    "date_range_support": "date_range"
+  }
+}

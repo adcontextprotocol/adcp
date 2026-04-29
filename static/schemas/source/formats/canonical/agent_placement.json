@@ -7,8 +7,8 @@
   "properties": {
     "slots": {
       "default": [
-        { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" },
-        { "asset_group_id": "landing_page_url", "required": false, "asset_type": "url" }
+        { "asset_group_id": "offering_ref", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
       "description": "agent_placement has minimal buyer-shipped slots — the surface composes the rendered output from brand context (resolved via the manifest's top-level `brand` BrandRef) plus optional offering_ref and landing_page_url assets. None of these assets are rendered verbatim by the buyer; the agent chooses how to use them."
     },

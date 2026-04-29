@@ -12,6 +12,12 @@
       "typical_use": "Multiple short headline copy variants (Google PMax/RDA, Meta promoted_offerings, etc.)",
       "aliases": ["headline", "title", "tagline", "headline_text"]
     },
+    "long_headlines": {
+      "description": "Pool of longer headline text variants (typically 60-90 chars) used by responsive formats that render in placements with more available text space.",
+      "asset_type": "text",
+      "typical_use": "Google Responsive Display Ads / Performance Max / Demand Gen — render alongside short `headlines` when the placement supports a longer headline string. Distinct from `headlines` (short, ≤30 chars typical).",
+      "aliases": ["long_headline_pool", "extended_headlines"]
+    },
     "descriptions": {
       "description": "Pool of body description text variants.",
       "asset_type": "text",

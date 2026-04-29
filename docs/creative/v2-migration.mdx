@@ -95,7 +95,7 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 
 The v2 `format` is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format`) — not both. The product schema's `oneOf` enforces this.
 
-For seven fully-validated worked examples (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention), see `static/examples/products/v2/`. Each fixture passes `npm run test:v2-fixtures`.
+For 12 fully-validated worked examples spanning all 11 canonical formats (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention, Meta Carousel, YouTube VAST pre-roll, Triton DAAST audio, Veo generative video, GAM 3P display tag), see `static/examples/products/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
 
 ## Slot name mapping (v1 → canonical)
 
@@ -151,7 +151,7 @@ Sellers SHOULD provide a server-side flatten wrapper that derives the v1 `list_c
 
 The agentic-adapters audit found ~30 `*_generated_*` format files (e.g., `meta_generated_reels`, `tiktok_generated_video_9x16`) that mirror their non-generated counterparts but accept a `creative_brief` instead of an asset upload. In v2 these collapse:
 
-- The format declaration's `inputs` field describes what the buyer provides (script, creative_brief, voice_id, starter_assets, scenes, etc.)
+- The format declaration's `slots` array enumerates everything the buyer ships in the manifest's `assets` map — each entry is a canonical `asset_group_id` paired with an `asset_type`. Some slots are rendered verbatim (image / video / audio); some are consumed for production (text script → host-read audio; brief → synthesized image; scenes → generated video). The seller dispatches per slot.
 - Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is **invisible to the buyer**
 - A single canonical format (e.g., `audio_hosted`) handles both buyer-uploaded audio and agent-produced audio; the format's `audio_source` and `buyer_audio_acceptance` parameters describe which flows are accepted
 
@@ -222,8 +222,8 @@ Override fields take precedence over `brand.json` for that creative.
 | Tool | v1 | v2 |
 |---|---|---|
 | `get_products` | Returns products with `format_ids` | Returns products with either `format_ids` (v1 path) or `format` (v2 inline) |
-| `sync_creatives` | Submit creative manifest | Unchanged. Sales agents accept manifests with assets and/or inputs per the format declaration. |
-| `preview_creative` | Submit manifest, get preview | Same surface; preview shows output regardless of asset-driven vs input-driven submission. The single-render hoist in #3268 lands alongside v2. |
+| `sync_creatives` | Submit creative manifest | Unchanged. Sales agents accept manifests with `assets` keyed by slot name per the format's `slots` declaration. |
+| `preview_creative` | Submit manifest, get preview | Same surface; preview shows output regardless of whether the slots ship rendered creative (image/video/audio) or production content (script/brief/scenes). The single-render hoist in #3268 lands alongside v2. |
 | `validate_input` | (didn't exist) | New buyer dry-run primitive. Validates a manifest against canonical formats and/or specific products without committing to a render. Cheap; `predicted` field carries pre-flight estimates. |
 | `build_creative` | Generative tool on creative agents | Same role; creative-agent surface only. Sales agents do **not** expose `build_creative`. Creative agents may **also** expose `sync_creatives` for ad-server use cases. |
 | `list_creative_formats` | Both sales and creative agents | Deprecated. Sales agents migrate to `get_products`; creative agents to `creative.supported_formats`. v1 tool stays functional through 4.x. |
@@ -241,7 +241,7 @@ Override fields take precedence over `brand.json` for that creative.
 
 ### Creative agents (transformation services like AudioStack, generative platforms)
 
-1. Add `creative.supported_formats` to your `get_adcp_capabilities` response. Each entry is a `ProductFormatDeclaration` describing what canonical format you can produce, with what parameters and `inputs`.
+1. Add `creative.supported_formats` to your `get_adcp_capabilities` response. Each entry is a `ProductFormatDeclaration` describing what canonical format you can produce, with parameter narrowing and `slots` declaring the assets you accept as production input.
 2. Continue to support `build_creative` per the existing v1 contract — it's the same tool with the same shape.
 3. If you're also acting as an ad server (rare but valid), expose `sync_creatives` alongside `build_creative`.
 
@@ -250,7 +250,7 @@ Override fields take precedence over `brand.json` for that creative.
 1. Update your client to read either `format_ids` (v1) or `format` (v2 inline) on products.
 2. Use `validate_input` for cheap dry-run validation before committing to renders.
 3. Use the canonical [`asset_group_id` vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) when constructing manifests; the registry's `aliases` field maps v1-era slot names to canonical equivalents.
-4. Submit creative via `sync_creatives` as before. For input-driven products (host-read podcasts, generative video), either pre-produce via a creative agent's `build_creative` OR submit inputs directly and let the seller produce internally — both flows are valid.
+4. Submit creative via `sync_creatives` as before. For products whose slots accept production content (host-read podcasts ship a `script` text asset; generative video ships a `creative_brief` and `scenes`), either pre-produce via a creative agent's `build_creative` to get back a manifest with rendered assets OR submit the production-content assets directly and let the seller produce internally — both flows are valid.
 
 ### Publisher direct (GAM/prebid path)
 
@@ -268,21 +268,34 @@ Override fields take precedence over `brand.json` for that creative.
 | Creative agents (AudioStack-shaped) | Low, high motivation | 3.1-3.2 |
 | Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
 
-## What stays on v1: `product_card` and `product_card_detailed`
+## `product_card` and `product_card_detailed` are typed inline
 
-The `product_card` and `product_card_detailed` fields on the `Product` object reference v1 format_ids (e.g., `product_card_standard`) even on v2 products. **This is a deliberate carve-out, not an oversight.**
+The `product_card` and `product_card_detailed` fields on the `Product` object are typed inline structures in v2 — no `format_id` indirection, no manifest. They describe the **UI rendering of the product itself** (what catalog browsers, dashboards, and admin interfaces display so humans and agents can see what a product is). Distinct from `format` (which describes the ad creative the product accepts).
 
-The two fields serve a different purpose than the `format` declaration:
+```json test=false
+"product_card": {
+  "image": { "asset_type": "image", "url": "https://...", "width": 300, "height": 400 },
+  "title": "Meta Reels — United States",
+  "description": "9:16 vertical short-form video on Meta Reels.",
+  "price_label": "From $5.50 CPM",
+  "cta_label": "View details"
+}
 
-- `product.format` — describes the **ad creative** the product accepts (what the buyer ships, what the surface renders to end users)
-- `product.product_card[_detailed]` — describes the **UI rendering of the product itself** (what catalog browsers, dashboards, and admin interfaces display so humans and agents can see what a product is)
+"product_card_detailed": {
+  "hero_image": { "asset_type": "image", "url": "...", "width": 1200, "height": 600 },
+  "carousel_images": [ { "asset_type": "image", "url": "...", ... }, ... ],
+  "title": "Meta Reels — United States",
+  "description": "Full markdown-friendly product description...",
+  "specifications": [
+    { "label": "Aspect ratio", "value": "9:16" },
+    { "label": "Duration", "value": "3-90s" }
+  ],
+  "price_label": "From $5.50 CPM",
+  "cta_label": "Get proposal"
+}
+```
 
-Mixing these would conflate "ad creative" with "product UI metadata." `product_card` keeps a fixed v1 format reference because:
-- Its dimensions and structure are fixed (e.g., `product_card_standard` is a 300×400 visual card)
-- The format isn't authored by sellers; it's an AdCP-defined display convention
-- v2-only clients can ignore `product_card` entirely if they don't render product UIs
-
-Implication for v2-only consumers: if you parse a Product object and need to render its visual card, you still need to understand the v1 format_id reference for `product_card`/`product_card_detailed`. The `format` field uses the v2 declaration; the card fields stay v1. v2-only adopters who don't render product cards can ignore them.
+Migration from v1 (where `product_card` was `{ format_id, manifest }` referencing a `product_card_standard` format file): drop the format reference; populate the typed fields directly. The image, title, and description flatten out of what was previously a manifest. v2-only adopters who don't render product cards can ignore both fields entirely.
 
 ## Validating your migration
 

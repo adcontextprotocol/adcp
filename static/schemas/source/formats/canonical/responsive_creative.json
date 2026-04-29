@@ -7,15 +7,15 @@
   "properties": {
     "slots": {
       "default": [
-        { "asset_group_id": "headlines", "required": true, "min": 3, "max": 15 },
-        { "asset_group_id": "long_headlines", "required": false, "min": 1, "max": 5 },
-        { "asset_group_id": "descriptions", "required": true, "min": 2, "max": 5 },
-        { "asset_group_id": "images_landscape", "required": false, "min": 1, "max": 20 },
-        { "asset_group_id": "images_square", "required": false, "min": 1, "max": 20 },
-        { "asset_group_id": "images_vertical", "required": false, "min": 1, "max": 20 },
-        { "asset_group_id": "video", "required": false, "min": 0, "max": 5 },
-        { "asset_group_id": "logo", "required": true, "min": 1, "max": 5 },
-        { "asset_group_id": "landing_page_url", "required": true, "min": 1, "max": 1 }
+        { "asset_group_id": "headlines", "asset_type": "text", "required": true, "min": 3, "max": 15 },
+        { "asset_group_id": "long_headlines", "asset_type": "text", "required": false, "min": 1, "max": 5 },
+        { "asset_group_id": "descriptions", "asset_type": "text", "required": true, "min": 2, "max": 5 },
+        { "asset_group_id": "images_landscape", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_square", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "images_vertical", "asset_type": "image", "required": false, "min": 1, "max": 20 },
+        { "asset_group_id": "video", "asset_type": "video", "required": false, "min": 0, "max": 5 },
+        { "asset_group_id": "logo", "asset_type": "image", "required": true, "min": 1, "max": 5 },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true, "min": 1, "max": 1 }
       ]
     },
     "headlines_min": { "type": "integer", "minimum": 0 },

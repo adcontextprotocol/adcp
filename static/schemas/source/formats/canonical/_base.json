@@ -31,14 +31,19 @@
     },
     "slots": {
       "type": "array",
-      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry. Format-specific narrowing parameters (e.g., headline_max_chars on responsive_creative) live as flat properties on the format declaration; this `slots` field captures the structural slot inventory.",
+      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry, paired with an `asset_type` so the validator knows which asset schema to apply. Format-level narrowing parameters that apply across all slots (e.g., flat `headline_max_chars` on responsive_creative) may also live on the format declaration; per-slot constraints (a specific slot's `max_chars` or `max_size_kb`) live on the slot entry.",
       "items": {
         "type": "object",
-        "required": ["asset_group_id"],
+        "required": ["asset_group_id", "asset_type"],
         "properties": {
           "asset_group_id": {
             "type": "string",
             "description": "Canonical asset_group_id from /schemas/core/asset-group-vocabulary.json. Non-canonical IDs are valid but trigger soft warnings."
+          },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "object"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `object` is a fallback for structured non-asset inputs that don't fit a primitive asset_type (rare; prefer specific types when possible)."
           },
           "required": {
             "type": "boolean",
@@ -54,6 +59,20 @@
             "type": "integer",
             "minimum": 1,
             "description": "Maximum count for repeatable / pool slots."
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot character limit for text / markdown / brief assets."
+          },
+          "max_size_kb": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot file size limit in kilobytes for image / video / audio / zip assets."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what the slot expects from the buyer."
           }
         },
         "additionalProperties": true
@@ -65,5 +84,6 @@
       "description": "Typical production turnaround in business days when the format requires seller-side production (e.g., host-recording from a buyer-supplied script). 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark any of their parameter fields as `required` and use `additionalProperties: true`. The canonical is the loose contract — describing what parameters MAY narrow it. Products narrow the canonical with concrete values (and may also leave most parameters absent — buyers infer behavior from the canonical's prose description for any unspecified parameter). This is intentional, not an oversight: enforcing required params on the canonical would force every product to declare every parameter, which is the wrong direction (we want products to declare only the values that differ from sensible canonical defaults). Adopters writing strict validators should validate against the canonical's structural shape (what fields ARE valid) and apply business rules separately for product-level narrowing minima."
 }

@@ -43,7 +43,7 @@
     },
     "format": {
       "$ref": "/schemas/core/product-format-declaration.json",
-      "description": "v2 path: inline format declaration keyed by canonical format name. Products narrow exactly one canonical format with platform-specific parameters, optional `inputs` describing what the format requires from the buyer, and optional platform extensions. Mutually exclusive with `format_ids` — a product is either v1 (references named formats) or v2 (carries inline declaration), not both."
+      "description": "v2 path: inline format declaration. Discriminated by `format_kind` (the canonical format name) with `params` carrying that canonical's parameter schema (slots, dimensions, durations, codec ranges, character limits, platform_extensions, tracking_extensions). The format's `slots` array enumerates everything the buyer ships in the manifest's `assets` map. Mutually exclusive with `format_ids` — a product is either v1 (references named formats) or v2 (carries inline declaration), not both."
     },
     "placements": {
       "type": "array",

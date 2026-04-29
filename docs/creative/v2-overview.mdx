@@ -17,7 +17,7 @@ v2 collapses today's separate format registry into product-bound declarations. A
 |---|---|---|
 | Format identity | Compound `{ agent_url, id }` referencing a separately-defined format file | Canonical name (e.g., `image`) keyed under `format` on the product, narrowed inline |
 | Format authoring | Each platform authors its own named format files | Platforms narrow AdCP-defined canonicals; canonical IS the contract buyers validate against |
-| Format input contract | Each platform publishes a parallel set of `*_generated_*` format files for AI-produced creative alongside the asset-upload version (~30 duplicate files in agentic-adapters) | The format declares what it accepts via `inputs` (script, creative_brief, voice_id, starter_assets, etc.) and asset slots (image, video, audio uploads). Some products take only assets; some take only inputs; some take both. **Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is invisible to the buyer.** No "generative" category at the protocol level; the production mechanism is implementation detail. |
+| Format submission contract | Each platform publishes a parallel set of `*_generated_*` format files for AI-produced creative alongside the asset-upload version (~30 duplicate files in agentic-adapters) | The format declares a single `slots` array enumerating everything the buyer ships in the manifest's `assets` map, each entry a canonical `asset_group_id` paired with an `asset_type` (image / video / audio for direct rendering; text / brief / object / url for content the seller consumes for production). Buyer mental model is uniform — one `assets` map, no separate "inputs" concept. **Whether the seller's internal production is generative AI, host recording, transcoding, or asset rendering is invisible to the buyer.** No "generative" category at the protocol level; the production mechanism is implementation detail. |
 | Discovery | `list_creative_formats` (overloaded — used by both sales and creative agents) | `creative.supported_formats` on `get_adcp_capabilities` (uniform replacement, same `ProductFormatDeclaration` shape regardless of agent role); sales agents additionally expose `get_products` for product-level detail with `format` inline |
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
 | Brand identity | Sometimes redeclared as format slots | Implicit via `brand` (a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) — `domain` plus optional `brand_id` for house-of-brands) resolving brand.json; explicit override via `brand_kit_override` on the manifest |
@@ -162,7 +162,7 @@ Different canonical (`html5`, not `image`) because the tracking model is fundame
 
 ## Worked example — Podcast 30s host-read
 
-Host-reads are the host-recorded-from-buyer-script pattern. The product declares `audio_hosted` narrowed to publisher-host-recorded mode with `inputs` describing what the buyer must provide:
+Host-reads are the host-recorded-from-buyer-script pattern. The product declares `audio_hosted` narrowed to publisher-host-recorded mode with `slots` describing what the buyer ships (a `script` text asset; the publisher's host records audio from it):
 
 ```json test=false
 {
@@ -212,23 +212,23 @@ The format declaration tells the buyer everything they need to know — no extra
 
 The buyer calls a creative agent's `build_creative` independently, gets back a rendered manifest, and submits that to the seller. Useful when the buyer has a preferred production partner (their in-house studio, AudioStack-style services) or the seller exposes itself as a creative agent.
 
-1. Buyer reads The Daily's product format → sees `inputs: { script, brand }` declared
-2. Buyer calls `build_creative({ format: <The Daily's audio_hosted narrowing>, inputs: { script, brand } })` on a creative agent — this could be The Daily's own creative-agent surface (if they expose one), or any other agent that declares it can produce this format via its `creative.supported_formats` on `get_adcp_capabilities`
+1. Buyer reads The Daily's product format → sees `slots: [{ asset_group_id: "script", asset_type: "text", required: true }]` declared
+2. Buyer calls `build_creative({ format: <The Daily's audio_hosted narrowing>, assets: { script: { asset_type: "text", content: "..." } }, brand: { domain: "..." } })` on a creative agent — this could be The Daily's own creative-agent surface (if they expose one), or any other agent that declares it can produce this format via its `creative.supported_formats` on `get_adcp_capabilities`
 3. Receives a rendered manifest with audio asset
 4. Submits the rendered manifest via `sync_creatives` to The Daily's sales agent
 
 ### Flow 2 — seller produces internally
 
-The buyer submits inputs directly to the seller; the seller produces internally (calls its own creative team or an upstream creative agent under the hood) and returns a registered creative.
+The buyer submits assets directly to the seller; the seller produces internally (calls its own creative team or an upstream creative agent under the hood) and returns a registered creative.
 
 1. Buyer reads the same product format
-2. Buyer submits via `sync_creatives` with the inputs in the manifest
+2. Buyer submits via `sync_creatives` with the assets in the manifest (e.g., a `script` text asset under that slot in the `assets` map)
 3. Seller produces internally; how is invisible to the buyer
 4. Returns async status; buyer polls or waits for completion
 
 The format's `audio_source: "publisher_host_recorded"` + `buyer_audio_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
 
-For brief-driven (talking-points-style) host-reads, the same shape applies with `creative_brief` in place of `script` in the inputs declaration. Same target format (`audio_hosted`); different input contract.
+For brief-driven (talking-points-style) host-reads, the same shape applies with a `creative_brief` slot (asset_type `brief`) in place of the `script` slot. Same target format (`audio_hosted`); different slot declaration.
 
 ## Validation flow — `validate_input`
 
@@ -239,7 +239,7 @@ Buyers can dry-run a manifest against canonicals and/or specific products withou
   "manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
     "assets": {
-      "video_main": {
+      "video": {
         "asset_type": "video",
         "url": "https://cdn.acme.example/spring-30s.mp4",
         "duration_ms": 30000,
@@ -283,12 +283,12 @@ Response carries per-target results:
 
 ## Preview as the universal "what does this produce" surface
 
-Whether the buyer submits assets (uploaded image/video/audio) or inputs (script, creative_brief, voice_id), `preview_creative` shows what the output renders as. The seller's response to a creative submission can also include a preview URL — the buyer doesn't need a separate preview call to verify that their submission produced the intended output. Same surface, two submission shapes:
+Buyers ship assets per the format's `slots` declaration; `preview_creative` shows what the output renders as. The seller's response to a creative submission can also include a preview URL — the buyer doesn't need a separate preview call to verify that their submission produced the intended output. Same surface, two production paths:
 
-- **Asset-driven submission**: buyer uploads finished creative assets → preview shows the rendered placement (with seller-side composition, overlays, CTA buttons applied)
-- **Input-driven submission**: buyer submits script/brief/voice_id → seller produces internally (host recording, generative AI, asset rendering — invisible) → preview shows the produced output
+- **Direct rendering**: buyer ships finished creative assets (image, video, audio) → seller renders them on the placement → preview shows the rendered output (with seller-side composition, overlays, CTA buttons applied).
+- **Seller-side production**: buyer ships content the seller consumes (script text, creative_brief, voice_id selection) → seller produces the rendered asset internally (host recording, generative AI synthesis, transcoding — invisible) → preview shows the produced output.
 
-The buyer can iterate on inputs and inspect previews before committing to a buy. Different sellers may produce differently internally; the preview surface is uniform. This is what makes "production mechanism is invisible to the buyer" workable in practice — the buyer doesn't need to know HOW the output was produced because they can see WHAT was produced.
+The buyer can iterate on shipped assets and inspect previews before committing to a buy. Different sellers may produce differently internally; the preview surface is uniform. This is what makes "production mechanism is invisible to the buyer" workable in practice — the buyer doesn't need to know HOW the output was produced because they can see WHAT was produced.
 
 ## Brand identity via brand.json (with override)
 
@@ -354,7 +354,7 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 - **`destination_kinds` as a new schema** — `url-asset.json` already has `url_type` covering URL kind disambiguation. Platform-specific destinations (Meta `messenger_thread`, etc.) are platform extensions.
 - **`cta_vocabulary` as a canonical pattern** — CTAs vary meaningfully across surfaces; we let products declare `cta_values` arrays inline until cross-platform demand emerges.
 - **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
-- **`build_capability` and `build_capability_ref` as separate concepts** — collapsed into `inputs` directly on the format declaration. The format itself tells the buyer what it requires; how production happens (buyer pre-producing through a creative agent's `build_creative`, or seller producing internally) is the buyer's flow choice, not a separate protocol concept.
+- **`build_capability`, `build_capability_ref`, and a separate `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
 
 ## Migration
 
@@ -372,9 +372,10 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 
 | Phase | Status | What's in it |
 |---|---|---|
-| Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry, `scenes` schema, `zip` asset type, video/audio doc fixes |
-| Phase 2 | ✅ in #3307 | 11 canonical format definitions, ProductFormatDeclaration, build capabilities, validate_input, brand_kit_override, platform-extension-ref |
-| Phase 3 | TBD | Reference SDK codegen, server-side flatten wrappers, migration guide |
+| Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `scenes` schema, `zip` asset type, video/audio doc fixes |
+| Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` ⊕ `format` oneOf on Product |
+| Phase 3 | ✅ in #3307 | v1↔v2 migration guide, 7 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:v2-fixtures`) |
+| Phase 4 | TBD | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation |
 | Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
 
 ## Related
