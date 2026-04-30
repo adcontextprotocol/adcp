@@ -6,6 +6,9 @@
   "type": "string",
   "enum": [
     "attention",
+    "viewability",
+    "invalid_traffic",
+    "brand_safety",
     "brand_lift",
     "incrementality",
     "audience",
