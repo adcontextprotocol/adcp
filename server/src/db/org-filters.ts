@@ -120,6 +120,14 @@ export const NOT_MEMBER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED})`;
 
 export type OrgTier = 'member' | 'engaged' | 'registered' | 'prospect';
 
+/** TypeScript predicate matching the SQL MEMBER_FILTER — use wherever is_member/is_paying_member is derived in application code. */
+export function isPayingMembership(row: {
+  subscription_status: string | null;
+  subscription_canceled_at: Date | null;
+}): boolean {
+  return row.subscription_status === 'active' && row.subscription_canceled_at === null;
+}
+
 /**
  * Determine the tier for an organization based on its data
  * This is for TypeScript logic, not SQL queries
