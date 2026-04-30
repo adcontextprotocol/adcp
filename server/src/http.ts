@@ -3935,41 +3935,70 @@ export class HTTPServer {
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
-                  // Record audit log for subscription cancellation (use system user since webhook context)
-                  await orgDb.recordAuditLog({
-                    workos_organization_id: org.workos_organization_id,
-                    workos_user_id: SYSTEM_USER_ID,
-                    action: 'subscription_cancelled',
-                    resource_type: 'subscription',
-                    resource_id: subscription.id,
-                    details: {
-                      status: subscription.status,
-                      stripe_customer_id: customerId,
-                    },
-                  });
+                  // Record audit log + activity for subscription cancellation. Wrapped
+                  // in their own try/catches: a failure here must not poison the rest
+                  // of the .deleted handling, but it must also be observable —
+                  // without inner try/catches the failure jumps to the outer
+                  // swallow and the audit row is silently lost forever (Stripe
+                  // sees 200, never retries). Surface via notifySystemError so
+                  // an admin can backfill the trail.
+                  try {
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: SYSTEM_USER_ID,
+                      action: 'subscription_cancelled',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+                  } catch (auditErr) {
+                    logger.error(
+                      { err: auditErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled audit log entry',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-audit-log',
+                      errorMessage: `Failed to record subscription_cancelled audit row for ${org.workos_organization_id} sub ${subscription.id}: ${auditErr instanceof Error ? auditErr.message : String(auditErr)}`,
+                    });
+                  }
 
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
 
-                  // Record to org_activities for prospect tracking
-                  await pool.query(
-                    `INSERT INTO org_activities (
-                      organization_id,
-                      activity_type,
-                      description,
-                      logged_by_user_id,
-                      logged_by_name,
-                      activity_date
-                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-                    [
-                      org.workos_organization_id,
-                      'subscription_cancelled',
-                      'Subscription cancelled',
-                      SYSTEM_USER_ID,
-                      'System',
-                    ]
-                  );
+                  // Record to org_activities for prospect tracking. Same pattern —
+                  // own try/catch with notifySystemError on failure.
+                  try {
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription_cancelled',
+                        'Subscription cancelled',
+                        SYSTEM_USER_ID,
+                        'System',
+                      ]
+                    );
+                  } catch (activityErr) {
+                    logger.error(
+                      { err: activityErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled org_activities row',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-org-activities',
+                      errorMessage: `Failed to record subscription_cancelled activity row for ${org.workos_organization_id} sub ${subscription.id}: ${activityErr instanceof Error ? activityErr.message : String(activityErr)}`,
+                    });
+                  }
                 }
               }
             } catch (syncError) {

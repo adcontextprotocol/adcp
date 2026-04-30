@@ -113,6 +113,8 @@ const mocks = vi.hoisted(() => {
     nonMembershipCustomer,
     mockCustomersRetrieve: vi.fn(),
     mockCustomersUpdate: vi.fn().mockResolvedValue({}),
+    mockSubscriptionsList: vi.fn().mockResolvedValue({ data: [] }),
+    mockSubscriptionsUpdate: vi.fn().mockResolvedValue({}),
     mockInvoicesList: vi.fn().mockImplementation(async function* () { /* none */ }),
     mockProductsRetrieve: vi.fn().mockResolvedValue({ id: 'prod_x', name: 'Test Product' }),
   };
@@ -121,6 +123,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: {
     customers: { retrieve: mocks.mockCustomersRetrieve, update: mocks.mockCustomersUpdate },
+    subscriptions: { list: mocks.mockSubscriptionsList, update: mocks.mockSubscriptionsUpdate },
     invoices: { list: mocks.mockInvoicesList },
     products: { retrieve: mocks.mockProductsRetrieve },
     webhooks: {
@@ -181,6 +184,10 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
     mocks.mockCustomersRetrieve.mockReset();
     mocks.mockCustomersUpdate.mockReset();
     mocks.mockCustomersUpdate.mockResolvedValue({});
+    mocks.mockSubscriptionsList.mockReset();
+    mocks.mockSubscriptionsList.mockResolvedValue({ data: [] });
+    mocks.mockSubscriptionsUpdate.mockReset();
+    mocks.mockSubscriptionsUpdate.mockResolvedValue({});
   });
 
   describe('link', () => {
@@ -283,6 +290,40 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
         'cus_link_test_multi',
         { metadata: { workos_organization_id: '' } },
       );
+    });
+
+    it('clears workos_organization_id metadata on the customer\'s active subscriptions (closes step-3 webhook fallback)', async () => {
+      // resolveOrgForStripeCustomer has THREE fallback paths:
+      //   1. DB stripe_customer_id (cleared by the unlink UPDATE)
+      //   2. customer.metadata.workos_organization_id (cleared via stripe.customers.update)
+      //   3. subscription.metadata.workos_organization_id ← this test
+      // Without clearing #3, a webhook for one of the customer's subs would
+      // walk to step 3 and silently re-link. The unlink lists subs and
+      // clears their metadata too.
+      await pool.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+        ['cus_link_test_multi', TEST_ORG_ID],
+      );
+      mocks.mockSubscriptionsList.mockResolvedValueOnce({
+        data: [
+          { id: 'sub_a', metadata: { workos_organization_id: TEST_ORG_ID } },
+          { id: 'sub_b', metadata: { workos_organization_id: TEST_ORG_ID, other: 'keep' } },
+          { id: 'sub_c_no_meta', metadata: {} },  // should NOT be updated
+        ],
+      });
+
+      await request(app)
+        .post('/api/admin/stripe-customers/cus_link_test_multi/unlink');
+
+      // Both subs with workos_organization_id metadata cleared
+      expect(mocks.mockSubscriptionsUpdate).toHaveBeenCalledWith('sub_a', {
+        metadata: { workos_organization_id: '' },
+      });
+      expect(mocks.mockSubscriptionsUpdate).toHaveBeenCalledWith('sub_b', {
+        metadata: { workos_organization_id: '' },
+      });
+      // The sub without the metadata key is untouched (no wasted Stripe write)
+      expect(mocks.mockSubscriptionsUpdate).not.toHaveBeenCalledWith('sub_c_no_meta', expect.anything());
     });
 
     it('writes admin_stripe_unlink audit log with prior state', async () => {
