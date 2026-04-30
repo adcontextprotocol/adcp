@@ -16,7 +16,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-config-version');
 import { ROUTING_RULES } from './router.js';
-import { loadRules } from './rules/index.js';
+import { loadRules, loadResponseStyle } from './rules/index.js';
 
 /**
  * CODE_VERSION - Bump this when making significant changes to Addie's core logic.
@@ -71,10 +71,13 @@ function computeConfigHash(rulesContentHash: string, routerHash: string): string
 }
 
 /**
- * Hash the rules content for config versioning
+ * Hash the rules content for config versioning. Combines the base rule
+ * stack and response-style.md so config versions still change when either
+ * file is edited (response-style is loaded separately for prompt assembly
+ * but is part of the same logical config).
  */
 function computeRulesContentHash(): string {
-  const content = loadRules();
+  const content = `${loadRules()}\n${loadResponseStyle()}`;
   return createHash('sha256').update(content).digest('hex').substring(0, 16);
 }
 

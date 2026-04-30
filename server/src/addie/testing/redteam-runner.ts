@@ -24,6 +24,7 @@ import {
   MEMBER_CONTEXT_WORDS,
   SIGNIN_DEFLECT_PATTERNS,
 } from './redteam-scenarios.js';
+import { gradeShape } from './shape-grader.js';
 
 export interface RedTeamCheckFailure {
   kind:
@@ -33,7 +34,11 @@ export interface RedTeamCheckFailure {
     | 'length_cap'
     | 'missing_marker'
     | 'banned_marker'
-    | 'http_error';
+    | 'http_error'
+    | 'shape_default_template'
+    | 'shape_comprehensive_dump'
+    | 'shape_signin_opener'
+    | 'shape_length_cap';
   detail: string;
 }
 
@@ -59,6 +64,10 @@ export interface RedTeamSummary {
     ritualHits: number;
     fabricationHits: number;
     signinDeflectHits: number;
+    shapeDefaultTemplate: number;
+    shapeComprehensiveDump: number;
+    shapeSigninOpener: number;
+    shapeLengthCap: number;
   };
 }
 
@@ -142,6 +151,38 @@ export function checkResponse(
         failures.push({ kind: 'banned_marker', detail: banned });
       }
     }
+  }
+
+  // 7. Shape grader — applies to ALL scenarios, not just shortQuestion ones.
+  // Catches default-template (intro → bold → bullets → bold → bullets → ?),
+  // comprehensive bullet dumps on single-part questions, sign-in openers,
+  // and length blow-out calibrated by question shape (independent of the
+  // older shortQuestion gate at #4 above, which only fires for ≤15-word
+  // scenarios). #4 stays for backwards compatibility; #7 is the broader net.
+  const shape = gradeShape(scenario.question, response);
+  if (shape.violations.defaultTemplateUsed) {
+    failures.push({
+      kind: 'shape_default_template',
+      detail: 'response uses intro → bold heading → bullets → closing question template',
+    });
+  }
+  if (shape.violations.comprehensiveDumpDetected) {
+    failures.push({
+      kind: 'shape_comprehensive_dump',
+      detail: `response dumped ${shape.response.bulletCount + shape.response.numberedListCount} list items on a single-part question`,
+    });
+  }
+  if (shape.violations.signInDeflectionInOpener) {
+    failures.push({
+      kind: 'shape_signin_opener',
+      detail: 'response opens with a sign-in / no-tools disclaimer',
+    });
+  }
+  if (shape.violations.exceededLengthCap) {
+    failures.push({
+      kind: 'shape_length_cap',
+      detail: `${shape.response.wordCount} words exceeds calibrated cap of ${shape.question.expectedMaxWords} for this question shape`,
+    });
   }
 
   return failures;
@@ -254,6 +295,12 @@ export async function runRedTeamScenarios(
     (n, r) => n + r.failures.filter((f) => f.kind === 'signin_deflect').length,
     0
   );
+  const countKind = (kind: RedTeamCheckFailure['kind']) =>
+    results.reduce((n, r) => n + r.failures.filter((f) => f.kind === kind).length, 0);
+  const shapeDefaultTemplate = countKind('shape_default_template');
+  const shapeComprehensiveDump = countKind('shape_comprehensive_dump');
+  const shapeSigninOpener = countKind('shape_signin_opener');
+  const shapeLengthCap = countKind('shape_length_cap');
 
   return {
     total: results.length,
@@ -261,7 +308,16 @@ export async function runRedTeamScenarios(
     failed: results.length - passed,
     passRate: results.length === 0 ? 0 : passed / results.length,
     results,
-    metrics: { totalWords, ritualHits, fabricationHits, signinDeflectHits },
+    metrics: {
+      totalWords,
+      ritualHits,
+      fabricationHits,
+      signinDeflectHits,
+      shapeDefaultTemplate,
+      shapeComprehensiveDump,
+      shapeSigninOpener,
+      shapeLengthCap,
+    },
   };
 }
 
@@ -280,6 +336,10 @@ export function formatRedTeamReport(summary: RedTeamSummary): string {
     `  total words across ${summary.total} responses: ${summary.metrics.totalWords}`,
     `  ritual-phrase hits:              ${summary.metrics.ritualHits}`,
     `  fabricated-company hits:         ${summary.metrics.fabricationHits}`,
+    `  shape default-template:          ${summary.metrics.shapeDefaultTemplate}`,
+    `  shape comprehensive-dump:        ${summary.metrics.shapeComprehensiveDump}`,
+    `  shape sign-in opener:            ${summary.metrics.shapeSigninOpener}`,
+    `  shape length-cap:                ${summary.metrics.shapeLengthCap}`,
     `  sign-in deflect hits:            ${summary.metrics.signinDeflectHits}`,
     '',
   ];

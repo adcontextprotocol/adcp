@@ -40,6 +40,7 @@ import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
+import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { runEscalationTriageJob } from './escalation-triage.js';
 import { runInviteExpirySweep } from './invite-expiry-sweep.js';
@@ -481,7 +482,22 @@ export function registerAllJobs(): void {
     initialDelay: { value: 12, unit: 'minutes' },
     runner: runShadowEvaluatorJob,
     options: { limit: 5 },
-    shouldLogResult: (r) => r.evaluated > 0 || r.knowledge_gaps > 0,
+    shouldLogResult: (r) => r.evaluated > 0 || r.knowledge_gaps > 0 || r.shape_regressions > 0,
+  });
+
+  // Corrected capture - captures threads where Addie posted and a human
+  // posted a substantive correction afterward. Distinct from shadow-evaluator
+  // (which only fires on suppression). Catches the "essay shape, human TLDR"
+  // pattern that the suppression flow can't see.
+  jobScheduler.register({
+    name: 'shadow-corrected-capture',
+    description: 'Capture threads where Addie posted and a human corrected afterward',
+    interval: { value: 30, unit: 'minutes' },
+    initialDelay: { value: 18, unit: 'minutes' },
+    runner: runAddieCorrectedCaptureJob,
+    options: { limit: 20 },
+    shouldLogResult: (r) =>
+      r.evaluated > 0 || r.knowledge_gaps > 0 || r.shape_regressions > 0,
   });
 
   // Knowledge gap closer - creates GitHub issues for doc updates from shadow eval gaps
@@ -848,6 +864,7 @@ export const JOB_NAMES = {
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',
   SHADOW_EVALUATOR: 'shadow-evaluator',
+  SHADOW_CORRECTED_CAPTURE: 'shadow-corrected-capture',
   KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
