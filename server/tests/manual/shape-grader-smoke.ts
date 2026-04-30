@@ -12,15 +12,15 @@
  *     live response. This is the end-to-end smoke test of the shadow path.
  *
  * Run:
- *   npx tsx server/scripts/shape-grader-smoke.ts
- *   ANTHROPIC_API_KEY=sk-... npx tsx server/scripts/shape-grader-smoke.ts
- *   ANTHROPIC_API_KEY=sk-... SHADOW_EVAL_MODEL=primary npx tsx server/scripts/shape-grader-smoke.ts
+ *   npx tsx server/tests/manual/shape-grader-smoke.ts
+ *   ANTHROPIC_API_KEY=sk-... npx tsx server/tests/manual/shape-grader-smoke.ts
+ *   ANTHROPIC_API_KEY=sk-... SHADOW_EVAL_MODEL=primary npx tsx server/tests/manual/shape-grader-smoke.ts
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { gradeShape } from '../src/addie/testing/shape-grader.js';
-import { loadRules } from '../src/addie/rules/index.js';
-import { ADDIE_TOOL_REFERENCE } from '../src/addie/prompts.js';
-import { ModelConfig, AddieModelConfig } from '../src/config/models.js';
+import { gradeShape } from '../../src/addie/testing/shape-grader.js';
+import { loadRules } from '../../src/addie/rules/index.js';
+import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
+import { resolveShadowModel } from '../../src/addie/jobs/shadow-evaluator.js';
 
 const KATIE_QUESTION =
   'How does an agent get registered on the AAO registry? Do you have to pay and do you have to be an AAO member?';
@@ -82,13 +82,7 @@ async function main() {
   }
   console.log('Assembled prompt size:', systemPrompt.length, 'chars');
 
-  const override = process.env.SHADOW_EVAL_MODEL?.trim();
-  let model = ModelConfig.fast;
-  if (override === 'primary' || override === 'chat') model = AddieModelConfig.chat;
-  else if (override === 'depth') model = ModelConfig.depth;
-  else if (override === 'precision') model = ModelConfig.precision;
-  else if (override) model = override;
-
+  const model = resolveShadowModel();
   console.log('Model:', model);
 
   const client = new Anthropic({ apiKey });

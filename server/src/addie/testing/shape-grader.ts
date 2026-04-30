@@ -16,7 +16,7 @@
  * Metrics are deterministic (no LLM) and cheap to compute. Keep this module
  * dependency-free so any caller can import it.
  */
-import { __test_BANNED_RITUAL_LITERALS as BANNED_RITUALS } from '../response-postprocess.js';
+import { BANNED_RITUALS } from '../response-postprocess.js';
 
 export interface QuestionShape {
   wordCount: number;
@@ -73,11 +73,12 @@ export interface ShapeViolations {
   /** Sign-in / no-tools disclaimer used as the response opener. */
   signInDeflectionInOpener: boolean;
   /**
-   * "Comprehensive list dump" — many bullets in response to a single-part
-   * question. response-style.md: "Don't dump comprehensive lists in response
-   * to list-shaped questions." Detected when the response has ≥6 bullets
-   * AND the question is not multi-part. Length is not part of the check —
-   * a short bullet dump is still a dump.
+   * "Comprehensive list dump" — many bullets or numbered items in response
+   * to a single-part question. response-style.md: "Don't dump comprehensive
+   * lists in response to list-shaped questions." Detected when the response
+   * has ≥6 list items (bullets + numbered) AND the question is not
+   * multi-part. Length is not part of the check — a short bullet dump is
+   * still a dump.
    */
   comprehensiveDumpDetected: boolean;
 }
@@ -176,7 +177,8 @@ export function gradeShape(question: string, response: string): ShapeReport {
 
   const exceededLengthCap = r.wordCount > q.expectedMaxWords;
 
-  const comprehensiveDumpDetected = !q.isMultiPart && r.bulletCount >= 6;
+  const comprehensiveDumpDetected =
+    !q.isMultiPart && r.bulletCount + r.numberedListCount >= 6;
 
   const violations: ShapeViolations = {
     exceededLengthCap,
