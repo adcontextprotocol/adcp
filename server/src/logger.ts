@@ -193,7 +193,20 @@ export function createLogger(context: string | Record<string, unknown>) {
  * - trace: Very detailed, low-level information (usually disabled)
  * - debug: Debugging information (enabled in development)
  * - info: Normal operation messages (default in production)
- * - warn: Warning messages (potential issues)
- * - error: Error messages (operation failed but app continues)
+ * - warn: Warning messages (potential issues, expected failures with a graceful fallback)
+ * - error: Unexpected failures — operation failed but app continues
  * - fatal: Critical errors (app cannot continue)
+ *
+ * IMPORTANT: `logger.error()` and `logger.fatal()` (level >= 50) trigger the
+ * Slack `#aao-errors` alert and a PostHog `$exception` capture via the pino
+ * hook in this file (and `notifyErrorChannel` in `utils/posthog.ts`). Use
+ * `error` for failures that should page an operator. For *expected* failures
+ * — third-party 4xx, validation errors, anything where the caller already
+ * returns a friendly user-facing message — use `warn` so the alert path is
+ * not taken.
+ *
+ * Tool handlers in `addie/mcp/` are the most common source of confusion:
+ * if your handler catches a failure and returns a "Failed to do X" string
+ * to the user, that should be `logger.warn`, not `logger.error`. Reserve
+ * `error` for catch blocks of network/parse failures that "shouldn't happen".
  */
