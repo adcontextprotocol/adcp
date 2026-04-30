@@ -164,6 +164,16 @@ test('classifyOutcome extracts error_code allowed_values as a Set', () => {
   assert.deepEqual([...outcome.codes].sort(), ['A', 'B']);
 });
 
+test('classifyOutcome treats envelope_field_present as success assertion', () => {
+  const step = {
+    validations: [
+      { check: 'envelope_field_present', path: 'status' },
+    ],
+  };
+  const outcome = classifyOutcome(step);
+  assert.equal(outcome.kind, 'success');
+});
+
 test('outcomesAgree: error sets with overlap agree, disjoint disagree', () => {
   const a = { kind: 'error', codes: new Set(['X', 'Y']) };
   const b = { kind: 'error', codes: new Set(['Y', 'Z']) };

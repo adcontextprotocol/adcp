@@ -34,7 +34,7 @@ import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
-import { getGitHubConnectedAccount, getGitHubAuthorizeUrl } from "./services/pipes.js";
+import { getGitHubConnectedAccount, getGitHubAuthorizeUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -7109,21 +7109,40 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // POST /api/me/connected-accounts/github/authorize - Mint a WorkOS Pipes authorize URL for GitHub
     this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
       try {
-        const host = req.get('host') || '';
-        const protocol = req.protocol === 'http' && !host.startsWith('localhost') ? 'https' : req.protocol;
-        const DEFAULT_RETURN = '/member-hub?connected=github';
-        const requested = typeof req.body?.return_to === 'string' ? req.body.return_to : DEFAULT_RETURN;
-        const isSafeReturn = requested.startsWith('/')
-          && !requested.startsWith('//')
-          && !requested.includes('\\')
-          && !/[\r\n\t]/.test(requested);
-        const safeReturn = isSafeReturn ? requested : DEFAULT_RETURN;
-        const returnTo = `${protocol}://${host}${safeReturn}`;
+        const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.body?.return_to);
         const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
         res.json({ url });
       } catch (error) {
         logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
         res.status(502).json({ error: 'Failed to start GitHub connection' });
+      }
+    });
+
+    // DELETE /api/me/connected-accounts/github - Disconnect the user's GitHub account from WorkOS Pipes
+    this.app.delete('/api/me/connected-accounts/github', requireAuth, async (req, res) => {
+      try {
+        const result = await disconnectGitHub(req.user!.id);
+        if (result.status === 'unavailable') {
+          return res.status(503).json({ error: 'Disconnect unavailable', reason: result.reason });
+        }
+        return res.json({ disconnected: true, was_connected: result.status === 'disconnected' });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to disconnect GitHub');
+        res.status(500).json({ error: 'Failed to disconnect GitHub' });
+      }
+    });
+
+    // GET /connect/github - Session-aware redirect that mints a fresh Pipes URL on click.
+    // Used by Addie/Slack messages so a stale or session-less click can't land on
+    // WorkOS' generic "couldn't complete the connection" error page.
+    this.app.get('/connect/github', requireAuth, async (req, res) => {
+      try {
+        const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.query.return_to);
+        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
+        return res.redirect(302, url);
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to start GitHub connect via /connect/github');
+        return res.status(502).send('Could not start GitHub connection. Please try again in a moment, or visit /member-hub to connect from there.');
       }
     });
 

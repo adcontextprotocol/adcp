@@ -4,8 +4,6 @@ Runbook for cutting a patch release on the `3.0.x` line. Patches ship docs corre
 
 See `.agents/playbook.md` § Release lines for what counts as patch-eligible.
 
-> **Until #3417 lands:** several steps below require manual intervention because GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. Steps marked _§3417_ won't be needed once the App-token swap lands. Remove those steps in this runbook when #3417 closes.
-
 ## Preconditions
 
 - A patch-eligible fix has merged to `main` (the cherry-pick convention — see playbook).
@@ -51,14 +49,11 @@ git push origin 3.0.x
 
 **Verify the bump level on the PR body.** The body shows `## adcontextprotocol@3.0.X` and a `### Patch Changes` section. If you see `### Minor Changes` or `### Major Changes`, stop — a non-patch changeset slipped through. Find the offending changeset on `3.0.x` (`git diff v3.0.{X-1}..3.0.x -- .changeset/`), drop it, fix on `main`, re-cherry-pick.
 
-## 4. CI gates _§3417_
+## 4. Review and merge
 
-The Version Packages PR's required CI doesn't auto-fire. Either:
+Required CI runs automatically (the Release workflow uses an App token, so its push events fire downstream workflows). Approve and merge through normal review.
 
-- Push a no-op commit from your identity (e.g., a CHANGELOG.md curated lead-in) to trigger CI, **or**
-- `gh pr merge <pr#> --admin --merge` once review is satisfied
-
-## 5. Merge
+## 5. Tag + release
 
 The Release workflow runs `npm run version` (writes `package.json: "version": "3.0.X"`, builds + signs the protocol tarball), creates the GitHub Release, and tags `v3.0.X`.
 
@@ -74,21 +69,13 @@ gh release create "v$VERSION" --title "AdCP v$VERSION" --latest \
   dist/protocol/$VERSION.tgz{,.crt,.sha256,.sig}
 ```
 
-## 6. Trigger release-docs _§3417_
+## 6. Docs snapshot
 
-The `release-docs.yml` workflow doesn't auto-fire on `release: published` from `GITHUB_TOKEN`. Trigger manually:
-
-```bash
-VERSION=3.0.X
-gh api repos/adcontextprotocol/adcp/actions/workflows/release-docs.yml/dispatches \
-  -X POST -f ref=main -f "inputs[version]=$VERSION"
-```
-
-This snapshots `dist/docs/$VERSION/` and opens an auto-merging PR titled `chore: snapshot docs for v$VERSION`. Admin-merge that PR.
+`release-docs.yml` fires automatically on `release: published`, snapshots `dist/docs/$VERSION/`, opens an auto-merging PR titled `chore: snapshot docs for v$VERSION`. Required CI runs; auto-merge fires when green.
 
 ## 7. Forward-merge to main
 
-The `forward-merge-3.0.yml` workflow opens a PR back to `main` automatically. Review (typically a near-no-op since the patch came from `main` originally) and merge. _§3417 — admin-merge required._
+The `forward-merge-3.0.yml` workflow opens a PR back to `main` automatically. Review (typically a near-no-op since the patch came from `main` originally) and merge.
 
 ## 8. Verification checklist
 

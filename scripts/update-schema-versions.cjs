@@ -33,9 +33,10 @@ function updateSchemaRegistry() {
     const content = fs.readFileSync(registryPath, 'utf8');
     const data = JSON.parse(content);
 
-    if (data.adcp_version !== version) {
-      const oldVersion = data.adcp_version;
-      data.adcp_version = version;
+    if (data.published_version !== version || data.adcp_version !== version) {
+      const oldVersion = data.published_version || data.adcp_version;
+      data.published_version = version;
+      data.adcp_version = version; // legacy alias through 3.x; sunset at 4.0
       data.lastUpdated = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
       fs.writeFileSync(registryPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
@@ -70,5 +71,5 @@ if (filesUpdated > 0) {
 
 console.log(`\n✅ Version update complete!\n`);
 console.log(`The AdCP version is now ${version} and is maintained solely in:`);
-console.log(`  • static/schemas/source/index.json (adcp_version field)`);
+console.log(`  • static/schemas/source/index.json (published_version field, with adcp_version legacy alias through 3.x)`);
 console.log(`\nIndividual schemas and documentation do not contain version fields.\n`);

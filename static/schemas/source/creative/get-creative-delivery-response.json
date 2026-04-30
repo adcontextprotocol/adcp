@@ -4,6 +4,11 @@
   "title": "Get Creative Delivery Response",
   "description": "Response payload for get_creative_delivery task. Returns creative delivery data with variant-level breakdowns including manifests and metrics.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "account_id": {
       "type": "string",

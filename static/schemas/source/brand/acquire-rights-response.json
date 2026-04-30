@@ -3,8 +3,13 @@
   "$id": "/schemas/brand/acquire-rights-response.json",
   "title": "Acquire Rights Response",
   "description": "Result of a rights acquisition request. Returns one of three statuses: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on status field.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "oneOf": [
     {
       "title": "AcquireRightsAcquired",
@@ -38,7 +43,9 @@
         "restrictions": {
           "type": "array",
           "description": "Usage restrictions and requirements",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "disclosure": {
           "type": "object",
@@ -53,7 +60,9 @@
               "description": "Disclosure text to include with the creative"
             }
           },
-          "required": ["required"],
+          "required": [
+            "required"
+          ],
           "additionalProperties": true
         },
         "approval_webhook": {
@@ -76,9 +85,20 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights_id", "status", "brand_id", "terms", "generation_credentials", "rights_constraint"],
+      "required": [
+        "rights_id",
+        "status",
+        "brand_id",
+        "terms",
+        "generation_credentials",
+        "rights_constraint"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "AcquireRightsPendingApproval",
@@ -111,9 +131,17 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights_id", "status", "brand_id"],
+      "required": [
+        "rights_id",
+        "status",
+        "brand_id"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "AcquireRightsRejected",
@@ -138,7 +166,9 @@
         "suggestions": {
           "type": "array",
           "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable — the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -147,16 +177,27 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights_id", "status", "brand_id", "reason"],
+      "required": [
+        "rights_id",
+        "status",
+        "brand_id",
+        "reason"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "AcquireRightsError",
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "minItems": 1
         },
         "context": {
@@ -166,13 +207,20 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["status"] }
+          {
+            "required": [
+              "status"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

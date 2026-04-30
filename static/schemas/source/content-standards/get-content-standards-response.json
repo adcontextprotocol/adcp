@@ -4,12 +4,19 @@
   "title": "Get Content Standards Response",
   "description": "Response payload with content safety policies",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
       "description": "Success response - returns the content standards configuration",
       "allOf": [
-        { "$ref": "/schemas/content-standards/content-standards.json" }
+        {
+          "$ref": "/schemas/content-standards/content-standards.json"
+        }
       ],
       "properties": {
         "context": {
@@ -26,7 +33,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -35,7 +44,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

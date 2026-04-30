@@ -4,6 +4,11 @@
   "title": "Creative Approval Response",
   "description": "Response from the approval_webhook after reviewing a submitted creative. Uses discriminated union on status field: approved, rejected, or pending_review.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "CreativeApproved",
@@ -33,7 +38,9 @@
         "conditions": {
           "type": "array",
           "description": "Conditions on the approval (e.g., 'approved for NL market only')",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -42,9 +49,16 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["status", "rights_id"],
+      "required": [
+        "status",
+        "rights_id"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "CreativeRejected",
@@ -74,7 +88,9 @@
         "suggestions": {
           "type": "array",
           "description": "Actionable feedback for revision. If present, the buyer can revise and resubmit the creative. If absent, the rejection is final for this creative concept.",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -83,9 +99,17 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["status", "rights_id", "reason"],
+      "required": [
+        "status",
+        "rights_id",
+        "reason"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "CreativePendingReview",
@@ -124,16 +148,25 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["status", "rights_id"],
+      "required": [
+        "status",
+        "rights_id"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "CreativeApprovalError",
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "minItems": 1
         },
         "context": {
@@ -143,13 +176,20 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["status"] }
+          {
+            "required": [
+              "status"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }
