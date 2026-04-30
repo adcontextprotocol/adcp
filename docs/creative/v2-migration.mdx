@@ -249,11 +249,159 @@ Three concrete hooks v2 introduces that existing seller implementations don't ha
 - **`get_products` response gathers extension definitions.** When products carry v2 `format.params.platform_extensions` references, the response SHOULD include the referenced extension definitions in the `extensions` map keyed by `<uri>@sha256:<digest>`. Implementations gather extensions referenced by any product in the response, dedupe by digest, and emit. Buyers cache by URI@digest; subsequent responses MAY omit definitions the buyer already has cached. Trivial when no products use v2 declarations; only kicks in when tenants opt in.
 - **`production_window_business_days` on host-read / agent-produced products.** Today most server implementations don't model production turnaround on Products — the field is a v2 addition. Only matters once a tenant ships a v2 host-read or generative-video product (audio_hosted with `audio_source: 'publisher_host_recorded'`, or any product with `synthesis_nondeterministic: true`). Today many of these flows route through hand-trafficked sponsorships and don't surface turnaround over the protocol; v2 makes it declarable.
 
-### Creative agents (transformation services like AudioStack, generative platforms)
+### Creative agents (Flashtalking, AudioStack, generative platforms, AI rendering services)
 
-1. Add `creative.supported_formats` to your `get_adcp_capabilities` response. Each entry is a `ProductFormatDeclaration` describing what canonical format you can produce, with parameter narrowing and `slots` declaring the assets you accept as production input.
-2. Continue to support `build_creative` per the existing v1 contract — it's the same tool with the same shape.
-3. If you're also acting as an ad server (rare but valid), expose `sync_creatives` alongside `build_creative`.
+The spec has historically read sales-agent-first. v2 reshapes the creative-agent path enough to warrant its own walkthrough — both for ad-server-shaped creative agents (Flashtalking, Innovid, Sizmek-class) and transformation-shaped creative agents (AudioStack, Pencil, AdCreative.ai-class).
+
+#### What changes for a creative agent in v2
+
+| Concern | v1 | v2 |
+|---|---|---|
+| Format catalog publishing | `list_creative_formats` returned your producible catalog; sales agents could reference it via `creative_agents[]` recursive-discovery hint on their own `list_creative_formats` | `creative.supported_formats` on `get_adcp_capabilities` (each entry is a `ProductFormatDeclaration` — same shape as a sales agent's product `format_options[i]`). v1 `list_creative_formats` stays functional through 4.x. |
+| Format authoring | You authored named formats keyed under `your-domain.adcp` and published them | You declare which AdCP-defined canonical formats you can produce (`format_kind` discriminator) with your platform-specific narrowing (`params`). No more publishing free-text named formats. |
+| Discovery | Sales agents pointed buyers at you via `creative_agents[]` (recursive query); buyers fetched your `list_creative_formats` to learn what you produce | Buyers reach you directly — through brand-side relationships, AAO registry, direct knowledge. Sales agents in v2 do NOT carry a list of "approved creative agents." Each side is independent. |
+| `build_creative` contract | Buyer shipped a manifest with `format_id` + `assets` + `inputs` (separate "production inputs" map) | Buyer ships the same envelope, but `inputs` is collapsed into `assets` — everything goes through one `assets` map keyed by canonical `asset_group_id`. The format's `slots` declaration tells you which assets to expect, each typed by `asset_type`. The seller (you) dispatches per slot — render verbatim for `image` / `video` / `audio` slots; consume for production for `text` / `brief` / `object` slots (e.g., `script` text → host-recorded audio; `creative_brief` brief → generated image). |
+| Production-source declaration | Implicit (the named format's name implied the model — `*_generated_*` for AI-produced) | Explicit per-canonical: `audio_source` / `image_source` / `video_source` enums declare who renders and when (`buyer_uploaded` / `publisher_host_recorded` / `seller_pre_rendered_from_brief` / `seller_human_designed` / `agent_synthesized`). Plus `synthesis_nondeterministic: true` for Veo/Sora-class flows that need post-synthesis QA-loop semantics. |
+| Tracking integration | Your platform's pixel IDs, viewability vendors, OM-SDK partners lived in your named format's `tracking_events` field — sellers and buyers parsed your free-text declarations | Declare via `platform_extensions: [{uri, digest}]` and `tracking_extensions` on each `supported_formats[].format`. Each extension is a URI you host (or the AAO mirror translates) describing the schema for your platform's tracking surface (pixel IDs, conversion event taxonomies). Sellers and buyers cache by `uri@digest`; SDK codegen produces typed extension handlers. |
+| Hosting of produced bytes | Your CDN, your call | Your CDN, your call. v2 disaggregation is conceptual (the spec separates production from serving from tracking) — operationally, produced asset URLs in the manifest you return from `build_creative` continue to point at your CDN, your tracking JS continues to instrument, your platform extensions document the integration. |
+
+#### Concrete example: Flashtalking-shaped creative agent
+
+A creative agent that produces image / VAST / html5 creatives across multiple sizes and surfaces. Pre-v2, it published 30+ named formats (one per size × surface combination). v2 collapses to a smaller `supported_formats` set:
+
+```json test=false
+// GET https://flashtalking.adcp/.well-known/agent.json
+// → get_adcp_capabilities response (excerpt)
+{
+  "creative": {
+    "supports_generation": true,
+    "supports_transformation": true,
+    "has_creative_library": true,
+    "supported_formats": [
+      {
+        "capability_id": "flashtalking_image_iab_standard",
+        "format": {
+          "format_kind": "image",
+          "params": {
+            "image_formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 200,
+            "ssl_required": true,
+            "image_source": "buyer_uploaded",
+            "platform_extensions": [
+              { "uri": "https://flashtalking.adcp/extensions/flashtalking_pixel_v2", "digest": "sha256:..." }
+            ]
+          }
+        }
+      },
+      {
+        "capability_id": "flashtalking_video_vast_42",
+        "format": {
+          "format_kind": "video_vast",
+          "params": {
+            "vast_version": "4.2",
+            "duration_ms_range": [6000, 60000],
+            "linear_required": true,
+            "ssl_required": true,
+            "platform_extensions": [
+              { "uri": "https://flashtalking.adcp/extensions/flashtalking_vpaid_2_0", "digest": "sha256:..." }
+            ]
+          }
+        }
+      },
+      {
+        "capability_id": "flashtalking_html5_iab_standard",
+        "format": {
+          "format_kind": "html5",
+          "params": {
+            "max_initial_load_kb": 200,
+            "om_sdk_required": true,
+            "backup_image_required": true,
+            "ssl_required": true
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+What disappears: 30+ named-format files, each with its own `tracking_events` array, each with its own slot vocabulary. What replaces them: 3 canonical declarations narrowed by params + platform_extensions for Flashtalking-specific tracking. SDK codegen on the buyer side produces a typed handler per `format_kind` rather than a typed handler per Flashtalking-named-format — a 10× reduction in surface area for buyers integrating Flashtalking.
+
+The buyer flow is unchanged from a Flashtalking perspective: `build_creative` still receives a brief / assets / brand reference; you produce a manifest with rendered asset URLs on Flashtalking's CDN; the buyer submits that manifest to whatever sales agent they're shipping to. The sales agent validates against canonical `image` / `video_vast` / `html5` — NOT against your Flashtalking narrowing. Your platform_extensions remain attached to the manifest so the sales agent honors Flashtalking pixel IDs and viewability vendors at serve time.
+
+#### Concrete example: AudioStack-shaped transformation agent
+
+A transformation agent that takes a buyer's brief or script and produces a rendered audio file. Pre-v2, AudioStack published `audiostack_audio_30s_generated` and similar. v2 collapses to a per-canonical declaration with explicit production-source semantics:
+
+```json test=false
+// GET https://audiostack.adcp/.well-known/agent.json
+{
+  "creative": {
+    "supports_generation": true,
+    "supports_transformation": true,
+    "supported_formats": [
+      {
+        "capability_id": "audiostack_audio_brief_to_30s",
+        "format": {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 30000,
+            "audio_codecs": ["mp3", "aac"],
+            "audio_sample_rates": [44100, 48000],
+            "audio_channels": ["stereo"],
+            "loudness_lufs": -16,
+            "audio_source": "seller_pre_rendered_from_brief",
+            "buyer_audio_acceptance": "rejected",
+            "production_window_business_days": 1,
+            "slots": [
+              { "asset_group_id": "creative_brief", "asset_type": "brief", "required": true, "max_chars": 500 },
+              { "asset_group_id": "voice_id", "asset_type": "text", "required": false },
+              { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+            ]
+          }
+        }
+      },
+      {
+        "capability_id": "audiostack_audio_script_to_30s",
+        "format": {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 30000,
+            "audio_codecs": ["mp3"],
+            "audio_source": "agent_synthesized",
+            "buyer_audio_acceptance": "rejected",
+            "synthesis_nondeterministic": false,
+            "production_window_business_days": 0,
+            "slots": [
+              { "asset_group_id": "script", "asset_type": "text", "required": true, "max_chars": 800 },
+              { "asset_group_id": "voice_id", "asset_type": "text", "required": true }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+Two distinct capabilities — brief-to-audio (creative direction → produced ad) and script-to-audio (deterministic TTS from verbatim script) — declared as two `supported_formats` entries sharing `format_kind: audio_hosted` but with different `audio_source` values. `capability_id` disambiguates which capability the buyer is invoking when they call `build_creative`.
+
+#### Server-side hooks for creative agents
+
+Three implementation considerations specific to creative agents in v2:
+
+- **`creative.supported_formats` is your public contract.** Buyers and sales agents read it to know what you produce. Keep `capability_id` values stable across releases — buyers reference them in their `build_creative` calls.
+- **`synthesis_nondeterministic: true` implies a QA-loop obligation.** When you declare it, you commit to: validating each synthesis attempt against the format's parameter constraints; reseeding up to N times to produce in-spec output; returning `task_failed` with `synthesis_failed` reason if the loop exhausts. There is no protocol state for orphaned out-of-spec artifacts — the buyer never sees a partial result.
+- **`provenance_required: true` requires C2PA attestation.** When a sales agent's product carries `provenance_required: true` and the buyer is shipping your produced asset, the manifest you return MUST include a C2PA-compatible provenance manifest attributing synthesis to your agent (not the buyer, not the seller). EU AI Act Article 50 alignment.
+
+#### Migration timing for creative agents
+
+| Item | Timing |
+|---|---|
+| Continue to expose `list_creative_formats` (v1) | Through 4.x. Sales agents and buyers may still call it. |
+| Add `creative.supported_formats` to `get_adcp_capabilities` | Anytime in 3.1+. Additive — doesn't break v1 callers. |
+| Stop publishing new v1 named formats | When 80% of your buyers are reading `supported_formats` (track via your own analytics — buyers calling `get_adcp_capabilities` vs `list_creative_formats`). |
+| Drop `list_creative_formats` | Coordinated with the v1 deprecation calendar (2027-Q4 floor / 2029-Q1 ceiling) — same window as sales agents dropping `format_ids`. |
 
 ### Buyers / DSPs
 
