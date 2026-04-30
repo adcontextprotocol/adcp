@@ -10,11 +10,12 @@ import { stripeCustomerOrgMetadataBidirectionalInvariant } from '../../../src/au
 import { oneActiveStripeSubPerOrgInvariant } from '../../../src/audit/integrity/invariants/one-active-stripe-sub-per-org.js';
 import { stripeCustomerResolvesInvariant } from '../../../src/audit/integrity/invariants/stripe-customer-resolves.js';
 import { orgRowMatchesLiveStripeSubInvariant } from '../../../src/audit/integrity/invariants/org-row-matches-live-stripe-sub.js';
+import { stripeSubReflectedInOrgRowInvariant } from '../../../src/audit/integrity/invariants/stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from '../../../src/audit/integrity/invariants/workos-membership-row-exists-in-workos.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
 
-const EXPECTED_INVARIANT_COUNT = 6;
+const EXPECTED_INVARIANT_COUNT = 7;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
@@ -342,6 +343,185 @@ describe('org-row-matches-live-stripe-sub', () => {
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].severity).toBe('critical');
     expect(result.violations[0].message).toContain('non-existent');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// stripe-sub-reflected-in-org-row
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('stripe-sub-reflected-in-org-row', () => {
+  function membershipSub(overrides: Partial<{
+    id: string;
+    status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
+    customer: string;
+    lookup_key: string;
+    unit_amount: number;
+  }> = {}) {
+    return {
+      id: overrides.id ?? 'sub_1',
+      status: overrides.status ?? 'active',
+      customer: overrides.customer ?? 'cus_1',
+      items: {
+        data: [{
+          price: {
+            lookup_key: overrides.lookup_key ?? 'aao_membership_professional_250',
+            unit_amount: overrides.unit_amount ?? 25000,
+          },
+        }],
+      },
+    };
+  }
+
+  /**
+   * `for await ... of stripe.subscriptions.list(...)` consumes the auto-paginating
+   * iterator. Mock returns an async-iterable. First call ⇒ active subs, second ⇒ trialing.
+   */
+  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = []): void {
+    mockStripeSubsList
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of activeSubs) yield s; },
+      }))
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of trialingSubs) yield s; },
+      }));
+  }
+
+  it('passes when every live membership sub is reflected in its org row', async () => {
+    mockSubsListWith([membershipSub()]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_1',
+        name: 'Acme',
+        stripe_customer_id: 'cus_1',
+        subscription_status: 'active',
+        stripe_subscription_id: 'sub_1',
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags Lina-shape: paid sub live in Stripe, DB row has subscription_status NULL', async () => {
+    mockSubsListWith([membershipSub({ id: 'sub_lina', customer: 'cus_lina' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_lina',
+        name: "Lina Georg's Workspace",
+        stripe_customer_id: 'cus_lina',
+        subscription_status: null,
+        stripe_subscription_id: null,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].subject_type).toBe('organization');
+    expect(result.violations[0].subject_id).toBe('org_lina');
+    expect(result.violations[0].message).toContain('denied entitlement');
+    expect(result.violations[0].details?.db_subscription_status).toBeNull();
+    expect(result.violations[0].details?.stripe_status).toBe('active');
+    expect(result.violations[0].remediation_hint).toContain('/api/admin/accounts/org_lina/sync');
+  });
+
+  it('flags trialing subs the same way as active', async () => {
+    mockSubsListWith([], [membershipSub({ status: 'trialing', id: 'sub_t', customer: 'cus_t' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_t',
+        name: 'Trial Co',
+        stripe_customer_id: 'cus_t',
+        subscription_status: null,
+        stripe_subscription_id: null,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].details?.stripe_status).toBe('trialing');
+  });
+
+  it('flags orphan customer (paid sub, no AAO org linked) as warning, not critical', async () => {
+    mockSubsListWith([membershipSub({ id: 'sub_orphan', customer: 'cus_orphan' })]);
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('warning');
+    expect(result.violations[0].subject_type).toBe('customer');
+    expect(result.violations[0].subject_id).toBe('cus_orphan');
+    expect(result.violations[0].message).toContain('not linked to any AAO organization');
+    expect(result.violations[0].remediation_hint).toContain('Do not auto-link');
+  });
+
+  it('skips non-membership subs (other product lookup_keys)', async () => {
+    mockSubsListWith([
+      membershipSub({ id: 'sub_one_off', lookup_key: 'aao_event_summit_2026', customer: 'cus_evt' }),
+    ]);
+    // The DB query should not even be issued for non-membership subs — they're filtered before the SQL.
+    // But if the implementation issues it anyway, return empty so we still see no violation.
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('skips subs with no lookup_key (probably misconfigured)', async () => {
+    const sub = membershipSub();
+    (sub.items.data[0].price as { lookup_key: string | null }).lookup_key = null;
+    mockSubsListWith([sub]);
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('does not flag a row with subscription_status="past_due" — dunning still grants entitlement', async () => {
+    mockSubsListWith([membershipSub({ status: 'active', customer: 'cus_pd' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_pd',
+        name: 'PastDue Co',
+        stripe_customer_id: 'cus_pd',
+        subscription_status: 'past_due',
+        stripe_subscription_id: 'sub_1',
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags a row that drifted to "canceled" while Stripe still says active', async () => {
+    mockSubsListWith([membershipSub({ customer: 'cus_drift' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_drift',
+        name: 'Drift Co',
+        stripe_customer_id: 'cus_drift',
+        subscription_status: 'canceled',
+        stripe_subscription_id: 'sub_1',
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].details?.db_subscription_status).toBe('canceled');
   });
 });
 

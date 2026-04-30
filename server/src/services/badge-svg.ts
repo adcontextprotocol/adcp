@@ -1,16 +1,29 @@
 /**
  * SVG badge rendering for AAO Verified agents.
  *
- * Generates shields.io-style badges: "AAO Verified | Media Buy Agent (Spec)"
+ * Generates shields.io-style badges: "AAO Verified | Media Buy Agent 3.0 (Spec)"
  * with the AAO teal color scheme.
  *
- * The qualifier in parens conveys *which axes of verification* the agent has
- * earned: (Spec) means protocol storyboards pass, (Live) means AAO has observed
- * real production traffic via canonical campaigns. An agent can have either or
+ * The version segment between the role and the qualifier conveys *which AdCP
+ * release* the badge was issued against (3.0, 3.1, ...). The qualifier in
+ * parens conveys *which axes of verification* the agent has earned: (Spec)
+ * means protocol storyboards pass, (Live) means AAO has observed real
+ * production traffic via canonical campaigns. An agent can have either or
  * both, e.g. "(Spec + Live)". An empty modes array renders "Not Verified".
  */
 
 import { ADCP_PROTOCOLS, VERIFICATION_MODES, isVerificationMode } from './adcp-taxonomy.js';
+
+/**
+ * Shape constraint for AdCP versions in badge labels. Same regex the JWT
+ * signer enforces — a poisoned DB row that smuggled a non-MAJOR.MINOR
+ * value drops the version from the rendered label rather than letting
+ * arbitrary text reach a public-facing image. The badge still renders
+ * (verified-without-version) so a degraded DB row doesn't blank a buyer's
+ * embedded badge — that's the security/UX trade-off for this surface,
+ * versus the JWT signer which fails closed.
+ */
+const ADCP_VERSION_RE = /^[1-9][0-9]*\.[0-9]+$/;
 
 // Re-exported for backward compatibility — canonical home is adcp-taxonomy.ts.
 export { VERIFICATION_MODES };
@@ -91,7 +104,22 @@ function formatModes(modes: readonly string[]): string {
     .join(' + ');
 }
 
-export function renderBadgeSvg(role: string, modes: readonly string[] = []): string {
+export interface RenderBadgeSvgOptions {
+  /**
+   * AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0').
+   * Embeds in the message as `Media Buy Agent 3.0 (Spec)`. Validated
+   * against the same regex as the DB CHECK and JWT signer; a malformed
+   * value renders without the version segment rather than failing the
+   * whole image (#3524 stage 3).
+   */
+  adcpVersion?: string;
+}
+
+export function renderBadgeSvg(
+  role: string,
+  modes: readonly string[] = [],
+  options: RenderBadgeSvgOptions = {},
+): string {
   // Filter to known modes — unknown values from corrupted DB rows or
   // tampered input don't reach public badge text.
   const safeModes = modes.filter(isVerificationMode);
@@ -99,8 +127,17 @@ export function renderBadgeSvg(role: string, modes: readonly string[] = []): str
   const isVerified = safeModes.length > 0;
   const roleLabel = ROLE_LABELS[role] || escapeXml(role);
   const qualifier = formatModes(safeModes);
+  // Same shape filter as the JWT signer. A malformed adcp_version drops
+  // from the rendered label without failing the badge — degraded display
+  // is acceptable for an embedded SVG, where a missing image would be
+  // worse for the buyer.
+  const safeVersion = options.adcpVersion && ADCP_VERSION_RE.test(options.adcpVersion)
+    ? options.adcpVersion
+    : undefined;
+  // Role + optional version: "Media Buy Agent" or "Media Buy Agent 3.0".
+  const verifiedRoleSegment = safeVersion ? `${roleLabel} ${safeVersion}` : roleLabel;
   const message = isVerified
-    ? (qualifier ? `${roleLabel} (${qualifier})` : roleLabel)
+    ? (qualifier ? `${verifiedRoleSegment} (${qualifier})` : verifiedRoleSegment)
     : 'Not Verified';
   const messageBg = isVerified ? AAO_TEAL : NOT_VERIFIED_BG;
   const idSuffix = `${escapeXml(role)}-${isVerified ? 'v' : 'nv'}`;

@@ -4,6 +4,11 @@
   "title": "Delete Property List Response",
   "description": "Response payload for delete_property_list task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "deleted": {
       "type": "boolean",

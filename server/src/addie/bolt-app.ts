@@ -27,7 +27,9 @@ import type {
   AllAssistantMiddlewareArgs,
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
@@ -114,6 +116,7 @@ import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illust
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
+import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
@@ -1025,6 +1028,14 @@ async function createUserScopedTools(
   const brandHandlers = createBrandToolHandlers();
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add brand property import tools — paired preview/commit pattern that
+  // mirrors the brand-builder smart paste UI for brand owners.
+  const brandPropertyHandlers = createBrandPropertyToolHandlers(memberContext);
+  allTools.push(...BRAND_PROPERTY_TOOLS);
+  for (const [name, handler] of brandPropertyHandlers) {
     allHandlers.set(name, handler);
   }
 

@@ -34,6 +34,7 @@
     "cpm",
     "downloads",
     "units_sold",
-    "new_to_brand_units"
+    "new_to_brand_units",
+    "plays"
   ]
 }

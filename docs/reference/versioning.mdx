@@ -30,13 +30,82 @@ Implementations built against 3.0 will continue to function against any 3.x rele
 
 ## Version negotiation
 
-When a seller supports multiple major versions simultaneously (e.g., during a v2→v3 migration), buyers and sellers negotiate using `get_adcp_capabilities`:
+Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Release-precision pinning lets buyer SDKs select which schemas they validate against, and lets sellers return responses shaped to the contract the buyer expects (Stripe model).
 
-1. **Seller advertises**: `adcp.major_versions` in the `get_adcp_capabilities` response lists all supported major versions (e.g., `[2, 3]`).
-2. **Buyer declares**: `adcp_major_version` on every request tells the seller which version the buyer's payloads conform to. The field is optional on all AdCP request schemas.
-3. **Seller validates**: If the declared version is outside the supported range, the seller returns `VERSION_UNSUPPORTED`. If omitted, the seller assumes its highest supported version.
+> In-house clients implementing the wire directly can stay on `adcp_major_version` through all of 3.x; `adcp_version` is opt-in until 4.0. See [Migration timeline](#migration-timeline) for the cadence.
 
-This lets sellers upgrade first — declare multi-version support, and let buyers migrate on their own schedule.
+### Bidirectional negotiation (3.1+)
+
+1. **Seller advertises**: `adcp.supported_versions` on the `get_adcp_capabilities` response lists all release-precision versions the seller speaks (e.g. `["3.0", "3.1"]`). `adcp.build_version` (e.g. `"3.1.2+vendor.42"`) is optional advisory metadata for incident triage — not part of the wire contract.
+2. **Buyer declares**: `adcp_version` (release-precision string) on every request tells the seller which release the buyer's payloads conform to. Through 3.x the buyer SHOULD also emit `adcp_major_version` so legacy 3.x sellers that only read the integer continue to negotiate correctly.
+3. **Server resolves**:
+   - Exact match → serve in that release.
+   - Same major, both pre-release and release present, buyer pins the release → exact match wins; server MUST NOT silently downshift onto the pre-release. (Server `["3.1-beta", "3.1"]` + pin `"3.1"` → serve `"3.1"`.)
+   - Same major, no exact match, at least one server release ≤ buyer's pin → downshift to highest supported release ≤ the pin. Covers both "server's max < pin" and gap-cases (e.g. server `["3.0", "3.2"]` + pin `"3.1"` → serve `"3.0"`).
+   - Same major, no server release ≤ buyer's pin (sub-min: every supported release is strictly greater) → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
+   - Different major → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
+   - Omitted → server uses its default release (or, if only `adcp_major_version` was sent, the highest supported release in that major).
+4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. The echoed value is the **release served**, never the seller's own latest release — a 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against that release's schema, not against their pin.
+
+When the response omits `adcp_version` (a legacy 3.0 seller that doesn't read the field — `additionalProperties: true` makes it invisible there), buyers SHOULD validate against their own pin and treat the seller as 3.0-only for capability inference. The buyer's SDK falls back to its constructor pin in this case.
+
+This lets buyers and sellers upgrade independently — sellers can declare multi-release support, and buyers can pin to a specific release without coordinating their migration.
+
+#### Pre-release pins
+
+Pre-release tags (`"3.1-beta"`, `"3.1-rc.1"`) are matched **exactly** against `supported_versions`. They are not range-resolved: a buyer pinning `"3.1-beta"` against a server that lists `["3.0", "3.1"]` (no beta in the list) gets `VERSION_UNSUPPORTED`, not a downshift to `"3.0"`. Servers MUST NOT downshift a release pin onto a pre-release (`"3.1"` → `"3.1-beta"`); when both are advertised, the release wins exact match.
+
+#### `VERSION_UNSUPPORTED` error data
+
+When the seller can't honor a pin, `error.data` follows [`error-details/version-unsupported.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/error-details/version-unsupported.json):
+
+```json
+{
+  "adcp_version": "4.0",
+  "adcp_major_version": 4,
+  "supported_versions": ["3.0", "3.1"],
+  "supported_majors": [3],
+  "build_version": "3.1.2+vendor.42"
+}
+```
+
+`supported_versions` is authoritative — clients SHOULD pick a value from this list and retry. SDKs SHOULD raise a typed error rather than silently retrying; auto-downshift changes wire shape under the caller.
+
+### Patches are not negotiated
+
+Per the three-tier model, patches by definition introduce no contract change — they're bug fixes. The wire negotiation field (`adcp_version`) uses release precision only. Servers MAY surface their build patch via the optional `build_version` capability for operational visibility, but buyers MUST NOT use it for negotiation.
+
+`build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9). Examples: `"3.1.2"`, `"3.1.2+scope3.deploy.4821"`, `"3.1.0-beta.3+sha.a1b2c3d"`.
+
+The `adcp_version` wire shape is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. SDKs that internally key bundles using full semver (`"3.1.0-beta.1"`) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
+
+**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/client.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/docs/building/schemas-and-sdks#version-discovery) for the discovery URL.
+
+### Major-precision negotiation (deprecated, kept through 3.x)
+
+The legacy `adcp_major_version` (integer per-request) and `adcp.major_versions` (integer array on capabilities) remain functional through 3.x for backwards compatibility. New buyers and sellers SHOULD prefer release-precision negotiation. Both legacy fields are removed in 4.0.
+
+**Dual-emit during 3.x:** a buyer that emits `adcp_version` SHOULD also emit `adcp_major_version` (with the major component of its pin) on the same request. This lets legacy 3.x sellers that only read the integer keep negotiating correctly. When both fields are present and disagree at the major level, the server MUST treat the request as malformed and return `VERSION_UNSUPPORTED`.
+
+When only major-precision is provided:
+- Buyer sends `adcp_major_version: 3` → server serves the highest supported release in major 3.
+- Server emits `adcp.major_versions: [3]` → buyer can negotiate at major precision but loses release-level information.
+
+### Migration timeline
+
+The spec stays at SHOULD on both sides through all of 3.x — consistent with the 3.x stability guarantee that fields don't graduate optional → required within a major. The AdCP compliance grader carries the adoption pressure within 3.x: sellers that want certification at 3.2 ship the response echo.
+
+| Phase | Spec — buyer | Spec — seller | Compliance grader |
+|---|---|---|---|
+| **3.1 (additive ship)** | SHOULD emit `adcp_version` (with `adcp_major_version` mirror). | SHOULD honor and echo `adcp_version`. SHOULD emit `supported_versions` on capabilities. | Advisory: reports presence on requests and responses. |
+| **3.2** | (unchanged from 3.1) | (unchanged from 3.1) | Blocking failure when sellers don't echo `adcp_version` or don't emit `supported_versions` on capabilities. |
+| **4.0** | MUST emit `adcp_version`. `adcp_major_version` removed. | MUST honor and echo `adcp_version`. `adcp.major_versions` and `extensions.adcp.adcp_version` removed. | Blocking failure on absence; legacy fields rejected. |
+
+In-house clients that haven't moved to the SDK yet can keep sending `adcp_major_version` only through all of 3.x — the server falls back to it. Adding `adcp_version` becomes the certifiable behavior at 3.2 (via the grader); the spec itself doesn't require it until 4.0.
+
+### Relationship to MCP `protocolVersion`
+
+MCP carries its own `protocolVersion` field on the `initialize` handshake (e.g. `"2025-06-18"`). That handshake versions the **MCP wire** — JSON-RPC framing, transport semantics. AdCP `adcp_version` versions the **AdCP payload** — the schema of `params` and `result` content. The two are independent: an MCP-2025-06-18 server can speak AdCP 3.0 *or* 3.1, and an MCP client pinning AdCP `"3.1"` will fail with `VERSION_UNSUPPORTED` against a server that only speaks 3.0 even though the MCP handshake succeeded. A2A has no equivalent to MCP `initialize`, which is why `adcp_version` rides on the payload (where both transports can carry it).
 
 ### Features over versions
 

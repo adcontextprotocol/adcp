@@ -5,7 +5,9 @@
  * Uses OAuth2 with a refresh token for authentication.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-google-docs');
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { withToolRateLimit } from './tool-rate-limiter.js';

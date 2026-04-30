@@ -14,14 +14,17 @@ import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
 import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
+import {
+  parsePropertyInputForBrand,
+  mergeBrandProperties,
+  VALID_PROPERTY_TYPES,
+  type Relationship,
+} from '../services/brand-property-parse.js';
 
-const MAX_PROPERTIES = 500;
 const MAX_COLLECTIONS = 200;
+const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
 
 const logger = createLogger('brand-feeds');
-
-const VALID_PROPERTY_TYPES = ['website', 'mobile_app', 'ctv_app', 'desktop_app', 'dooh', 'podcast', 'radio', 'streaming_audio'];
-const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
 
 export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   const router = Router();
@@ -264,53 +267,58 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
 
   // ─── Bulk merge endpoints ──────────────────────────────────────────
 
+  // POST /api/brands/:domain/properties/parse — AI-powered property list parsing
+  router.post('/brands/:domain/properties/parse', requireAuth, async (req, res) => {
+    try {
+      const domain = req.params.domain.toLowerCase();
+      const { input, input_type, relationship } = req.body as {
+        input?: string;
+        input_type?: string;
+        relationship?: string;
+      };
+
+      const result = await parsePropertyInputForBrand({
+        brandDb,
+        domain,
+        userId: req.user!.id,
+        input: input ?? '',
+        inputType: (input_type ?? 'text') as 'text' | 'url',
+        relationship: relationship as Relationship | undefined,
+      });
+
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      return res.json({
+        properties: result.properties,
+        count: result.count,
+        truncated: result.truncated || undefined,
+        warning: result.warning,
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to parse property list');
+      return res.status(500).json({ error: 'Failed to parse property list' });
+    }
+  });
+
   // POST /api/brands/:domain/properties — Merge properties by identifier
   router.post('/brands/:domain/properties', requireAuth, async (req, res) => {
     try {
       const domain = req.params.domain.toLowerCase();
       const { properties } = req.body;
-      if (!Array.isArray(properties)) return res.status(400).json({ error: 'properties array required' });
-      if (properties.length > MAX_PROPERTIES) return res.status(400).json({ error: `Maximum ${MAX_PROPERTIES} properties per request` });
 
-      const check = await getBrandForEdit(domain, req.user!.id);
-      if ('error' in check) return res.status(check.status!).json({ error: check.error });
-      const { brand } = check;
+      const result = await mergeBrandProperties({
+        brandDb,
+        domain,
+        userId: req.user!.id,
+        properties,
+      });
 
-      const manifest = (brand!.brand_manifest as Record<string, unknown>) || {};
-      const existing = Array.isArray(manifest.properties)
-        ? manifest.properties as Array<{ identifier: string; [k: string]: unknown }>
-        : [];
-
-      const byIdentifier = new Map(existing.map(p => [p.identifier, p]));
-      let added = 0, updated = 0, skipped = 0;
-      const errors: Array<{ row: number; error: string }> = [];
-
-      for (let i = 0; i < properties.length; i++) {
-        const p = properties[i];
-        if (!p.identifier || typeof p.identifier !== 'string') {
-          errors.push({ row: i, error: 'identifier required' }); skipped++; continue;
-        }
-        if (p.type && !VALID_PROPERTY_TYPES.includes(p.type)) {
-          errors.push({ row: i, error: `invalid type: ${p.type}` }); skipped++; continue;
-        }
-
-        const key = p.identifier.toLowerCase();
-        if (byIdentifier.has(key)) {
-          byIdentifier.set(key, { ...byIdentifier.get(key), ...p, identifier: key });
-          updated++;
-        } else {
-          byIdentifier.set(key, { ...p, identifier: key });
-          added++;
-        }
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
       }
-
-      manifest.properties = Array.from(byIdentifier.values());
-      await query(
-        'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
-        [JSON.stringify(manifest), domain]
-      );
-
-      return res.json({ added, updated, skipped, total: properties.length, errors: errors.length > 0 ? errors : undefined });
+      return res.json(result.report);
     } catch (err) {
       logger.error({ err }, 'Failed to merge properties');
       return res.status(500).json({ error: 'Failed to merge properties' });
@@ -374,3 +382,6 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
 
   return router;
 }
+
+// Re-export VALID_PROPERTY_TYPES so existing imports keep working.
+export { VALID_PROPERTY_TYPES };

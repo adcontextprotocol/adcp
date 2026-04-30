@@ -88,3 +88,56 @@ describe('renderBadgeSvg', () => {
     expect(svg).toContain('<title>AAO Verified: Media Buy Agent (Spec)</title>');
   });
 });
+
+describe('renderBadgeSvg — adcp_version segment (#3524 stage 3)', () => {
+  it('embeds the version between the role and the qualifier', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: '3.0' });
+    expect(svg).toContain('Media Buy Agent 3.0 (Spec)');
+    expect(svg).toContain('aria-label="AAO Verified: Media Buy Agent 3.0 (Spec)"');
+  });
+
+  it('renders Media Buy Agent 3.1 (Spec + Live)', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec', 'live'], { adcpVersion: '3.1' });
+    expect(svg).toContain('Media Buy Agent 3.1 (Spec + Live)');
+  });
+
+  it('omits the version when not provided (legacy callers)', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec']);
+    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).not.toContain('Media Buy Agent 3.');
+  });
+
+  it('drops the version segment when malformed (degraded display, not failure)', () => {
+    // Unlike the JWT signer (which fails closed), the badge renders
+    // verified-without-version on a malformed value — a missing image
+    // is worse for the buyer than a less-specific one.
+    const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: 'evil; DROP' });
+    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).not.toContain('evil');
+    expect(svg).not.toContain('DROP');
+  });
+
+  it('drops a version with leading-zero major', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: '0.5' });
+    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).not.toContain('0.5');
+  });
+
+  it('drops a full-semver value (use protocol_version metadata, not the badge)', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: '3.0.0' });
+    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).not.toContain('3.0.0');
+  });
+
+  it('renders double-digit minors without truncation', () => {
+    const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: '3.10' });
+    expect(svg).toContain('Media Buy Agent 3.10 (Spec)');
+  });
+
+  it('still renders Not Verified when modes is empty even with a version provided', () => {
+    const svg = renderBadgeSvg('media-buy', [], { adcpVersion: '3.0' });
+    expect(svg).toContain('Not Verified');
+    // Version segment should not appear in the not-verified label.
+    expect(svg).not.toContain('3.0');
+  });
+});

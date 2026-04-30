@@ -13,6 +13,7 @@ import { stripeCustomerOrgMetadataBidirectionalInvariant } from './stripe-custom
 import { oneActiveStripeSubPerOrgInvariant } from './one-active-stripe-sub-per-org.js';
 import { stripeCustomerResolvesInvariant } from './stripe-customer-resolves.js';
 import { orgRowMatchesLiveStripeSubInvariant } from './org-row-matches-live-stripe-sub.js';
+import { stripeSubReflectedInOrgRowInvariant } from './stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from './workos-membership-row-exists-in-workos.js';
 import { usersHavePrimaryOrganizationInvariant } from './users-have-primary-organization.js';
 
@@ -23,6 +24,7 @@ export const ALL_INVARIANTS: readonly Invariant[] = [
   oneActiveStripeSubPerOrgInvariant,
   stripeCustomerResolvesInvariant,
   orgRowMatchesLiveStripeSubInvariant,
+  stripeSubReflectedInOrgRowInvariant,
   workosMembershipRowExistsInWorkosInvariant,
 ];
 

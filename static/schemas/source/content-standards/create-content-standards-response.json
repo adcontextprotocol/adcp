@@ -4,6 +4,11 @@
   "title": "Create Content Standards Response",
   "description": "Response payload for creating a content standards configuration",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -20,7 +25,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["standards_id"]
+      "required": [
+        "standards_id"
+      ]
     },
     {
       "type": "object",
@@ -28,7 +35,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "conflicting_standards_id": {
           "type": "string",
@@ -41,7 +50,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }
