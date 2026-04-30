@@ -166,6 +166,20 @@ For a given `(caller identity, account_id)` tuple, sequential reads within the r
 
 This is the concrete form of the "systematically-divergent is non-conformant" guarantee from the presence semantics above — it's verifiable: a conformance check can read the same account twice from the same identity inside the refresh window and diff the results.
 
+### Buyer response to SCOPE_INSUFFICIENT within the refresh window
+
+A single `SCOPE_INSUFFICIENT` response is observationally indistinguishable between two causes: a seller replica that has not yet propagated a valid grant (transient infrastructure artifact — will resolve), and a legitimate scope reduction by the operator (persistent — must surface). Before classifying the error as a definitive `correctable` signal requiring operator intervention, buyers MAY exhaust a small bounded retry budget to disambiguate the two:
+
+- **Retry budget:** no more than 3 attempts, each separated by 1–5 seconds of jittered backoff. This is disambiguation logic — establishing whether the scope is genuinely insufficient before trusting the `correctable` classification — not a recovery action for a correctable error.
+- **Not the 300s window:** the retry budget is not the seller's propagation SLA. Buyers SHOULD NOT wait out the full 300-second window on every false negative; up to 15 seconds of accumulated backoff delay is sufficient to absorb typical replica lag.
+- **After retries exhaust:** buyers MUST surface the error. "Surface" means: return a structured error to the calling layer (including account ID, the failed task, and `error.details.retry_count` with the number of attempts made) AND ensure the failure is visible in an operator-accessible channel — a structured log, dashboard alert, or notification. The escalation mechanism is implementation-defined; the requirement is that the error is not silently swallowed.
+
+`READ_ONLY_SCOPE` follows the same bounded-retry logic when the buyer suspects grant-propagation lag (a replica lagging on a write-grant update). Caution: if write access was recently *revoked*, a stale replica may accept a mutation that the revoked scope should have rejected. If bounded retries succeed, buyers MUST re-read `authorization` before treating the result as reliable — and if re-reading confirms that write access has been revoked, buyers MUST surface an alert to the operator flagging the mutation as potentially unauthorized; they MUST NOT silently accept it as correct.
+
+`FIELD_NOT_PERMITTED` does not follow this pattern. The agent-autonomous recovery path — strip the disallowed field and resubmit — supersedes the retry consideration. Buyers MUST NOT retry the identical failing request for `FIELD_NOT_PERMITTED`; they SHOULD correct and resubmit immediately.
+
+See [Authorization (RBAC)](/docs/building/implementation/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
+
 ### Standard named scope: `attestation_verifier`
 
 Media-buy sales agents advertising **AAO Verified (Live)** readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
