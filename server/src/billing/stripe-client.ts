@@ -278,6 +278,13 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
  * full list of valid keys. Silently picking "first match wins" would risk
  * charging the wrong price.
  *
+ * TODO(#2550): This resolver is a band-aid. The root fix is in the Addie
+ * tool layer: tighten `find_membership_products` / `create_payment_link`
+ * tool descriptions so the LLM passes lookup_key verbatim, and surface a
+ * `did_you_mean` field in the tool response so the model learns the
+ * canonical key. As soon as the catalog gains a monthly Explorer SKU,
+ * `explorer_annual` will collide here and stop resolving — track interval
+ * preservation in #2550 too.
  */
 export function resolveLookupKeyAlias(input: string, products: BillingProduct[]): BillingProduct | undefined {
   const trimmed = input.trim().toLowerCase();
@@ -301,13 +308,9 @@ export function resolveLookupKeyAlias(input: string, products: BillingProduct[])
 }
 
 /**
- * Get a specific price by lookup key.
- * Returns both the Stripe price ID and the canonical lookup key — the canonical
- * key differs from the input only when the input was an alias (e.g. "explorer_annual"
- * resolves to "aao_membership_explorer_50"). Callers can surface the canonical key to
- * the LLM so subsequent calls use it verbatim.
+ * Get a specific price by lookup key
  */
-export async function getPriceByLookupKey(lookupKey: string): Promise<{ priceId: string; canonicalKey: string } | null> {
+export async function getPriceByLookupKey(lookupKey: string): Promise<string | null> {
   if (!stripe) {
     logger.warn({ lookupKey }, 'getPriceByLookupKey: Stripe not initialized');
     return null;
@@ -317,7 +320,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<{ priceId:
   const cachedProduct = cachedProducts.find(p => p.lookup_key === lookupKey);
   if (cachedProduct) {
     logger.info({ lookupKey, priceId: cachedProduct.price_id }, 'getPriceByLookupKey: Found price in cache');
-    return { priceId: cachedProduct.price_id, canonicalKey: lookupKey };
+    return cachedProduct.price_id;
   }
 
   // Direct Stripe lookup as fallback when cache doesn't have the key
@@ -330,7 +333,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<{ priceId:
 
     if (prices.data.length > 0) {
       logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price via direct Stripe lookup');
-      return { priceId: prices.data[0].id, canonicalKey: lookupKey };
+      return prices.data[0].id;
     }
   } catch (error) {
     logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error in direct Stripe lookup');
@@ -342,7 +345,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<{ priceId:
       { lookupKey, resolvedKey: aliased.lookup_key, priceId: aliased.price_id },
       'getPriceByLookupKey: Resolved alias to canonical lookup key',
     );
-    return { priceId: aliased.price_id, canonicalKey: aliased.lookup_key };
+    return aliased.price_id;
   }
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
@@ -983,15 +986,14 @@ export async function createAndSendInvoice(
   }
 
   // Get price ID from lookup key
-  const priceResult = await getPriceByLookupKey(data.lookupKey);
+  const priceId = await getPriceByLookupKey(data.lookupKey);
 
-  if (!priceResult) {
+  if (!priceId) {
     logger.error({
       lookupKey: data.lookupKey,
     }, 'No price found for lookup key');
     return null;
   }
-  const priceId = priceResult.priceId;
 
   let subscriptionId: string | undefined;
   try {
@@ -1308,12 +1310,11 @@ export async function validateInvoiceDetails(data: {
     return null;
   }
 
-  const priceResult = await getPriceByLookupKey(data.lookupKey);
-  if (!priceResult) {
+  const priceId = await getPriceByLookupKey(data.lookupKey);
+  if (!priceId) {
     logger.error({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
     return null;
   }
-  const priceId = priceResult.priceId;
 
   try {
     const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
