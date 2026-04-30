@@ -90,7 +90,7 @@
     },
     "package_ids": {
       "type": "array",
-      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, MUST include ALL active package identifiers for this buyer at this publisher — not just those on the current page — to prevent correlation with Context Match requests.",
+      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, MUST include ALL active package identifiers for this buyer at this publisher — not just those on the current page — to prevent correlation with Context Match requests. When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; IDs in `package_ids` that the buyer has not registered for this seller MUST be silently ignored (not surfaced as errors) to avoid leaking registry membership back to the publisher.",
       "items": {
         "type": "string"
       },
