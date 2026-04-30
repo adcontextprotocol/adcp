@@ -271,13 +271,16 @@ export const VerificationBadgeSchema = z
   .object({
     role: z.enum(ADCP_PROTOCOLS as [string, ...string[]])
       .openapi({ description: "AdCP protocol this badge covers (enums/adcp-protocol.json)." }),
+    adcp_version: z.string()
+      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
     verification_modes: z.array(z.enum(VERIFICATION_MODES as readonly [string, ...string[]])).min(1)
       .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
     verified_protocol_version: z.string().nullable(),
-    badge_url: z.string().optional(),
+    badge_url: z.string().optional()
+      .openapi({ description: "Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`." }),
   })
   .openapi("VerificationBadge");
 

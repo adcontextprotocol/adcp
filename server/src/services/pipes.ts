@@ -33,6 +33,29 @@ export async function getGitHubAccessToken(workosUserId: string): Promise<PipesT
   return { status: 'needs_reauthorization', missingScopes: [] };
 }
 
+/**
+ * Builds the absolute return URL we hand to WorkOS Pipes when the user finishes
+ * the OAuth dance. Validates the caller-supplied path so a Slack-clicked link
+ * (or any user-controlled `return_to`) cannot be rewritten into an open
+ * redirect to another origin. Shared by both the Member Hub `POST authorize`
+ * route and the `GET /connect/github` bouncer that Addie hands out.
+ */
+export function buildPipesReturnTo(
+  host: string,
+  protocol: string,
+  requested: unknown,
+  defaultPath = '/member-hub?connected=github',
+): string {
+  const candidate = typeof requested === 'string' ? requested : defaultPath;
+  const isSafe = candidate.startsWith('/')
+    && !candidate.startsWith('//')
+    && !candidate.includes('\\')
+    && !/[\r\n\t]/.test(candidate);
+  const safe = isSafe ? candidate : defaultPath;
+  const safeProtocol = protocol === 'http' && !host.startsWith('localhost') ? 'https' : protocol;
+  return `${safeProtocol}://${host}${safe}`;
+}
+
 export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: string): Promise<string> {
   const workos = getWorkos();
   const response = await workos.post<{ user_id: string; return_to: string }>(
@@ -72,6 +95,27 @@ export async function getGitHubConnectedAccount(workosUserId: string): Promise<C
     if (status === 404) return { status: 'not_connected' };
     const message = error instanceof Error ? error.message : String(error);
     logger.warn({ err: error, workosUserId }, 'Failed to look up Pipes connected account');
+    return { status: 'unavailable', reason: message };
+  }
+}
+
+export type DisconnectResult =
+  | { status: 'disconnected' }
+  | { status: 'not_connected' }
+  | { status: 'unavailable'; reason: string };
+
+export async function disconnectGitHub(workosUserId: string): Promise<DisconnectResult> {
+  const workos = getWorkos();
+  try {
+    await workos.delete(
+      `/user_management/users/${encodeURIComponent(workosUserId)}/connected_accounts/${GITHUB_PROVIDER}`,
+    );
+    return { status: 'disconnected' };
+  } catch (error) {
+    const status = (error as { status?: number; code?: number })?.status ?? (error as { code?: number })?.code;
+    if (status === 404) return { status: 'not_connected' };
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn({ err: error, workosUserId }, 'Failed to disconnect Pipes GitHub account');
     return { status: 'unavailable', reason: message };
   }
 }

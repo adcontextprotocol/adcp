@@ -97,6 +97,88 @@ describe('verification-token', () => {
       expect(claims!.verification_modes).toEqual(['spec', 'live']);
     });
 
+    it('round-trips a token with adcp_version claim', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBe('3.0');
+    });
+
+    it('omits adcp_version from the token when caller did not pass it', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+    });
+
+    it('refuses to sign when adcp_version is malformed (fail-closed)', async () => {
+      // Security review: dropping the claim silently and emitting a token
+      // without it would let a poisoned DB row turn into a downgrade
+      // attack — verifiers might treat "no adcp_version" as "pre-Stage-2
+      // token, accept as authoritative." Fail closed instead.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0; DROP TABLE',
+      });
+
+      expect(signed).toBeNull();
+    });
+
+    it('refuses to sign an adcp_version with a leading-zero major', async () => {
+      // Matches the DB CHECK constraint: ^[1-9][0-9]*\.[0-9]+$.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '0.5',
+      });
+
+      expect(signed).toBeNull();
+    });
+
+    it('refuses to sign full semver (3.0.0) as adcp_version', async () => {
+      // The claim is MAJOR.MINOR, not full semver. Full semver lives in
+      // protocol_version. Mixing them up is a programming error that
+      // should fail loudly at sign time.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0.0',
+      });
+
+      expect(signed).toBeNull();
+    });
+
+    it('signs adcp_version with double-digit minor without truncation', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.10',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBe('3.10');
+    });
+
     it('refuses to sign when no known modes remain after filtering', async () => {
       const result = await signVerificationToken({
         agent_url: 'https://example.com/mcp',

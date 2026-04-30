@@ -7,7 +7,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-registry-review');
 import { ModelConfig } from '../../config/models.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { PropertyDatabase } from '../../db/property-db.js';

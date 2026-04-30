@@ -295,15 +295,9 @@ git add -A && git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
 
 Next Version Packages cut after the exit PR merges produces `3.1.0` stable.
 
-#### Known friction (until #3417 lands)
+#### App-token convention
 
-GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. This affects three places in the release pipeline:
-
-1. **Version Packages PR** required CI doesn't auto-fire — push from a human identity to trigger
-2. **`release-docs.yml`** doesn't fire on `release: published` — manually `workflow_dispatch` after each tag
-3. **Auto-snapshot PR** required CI doesn't auto-fire — admin-merge
-
-Switching `release.yml` to a GitHub App token closes all three. Tracked in #3417.
+`release.yml`, `release-docs.yml`, and `forward-merge-3.0.yml` mint a GitHub App installation token via `actions/create-github-app-token@v3` (secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`) instead of using the default `GITHUB_TOKEN`. App-token-triggered events (push, PR open, release publish) DO fire downstream workflows; `GITHUB_TOKEN`-triggered events don't (GitHub's recursion-blocking rule). Without this swap, the Version Packages PR's required CI never fires, the release-docs snapshot is never created on `release: published`, and the auto-snapshot PR's required CI never fires either.
 
 #### Runbooks
 

@@ -1,10 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { resolvePersonId } from './relationship-db.js';
+import { recordInviteEvent } from './person-events-db.js';
 
 const logger = createLogger('membership-invites-db');
 
 export interface MembershipInvite {
+  id: string;
   token: string;
   workos_organization_id: string;
   lookup_key: string;
@@ -83,6 +86,17 @@ export async function createMembershipInvite(
     },
     'Membership invite created'
   );
+
+  await emitInviteEvent('invite_sent', created, {
+    occurredAt: created.created_at,
+    extra: {
+      lookup_key: created.lookup_key,
+      contact_name: created.contact_name,
+      expires_at: created.expires_at.toISOString(),
+      invited_by_user_id: created.invited_by_user_id,
+    },
+  });
+
   return created;
 }
 
@@ -143,6 +157,15 @@ export async function markMembershipInviteAccepted(
     },
     'Membership invite accepted'
   );
+
+  await emitInviteEvent('invite_accepted', updated, {
+    extra: {
+      lookup_key: updated.lookup_key,
+      accepted_by_user_id: acceptedByUserId,
+      invoice_id: invoiceId,
+    },
+  });
+
   return updated;
 }
 
@@ -150,6 +173,9 @@ export async function revokeMembershipInvite(
   token: string,
   revokedByUserId: string
 ): Promise<MembershipInvite | null> {
+  const existing = await getMembershipInviteByToken(token);
+  const previousStatus = existing ? inviteStatus(existing) : null;
+
   const result = await query<MembershipInvite>(
     `UPDATE membership_invites
      SET revoked_at = NOW(),
@@ -160,5 +186,59 @@ export async function revokeMembershipInvite(
      RETURNING *`,
     [token, revokedByUserId]
   );
-  return result.rows[0] || null;
+  const revoked = result.rows[0] || null;
+  if (!revoked) {
+    return null;
+  }
+
+  await emitInviteEvent('invite_revoked', revoked, {
+    extra: {
+      lookup_key: revoked.lookup_key,
+      revoked_by_user_id: revokedByUserId,
+      previous_status: previousStatus,
+    },
+  });
+
+  return revoked;
+}
+
+/**
+ * Resolve the recipient and emit a person_event for an invite lifecycle change.
+ *
+ * Person resolution failure must not abort the underlying invite operation —
+ * the membership_invites row is the source of truth; the event log is history.
+ * We log a warning and continue.
+ */
+async function emitInviteEvent(
+  eventType: 'invite_sent' | 'invite_accepted' | 'invite_revoked',
+  invite: MembershipInvite,
+  options: {
+    occurredAt?: Date;
+    extra: Record<string, unknown>;
+  }
+): Promise<void> {
+  try {
+    const personId = await resolvePersonId({
+      email: invite.contact_email,
+    });
+    await recordInviteEvent(personId, eventType, invite.id, {
+      occurredAt: options.occurredAt,
+      data: {
+        token_prefix: invite.token.slice(0, 8),
+        org_id: invite.workos_organization_id,
+        ...options.extra,
+      },
+    });
+  } catch (err) {
+    logger.warn(
+      {
+        err,
+        eventType,
+        inviteId: invite.id,
+        orgId: invite.workos_organization_id,
+        contactEmail: invite.contact_email,
+      },
+      'Failed to record invite event — invite operation succeeded'
+    );
+  }
 }

@@ -7,7 +7,9 @@
  */
 
 import { siDb } from "../../db/si-db.js";
-import { logger } from "../../logger.js";
+import { createLogger } from "../../logger.js";
+
+const logger = createLogger('si-retriever');
 
 /**
  * Retrieved SI agent with relevance scoring

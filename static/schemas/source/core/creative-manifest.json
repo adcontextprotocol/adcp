@@ -22,26 +22,7 @@
       "description": "Map of slot keys to actual asset content. v1 path: each key matches an `asset_id` from the format's `assets` array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). v2 path: each key matches an `asset_group_id` from the format's `slots` declaration drawn from the canonical vocabulary registry (e.g., 'images_landscape', 'video', 'landing_page_url', 'vast_tag', 'script', 'creative_brief'). Either path produces the same envelope shape; only the slot-key vocabulary differs.\n\nEach asset value carries an `asset_type` discriminator (image, video, audio, vast, daast, text, markdown, url, html, css, webhook, javascript, brief, catalog, zip) that selects the matching asset schema. Validators with OpenAPI-style discriminator support use `asset_type` to report errors against only the selected branch instead of all branches.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
-          "oneOf": [
-            { "$ref": "/schemas/core/assets/image-asset.json" },
-            { "$ref": "/schemas/core/assets/video-asset.json" },
-            { "$ref": "/schemas/core/assets/audio-asset.json" },
-            { "$ref": "/schemas/core/assets/vast-asset.json" },
-            { "$ref": "/schemas/core/assets/text-asset.json" },
-            { "$ref": "/schemas/core/assets/url-asset.json" },
-            { "$ref": "/schemas/core/assets/html-asset.json" },
-            { "$ref": "/schemas/core/assets/javascript-asset.json" },
-            { "$ref": "/schemas/core/assets/zip-asset.json" },
-            { "$ref": "/schemas/core/assets/webhook-asset.json" },
-            { "$ref": "/schemas/core/assets/css-asset.json" },
-            { "$ref": "/schemas/core/assets/daast-asset.json" },
-            { "$ref": "/schemas/core/assets/markdown-asset.json" },
-            { "$ref": "/schemas/core/assets/brief-asset.json" },
-            { "$ref": "/schemas/core/assets/catalog-asset.json" }
-          ],
-          "discriminator": {
-            "propertyName": "asset_type"
-          }
+          "$ref": "/schemas/core/assets/asset-union.json"
         }
       },
       "additionalProperties": true

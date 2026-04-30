@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.1.0-beta.0",
+  "version": "3.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -122,6 +122,7 @@
     "sharp": "^0.34.5",
     "stripe": "^22.1.0",
     "svix": "^1.92.2",
+    "undici": "^7.24.5",
     "whoiser": "^2.0.0-beta.10",
     "yaml": "^2.8.3",
     "yauzl": "^3.2.1",

@@ -10,7 +10,9 @@
  * - 'changes': Summary of what changed since last update
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('committee-summary-generator');
 import { getPool } from '../../db/client.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { isLLMConfigured, complete } from '../../utils/llm.js';

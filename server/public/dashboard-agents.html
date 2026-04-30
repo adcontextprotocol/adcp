@@ -1622,24 +1622,82 @@
       const encoded = encodeURIComponent(agentUrl);
       const registryUrl = `${baseUrl}/registry/agents/${encoded}`;
 
+      // Per-version badge rendering (#3524 stage 4): one row per
+      // (role, adcp_version). Each row's embed snippets point at the
+      // version-pinned SVG URL so a buyer who copies them gets the
+      // exact version's badge — newer versions land in their own rows
+      // with their own embed snippets. The legacy /badge/{role}.svg
+      // URL still works for callers that want the auto-upgrading
+      // highest-version badge.
+      //
+      // Same shape as VALID_ADCP_VERSION_RE in registry-api.ts and
+      // ADCP_VERSION_RE in badge-svg.ts — kept inline because
+      // dashboard-agents.html has no module imports. Update all three
+      // call sites together if the constraint ever changes.
+      const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
+
+      const distinctRoleCount = new Set(badges.map(b => b.role)).size;
+
       const rowsHtml = badges.map((badge, idx) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
-        const badgeSvgUrl = `${baseUrl}${badge.badge_url}`;
-        const altText = `AAO Verified ${protocol} Agent (${qualifier})`;
+        // Defensive: the DB CHECK constraint and JWT signer regex
+        // prevent malformed adcp_version values from reaching here
+        // in production. Belt-and-suspenders for hand-edited rows
+        // and forward-compat against schema relaxation.
+        const adcpVersion = typeof badge.adcp_version === 'string' && ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)
+          ? badge.adcp_version
+          : null;
+        if (badge.adcp_version && !adcpVersion) {
+          // Loud-warn: a row arrived with a non-shape-conformant
+          // adcp_version. Falls back to the legacy URL (which serves
+          // highest-version) so the row still renders, but the label
+          // is marked unversioned so it isn't visually identical to
+          // a normal pre-3.0 row.
+          console.warn(
+            'Verification panel: badge has malformed adcp_version, falling back to legacy URL',
+            { agentUrl, role: badge.role, adcp_version: badge.adcp_version },
+          );
+        }
+        // Server constructs badge.badge_url as
+        // `/api/registry/agents/{encodedUrl}/badge/{role}.svg`, but we
+        // validate the prefix anyway so a future federated-mirror that
+        // populates this field externally can't redirect the embedded
+        // <img src> to an arbitrary URL.
+        const safeLegacyBadgeUrl = (typeof badge.badge_url === 'string' && badge.badge_url.startsWith('/api/registry/agents/'))
+          ? badge.badge_url
+          : `/api/registry/agents/${encoded}/badge/${badge.role}.svg`;
+        const versionedBadgeUrl = adcpVersion
+          ? `/api/registry/agents/${encoded}/badge/${badge.role}/${adcpVersion}.svg`
+          : safeLegacyBadgeUrl;
+        const badgeSvgUrl = `${baseUrl}${versionedBadgeUrl}`;
+        // Label/alt segment: the version when shape-validated, an
+        // explicit "(unversioned)" tag when a malformed value forced
+        // the legacy fallback, or empty for true legacy rows where
+        // the API never set adcp_version at all.
+        const versionSegment = adcpVersion
+          ? ` ${adcpVersion}`
+          : (badge.adcp_version ? ' (unversioned)' : '');
+        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
+        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 
-        const drawerId = `verification-embed-${idx}-${Math.random().toString(36).slice(2, 8)}`;
+        // Stable drawer id keyed on role+version so re-renders after
+        // an issue/revoke don't randomize the open/closed state of
+        // an already-expanded drawer. 'unv' for malformed-version
+        // rows so two malformed badges don't collide on 'any'.
+        const versionForId = adcpVersion ?? (badge.adcp_version ? 'unv' : 'any');
+        const drawerId = `verification-embed-${badge.role}-${versionForId}-${idx}`;
 
         return `
           <div class="verification-badge-row">
             <div class="verification-badge-row-top">
-              <span class="verification-badge-svg"><img src="${escapeHtml(badge.badge_url)}" alt="${escapeHtml(altText)}" /></span>
+              <span class="verification-badge-svg"><img src="${escapeHtml(versionedBadgeUrl)}" alt="${escapeHtml(altText)}" /></span>
               <span class="verification-badge-meta">
-                <strong>${escapeHtml(protocol)} Agent (${escapeHtml(qualifier)})</strong>
+                <strong>${escapeHtml(labelStrong)}</strong>
                 ${verifiedAt ? ' · ' + escapeHtml(verifiedAt) : ''}
                 ${specialisms.length ? '<br>' + specialisms.map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') : ''}
               </span>
@@ -1677,11 +1735,21 @@
         ? ''
         : '<div class="verification-eligibility-hint">Want <strong>(Live)</strong> too? Once AAO\'s canonical-campaign runner ships in 3.1, agents that flow real production traffic will earn the <strong>(Live)</strong> qualifier on the same badge — same URL, no embed swap. <a href="/docs/building/aao-verified#verified-live" target="_blank" rel="noopener">Learn more</a>.</div>';
 
+      // Header count: "1 badge" / "N badges" / "N badges across M roles"
+      // The "across M roles" suffix only appears when at least one role
+      // has parallel-version badges (i.e. distinctRoleCount < badges.length).
+      // Today with SUPPORTED_BADGE_VERSIONS = ['3.0'] every agent has at
+      // most one badge per role, so this only kicks in once parallel
+      // versions ship.
+      const badgeCountSummary = badges.length === 1
+        ? '1 badge'
+        : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
+
       return `
         <div class="agent-verification-panel">
           <div class="agent-verification-header">
             <span>AAO Verified</span>
-            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badges.length} badge${badges.length === 1 ? '' : 's'}</span>
+            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
           ${rowsHtml}
           ${liveHint}

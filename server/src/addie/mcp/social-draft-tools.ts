@@ -10,7 +10,9 @@
  * Never fabricate claims about the member or their company.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-social-draft-tools');
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';

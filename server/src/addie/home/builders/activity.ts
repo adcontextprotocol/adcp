@@ -7,7 +7,9 @@
 import type { ActivityItem } from '../types.js';
 import type { MemberContext } from '../../member-context.js';
 import { EventsDatabase } from '../../../db/events-db.js';
-import { logger } from '../../../logger.js';
+import { createLogger } from '../../../logger.js';
+
+const logger = createLogger('addie-home-builder-activity');
 
 const eventsDb = new EventsDatabase();
 
