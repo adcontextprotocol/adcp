@@ -4222,12 +4222,26 @@ export class HTTPServer {
                   ]
                 );
               } catch (revenueError) {
-                logger.error({
-                  err: revenueError,
-                  orgId: org.workos_organization_id,
-                  invoiceId: invoice.id,
-                }, 'Failed to insert revenue event');
-                // Continue processing - don't fail the webhook
+                // PG code 23505 = unique_violation. revenue_events.stripe_invoice_id
+                // is UNIQUE, so a duplicate INSERT here means Stripe re-fired the
+                // same invoice.paid event — safe to swallow (the row already exists).
+                // Any other error (transient DB blip, statement timeout) means the
+                // row was lost; re-throw so Stripe retries with backoff. Without
+                // this, swallowing transient errors silently dropped paid revenue
+                // (#3693).
+                if ((revenueError as { code?: string })?.code === '23505') {
+                  logger.info(
+                    { orgId: org.workos_organization_id, invoiceId: invoice.id },
+                    'revenue_events INSERT hit UNIQUE on stripe_invoice_id; duplicate event ignored',
+                  );
+                } else {
+                  logger.error({
+                    err: revenueError,
+                    orgId: org.workos_organization_id,
+                    invoiceId: invoice.id,
+                  }, 'Failed to insert revenue event — re-throwing so Stripe retries');
+                  throw revenueError;
+                }
               }
 
               // Store subscription line items for subscriptions
@@ -4438,12 +4452,22 @@ export class HTTPServer {
                   invoiceId: invoice.id,
                 }, 'Failed payment event recorded');
               } catch (revenueError) {
-                logger.error({
-                  err: revenueError,
-                  orgId: org.workos_organization_id,
-                  invoiceId: invoice.id,
-                }, 'Failed to insert failed payment event');
-                // Continue processing - don't fail the webhook
+                // Same dedup pattern as the invoice.paid INSERT above:
+                // 23505 = duplicate Stripe retry, swallow safely; otherwise
+                // re-throw so the transient failure gets retried (#3693).
+                if ((revenueError as { code?: string })?.code === '23505') {
+                  logger.info(
+                    { orgId: org.workos_organization_id, invoiceId: invoice.id },
+                    'failed-payment revenue_events INSERT hit UNIQUE; duplicate event ignored',
+                  );
+                } else {
+                  logger.error({
+                    err: revenueError,
+                    orgId: org.workos_organization_id,
+                    invoiceId: invoice.id,
+                  }, 'Failed to insert failed payment event — re-throwing so Stripe retries');
+                  throw revenueError;
+                }
               }
 
               // Send Slack notification for failed payment
@@ -4514,12 +4538,19 @@ export class HTTPServer {
                     refundAmount: charge.amount_refunded,
                   }, 'Refund event recorded');
                 } catch (revenueError) {
+                  // Refund INSERTs use stripe_charge_id which is NOT a UNIQUE
+                  // column on revenue_events. Until that constraint is added
+                  // (separate migration), we cannot distinguish "Stripe retry"
+                  // from "transient error" by error code. Keep the swallow
+                  // here so retries don't dup, document the gap. Tracked for
+                  // a follow-up: add UNIQUE (stripe_charge_id) WHERE
+                  // revenue_type = 'refund', then apply the 23505 pattern
+                  // used for invoice-based events above (#3693 follow-up).
                   logger.error({
                     err: revenueError,
                     orgId: org.workos_organization_id,
                     chargeId: charge.id,
-                  }, 'Failed to insert refund event');
-                  // Continue processing - don't fail the webhook
+                  }, 'Failed to insert refund event (silent — needs schema follow-up to throw safely)');
                 }
               }
             }
