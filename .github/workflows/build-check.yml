@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main, develop, '2.6.x']
+    branches: [main, develop, '3.0.x', '2.6.x']
   push:
-    branches: [main, develop, '2.6.x']
+    branches: [main, develop, '3.0.x', '2.6.x']
 
 concurrency:
   group: build-check-${{ github.ref }}

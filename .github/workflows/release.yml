@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - '3.0.x'
       - '2.6.x'
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
@@ -20,10 +21,26 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
+      # Mint a GitHub App installation token so events triggered by this
+      # workflow (push to changeset-release/<branch>, release: published)
+      # FIRE downstream workflows. GITHUB_TOKEN-triggered events are
+      # silently dropped by GitHub's recursion-blocking rule, which used to
+      # leave the Version Packages PR with stuck-pending CI and skip the
+      # release-docs snapshot. Closes #3417.
+      - name: Mint AAO Release Bot installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
       - name: Checkout Repo
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -51,4 +68,4 @@ jobs:
           title: 'Version Packages'
           createGithubReleases: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
