@@ -152,4 +152,148 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     expect(page1[0].brand_name).toBe('AAA');
     expect(page2[0].brand_name).toBe('BBB');
   });
+
+  describe('source filter', () => {
+    // Round-trip property: ?source=X returns only rows the response labels source=X.
+    // Prevents drift between filter input and response output — the original
+    // bug (#3521) was that the filter was ignored entirely.
+
+    async function seedAllSources(prefix = 'src') {
+      // Owner-registered: source_type='community' AND is_public=true → response label 'hosted'
+      await insertBrand({
+        domain: `${prefix}-hosted.example.com`,
+        brand_name: 'Hosted Owner',
+        is_public: true,
+        source_type: 'community',
+      });
+      // Crawler-discovered with live brand.json → response label 'brand_json'
+      await insertBrand({
+        domain: `${prefix}-bj.example.com`,
+        brand_name: 'Authoritative',
+        is_public: false,
+        source_type: 'brand_json',
+      });
+      // Community-contributed, not owner-claimed → response label 'community'
+      await insertBrand({
+        domain: `${prefix}-comm.example.com`,
+        brand_name: 'Community Pick',
+        is_public: false,
+        source_type: 'community',
+      });
+      // Brandfetch-enriched → response label 'enriched'
+      await insertBrand({
+        domain: `${prefix}-enr.example.com`,
+        brand_name: 'Enriched Pick',
+        is_public: false,
+        source_type: 'enriched',
+      });
+    }
+
+    it('?source=hosted returns only is_public=true rows', async () => {
+      await seedAllSources('hosted');
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'hosted-', source: 'hosted' });
+      expect(result.length).toBe(1);
+      expect(result[0].domain).toBe('hosted-hosted.example.com');
+      expect(result[0].source).toBe('hosted');
+    });
+
+    it('?source=brand_json excludes hosted rows even if source_type would match', async () => {
+      // A pathological row: source_type='brand_json' AND is_public=true.
+      // Response labels it 'hosted', so ?source=brand_json must NOT return it.
+      await insertBrand({
+        domain: 'mixed.example.com',
+        brand_name: 'Mixed',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+      await insertBrand({
+        domain: 'pure-bj.example.com',
+        brand_name: 'Pure BJ',
+        is_public: false,
+        source_type: 'brand_json',
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: '.example.com', source: 'brand_json' });
+      const domains = result.map((b) => b.domain);
+      expect(domains).toContain('pure-bj.example.com');
+      expect(domains).not.toContain('mixed.example.com');
+      result.forEach((b) => expect(b.source).toBe('brand_json'));
+    });
+
+    it('?source=community returns only non-hosted community rows', async () => {
+      await seedAllSources('comm');
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'comm-', source: 'community' });
+      expect(result.length).toBe(1);
+      expect(result[0].domain).toBe('comm-comm.example.com');
+      expect(result[0].source).toBe('community');
+    });
+
+    it('?source=enriched returns only enriched rows', async () => {
+      await seedAllSources('enr');
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'enr-', source: 'enriched' });
+      expect(result.length).toBe(1);
+      expect(result[0].domain).toBe('enr-enr.example.com');
+      expect(result[0].source).toBe('enriched');
+    });
+
+    it('all four filter values partition the four seeded rows', async () => {
+      await seedAllSources('part');
+      const search = 'part-';
+
+      const [hosted, brand_json, community, enriched, all] = await Promise.all([
+        brandDb.getAllBrandsForRegistry({ search, source: 'hosted' }),
+        brandDb.getAllBrandsForRegistry({ search, source: 'brand_json' }),
+        brandDb.getAllBrandsForRegistry({ search, source: 'community' }),
+        brandDb.getAllBrandsForRegistry({ search, source: 'enriched' }),
+        brandDb.getAllBrandsForRegistry({ search }),
+      ]);
+
+      expect(hosted.length + brand_json.length + community.length + enriched.length).toBe(all.length);
+    });
+
+    it('omitting source returns the union (regression: filter must not silently apply a default)', async () => {
+      await seedAllSources('union');
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'union-' });
+      expect(result.length).toBe(4);
+    });
+  });
+
+  describe('getBrandRegistryStats', () => {
+    it('hosted, brand_json, community, enriched are disjoint and reconcile with filter results', async () => {
+      // is_public=true is counted ONLY as hosted; the source_type buckets
+      // exclude it. Otherwise the dashboard double-counts owner-registered
+      // brands and the filter+stats pair becomes inconsistent.
+      await insertBrand({
+        domain: 'stats-hosted.example.com',
+        brand_name: 'Stats Hosted',
+        is_public: true,
+        source_type: 'community',
+      });
+      await insertBrand({
+        domain: 'stats-bj.example.com',
+        brand_name: 'Stats BJ',
+        is_public: false,
+        source_type: 'brand_json',
+      });
+      await insertBrand({
+        domain: 'stats-comm.example.com',
+        brand_name: 'Stats Comm',
+        is_public: false,
+        source_type: 'community',
+      });
+      await insertBrand({
+        domain: 'stats-enr.example.com',
+        brand_name: 'Stats Enr',
+        is_public: false,
+        source_type: 'enriched',
+      });
+
+      const stats = await brandDb.getBrandRegistryStats('stats-');
+      expect(stats.hosted).toBe(1);
+      expect(stats.brand_json).toBe(1);
+      expect(stats.community).toBe(1);
+      expect(stats.enriched).toBe(1);
+      expect(stats.total).toBe(4);
+    });
+  });
 });
