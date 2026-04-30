@@ -3,16 +3,15 @@
   "$id": "/schemas/governance/report-plan-outcome-request.json",
   "title": "Report Plan Outcome Request",
   "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "x-status": "experimental",
   "x-mutates-state": true,
-  "type": "object",
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "plan_id": {
       "type": "string",
       "description": "The plan this outcome is for. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
@@ -45,7 +44,7 @@
       "properties": {
         "seller_reference": {
           "type": "string",
-          "description": "The seller's identifier for the created resource (e.g., media_buy_id, rights_grant_id, deployment_id). Not interpreted by the governance agent \u2014 included in audit logs for human-readable traceability alongside the opaque governance_context.",
+          "description": "The seller's identifier for the created resource (e.g., media_buy_id, rights_grant_id, deployment_id). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque governance_context.",
           "maxLength": 255
         },
         "committed_budget": {
@@ -161,5 +160,5 @@
     "outcome",
     "governance_context"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

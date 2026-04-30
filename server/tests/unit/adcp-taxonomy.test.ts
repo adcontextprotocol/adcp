@@ -10,6 +10,8 @@ import {
   ADCP_SPECIALISMS,
   isStableSpecialism,
   getSpecialismStatus,
+  SUPPORTED_BADGE_VERSIONS,
+  isSupportedBadgeVersion,
 } from '../../src/services/adcp-taxonomy.js';
 
 function loadJsonEnum(relPath: string): string[] {
@@ -47,5 +49,28 @@ describe('specialism status', () => {
 
   it('treats unknown specialisms as stable (safe default)', () => {
     expect(getSpecialismStatus('not-a-real-specialism')).toBe('stable');
+  });
+});
+
+describe('SUPPORTED_BADGE_VERSIONS', () => {
+  it('is a non-empty array of MAJOR.MINOR strings', () => {
+    expect(SUPPORTED_BADGE_VERSIONS.length).toBeGreaterThan(0);
+    for (const v of SUPPORTED_BADGE_VERSIONS) {
+      // Same shape as the agent_verification_badges.adcp_version CHECK.
+      expect(v).toMatch(/^[1-9][0-9]*\.[0-9]+$/);
+    }
+  });
+
+  it('isSupportedBadgeVersion accepts every entry', () => {
+    for (const v of SUPPORTED_BADGE_VERSIONS) {
+      expect(isSupportedBadgeVersion(v)).toBe(true);
+    }
+  });
+
+  it('isSupportedBadgeVersion rejects unknown values', () => {
+    expect(isSupportedBadgeVersion('99.0')).toBe(false);
+    expect(isSupportedBadgeVersion(null)).toBe(false);
+    expect(isSupportedBadgeVersion(undefined)).toBe(false);
+    expect(isSupportedBadgeVersion('')).toBe(false);
   });
 });

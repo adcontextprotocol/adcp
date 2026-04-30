@@ -4,6 +4,11 @@
   "title": "List Content Standards Response",
   "description": "Response payload with list of content standards configurations",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -11,7 +16,9 @@
       "properties": {
         "standards": {
           "type": "array",
-          "items": { "$ref": "/schemas/content-standards/content-standards.json" },
+          "items": {
+            "$ref": "/schemas/content-standards/content-standards.json"
+          },
           "description": "Array of content standards configurations matching the filter criteria"
         },
         "pagination": {
@@ -24,7 +31,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["standards"]
+      "required": [
+        "standards"
+      ]
     },
     {
       "type": "object",
@@ -32,7 +41,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -41,7 +52,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

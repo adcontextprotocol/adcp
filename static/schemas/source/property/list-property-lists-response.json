@@ -4,6 +4,11 @@
   "title": "List Property Lists Response",
   "description": "Response payload for list_property_lists task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "lists": {
       "type": "array",

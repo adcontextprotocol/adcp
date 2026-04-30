@@ -59,18 +59,7 @@ Your job is to assess email domains to determine if the associated company shoul
 AgenticAdvertising.org members include companies in these categories:
 ${getCompanyTypesDocumentation()}
 
-**Respond with JSON only. No markdown, no explanation.**
-
-Response schema:
-{
-  "action": "skip" | "create",
-  "reason": "brief reason for your decision (one sentence)",
-  "owner": "addie" | "human",
-  "priority": "high" | "standard",
-  "verdict": "two-sentence summary of who this company is and why they are or aren't a good fit",
-  "company_name": "your best guess at the company name based on the domain or enrichment data",
-  "company_type": "adtech" | "agency" | "brand" | "publisher" | "data" | "ai" | "other" | null
-}
+Call assess_prospect with your assessment.
 
 **action: "skip"** when:
 - The company is clearly not in the ad tech / digital media ecosystem
@@ -280,7 +269,7 @@ async function logTriageDecision(
 
 // ─── Claude assessment ─────────────────────────────────────────────────────
 
-async function assessWithClaude(
+export async function assessWithClaude(
   domain: string,
   enrichmentContext: string
 ): Promise<ClaudeTriageResponse> {
@@ -298,34 +287,58 @@ async function assessWithClaude(
 
   const client = new Anthropic({ apiKey });
 
+  // Anthropic tool_use with input_schema: enums on action / owner / priority /
+  // company_type constrain the model output at the SDK layer. The runtime
+  // company_type allowlist below remains as defense-in-depth.
   const response = await client.messages.create({
     model: ModelConfig.fast,
     max_tokens: 512,
     system: TRIAGE_SYSTEM_PROMPT,
+    tools: [
+      {
+        name: 'assess_prospect',
+        description: 'Record the prospect assessment for the domain.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['skip', 'create'] },
+            reason: { type: 'string', description: 'Brief reason for your decision (one sentence)' },
+            owner: { type: 'string', enum: ['addie', 'human'] },
+            priority: { type: 'string', enum: ['high', 'standard'] },
+            verdict: {
+              type: 'string',
+              description: 'Two-sentence summary of who this company is and whether they fit',
+            },
+            company_name: {
+              type: 'string',
+              description: 'Best guess at the company name from the domain or enrichment data',
+            },
+            company_type: {
+              type: ['string', 'null'],
+              enum: [...COMPANY_TYPE_VALUES, null] as unknown as string[],
+            },
+          },
+          required: ['action', 'reason', 'owner', 'verdict'],
+        },
+      },
+    ],
+    tool_choice: { type: 'tool', name: 'assess_prospect' },
     messages: [{
       role: 'user',
       content: `Assess this email domain as a potential prospect:\n\nDomain: ${domain}\n\n${enrichmentContext}`,
     }],
   });
 
-  const textBlock = response.content.find(b => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('No text response from Claude');
+  const toolUse = response.content.find(
+    (b) => b.type === 'tool_use' && b.name === 'assess_prospect',
+  );
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new Error('Triage: model did not invoke assess_prospect');
   }
+  const parsed = toolUse.input as ClaudeTriageResponse;
 
-  // Strip markdown code fences if present
-  const text = textBlock.text.trim();
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ?? text.match(/(\{[\s\S]*\})/);
-  const jsonStr = jsonMatch ? jsonMatch[1] : text;
-
-  let parsed: ClaudeTriageResponse;
-  try {
-    parsed = JSON.parse(jsonStr) as ClaudeTriageResponse;
-  } catch (parseErr) {
-    throw new Error(`Claude returned malformed JSON: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}. Raw: ${jsonStr.slice(0, 200)}`);
-  }
-
-  // Ensure company_type is a known value
+  // Defense-in-depth: company_type allowlist (schema enum should already
+  // bound this, but the runtime check guards against schema drift).
   if (parsed.company_type && !COMPANY_TYPE_VALUES.includes(parsed.company_type as (typeof COMPANY_TYPE_VALUES)[number])) {
     parsed.company_type = null;
   }

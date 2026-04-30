@@ -1301,12 +1301,62 @@
             <div>
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
                 Properties (websites, apps) <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span>
-                <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm);">+ Add Property</button>
+                <span style="display: flex; gap: var(--space-2);">
+                  <button class="btn btn-secondary" onclick="toggleImportPanel()" id="import-properties-btn" style="padding: var(--space-2) var(--space-3); font-size: var(--text-sm);">↑ Import</button>
+                  <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm);">+ Add Property</button>
+                </span>
               </label>
               <div id="single-brand-properties">
                 <div style="padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center;">
                   <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">Add your website, app, or other digital properties where your brand appears</p>
                 </div>
+              </div>
+
+              <!-- Import properties panel -->
+              <div id="import-properties-panel" style="display: none; margin-top: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-subtle); padding: var(--space-4);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+                  <span style="font-size: var(--text-sm); font-weight: var(--font-medium);">Import properties</span>
+                  <button onclick="toggleImportPanel()" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: var(--text-lg); line-height: 1; padding: 0;">×</button>
+                </div>
+
+                <!-- Input type tabs -->
+                <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
+                  <button id="import-tab-text" class="btn" onclick="switchImportTab('text')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Paste text</button>
+                  <button id="import-tab-url" class="btn btn-secondary" onclick="switchImportTab('url')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">From URL</button>
+                </div>
+
+                <div id="import-input-text">
+                  <textarea id="import-paste-input" rows="5" placeholder="Paste domains, a spreadsheet column, an email list, or free-form text — one domain per line or separated by tabs/commas." style="width: 100%; box-sizing: border-box; resize: vertical; font-size: var(--text-sm);"></textarea>
+                </div>
+
+                <div id="import-input-url" style="display: none;">
+                  <p style="font-size: var(--text-xs); color: var(--color-warning-600); margin: 0 0 var(--space-2) 0;">⚠ Public URLs only. Google Sheets must be shared as "Anyone with the link."</p>
+                  <input type="url" id="import-url-input" placeholder="https://docs.google.com/spreadsheets/... or https://example.com/publishers.csv" style="width: 100%; box-sizing: border-box; font-size: var(--text-sm);" />
+                </div>
+
+                <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3);">
+                  <div style="display: flex; align-items: center; gap: var(--space-2);">
+                    <label style="font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--text-secondary); white-space: nowrap;">Import as</label>
+                    <select id="import-relationship" style="font-size: var(--text-xs); padding: var(--space-1) var(--space-2);" title="owned = your direct property, direct = your direct sales path, delegated = you manage their monetization, ad_network = you sell as exchange/SSP">
+                      <option value="delegated" selected>Delegated</option>
+                      <option value="owned">Owned</option>
+                      <option value="direct">Direct</option>
+                      <option value="ad_network">Ad network</option>
+                    </select>
+                  </div>
+                  <button class="btn" onclick="runPropertyParse()" id="import-parse-btn" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm);">Parse</button>
+                </div>
+
+                <!-- Preview -->
+                <div id="import-preview" style="display: none; margin-top: var(--space-3);">
+                  <div id="import-preview-content"></div>
+                  <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3);">
+                    <button class="btn" onclick="confirmPropertyImport()" id="import-confirm-btn" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm);"></button>
+                    <button class="btn btn-secondary" onclick="resetImportPanel()" style="padding: var(--space-2) var(--space-3); font-size: var(--text-sm);">Clear</button>
+                  </div>
+                </div>
+
+                <div id="import-error" style="display: none; color: var(--color-error-600); font-size: var(--text-xs); margin-top: var(--space-2);"></div>
               </div>
             </div>
 
@@ -2241,6 +2291,130 @@
         }
         singleBrandProperties[index][field] = value;
         updatePreview();
+      }
+
+      // ============================================================================
+      // Import Properties (smart paste)
+      // ============================================================================
+
+      let importedProperties = [];
+      let importActiveTab = 'text';
+
+      function toggleImportPanel() {
+        const panel = document.getElementById('import-properties-panel');
+        const btn = document.getElementById('import-properties-btn');
+        const visible = panel.style.display !== 'none';
+        panel.style.display = visible ? 'none' : 'block';
+        btn.textContent = visible ? '↑ Import' : '↑ Close';
+        if (!visible) resetImportPanel();
+      }
+
+      function switchImportTab(tab) {
+        importActiveTab = tab;
+        document.getElementById('import-input-text').style.display = tab === 'text' ? 'block' : 'none';
+        document.getElementById('import-input-url').style.display = tab === 'url' ? 'block' : 'none';
+        document.getElementById('import-tab-text').className = tab === 'text' ? 'btn' : 'btn btn-secondary';
+        document.getElementById('import-tab-url').className = tab === 'url' ? 'btn' : 'btn btn-secondary';
+        resetImportPreview();
+      }
+
+      function resetImportPreview() {
+        importedProperties = [];
+        document.getElementById('import-preview').style.display = 'none';
+        document.getElementById('import-error').style.display = 'none';
+      }
+
+      function resetImportPanel() {
+        resetImportPreview();
+        document.getElementById('import-paste-input').value = '';
+        document.getElementById('import-url-input').value = '';
+        document.getElementById('import-relationship').value = 'delegated';
+        switchImportTab('text');
+      }
+
+      async function runPropertyParse() {
+        const btn = document.getElementById('import-parse-btn');
+        const errorEl = document.getElementById('import-error');
+        errorEl.style.display = 'none';
+        resetImportPreview();
+
+        const relationship = document.getElementById('import-relationship').value;
+        let input, input_type;
+        if (importActiveTab === 'url') {
+          input = document.getElementById('import-url-input').value.trim();
+          input_type = 'url';
+          if (!input) { showImportError('Enter a URL to fetch.'); return; }
+        } else {
+          input = document.getElementById('import-paste-input').value.trim();
+          input_type = 'text';
+          if (!input) { showImportError('Paste some text to parse.'); return; }
+        }
+
+        if (!currentDomain) { showImportError('Load a brand domain first.'); return; }
+
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Parsing…';
+
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(currentDomain)}/properties/parse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ input, input_type, relationship }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) { showImportError(data.error || 'Parse failed.'); return; }
+          if (data.count === 0) { showImportError(data.warning || 'No publisher domains found in the input.'); return; }
+          importedProperties = data.properties;
+          showImportPreview(data.properties, data.truncated);
+        } catch {
+          showImportError('Network error. Try again.');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      }
+
+      function showImportError(msg) {
+        const el = document.getElementById('import-error');
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+
+      function showImportPreview(properties, truncated) {
+        const preview = document.getElementById('import-preview');
+        const content = document.getElementById('import-preview-content');
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        const preview5 = properties.slice(0, 5);
+        const more = properties.length - preview5.length;
+        const list = preview5.map(p => escapeHtml(p.identifier)).join(', ');
+        const truncatedNote = truncated
+          ? `<p style="font-size: var(--text-xs); color: var(--color-warning-600); margin: var(--space-1) 0 0 0;">⚠ Input was truncated at 50,000 characters — not all domains may be listed. Split into smaller batches for full coverage.</p>`
+          : '';
+        content.innerHTML = `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0 0 var(--space-1) 0;">
+          Found <strong>${properties.length}</strong> ${properties.length === 1 ? 'property' : 'properties'}: ${list}${more > 0 ? ` and ${more} more` : ''}.
+        </p>${truncatedNote}`;
+        confirmBtn.textContent = `Import ${properties.length} ${properties.length === 1 ? 'property' : 'properties'}`;
+        preview.style.display = 'block';
+      }
+
+      function confirmPropertyImport() {
+        if (!importedProperties.length) return;
+        for (const p of importedProperties) {
+          const existing = singleBrandProperties.find(e => e.identifier === p.identifier);
+          if (!existing) {
+            singleBrandProperties.push({
+              type: p.type,
+              identifier: p.identifier,
+              primary: false,
+              relationship: p.relationship || 'delegated',
+            });
+          }
+        }
+        renderSingleBrandProperties();
+        updatePreview();
+        toggleImportPanel();
       }
 
       function renderSingleBrandProperties() {
