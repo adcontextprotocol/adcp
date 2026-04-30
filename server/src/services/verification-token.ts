@@ -8,6 +8,22 @@
 import * as jose from 'jose';
 import { randomUUID } from 'crypto';
 import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
+import { logger as baseLogger } from '../logger.js';
+
+const logger = baseLogger.child({ module: 'verification-token' });
+
+/**
+ * Shape constraint for the adcp_version JWT claim. Mirrors the
+ * `valid_adcp_version` CHECK constraint on agent_verification_badges
+ * (migration 457). MUST be the same regex on both sides — if a poisoned
+ * DB row ever survives the constraint, this is the second gate before
+ * an AAO-signed token can carry the value.
+ */
+const ADCP_VERSION_RE = /^[1-9][0-9]*\.[0-9]+$/;
+
+export function isValidAdcpVersion(value: unknown): value is string {
+  return typeof value === 'string' && ADCP_VERSION_RE.test(value);
+}
 
 // ── Token Payload ────────────────────────────────────────────────
 
@@ -22,6 +38,18 @@ export interface VerificationTokenPayload {
    * (see adcp-taxonomy.ts) — unknown values are filtered before signing.
    */
   verification_modes: VerificationMode[];
+  /**
+   * AdCP release the badge was issued against, MAJOR.MINOR (e.g. '3.0',
+   * '3.1'). Load-bearing for badge identity — pairs with the (agent_url,
+   * role, adcp_version) primary key in agent_verification_badges. Validated
+   * at sign time and at verify time against `^\d+\.\d+$`.
+   */
+  adcp_version?: string;
+  /**
+   * Full semver of the spec build that issued this token (e.g. '3.0.0').
+   * Informational metadata for support and audits — `adcp_version` is the
+   * load-bearing field for badge model decisions.
+   */
   protocol_version?: string;
 }
 
@@ -93,11 +121,30 @@ export async function signVerificationToken(
     return null;
   }
 
+  // Validate adcp_version shape before signing — same regex as the DB
+  // CHECK constraint. A poisoned DB row that smuggled a non-MAJOR.MINOR
+  // value MUST NOT ride into a signed token. Fail closed: when the
+  // value is present but malformed, refuse to sign rather than emit a
+  // token without the claim. Otherwise verifiers reading the token
+  // could conflate "no adcp_version = pre-Stage-2 legacy" with
+  // "no adcp_version = the value got dropped" — a downgrade vector.
+  // The badge row itself was already accepted by the DB CHECK, so a
+  // failure here surfaces a programming error or an attacker who
+  // bypassed the CHECK; both warrant loud failure.
+  if (payload.adcp_version !== undefined && !isValidAdcpVersion(payload.adcp_version)) {
+    logger.error(
+      { agent_url: payload.agent_url, role: payload.role, adcp_version: payload.adcp_version },
+      'Refusing to sign verification token: adcp_version did not match shape constraint',
+    );
+    return null;
+  }
+
   const token = await new jose.SignJWT({
     agent_url: payload.agent_url,
     role: payload.role,
     verified_specialisms: payload.verified_specialisms,
     verification_modes: safeModes,
+    ...(payload.adcp_version && { adcp_version: payload.adcp_version }),
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })
@@ -131,6 +178,10 @@ export async function verifyVerificationToken(
     // Runtime-validate the claim shape. Verifiers reading
     // claims.verification_modes get a guaranteed VerificationMode[] — never
     // undefined — so they can branch on it without optional-chain quirks.
+    // Symmetric with the sign-time validation: every field constrained
+    // here is also constrained at sign. A future signer bug, a test key,
+    // or a downgrade attack that smuggled a malformed claim into an
+    // otherwise-valid signature path is rejected here.
     const p = payload as Record<string, unknown>;
     if (
       typeof p.agent_url !== 'string' ||
@@ -141,6 +192,12 @@ export async function verifyVerificationToken(
       !p.verification_modes.every(isVerificationMode) ||
       p.verification_modes.length === 0
     ) {
+      return null;
+    }
+
+    // adcp_version is optional (pre-Stage-2 tokens omit it), but if
+    // present it MUST match the same shape the signer enforced.
+    if (p.adcp_version !== undefined && !isValidAdcpVersion(p.adcp_version)) {
       return null;
     }
 
