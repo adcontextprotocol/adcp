@@ -235,8 +235,10 @@ describe('invite lifecycle events', () => {
     const expectedExpiresAt = new Date(expiredAtRow.rows[0].expires_at);
 
     const first = await runInviteExpirySweep();
-    expect(first.candidates).toBe(1);
-    expect(first.emitted).toBe(1);
+    // Other test files may be creating expired invites in parallel; assert only
+    // that *this* invite was picked up, not that we were the only candidate.
+    expect(first.candidates).toBeGreaterThanOrEqual(1);
+    expect(first.emitted).toBeGreaterThanOrEqual(1);
     expect(first.resolveFailures).toBe(0);
     expect(first.recordFailures).toBe(0);
 
@@ -247,11 +249,10 @@ describe('invite lifecycle events', () => {
     expect(expired!.data.detected_at).toBeTypeOf('string');
 
     const second = await runInviteExpirySweep();
-    // The just-handled invite must not appear as a candidate again.
+    // The just-handled invite must not appear as a candidate again — but other
+    // tests may have introduced fresh expired invites between sweeps.
     const sweepedAgain = await eventsForInvite(invite.id);
     expect(sweepedAgain.filter((e) => e.event_type === 'invite_expired')).toHaveLength(1);
-    expect(second.candidates).toBe(0);
-    expect(second.emitted).toBe(0);
     expect(second.resolveFailures).toBe(0);
     expect(second.recordFailures).toBe(0);
   });

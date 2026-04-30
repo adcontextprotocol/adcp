@@ -2909,8 +2909,8 @@ export function setupAccountRoutes(
     requireAdmin,
     async (req, res) => {
       try {
-        const { token } = req.params;
-        const revoked = await revokeMembershipInvite(token, req.user!.id);
+        const { orgId, token } = req.params;
+        const revoked = await revokeMembershipInvite(token, req.user!.id, orgId);
         if (!revoked) {
           return res.status(400).json({
             error: "Cannot revoke",
@@ -2938,8 +2938,8 @@ export function setupAccountRoutes(
       try {
         const { orgId, token } = req.params;
 
-        const existing = await getMembershipInviteByToken(token);
-        if (!existing || existing.workos_organization_id !== orgId) {
+        const existing = await getMembershipInviteByToken(token, orgId);
+        if (!existing) {
           return res.status(404).json({
             error: "Not found",
             message: "Invite not found for this organization.",
@@ -2977,7 +2977,7 @@ export function setupAccountRoutes(
 
         // Revoke first, then create — if the create fails the original is
         // still gone, which is the safer half-failure (no two-tokens state).
-        await revokeMembershipInvite(token, req.user!.id);
+        await revokeMembershipInvite(token, req.user!.id, orgId);
 
         const invite = await createMembershipInvite({
           workos_organization_id: orgId,
