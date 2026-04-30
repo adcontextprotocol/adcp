@@ -240,7 +240,14 @@ export async function getSlackUser(userId: string): Promise<SlackUser | null> {
     });
     return response.user;
   } catch (error) {
-    logger.error({ error, userId }, 'Failed to get Slack user');
+    // user_not_found is routine — deactivated/deleted users, stale references
+    // from old messages, cross-workspace IDs. Don't page on it.
+    const message = error instanceof Error ? error.message : '';
+    const expected = message.includes('user_not_found');
+    logger[expected ? 'warn' : 'error'](
+      { error, userId },
+      'Failed to get Slack user',
+    );
     return null;
   }
 }
@@ -1114,15 +1121,26 @@ export async function inviteToChannel(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    // These Slack errors are expected and not actionable
+    // Slack errors that mean the invite was a no-op success (already member, self-invite)
     if (errorMessage.includes('already_in_channel') || errorMessage.includes('cant_invite_self')) {
       return { ok: true };
     }
 
-    logger.error(
-      error instanceof Error ? error : new Error(errorMessage),
-      'Failed to invite users to channel (channelId=%s)',
-      channelId,
+    // Slack errors that are routine and not actionable: bot isn't in the channel,
+    // channel was archived/deleted, target user is restricted/disabled. Log at
+    // warn — caller already gets `{ ok: false, error }` and decides what to do.
+    const expected = [
+      'not_in_channel',
+      'channel_not_found',
+      'is_archived',
+      'user_is_restricted',
+      'user_is_ultra_restricted',
+      'user_disabled',
+    ].some((code) => errorMessage.includes(code));
+
+    logger[expected ? 'warn' : 'error'](
+      { err: error instanceof Error ? error : new Error(errorMessage), channelId },
+      'Failed to invite users to channel',
     );
     return { ok: false, error: errorMessage };
   }
