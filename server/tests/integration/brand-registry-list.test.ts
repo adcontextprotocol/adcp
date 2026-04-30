@@ -295,5 +295,19 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       expect(stats.enriched).toBe(1);
       expect(stats.total).toBe(4);
     });
+
+    it('honors the search arg', async () => {
+      // Two prefixes; search must narrow to one. Without this, the search
+      // arg could be silently ignored (the filter bug we just fixed for the
+      // list endpoint had its mirror in the stats path).
+      await insertBrand({ domain: 'pfxA-1.example.com', brand_name: 'A1', is_public: true });
+      await insertBrand({ domain: 'pfxA-2.example.com', brand_name: 'A2', is_public: true });
+      await insertBrand({ domain: 'pfxB-1.example.com', brand_name: 'B1', is_public: true });
+
+      const a = await brandDb.getBrandRegistryStats('pfxA-');
+      const b = await brandDb.getBrandRegistryStats('pfxB-');
+      expect(a.total).toBe(2);
+      expect(b.total).toBe(1);
+    });
   });
 });
