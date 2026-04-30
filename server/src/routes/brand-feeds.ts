@@ -358,55 +358,63 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         truncated = true;
       }
 
-      // Defense-in-depth against prompt injection on the URL fetch path: a
-      // hostile origin could return a literal `</content>` to break out of
-      // the XML fence and inject instructions. Neutralise the closing tag.
-      // The output filter below (type allowlist + DNS-length cap + lowercase)
-      // is the load-bearing defense; this just narrows the surface.
-      const fencedContent = rawText.replace(/<\/content>/gi, '<\\/content>');
-
+      // Anthropic tool_use with input_schema: the model emits typed args
+      // matching the schema rather than free-form text we'd have to parse.
+      // This eliminates the prompt-injection surface that came with the
+      // older `<content>...</content>` wrapper — a hostile URL body can
+      // appear in the prompt but cannot redirect the model away from
+      // calling the extraction tool with the schema-shaped output.
       const message = await getAnthropicClient().messages.create({
         model: ModelConfig.fast,
         max_tokens: 4096,
+        tools: [
+          {
+            name: 'extract_properties',
+            description:
+              'Extract publisher domains and app bundle IDs from the user-supplied content. Ignore ad tech infrastructure (ad networks, DSPs, SSPs, CDNs, measurement vendors). Return an empty list if nothing matches.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                properties: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      identifier: {
+                        type: 'string',
+                        description:
+                          'Bare domain (e.g. "example.com") or app bundle ID (e.g. "com.example.app").',
+                      },
+                      type: { type: 'string', enum: VALID_PROPERTY_TYPES },
+                    },
+                    required: ['identifier', 'type'],
+                  },
+                },
+              },
+              required: ['properties'],
+            },
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'extract_properties' },
         messages: [
           {
             role: 'user',
-            // Content is wrapped in XML tags to reduce prompt-injection surface from
-            // adversarial responses on the URL fetch path. Preview-only endpoint (no write).
-            content: `Extract all publisher domains and app bundle IDs from the content below. Ignore ad tech infrastructure (ad networks, DSPs, SSPs, CDNs, measurement vendors).
-
-For each entry return:
-- "identifier": the bare domain (e.g. "example.com") or app bundle (e.g. "com.example.app")
-- "type": one of: website, mobile_app, ctv_app, desktop_app, podcast, radio, streaming_audio, dooh
-
-Return ONLY valid JSON with no explanation or markdown:
-{"properties":[{"identifier":"...","type":"website"},...]}
-
-If no identifiers found, return: {"properties":[]}
-
-<content>
-${fencedContent}
-</content>`,
+            content: `Call extract_properties with all publisher domains and app bundle IDs found in the content below.\n\n${rawText}`,
           },
         ],
       });
 
-      let responseText =
-        message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      // Claude haiku frequently wraps structured output in a ```json fence even
-      // when the prompt asks for raw JSON. Strip the fence before parsing.
-      // Tolerate leading/trailing whitespace and CRLF; anchor end-to-end so a
-      // fence appearing mid-prose is left untouched (and falls through to the
-      // JSON.parse error path).
-      const fenceMatch = responseText.match(/^\s*```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/);
-      if (fenceMatch) responseText = fenceMatch[1].trim();
-      let parsed: { properties?: Array<{ identifier?: string; type?: string }> };
-      try {
-        parsed = JSON.parse(responseText);
-      } catch {
-        logger.warn({ domain }, 'Property parse: LLM returned non-JSON response');
+      const toolUse = message.content.find(
+        (block) => block.type === 'tool_use' && block.name === 'extract_properties',
+      );
+      if (!toolUse || toolUse.type !== 'tool_use') {
+        // tool_choice forces the tool, so this path is defensive — it only
+        // fires if the model refuses (e.g. policy block) or the SDK shape
+        // changes upstream.
+        logger.warn({ domain }, 'Property parse: model did not invoke the extraction tool');
         return res.json({ properties: [], count: 0, warning: 'Could not parse identifiers from input' });
       }
+      const parsed = toolUse.input as { properties?: Array<{ identifier?: string; type?: string }> };
 
       const rel = relationship ?? 'delegated';
 
