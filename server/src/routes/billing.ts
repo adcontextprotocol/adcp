@@ -768,6 +768,30 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
               );
               subscriptionSynced = true;
               invalidateMembershipCache(org_id);
+            } else if (previousCustomerId) {
+              // Force-replace path with no membership sub on the new
+              // customer: clear the subscription state that came from the
+              // previous customer. Without this, the org keeps stale
+              // `subscription_status='active'` etc. derived from a
+              // customer it's no longer linked to.
+              await pool.query(
+                `UPDATE organizations SET
+                    stripe_subscription_id = NULL,
+                    subscription_status = NULL,
+                    subscription_amount = NULL,
+                    subscription_interval = NULL,
+                    subscription_current_period_end = NULL,
+                    subscription_canceled_at = NULL,
+                    subscription_product_id = NULL,
+                    subscription_product_name = NULL,
+                    subscription_price_id = NULL,
+                    subscription_price_lookup_key = NULL,
+                    membership_tier = NULL,
+                    updated_at = NOW()
+                 WHERE workos_organization_id = $1`,
+                [org_id],
+              );
+              invalidateMembershipCache(org_id);
             }
           }
         } catch (syncError) {
@@ -775,6 +799,31 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           logger.warn({ err: syncError, customerId, org_id }, "Failed to sync subscription data during link");
         }
       }
+
+      // Forensic record of the entitlement-affecting admin action. Mirrors
+      // the audit row written by the unlink path. Force-replace is the
+      // riskier branch — it changes which Stripe customer drives this org's
+      // entitlement.
+      const orgDb = new OrganizationDatabase();
+      await orgDb.recordAuditLog({
+        workos_organization_id: org_id,
+        workos_user_id: req.user?.id ?? 'unknown',
+        action: previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link',
+        resource_type: 'subscription',
+        resource_id: customerId,
+        details: {
+          stripe_customer_id: customerId,
+          ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
+          subscription_synced: subscriptionSynced,
+          ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
+          admin_email: req.user?.email,
+        },
+      }).catch((err) => {
+        logger.error(
+          { err, customerId, org_id },
+          `Failed to record ${previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link'} audit log entry`,
+        );
+      });
 
       logger.info(
         { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email, invoicesSynced, subscriptionSynced, subscriptionSyncError },
@@ -812,10 +861,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
     try {
       const pool = getPool();
+      const orgDb = new OrganizationDatabase();
 
-      // Find the org linked to this customer
-      const linkedOrg = await pool.query(
-        "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+      // Snapshot prior state for the audit row, plus find the org.
+      const linkedOrg = await pool.query<{
+        workos_organization_id: string;
+        name: string;
+        subscription_status: string | null;
+        membership_tier: string | null;
+        stripe_subscription_id: string | null;
+      }>(
+        `SELECT workos_organization_id, name, subscription_status, membership_tier, stripe_subscription_id
+           FROM organizations WHERE stripe_customer_id = $1`,
         [customerId]
       );
 
@@ -824,6 +881,25 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       const org = linkedOrg.rows[0];
+
+      // Clear the Stripe customer's metadata.workos_organization_id BEFORE
+      // we null the DB link. Without this, a webhook that fires for this
+      // customer between the unlink and the next admin action would walk
+      // the metadata fallback in resolveOrgForStripeCustomer and silently
+      // re-link the org we just unlinked. (The link path already does this
+      // when force-replacing — mirror it here.)
+      if (stripe) {
+        try {
+          await stripe.customers.update(customerId, {
+            metadata: { workos_organization_id: '' },
+          });
+        } catch (err) {
+          logger.warn(
+            { err, customerId },
+            "Failed to clear workos_organization_id metadata on Stripe customer during unlink — webhook fallback may re-link",
+          );
+        }
+      }
 
       // Unlink the customer AND clear the org's subscription state. Without
       // this, the org row keeps `subscription_status='active'` etc. after
@@ -849,6 +925,29 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         [customerId],
       );
       invalidateMembershipCache(org.workos_organization_id);
+
+      // Forensic record of the entitlement-affecting admin action. Without
+      // this, a compromised admin token could mass-unlink paying members
+      // with only structured-log evidence of the action.
+      await orgDb.recordAuditLog({
+        workos_organization_id: org.workos_organization_id,
+        workos_user_id: req.user?.id ?? 'unknown',
+        action: 'admin_stripe_unlink',
+        resource_type: 'subscription',
+        resource_id: customerId,
+        details: {
+          stripe_customer_id: customerId,
+          prior_subscription_status: org.subscription_status,
+          prior_stripe_subscription_id: org.stripe_subscription_id,
+          prior_membership_tier: org.membership_tier,
+          admin_email: req.user?.email,
+        },
+      }).catch((err) => {
+        logger.error(
+          { err, customerId, orgId: org.workos_organization_id },
+          "Failed to record admin_stripe_unlink audit log entry",
+        );
+      });
 
       logger.info(
         { customerId, orgId: org.workos_organization_id, orgName: org.name, adminEmail: req.user?.email },
