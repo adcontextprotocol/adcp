@@ -1,0 +1,184 @@
+---
+title: "S2: Creative mastery"
+sidebarTitle: "S2: Creative"
+description: "AdCP specialist module S2: Creative mastery. Format taxonomy across 20 channels, creative manifest spec, AI generation, compliance checks, and asset sync workflows."
+"og:title": "AdCP — S2: Creative mastery"
+---
+
+# S2: Creative mastery
+
+<Info>
+**Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
+</Info>
+
+This specialist module tests your mastery of the creative protocol. You'll work with sandbox agents to discover format requirements across channels, produce and adapt creative assets, sync them to publishers, and verify compliance. Addie evaluates both your hands-on work and your conceptual understanding.
+
+Passing earns the **AdCP specialist — Creative** credential.
+
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the `creative` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
+| `creative-generative` | stable | Generative creative agent producing assets on demand |
+| `creative-template` | stable | Creative template and transformation agent |
+
+## What you'll demonstrate
+
+- Identify the three creative agent interaction models and explain when each applies
+- Work with stateless agents (template/transformers): discover formats, preview with inline assets, build serving tags
+- Work with stateful ad servers: browse a creative library, generate tags per media buy, track delivery
+- Work with stateful sales agents: push creatives, preview in the publisher's environment
+- Adapt a single creative concept across multiple channels and formats
+- Use `preview_creative` in all three request modes — single, batch (5–10× faster for many creatives), and variant (retrieve historical renders from `get_creative_delivery`) — and choose `output_format: "html"` when bypassing the iframe speeds rendering
+- Understand creative agent pricing: the `pricing_options[]` array on discovery responses, how `pricing_option_id` flows through `build_creative` and `report_usage`, and why CPM ad servers show zero `vendor_cost` at build time while transformation agents do not
+- Reason about tracker-slot presence — a format supports third-party measurement only if its `assets` array declares a tracker slot (e.g., `impression_tracker`). Broadcast formats intentionally omit tracker slots; measurement comes from panel and STB data via `billing_measurement`
+- Attach `industry_identifiers[]` to broadcast manifests with the correct `creative-identifier-type` (`ad_id`, `isci`, `clearcast_clock`), and give each cut (`:15` vs `:30`) its own Ad-ID
+- Reason about format edge cases, accessibility, and provenance
+
+## Prerequisite reading
+
+### Core creative tasks
+
+<CardGroup cols={2}>
+  <Card title="list_creative_formats" icon="list" href="/dist/docs/3.0.2/creative/task-reference/list_creative_formats">
+    Format discovery: what specs does each publisher require?
+  </Card>
+  <Card title="build_creative" icon="hammer" href="/dist/docs/3.0.2/creative/task-reference/build_creative">
+    Creative generation and transformation from brand assets.
+  </Card>
+  <Card title="preview_creative" icon="eye" href="/dist/docs/3.0.2/creative/task-reference/preview_creative">
+    Preview creatives before deployment.
+  </Card>
+  <Card title="sync_creatives" icon="rotate" href="/dist/docs/3.0.2/creative/task-reference/sync_creatives">
+    Synchronize creative assets with publisher platforms.
+  </Card>
+</CardGroup>
+
+### Supporting concepts
+
+<CardGroup cols={2}>
+  <Card title="Creative protocol overview" icon="palette" href="/dist/docs/3.0.2/creative/index">
+    The creative protocol: assets, formats, manifests, and creative agents.
+  </Card>
+  <Card title="Creative specification" icon="scroll" href="/dist/docs/3.0.2/creative/specification">
+    Formal specification for the creative protocol.
+  </Card>
+  <Card title="Formats reference" icon="image" href="/dist/docs/3.0.2/creative/formats">
+    Format definitions, technical specs, and the renders structure.
+  </Card>
+  <Card title="Asset types" icon="photo-film" href="/dist/docs/3.0.2/creative/asset-types">
+    Images, video, audio, HTML5, and native asset specifications.
+  </Card>
+  <Card title="Creative manifests" icon="file-lines" href="/dist/docs/3.0.2/creative/creative-manifests">
+    Manifest structure: how creative packages describe their contents.
+  </Card>
+  <Card title="Channel guides" icon="tv" href="/dist/docs/3.0.2/creative/channels/video">
+    Channel-specific specs for video, display, audio, DOOH, and carousels.
+  </Card>
+  <Card title="Broadcast TV" icon="clapperboard" href="/dist/docs/3.0.2/creative/channels/broadcast">
+    Broadcast formats, `industry_identifiers[]` (`ad_id`, `isci`, `clearcast_clock`), Ad-ID integration, and why broadcast formats omit tracker slots.
+  </Card>
+  <Card title="Generative creative" icon="wand-magic-sparkles" href="/dist/docs/3.0.2/creative/generative-creative">
+    AI-generated creative workflows and best practices.
+  </Card>
+  <Card title="Accessibility" icon="universal-access" href="/dist/docs/3.0.2/creative/accessibility">
+    Accessibility standards for advertising creatives.
+  </Card>
+  <Card title="Provenance" icon="certificate" href="/dist/docs/3.0.2/creative/provenance">
+    AI creative provenance and disclosure requirements.
+  </Card>
+  <Card title="Implementing creative agents" icon="robot" href="/dist/docs/3.0.2/creative/implementing-creative-agents">
+    Architecture guide for building creative agents.
+  </Card>
+</CardGroup>
+
+### Creative governance
+
+<CardGroup cols={2}>
+  <Card title="Creative governance" icon="shield-check" href="/dist/docs/3.0.2/governance/creative/index">
+    Feature-based creative evaluation: security scanning, regulatory compliance, and content categorization.
+  </Card>
+  <Card title="get_creative_features" icon="list-check" href="/dist/docs/3.0.2/governance/creative/get_creative_features">
+    The evaluation task that scores creatives against governance features.
+  </Card>
+  <Card title="Content standards" icon="scale-balanced" href="/dist/docs/3.0.2/governance/content-standards/index">
+    Buyer-defined content rules that constrain what creatives can contain.
+  </Card>
+  <Card title="Provenance verification" icon="fingerprint" href="/dist/docs/3.0.2/governance/creative/provenance-verification">
+    How governance agents verify AI creative provenance metadata.
+  </Card>
+</CardGroup>
+
+## Connecting to the test agent
+
+Lab exercises run against the public test agent. Use the shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+See the [Quickstart](/dist/docs/3.0.2/quickstart) for a walkthrough of your first call.
+
+## Lab exercises
+
+### Interaction models
+
+1. **Stateless transformation** — Connect to a template agent, discover its formats, preview a template with sample brand assets (inline), and build a serving tag. No `sync_creatives` — everything is passed in the call.
+2. **Ad server workflow** — Connect to a pre-loaded ad server, browse the creative library with `list_creatives`, generate tags for multiple media buys using `build_creative`, and check delivery metrics.
+3. **Push-and-preview** — Connect to a sales agent, discover its accepted formats, push catalog assets with `sync_creatives`, and preview how they render in the publisher's environment.
+
+### Creative pricing
+
+4. **Pricing lifecycle** — Using the same sandbox ad server from exercise 2:
+   - Establish an account with the ad server
+   - `list_creatives` with `account` and `include_pricing: true` — observe `pricing_options` on each creative reflecting your rate card
+   - Switch to a second sandbox account, `list_creatives` again — observe that `pricing_options` reflects a different rate (different CPM, model, or currency)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` in the response
+   - `build_creative` without `account` — observe the rejection error
+   - Call `report_usage` with `creative_id` + `pricing_option_id`, verify the values match what `build_creative` returned
+   - Explain: why is `vendor_cost` zero on a CPM-priced creative at build time?
+
+5. **Transformation agent pricing** — Using the sandbox transformation agent from exercise 1, with pricing enabled:
+   - Establish an account with the transformation agent
+   - `list_creative_formats` with `account` and `include_pricing: true` — observe `pricing_options` on each format (per-unit pricing)
+   - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` (expect non-zero `vendor_cost` at build time, unlike the CPM ad server)
+   - Compare: ad server discovers pricing on `list_creatives`, transformation agent discovers pricing on `list_creative_formats`. Ad server has zero build cost (CPM accrues at serve time), transformation agent has non-zero build cost (per-unit pricing)
+
+<Note>
+**Vendor pricing is consistent across protocols**
+
+All vendor services use the same pattern: `pricing_options[]` on discovery responses, `pricing_option_id` in `report_usage`. Signals, content standards, creative agents, and property list agents all follow this.
+
+Vendors often offer multiple pricing options per creative — volume/commitment tiers (lower CPM at higher spend), context-specific rates (premium vs. standard placements), or different pricing models for different product lines (CPM for rich media, per-unit for social variants). The buyer selects the appropriate `pricing_option_id` and passes it in `report_usage`.
+</Note>
+
+### Cross-platform skills
+
+6. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
+7. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+8. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
+9. **Preview modes** — Run `preview_creative` as `request_type: "single"`, then `"batch"` (submit 5 creatives in one call and measure the speedup), then `"variant"` against a prior `get_creative_delivery` result. Compare `output_format: "url"` vs `"html"` for rendering latency.
+10. **Tracker-slot audit** — For each sandbox format, inspect the `assets` array and determine whether it supports third-party measurement. Explain why assigning a DoubleVerify pixel to a broadcast spot won't work, and which `billing_measurement` vendor would instead.
+11. **Broadcast identifiers** — Build a broadcast manifest with distinct `industry_identifiers[]` for `:15` and `:30` cuts of the same spot. Verify the `creative-identifier-type` values and explain why each cut needs its own Ad-ID.
+
+## Assessment
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Interaction models | 20% | Correctly identifies and works with all three creative agent types |
+| Cross-platform | 25% | Adapts creatives across channels and formats |
+| Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
+| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
+| Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
+
+Passing threshold: 70%.
+
+## Start this module
+
+<Card title="Start S2 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start the creative specialist module."
+</Card>
