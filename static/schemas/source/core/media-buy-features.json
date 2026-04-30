@@ -16,6 +16,10 @@
     "catalog_management": {
       "type": "boolean",
       "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+    },
+    "committed_metrics_supported": {
+      "type": "boolean",
+      "description": "Seller has per-package snapshot infrastructure for the reporting contract. When true, the seller MUST populate `package.committed_metrics` on every `create_media_buy` response and MUST honor append-only mid-flight metric additions via `update_media_buy`. The unified `committed_metrics` array (per the metric-accountability design) covers both standard and vendor-defined metric entries, so a single flag is load-bearing. Buyers filtering on this flag are detecting 'this seller can stamp the reporting contract,' which closes the audit gap from PR #3510 where absence of `committed_metrics` was indistinguishable between 'didn't snapshot' and 'snapshot infrastructure not implemented.'"
     }
   },
   "additionalProperties": {
