@@ -73,6 +73,10 @@ import {
   createBrandToolHandlers,
 } from './mcp/brand-tools.js';
 import {
+  BRAND_PROPERTY_TOOLS,
+  createBrandPropertyToolHandlers,
+} from './mcp/brand-property-tools.js';
+import {
   PROPERTY_TOOLS,
   createPropertyToolHandlers,
 } from './mcp/property-tools.js';
@@ -366,6 +370,16 @@ async function createUserScopedTools(
   const adcpHandlers = createAdcpToolHandlers(memberContext);
   allTools.push(...ADCP_TOOLS);
   for (const [name, handler] of adcpHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add brand property import tools (smart paste preview + commit) for
+  // operators who own a brand. Both tools self-gate on
+  // memberContext.workos_user_id and re-run the ownership check inside
+  // the shared service.
+  const brandPropertyHandlers = createBrandPropertyToolHandlers(memberContext);
+  allTools.push(...BRAND_PROPERTY_TOOLS);
+  for (const [name, handler] of brandPropertyHandlers) {
     allHandlers.set(name, handler);
   }
 
