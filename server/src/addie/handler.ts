@@ -375,8 +375,8 @@ async function createUserScopedTools(
 
   // Add brand property import tools (smart paste preview + commit) for
   // operators who own a brand. Both tools self-gate on
-  // memberContext.workos_user_id and re-run the ownership check inside
-  // the shared service.
+  // memberContext.workos_user.workos_user_id and re-run the ownership
+  // check inside the shared service.
   const brandPropertyHandlers = createBrandPropertyToolHandlers(memberContext);
   allTools.push(...BRAND_PROPERTY_TOOLS);
   for (const [name, handler] of brandPropertyHandlers) {
