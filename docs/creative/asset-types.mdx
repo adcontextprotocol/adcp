@@ -156,9 +156,15 @@ If `url_type` is **absent**, receivers SHOULD fall back to the format's `url-ass
 | `role` (format) | Fallback `url_type` (mechanism) |
 |---|---|
 | `clickthrough`, `landing_page` | `clickthrough` |
-| `impression_tracker`, `click_tracker`, `viewability_tracker`, `third_party_tracker` | `tracker_pixel` |
+| `impression_tracker`, `click_tracker` | `tracker_pixel` |
+| `viewability_tracker` | `tracker_script` — OMID and equivalent verification SDKs **require** a `<script>` tag; firing them as a pixel produces no measurement |
+| `third_party_tracker` | **No safe fallback.** Mechanism is integration-specific (DV/IAS ship both pixel and script forms). Receivers MAY reject or warn. |
 
-If neither `url_type` nor a format-side `role` is available, receivers MAY reject the manifest. Receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) is a measurement and user-experience hazard.
+If neither `url_type` nor a format-side `role` is available, receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) silently corrupts measurement and breaks the user flow. Receivers SHOULD reject the manifest.
+
+> **VAST/DAAST URLs are not URL assets.** A URL pointing to ad-server XML markup is parsed, not GET-fired. Use `asset_type: "vast"` with `delivery_type: "url"` for VAST tags, and the dedicated tracker types (`vast_tracker` / `daast_tracker`) once those land per [RFC #2915](https://github.com/adcontextprotocol/adcp/issues/2915). A VAST tag declared as `asset_type: "url"` with `url_type: "tracker_pixel"` is non-conformant under these mechanism semantics.
+
+> **Migration cue for sellers.** If your tooling previously emitted only `{asset_type: "url", url: ...}` (per the older docs), you can keep doing so through 3.x — but plan to add `url_type` before 4.0, when this field becomes required.
 
 #### Format-side: `role` (purpose)
 
