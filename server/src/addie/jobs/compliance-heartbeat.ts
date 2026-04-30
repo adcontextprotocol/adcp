@@ -22,6 +22,8 @@ import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { processAgentBadges } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
 import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from '../../services/membership-tiers.js';
+import { SUPPORTED_BADGE_VERSIONS } from '../../services/adcp-taxonomy.js';
+import { getStoryboardIdsForVersion } from '../../services/storyboards.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
@@ -116,7 +118,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
       }
 
-      // Process AAO Verified badges
+      // Process AAO Verified badges — fan out per supported AdCP version.
+      // One comply() run produced a flat storyboard_statuses list; for each
+      // version we filter to that version's applicable storyboards and run
+      // processAgentBadges with that version. Each version's badge issues
+      // and revokes independently — see #3524 stage 2.
       const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
 
       if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
@@ -124,7 +130,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           // Resolve membership org for this agent — only orgs with an active
           // API-access tier qualify for badge issuance. If the org downgrades
           // or cancels, processAgentBadges will see undefined here and revoke
-          // any existing badges.
+          // any existing badges (across every version).
           const orgResult = await query(
             `SELECT mp.workos_organization_id
              FROM member_profiles mp
@@ -142,29 +148,69 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           );
           const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
 
-          const badgeResult = await processAgentBadges(
-            complianceDb,
-            agent.agent_url,
-            declaredSpecialisms,
-            storyboardStatuses,
-            dbInput.overall_status === 'passing',
-            membershipOrgId,
-          );
+          const aggregatedIssued: Array<{ role: string; specialisms: string[]; adcp_version: string }> = [];
+          const aggregatedRevoked: Array<{ role: string; reason: string; adcp_version: string }> = [];
 
-          // Notify on badge changes
-          if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
+          for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
+            // Per-version try/catch: a failure on 3.1 must not poison the
+            // notification for an already-completed 3.0 issuance, and a
+            // persistent per-version failure must surface via system-error
+            // alerts rather than disappear into a non-fatal warn.
+            try {
+              // Restrict storyboard statuses to the IDs that exist at this
+              // version. With a single supported version (3.0) this filter is
+              // a no-op since every storyboard's `introduced_in` is unset
+              // ("always applied"). When 3.1 ships with new storyboards, this
+              // is what isolates 3.0 badge issuance from 3.1-only fixtures.
+              const versionStoryboardIds = new Set(getStoryboardIdsForVersion(adcpVersion));
+              const versionScopedStatuses = storyboardStatuses.filter(s => versionStoryboardIds.has(s.storyboard_id));
+
+              const badgeResult = await processAgentBadges(
+                complianceDb,
+                agent.agent_url,
+                declaredSpecialisms,
+                versionScopedStatuses,
+                dbInput.overall_status === 'passing',
+                membershipOrgId,
+                adcpVersion,
+              );
+
+              for (const issued of badgeResult.issued) aggregatedIssued.push(issued);
+              for (const revoked of badgeResult.revoked) aggregatedRevoked.push(revoked);
+            } catch (versionError) {
+              const errorMessage = versionError instanceof Error ? versionError.message : String(versionError);
+              logger.error(
+                { versionError, agentUrl: agent.agent_url, adcpVersion },
+                'Badge processing failed for one AdCP version — continuing with remaining versions',
+              );
+              notifySystemError({
+                source: 'compliance-badge-issuance',
+                errorMessage: `Per-version badge processing failed for ${agent.agent_url} at AdCP ${adcpVersion}: ${errorMessage}`,
+              });
+            }
+          }
+
+          // Notify on badge changes from the versions that completed —
+          // skipping versions that threw above. A partial result that
+          // ships only completed-version notifications is correct: the
+          // system-error alert above carries the failure signal.
+          if (aggregatedIssued.length > 0 || aggregatedRevoked.length > 0) {
             try {
               await notifyVerificationChange({
                 agentUrl: agent.agent_url,
-                issued: badgeResult.issued,
-                revoked: badgeResult.revoked,
+                issued: aggregatedIssued,
+                revoked: aggregatedRevoked,
               });
             } catch (notifyError) {
               logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification notification');
             }
           }
         } catch (badgeError) {
-          logger.warn({ badgeError, agentUrl: agent.agent_url }, 'Badge processing failed (non-fatal)');
+          logger.error({ badgeError, agentUrl: agent.agent_url }, 'Badge processing setup failed');
+          notifySystemError({
+            source: 'compliance-badge-issuance',
+            errorMessage: `Badge processing setup failed for ${agent.agent_url}: ${badgeError instanceof Error ? badgeError.message : String(badgeError)}`,
+          });
         }
       }
     } catch (error) {
