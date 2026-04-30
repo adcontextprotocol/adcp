@@ -129,7 +129,6 @@ describe('person memory (loadRelationshipContext additions)', () => {
     );
 
     const ctx = await loadRelationshipContext(personId);
-    const tokens = ctx.invites.map((i) => i.lookup_key);
     expect(ctx.invites).toHaveLength(2); // pending + expired only
     const statuses = ctx.invites.map((i) => i.status).sort();
     expect(statuses).toEqual(['expired', 'pending']);
