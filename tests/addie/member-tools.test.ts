@@ -383,6 +383,24 @@ describe('createMemberToolHandlers', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('prompts reauth when token is active but missing required scopes', async () => {
+      getTokenMock.mockResolvedValue({
+        status: 'ok',
+        accessToken: 'gho_token_with_partial_scopes',
+        scopes: ['user:email'],
+        missingScopes: ['public_repo'],
+      });
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('re-authorization');
+      expect(result).toMatch(/\[Reconnect GitHub\]\([^)]*\/connect\/github\?return_to=/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('gracefully degrades when Pipes getAccessToken throws', async () => {
       getTokenMock.mockRejectedValue(new Error('workos api down'));
 

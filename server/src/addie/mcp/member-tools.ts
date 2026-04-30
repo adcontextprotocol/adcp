@@ -5082,10 +5082,19 @@ export function createMemberToolHandlers(
       return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
     }
 
-    if (tokenResult.status !== 'ok') {
+    const tokenMissingScopes =
+      tokenResult.status === 'ok' && tokenResult.missingScopes.length > 0;
+
+    if (tokenResult.status !== 'ok' || tokenMissingScopes) {
       const connectUrl = `${baseUrl}/connect/github?return_to=${encodeURIComponent('/member-hub?connected=github')}`;
 
-      if (tokenResult.status === 'needs_reauthorization') {
+      if (tokenResult.status === 'needs_reauthorization' || tokenMissingScopes) {
+        if (tokenMissingScopes && tokenResult.status === 'ok') {
+          logger.info(
+            { workosUserId, missingScopes: tokenResult.missingScopes },
+            'create_github_issue: token is active but missing required scopes — prompting reauth',
+          );
+        }
         return [
           `Your GitHub connection needs a quick re-authorization (the scopes we need changed).`,
           '',
