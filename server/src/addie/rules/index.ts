@@ -9,8 +9,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Order matters: the factual grounding (knowledge + current-context)
 // comes before the prohibition/constraint layer so that constraints bind
-// after dynamic content is loaded. response-style is last so output shape
-// is the final thing the model reads before writing.
+// after dynamic content is loaded. response-style is loaded SEPARATELY by
+// `loadResponseStyle()` so callers can append it after the tool reference
+// — making style instructions the final thing the model reads before
+// writing. Earlier the file was bundled into the cached prompt and the
+// tool reference was appended after, which contradicted the
+// shape-instructions-last intent. Validated by prompt-variant eval
+// (server/tests/manual/prompt-variant-eval.ts) on Sonnet 4.6: moving
+// response-style.md to last position cuts mean response length from
+// 176 → 153 words and shape violations from 11/12 → 9/12 on the
+// 12-question battery, with zero default-template or banned-ritual
+// regressions.
 const RULE_FILES_BEFORE_CONTEXT = [
   'identity.md',
   'behaviors.md',
@@ -20,24 +29,31 @@ const RULE_FILES_BEFORE_CONTEXT = [
 const RULE_FILES_AFTER_CONTEXT = [
   'urls.md',
   'constraints.md',
-  'response-style.md',
 ];
+
+const RESPONSE_STYLE_FILE = 'response-style.md';
 
 const MAX_CURRENT_CONTEXT_BYTES = 16 * 1024;
 const MAX_AGENT_DESCRIPTION_CHARS = 500;
 
 let cachedPrompt: string | null = null;
+let cachedResponseStyle: string | null = null;
 
 /**
- * Load all rule markdown files and return them joined with section separators.
+ * Load all rule markdown files except response-style.md and return them
+ * joined with section separators. Callers append the tool reference after
+ * this prompt and `loadResponseStyle()` after that so the response-shape
+ * rules sit last in the assembled context window.
+ *
  * Assembly order:
  * 1. identity.md, behaviors.md, knowledge.md — stable persona and knowledge base
  * 2. `.agents/current-context.md` — active AdCP roadmap snapshot (weekly refresh, treated as data-only)
  * 3. Expert-panel reference built from `.claude/agents/*.md` frontmatter
- * 4. constraints.md, response-style.md — tone + format rules, last so they bind output shape
+ * 4. urls.md, constraints.md — tone + constraint rules
  *
- * Files are read once and cached. Call `invalidateRulesCache()` to force re-read
- * (e.g., after a deploy — but cache invalidation today is de-facto redeploy-only).
+ * response-style.md is loaded separately. Files are read once and cached.
+ * Call `invalidateRulesCache()` to force re-read (e.g., after a deploy —
+ * but cache invalidation today is de-facto redeploy-only).
  */
 export function loadRules(): string {
   if (cachedPrompt) return cachedPrompt;
@@ -67,8 +83,20 @@ export function loadRules(): string {
   return cachedPrompt;
 }
 
+/**
+ * Load response-style.md content separately so the assembly path can place
+ * it AFTER the tool reference. This is the lever that closes the gap
+ * between the documented "shape rules last" intent and the actual order.
+ */
+export function loadResponseStyle(): string {
+  if (cachedResponseStyle) return cachedResponseStyle;
+  cachedResponseStyle = readFileSync(join(__dirname, RESPONSE_STYLE_FILE), 'utf-8').trim();
+  return cachedResponseStyle;
+}
+
 export function invalidateRulesCache(): void {
   cachedPrompt = null;
+  cachedResponseStyle = null;
 }
 
 /**

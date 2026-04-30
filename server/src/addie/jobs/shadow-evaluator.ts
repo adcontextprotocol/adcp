@@ -21,7 +21,7 @@ import { query } from '../../db/client.js';
 import { getThreadReplies } from '../../slack/client.js';
 import { getThreadService } from '../thread-service.js';
 import { ModelConfig, AddieModelConfig } from '../../config/models.js';
-import { loadRules } from '../rules/index.js';
+import { loadRules, loadResponseStyle } from '../rules/index.js';
 import { ADDIE_TOOL_REFERENCE } from '../prompts.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
 
@@ -300,9 +300,12 @@ export async function runShadowEvaluatorJob(
       // Tools are intentionally not registered — the shadow path doesn't
       // execute side-effecting calls, so the response is bounded by the
       // prompt rather than tool fan-out.
+      // Mirror claude-client.ts assembly: base rules + tool reference +
+      // response-style.md. Style instructions sit last so the shadow
+      // generation reflects what production emits.
       let systemPrompt: string;
       try {
-        systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+        systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
       } catch (loadError) {
         logger.warn({ error: loadError }, 'Shadow evaluator: rules failed to load, skipping thread');
         await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });

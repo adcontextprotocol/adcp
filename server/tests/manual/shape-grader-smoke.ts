@@ -18,7 +18,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { gradeShape } from '../../src/addie/testing/shape-grader.js';
-import { loadRules } from '../../src/addie/rules/index.js';
+import { loadRules, loadResponseStyle } from '../../src/addie/rules/index.js';
 import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
 import { resolveShadowModel } from '../../src/addie/jobs/shadow-evaluator.js';
 
@@ -74,7 +74,7 @@ async function main() {
   console.log('\n## Live shadow generation (real prompt + selected model)');
   let systemPrompt: string;
   try {
-    systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
   } catch (err) {
     console.error('Failed to load rules:', err);
     process.exitCode = 1;
