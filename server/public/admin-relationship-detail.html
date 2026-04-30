@@ -174,6 +174,32 @@
       return `<div class="card"><h2>Membership</h2><dl class="kv">${lines.join('')}</dl></div>`;
     }
 
+    function renderOrgMemberships(ctx) {
+      if (!ctx.orgMemberships?.length) {
+        return `<div class="card"><h2>Org memberships</h2><p class="empty">Not a WorkOS member of any org.</p></div>`;
+      }
+      const items = ctx.orgMemberships.map((m) => {
+        const tags = [];
+        tags.push(`<span class="pill muted">${escapeHtml(m.role || 'member')}</span>`);
+        if (m.seat_type === 'community_only') tags.push(`<span class="pill muted">community-only</span>`);
+        if (m.is_paying_member) tags.push(`<span class="pill green">paying</span>`);
+        if (m.provisioning_source) tags.push(`<span class="pill muted">via ${escapeHtml(m.provisioning_source)}</span>`);
+        return `
+          <li>
+            <div>
+              <a href="/admin/accounts/${escapeHtml(m.workos_organization_id)}">${escapeHtml(m.org_name)}</a>
+              <span class="meta">(${escapeHtml(m.workos_organization_id)})</span>
+            </div>
+            <div class="invitation-meta" style="margin-top: 4px;">
+              ${tags.join(' ')}
+              <span class="meta"> · joined ${fmtDate(m.joined_at)}</span>
+            </div>
+          </li>
+        `;
+      }).join('');
+      return `<div class="card"><h2>Org memberships (${ctx.orgMemberships.length})</h2><ul class="row-list">${items}</ul></div>`;
+    }
+
     function renderEngagement(ctx) {
       const r = ctx.relationship;
       return `
@@ -263,6 +289,7 @@
         const html =
           renderIdentity(ctx) +
           renderMembership(ctx) +
+          renderOrgMemberships(ctx) +
           renderEngagement(ctx) +
           renderPreferences(ctx) +
           renderInvites(ctx) +

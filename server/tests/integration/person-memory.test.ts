@@ -28,8 +28,11 @@ async function cleanup() {
   await query('DELETE FROM addie_thread_messages WHERE thread_id IN (SELECT thread_id FROM addie_threads WHERE person_id IN (SELECT id FROM person_relationships WHERE email LIKE $1))', [`%@${TEST_DOMAIN}`]);
   await query('DELETE FROM addie_threads WHERE person_id IN (SELECT id FROM person_relationships WHERE email LIKE $1)', [`%@${TEST_DOMAIN}`]);
   await query('DELETE FROM membership_invites WHERE workos_organization_id = $1', [ORG_PUBX]);
+  // Multi-org fixture rows (used by the orgMemberships test) — clean here
+  // so a mid-test failure self-heals on the next run.
+  await query(`DELETE FROM organization_memberships WHERE workos_user_id LIKE 'user_pm_%'`);
   await query('DELETE FROM person_relationships WHERE email LIKE $1', [`%@${TEST_DOMAIN}`]);
-  await query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_PUBX]);
+  await query(`DELETE FROM organizations WHERE workos_organization_id IN ($1, 'org_pm_multi_a', 'org_pm_multi_b')`, [ORG_PUBX]);
 }
 
 describe('person memory (loadRelationshipContext additions)', () => {
@@ -160,11 +163,71 @@ describe('person memory (loadRelationshipContext additions)', () => {
     expect(ctx.recentThreads[2].title).toBe('first thread');
   });
 
-  it('returns empty arrays for sparse persons (no invites, no threads)', async () => {
+  it('returns empty arrays for sparse persons (no invites, no threads, no orgs)', async () => {
     const personId = await resolvePersonId({ email: `sparse@${TEST_DOMAIN}` });
     const ctx = await loadRelationshipContext(personId);
     expect(ctx.invites).toEqual([]);
     expect(ctx.recentThreads).toEqual([]);
+    expect(ctx.orgMemberships).toEqual([]);
     expect(ctx.preferences.marketing_opt_in).toBeNull();
+  });
+
+  it('orgMemberships returns empty for persons with no workos_user_id', async () => {
+    const personId = await resolvePersonId({ email: `slack-only@${TEST_DOMAIN}` });
+    await query(
+      `UPDATE person_relationships SET slack_user_id = $1 WHERE id = $2`,
+      ['U0SLACKONLY', personId]
+    );
+    const ctx = await loadRelationshipContext(personId);
+    expect(ctx.orgMemberships).toEqual([]);
+  });
+
+  it('orgMemberships surfaces every WorkOS org with role + seat_type + provisioning_source', async () => {
+    const personId = await resolvePersonId({ email: `multi-org@${TEST_DOMAIN}` });
+    const workosUserId = 'user_pm_multi_org';
+    await query(
+      `UPDATE person_relationships SET workos_user_id = $1 WHERE id = $2`,
+      [workosUserId, personId]
+    );
+    await query(
+      `INSERT INTO organizations (workos_organization_id, name, email_domain, subscription_status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'active', NOW(), NOW()), ($4, $5, $3, NULL, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET subscription_status = EXCLUDED.subscription_status`,
+      [
+        'org_pm_multi_a',
+        'Acme',
+        TEST_DOMAIN,
+        'org_pm_multi_b',
+        'Other Co',
+      ]
+    );
+    await query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, email, role, seat_type, provisioning_source, created_at)
+       VALUES
+         ($1, 'org_pm_multi_a', $2, 'admin',  'contributor',     'verified_domain', NOW() - INTERVAL '90 days'),
+         ($1, 'org_pm_multi_b', $2, 'member', 'community_only',  'invited',         NOW() - INTERVAL '7 days')
+       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+      [workosUserId, `multi-org@${TEST_DOMAIN}`]
+    );
+
+    const ctx = await loadRelationshipContext(personId);
+    expect(ctx.orgMemberships).toHaveLength(2);
+
+    // Sorted by joined_at desc — Other Co (7 days) before Acme (90 days)
+    expect(ctx.orgMemberships[0].org_name).toBe('Other Co');
+    expect(ctx.orgMemberships[0].role).toBe('member');
+    expect(ctx.orgMemberships[0].seat_type).toBe('community_only');
+    expect(ctx.orgMemberships[0].provisioning_source).toBe('invited');
+    expect(ctx.orgMemberships[0].is_paying_member).toBe(false);
+
+    expect(ctx.orgMemberships[1].org_name).toBe('Acme');
+    expect(ctx.orgMemberships[1].role).toBe('admin');
+    expect(ctx.orgMemberships[1].seat_type).toBe('contributor');
+    expect(ctx.orgMemberships[1].provisioning_source).toBe('verified_domain');
+    expect(ctx.orgMemberships[1].is_paying_member).toBe(true);
+    // Cleanup is handled by the file-level cleanup() helper (which knows
+    // about the user_pm_% / org_pm_multi_% fixtures) so a mid-test failure
+    // self-heals on the next run.
   });
 });

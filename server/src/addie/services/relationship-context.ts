@@ -50,6 +50,14 @@ export interface RelationshipContext {
   invites: InviteSummary[];
   /** Last few threads with this person across surfaces (titled when known). */
   recentThreads: ThreadSummary[];
+  /**
+   * Every WorkOS org this person belongs to (versus `profile.company` which
+   * is one). Empty when the person isn't WorkOS-linked. Use this to answer
+   * "is this person in org X?" — the live-thread sample showed Addie
+   * conflating "in Slack" with "in WorkOS org Y" because she only had
+   * `profile.company` to work with.
+   */
+  orgMemberships: OrgMembership[];
 }
 
 export interface IdentityFlags {
@@ -81,6 +89,23 @@ export interface ThreadSummary {
   message_count: number;
   last_message_at: Date;
   created_at: Date;
+}
+
+/**
+ * Per-org membership for a person. The existing `profile.company` field is
+ * the LIMIT 1 join — sufficient for most queries but loses information for
+ * people who belong to multiple orgs, and conflates "the org we picked" with
+ * "the org being asked about." This surface is the explicit answer to "what
+ * orgs does this person belong to, and in what capacity."
+ */
+export interface OrgMembership {
+  workos_organization_id: string;
+  org_name: string;
+  role: 'admin' | 'member' | null;
+  seat_type: 'contributor' | 'community_only' | null;
+  provisioning_source: string | null;
+  is_paying_member: boolean;
+  joined_at: Date;
 }
 
 export interface CrossSurfaceMessage {
@@ -125,8 +150,18 @@ export async function loadRelationshipContext(
   const { slack_user_id, workos_user_id, prospect_org_id, email } = relationship;
 
   // Fan out all independent queries in parallel
-  const [messages, capabilities, company, certification, community, journey, invites, marketingOptIn, recentThreads] =
-    await Promise.all([
+  const [
+    messages,
+    capabilities,
+    company,
+    certification,
+    community,
+    journey,
+    invites,
+    marketingOptIn,
+    recentThreads,
+    orgMemberships,
+  ] = await Promise.all([
       // Recent messages across all surfaces
       loadRecentMessages(personId),
 
@@ -157,6 +192,9 @@ export async function loadRelationshipContext(
 
       // Recent thread index (titles where set + channel + last_message_at)
       loadRecentThreads(personId),
+
+      // All WorkOS orgs this person belongs to (multi-org / role / seat_type)
+      workos_user_id ? loadOrgMemberships(workos_user_id) : Promise.resolve([]),
     ]);
 
   return {
@@ -181,6 +219,7 @@ export async function loadRelationshipContext(
     },
     invites,
     recentThreads,
+    orgMemberships,
   };
 }
 
@@ -412,6 +451,48 @@ async function loadMarketingOptIn(workosUserId: string): Promise<boolean | null>
   }
 }
 
+async function loadOrgMemberships(workosUserId: string): Promise<OrgMembership[]> {
+  try {
+    const result = await query<{
+      workos_organization_id: string;
+      org_name: string;
+      role: string | null;
+      seat_type: string | null;
+      provisioning_source: string | null;
+      subscription_status: string | null;
+      created_at: Date;
+    }>(
+      `SELECT om.workos_organization_id,
+              o.name AS org_name,
+              om.role,
+              om.seat_type,
+              om.provisioning_source,
+              o.subscription_status,
+              om.created_at
+       FROM organization_memberships om
+       JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+       WHERE om.workos_user_id = $1
+       ORDER BY om.created_at DESC`,
+      [workosUserId]
+    );
+    return result.rows.map((r) => ({
+      workos_organization_id: r.workos_organization_id,
+      org_name: r.org_name,
+      role: r.role === 'admin' || r.role === 'member' ? r.role : null,
+      seat_type:
+        r.seat_type === 'contributor' || r.seat_type === 'community_only'
+          ? r.seat_type
+          : null,
+      provisioning_source: r.provisioning_source,
+      is_paying_member: r.subscription_status === 'active',
+      joined_at: new Date(r.created_at),
+    }));
+  } catch (err) {
+    logger.error({ err, workosUserId }, 'Failed to load org memberships');
+    return [];
+  }
+}
+
 async function loadRecentThreads(personId: string): Promise<ThreadSummary[]> {
   try {
     const result = await query<{
@@ -594,6 +675,37 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
       lines.push('- Marketing opt-in: yes');
     } else if (prefs.marketing_opt_in === false) {
       lines.push('- Marketing opt-in: no');
+    }
+  }
+
+  // Org memberships — every WorkOS org this person belongs to. The header
+  // line above shows one company; this section answers "is this person in
+  // org X" for any org. High-value when an admin asks about a colleague at
+  // a specific org and Addie needs to disambiguate Slack-presence from
+  // formal WorkOS membership (the Triton / Affinity Answers pattern).
+  // Only render when the person belongs to multiple orgs OR has an
+  // off-primary signal worth surfacing (admin role, community_only seat,
+  // verified-domain provisioning).
+  if (ctx.orgMemberships.length > 0) {
+    const showAlways =
+      ctx.orgMemberships.length > 1 ||
+      ctx.orgMemberships.some(
+        (m) => m.role === 'admin' || m.seat_type === 'community_only' || m.provisioning_source === 'verified_domain'
+      );
+    if (showAlways) {
+      lines.push('');
+      lines.push('### Org memberships');
+      for (const m of ctx.orgMemberships) {
+        const parts: string[] = [];
+        parts.push(m.role ?? 'member');
+        if (m.seat_type === 'community_only') parts.push('community-only seat');
+        if (m.is_paying_member) parts.push('paying');
+        if (m.provisioning_source) parts.push(`via ${m.provisioning_source}`);
+        const joined = m.joined_at.toISOString().split('T')[0];
+        lines.push(
+          `- **${m.org_name}** (${m.workos_organization_id}) — ${parts.join(', ')}, joined ${joined}`
+        );
+      }
     }
   }
 
