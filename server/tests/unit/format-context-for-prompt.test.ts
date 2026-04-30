@@ -51,6 +51,7 @@ function fixtureContext(overrides: Partial<RelationshipContext> = {}): Relations
     },
     invites: [],
     recentThreads: [],
+    orgMemberships: [],
     ...overrides,
   };
 }
@@ -188,6 +189,81 @@ describe('formatContextForPrompt — new memory sections', () => {
       })
     );
     expect(out).toContain('aao_membership_professional at org_no_name');
+  });
+
+  it('omits Org memberships for a single-org member with no special signals', () => {
+    const out = formatContextForPrompt(
+      fixtureContext({
+        orgMemberships: [
+          {
+            workos_organization_id: 'org_only',
+            org_name: 'Solo Co',
+            role: 'member',
+            seat_type: 'contributor',
+            provisioning_source: 'webhook',
+            is_paying_member: true,
+            joined_at: new Date('2026-01-01'),
+          },
+        ],
+      })
+    );
+    // Single org with no admin role / community-only seat / verified-domain
+    // signal — covered by the existing Company line in the header, no need
+    // for a separate section.
+    expect(out).not.toContain('### Org memberships');
+  });
+
+  it('renders Org memberships when the person belongs to multiple WorkOS orgs', () => {
+    const out = formatContextForPrompt(
+      fixtureContext({
+        orgMemberships: [
+          {
+            workos_organization_id: 'org_a',
+            org_name: 'Acme',
+            role: 'admin',
+            seat_type: 'contributor',
+            provisioning_source: 'verified_domain',
+            is_paying_member: true,
+            joined_at: new Date('2026-01-01'),
+          },
+          {
+            workos_organization_id: 'org_b',
+            org_name: 'Other Co',
+            role: 'member',
+            seat_type: 'community_only',
+            provisioning_source: 'invited',
+            is_paying_member: false,
+            joined_at: new Date('2026-04-01'),
+          },
+        ],
+      })
+    );
+    expect(out).toContain('### Org memberships');
+    expect(out).toContain('Acme');
+    expect(out).toContain('admin');
+    expect(out).toContain('community-only seat');
+    expect(out).toContain('via verified_domain');
+    expect(out).toContain('paying');
+  });
+
+  it('renders Org memberships even with single org when role/seat/provisioning warrants it', () => {
+    const out = formatContextForPrompt(
+      fixtureContext({
+        orgMemberships: [
+          {
+            workos_organization_id: 'org_solo_admin',
+            org_name: 'Solo Admin Co',
+            role: 'admin',
+            seat_type: 'contributor',
+            provisioning_source: 'webhook',
+            is_paying_member: true,
+            joined_at: new Date('2026-01-01'),
+          },
+        ],
+      })
+    );
+    expect(out).toContain('### Org memberships');
+    expect(out).toContain('Solo Admin Co');
   });
 
   it('renders all four new sections together for a fully-populated person', () => {

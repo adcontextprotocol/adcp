@@ -1,0 +1,4 @@
+---
+---
+
+`RelationshipContext` now includes `orgMemberships: OrgMembership[]` — every WorkOS org a person belongs to with role, seat_type, provisioning_source, joined_at, and is_paying_member. The existing `profile.company` field is one (LIMIT 1) and conflated "the org we picked" with "the org being asked about." The new field answers "is this person in org X?" cleanly. Surfaced in Addie's prompt (### Org memberships section, rendered when person belongs to multiple orgs OR has admin role / community-only seat / verified-domain provisioning), in the admin /admin/relationships/:personId page, and in the get_person_memory tool output. Live-thread sampling found this exact gap on the Triton Digital and Affinity Answers escalations where Addie conflated Slack-presence with WorkOS org membership.

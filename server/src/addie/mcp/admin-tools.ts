@@ -8305,6 +8305,24 @@ Use add_committee_leader to assign a leader.`;
       }
       lines.push('');
 
+      // Per-org memberships — every WorkOS org this person belongs to.
+      // Use this to answer "is this person in org X?" — `company` above is
+      // one (LIMIT 1) and conflates "the org we picked" with "the org being
+      // asked about."
+      if (ctx.orgMemberships.length > 0) {
+        lines.push(`### Org memberships (${ctx.orgMemberships.length})`);
+        for (const m of ctx.orgMemberships) {
+          const tags: string[] = [m.role ?? 'member'];
+          if (m.seat_type === 'community_only') tags.push('community-only seat');
+          if (m.is_paying_member) tags.push('paying');
+          if (m.provisioning_source) tags.push(`via ${m.provisioning_source}`);
+          lines.push(
+            `- ${m.org_name} (${m.workos_organization_id}) — ${tags.join(', ')}`
+          );
+        }
+        lines.push('');
+      }
+
       lines.push(`### Engagement`);
       lines.push(`- stage: ${r.stage} (since ${r.stage_changed_at.toISOString().slice(0, 10)})`);
       lines.push(`- sentiment: ${r.sentiment_trend}`);
