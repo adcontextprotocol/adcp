@@ -39,6 +39,9 @@ v2 collapses today's separate format registry into product-bound declarations. A
 | **`brand_kit_override`** | Per-creative override for the case where `brand.json` is missing, stale, or inappropriate. |
 | **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
 | **`item_production_model`** | On `sponsored_placement`: how each per-item creative is produced. Captures multi-output generative (1 brief × N items → N creatives). |
+| **`format_kind: "custom"`** | Adopter-defined shape that doesn't fit the 11 canonicals (multi-placement takeover, branded content, AR lens, etc.). Requires `format_shape` (registry classifier) and `format_schema` (URI+digest reference to a fetchable schema). |
+| **`format_shape`** | Recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Required when `format_kind: "custom"`. |
+| **`format_schema`** | URI+digest reference to the fetchable schema describing a custom shape's `params` and `slots`. Required when `format_kind: "custom"`. Same hosting model as `platform_extensions`. |
 
 ## Architectural shift
 
@@ -120,6 +123,63 @@ When `*_source` is `buyer_uploaded`, the buyer ships rendered assets and any tra
 - **Sync-creatives tracker block.** For products where the seller produces a serving artifact that embeds tracker URLs directly (e.g., a generated VAST tag or a stitched companion banner), the seller's `sync_creatives` response SHOULD include a `tracker_block` field listing the impression URL pattern and click URL pattern. Buyers register those with their measurement vendor at sync time. This path covers the generative-DSP pattern where the serving artifact and the tracking shape are produced together.
 
 `vast_tracker` and `daast_tracker` decomposed tracker assets work for both `buyer_uploaded` and seller-rendered sources — when the seller renders, those tracker assets are inputs to the rendered tag, attached to the appropriate VAST/DAAST `<TrackingEvents>` block at production time. When the buyer ships a complete `vast` or `daast` tag, the trackers travel inside the tag.
+
+## Custom formats — shapes the 11 canonicals don't cover
+
+The 11 canonicals cover atomic creative shapes (one image, one video, one display tag, one carousel, one catalog placement, one AI-surface mention). They don't cover composed / coordinated / sponsorship shapes that high-end publishers and broadcast networks sell as headline products: multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship.
+
+These shapes are real ad-industry product types — but they're either multi-canonical compositions (takeover = image + video + display_tag + lockup, sold as a unit) or genuinely novel structures (branded content's editorial-sponsorship production model isn't a composition of the 11). v2 handles them via a structured custom mechanism that buyer agents can reason about, NOT via free-form `ext`.
+
+### The mechanism
+
+```json test=false
+{
+  "format_options": [
+    {
+      "format_kind": "custom",
+      "format_shape": "multi_placement_takeover",
+      "format_schema": {
+        "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
+        "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
+      },
+      "capability_id": "nytimes_homepage_takeover_premium",
+      "applies_to_channels": ["display", "olv"],
+      "params": {
+        "components": [
+          { "placement_type": "homepage_skin", "required": true },
+          { "placement_type": "preroll_video", "required": true },
+          { "placement_type": "sponsorship_lockup", "required": true }
+        ],
+        "exclusivity_window_hours": 24
+      }
+    }
+  ]
+}
+```
+
+Three required pieces when `format_kind: "custom"`:
+
+1. **`format_shape`** — recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Tells buyer agents what kind of pattern they're looking at (`multi_placement_takeover`, `branded_content`, `ar_lens`, etc.). The registry currently lists 9 shapes; non-canonical values are valid (validators MAY soft-warn) so adopters CAN ship a shape that isn't yet in the registry — adding entries is a vocabulary PR, not a major-version bump.
+2. **`format_schema`** — URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`. **Same hosting model as `platform_extensions`**: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching), validate `params` and `slots` against the fetched schema, and reason about manifests structurally.
+3. **`params`** — the actual structure, governed by the schema fetched from `format_schema.uri`. AdCP doesn't bake the params shape; the seller's schema does.
+
+### Why custom + format_schema instead of `ext`
+
+A buyer agent calling `get_products` and seeing a format with interesting structure buried in `ext` has no spec-level definition to reason against. There's no schema, no required fields, no defined semantics — the agent can see the blob but can't interpret it reliably. A human has to step in to evaluate whether the format fits the campaign brief, what assets are needed, how it tracks, what the impression contract is, whether the price makes sense.
+
+That breaks the load-bearing claim of v2: **buyer agents can reason structurally without per-seller integration code.** ext-only puts interesting structure in a free-form bag, regressing to human-in-the-loop. Custom + `format_shape` + `format_schema` keeps the agentic-first contract: the shape has a registered classifier, the structure has a fetchable schema, the buyer agent reasons over both. Same caching mechanics buyer agents already have for `platform_extensions`.
+
+`ext` remains for genuinely experimental shapes that don't even fit a `format_shape` entry yet — but that's the rare case, not the default. The dominant path for novel shapes is custom + format_shape + format_schema.
+
+### Promotion to canonical
+
+A `format_shape` entry is promoted to a first-class `format_kind` when:
+1. At least 2 production adopters ship it via custom + format_schema
+2. 90 consecutive days without a breaking change to the shape adopters converged on
+3. The shape has a defined tracking model (which signals fire, which trackers attach, what the impression contract is)
+4. The working group opens a per-canonical promotion issue, drafts a canonical schema (`/schemas/formats/canonical/<name>.json`), lands a fixture, and ships in the next minor release
+
+Same governance pattern that produced the 11 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666); current candidates are the 9 entries in the format-shape registry.
 
 ## Asset group vocabulary
 

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-format-kind.json",
   "title": "Canonical Format Kind",
-  "description": "Discriminator value naming one of the 11 canonical creative formats. Used by `product-format-declaration.json` (the product's inline format declaration), `creative-manifest.json` (the buyer's v2 manifest path), and any other surface that needs to identify which canonical a payload targets. The enum mirrors the `oneOf` branches in `product-format-declaration.json`; keep them in sync.",
+  "description": "Discriminator value naming one of the 11 canonical creative formats — plus `custom` for adopter-defined shapes that don't fit the canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, AR lens, etc.). Used by `product-format-declaration.json` (the product's inline format declaration), `creative-manifest.json` (the buyer's v2 manifest path), and any other surface that needs to identify which canonical a payload targets.\n\nWhen `format_kind: \"custom\"`, the declaration MUST also carry `format_shape` (referencing the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json) — recognized global pattern this custom shape is an instance of) and `format_schema` (URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code — same mechanic as `platform_extensions`. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.\n\nThe canonical enum mirrors the `oneOf` branches in `product-format-declaration.json`; keep them in sync.",
   "type": "string",
   "enum": [
     "image",
@@ -15,6 +15,7 @@
     "audio_daast",
     "sponsored_placement",
     "responsive_creative",
-    "agent_placement"
+    "agent_placement",
+    "custom"
   ]
 }

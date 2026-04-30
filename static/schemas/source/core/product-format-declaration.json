@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-format-declaration.json",
   "title": "Product Format Declaration",
-  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Optional `capability_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`) and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Optional `capability_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`) and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 11 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
   "type": "object",
   "required": ["format_kind", "params"],
   "discriminator": { "propertyName": "format_kind" },
@@ -22,8 +22,33 @@
       "enum": ["stable", "preview", "declared_only"],
       "default": "stable",
       "description": "Adopter-runtime readiness for this product-format declaration. **Distinct from the canonical's `status` field** (which describes whether the v2 working group has stabilized the format definition itself). `runtime_status` describes whether THIS seller's runtime actually honors what they declared on THIS product.\n\n- `stable` (default) — adopter's runtime fully honors the declared format + production source. Buyers can rely on the declaration as a serving contract.\n- `preview` — runtime supports the basic path; some axes (e.g., per-item fan-out under `item_production_model`, brief-driven overrides, advanced `platform_extensions`) may be partial. Buyers SHOULD validate via `validate_input` or sandbox before committing budget.\n- `declared_only` — catalog declaration is forward-looking; runtime does NOT yet implement this path. Buyers MUST treat as informational and confirm via `validate_input` or a sandbox storyboard before purchase. Compliance storyboards SHOULD skip-gate `declared_only` entries gracefully rather than failing.\n\nThe two axes vary independently: a `stable` canonical can have `declared_only` adopters (canonical is settled in spec but adopter hasn't wired runtime yet), and a `preview` canonical can have `stable` adopters (adopter built against the preview shape and their runtime fully honors it). Producers SHOULD set this when their product declaration is aspirational; absence is interpreted as `stable`. Sellers MUST upgrade the value as the runtime catches up; buyers cache it like any other capability field."
+    },
+    "format_shape": {
+      "type": "string",
+      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. Recognized global pattern this custom shape is an instance of, drawn from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json) (`multi_placement_takeover`, `roadblock`, `branded_content`, `cross_screen_sponsorship`, `sponsorship_lockup`, `newsletter_sponsorship`, `ar_lens`, `playable`, `live_event_sponsorship`, …). Non-canonical values valid (validators MAY soft-warn) — adopters CAN ship a shape that isn't yet in the registry. Adding entries is a vocabulary PR. Once a `format_shape` entry sees 2+ adopters with substantively similar `format_schema` content for 90+ days, the working group promotes it to a first-class canonical."
+    },
+    "format_schema": {
+      "$ref": "/schemas/core/platform-extension-ref.json",
+      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. URI+digest reference to a fetchable schema describing this custom shape's actual `params` and `slots`. Same hosting model as `platform_extensions`: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching, `Cache-Control: public, max-age=31536000, immutable`), validate `params` and `slots` against the fetched schema, and reason about manifests structurally — same mechanic as platform_extensions but at the format-structure level. Without `format_schema`, custom shapes would be opaque to buyer agents and the protocol would regress to per-seller integration code; that's why the schema is required, not optional."
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "custom" } },
+        "required": ["format_kind"]
+      },
+      "then": {
+        "required": ["format_shape", "format_schema"]
+      },
+      "else": {
+        "not": { "anyOf": [
+          { "required": ["format_shape"] },
+          { "required": ["format_schema"] }
+        ] }
+      }
+    }
+  ],
   "oneOf": [
     {
       "title": "Image Format Declaration",
@@ -112,6 +137,19 @@
         "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" }
       },
       "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Custom Format Declaration",
+      "description": "Adopter-defined shape that doesn't fit the 11 canonicals. Requires `format_shape` (vocabulary-registered global pattern) and `format_schema` (URI+digest reference to a fetchable schema describing the actual params/slots). `params` shape is governed by the fetched schema rather than baked into AdCP — kept as `type: object` here with `additionalProperties: true` because the canonical schema validates dynamically post-fetch.",
+      "properties": {
+        "format_kind": { "type": "string", "const": "custom" },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Custom shape's params. Validated against the schema fetched from `format_schema.uri` at the cached `format_schema.digest`."
+        }
+      },
+      "required": ["format_kind", "params"]
     }
   ],
   "examples": [
@@ -172,6 +210,28 @@
             { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" }
           ],
           "production_window_business_days": 7
+        }
+      }
+    },
+    {
+      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally.",
+      "data": {
+        "format_kind": "custom",
+        "format_shape": "multi_placement_takeover",
+        "format_schema": {
+          "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
+          "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
+        },
+        "capability_id": "nytimes_homepage_takeover_premium",
+        "applies_to_channels": ["display", "olv"],
+        "params": {
+          "components": [
+            { "placement_type": "homepage_skin", "required": true },
+            { "placement_type": "preroll_video", "required": true },
+            { "placement_type": "sponsorship_lockup", "required": true }
+          ],
+          "exclusivity_window_hours": 24,
+          "ssl_required": true
         }
       }
     }
