@@ -197,18 +197,16 @@ const VARIANTS: Variant[] = [
  */
 function validateVariants(): string[] {
   const errors: string[] = [];
-  let baselineSize: number | null = null;
-  for (const v of VARIANTS) {
-    if (v.id === 'A') {
-      try {
-        baselineSize = v.build().length;
-      } catch (err) {
-        errors.push(`Baseline (A) build failed: ${err}`);
-      }
-    }
+  const baseline = VARIANTS.find((v) => v.id === 'A');
+  if (!baseline) {
+    errors.push('Could not establish baseline size — A variant missing.');
+    return errors;
   }
-  if (baselineSize === null) {
-    errors.push('Could not establish baseline size — A variant missing or failed to build.');
+  let baselineSize: number;
+  try {
+    baselineSize = baseline.build().length;
+  } catch (err) {
+    errors.push(`Baseline (A) build failed: ${err}`);
     return errors;
   }
   for (const v of VARIANTS) {
@@ -365,6 +363,12 @@ async function runVariant(
   // runs that fired the metric — so 1/3 = 0.33 is distinguishable from 3/3
   // = 1.0. Sum these fractions across questions. With N=1 every fraction
   // is 0 or 1 so totals match the original integer counts.
+  //
+  // A failed run (Anthropic call threw) is intentionally graded with
+  // `response: ''` — `gradeShape` returns 0 violations on empty input, so
+  // the failed run counts as a non-fire rather than poisoning the average.
+  // That matches the ground truth: we don't know what Addie would have said,
+  // so we don't claim a violation either way.
   const total = perQuestion.length;
   let totalWords = 0;
   let lengthCapHits = 0;
@@ -434,7 +438,7 @@ async function runVariant(
  *  integer (matches the original output). With N>1 partial firings show
  *  one decimal place so a 1/3-flake reads differently from a 3/3 hit. */
 function fmtHits(value: number, total: number, runsPerQuestion: number): string {
-  if (runsPerQuestion === 1) return `${Math.round(value)}/${total}`;
+  if (runsPerQuestion === 1) return `${value}/${total}`;
   return `${value.toFixed(1)}/${total}`;
 }
 
@@ -521,6 +525,10 @@ function printPerQuestion(results: VariantResult[]): void {
       console.log(
         `${tag}Words: ${run.shape.response.wordCount} | Ratio: ${run.shape.violations.ratioToExpected.toFixed(2)} | Violations: ${run.shape.violationLabels.join(', ') || '(none)'}`,
       );
+      // Suppress the response body when N>1 — variance is what matters at
+      // that point and printing N copies of the response would bury the
+      // metrics. Inspect a specific run by re-running with
+      // ONLY_VARIANTS=<id> RUNS_PER_QUESTION=1.
       if (k.runs.length === 1) {
         console.log(`Response (truncated to 400 chars):`);
         console.log(`  ${run.response.slice(0, 400).replace(/\n/g, '\n  ')}${run.response.length > 400 ? '…' : ''}`);
@@ -578,7 +586,9 @@ async function main() {
   // The prompt-engineer review on PR #3601 recommended N≥3 for statistical
   // power on future variant decisions; the multi-run aggregation distinguishes
   // a 1/3-flake from a 3/3-consistent fire so the comparison reads correctly.
-  const runsPerQuestion = Math.max(1, Number(process.env.RUNS_PER_QUESTION ?? '1'));
+  // `parseInt(..., 10) || 1` defends against `RUNS_PER_QUESTION=foo` silently
+  // becoming NaN and breaking the run loop with `Math.max(1, NaN) = NaN`.
+  const runsPerQuestion = Math.max(1, parseInt(process.env.RUNS_PER_QUESTION ?? '1', 10) || 1);
 
   const model = resolveShadowModel();
   const battery = buildBattery();
