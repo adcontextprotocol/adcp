@@ -393,7 +393,7 @@ components:
               type: string
             display_name:
               type: string
-          description: "AAO member that owns this agent record, if any. Populated when `source` is `registered`. For `discovered` agents this is currently `null` even when the publisher_domain in `discovered_from` is owned by a member — see #3538 Problem 6."
+          description: "AAO member that owns this agent record, if any. Populated when `source` is `registered`. For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538."
         discovered_from:
           type: object
           properties:
@@ -402,6 +402,8 @@ components:
             authorized_for:
               type: string
           description: Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. Mutually exclusive with the `member` field on the registered path.
+        endorsed_by_publisher_member:
+          $ref: "#/components/schemas/EndorsedByPublisherMember"
         health:
           $ref: "#/components/schemas/AgentHealth"
         stats:
@@ -420,6 +422,23 @@ components:
         - url
         - name
         - type
+    EndorsedByPublisherMember:
+      type: object
+      properties:
+        slug:
+          type: string
+          description: Member organization slug — stable URL-safe identifier for the publisher member.
+        display_name:
+          type: string
+          description: Member organization display name — render-ready label for the publisher member.
+        publisher_domain:
+          type: string
+          description: Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal).
+      required:
+        - slug
+        - display_name
+        - publisher_domain
+      description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)."
     AgentHealth:
       type: object
       properties:
@@ -1224,6 +1243,24 @@ components:
               - untested
               - unknown
           description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        membership_tier:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership."
+        membership_tier_label:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners."
+        subscription_status:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners."
+        is_api_access_tier:
+          type: boolean
+          description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
         verified:
           type: boolean
         verified_badges:
@@ -1247,6 +1284,9 @@ components:
             - brand
             - sponsored-intelligence
           description: AdCP protocol this badge covers (enums/adcp-protocol.json).
+        adcp_version:
+          type: string
+          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
         verified_at:
           type: string
         verified_specialisms:
@@ -1290,8 +1330,10 @@ components:
             - "null"
         badge_url:
           type: string
+          description: Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`.
       required:
         - role
+        - adcp_version
         - verified_at
         - verified_specialisms
         - verification_modes
@@ -4671,6 +4713,123 @@ paths:
                   - markdown
         "400":
           description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
+    get:
+      operationId: getAgentBadgeVersionedSvg
+      summary: Get version-pinned agent verification badge SVG
+      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
+          required: true
+          description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          required: true
+          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          name: version
+          in: path
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
+    get:
+      operationId: getAgentBadgeVersionedEmbed
+      summary: Get version-pinned embeddable badge code
+      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role
+          required: true
+          description: Badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR
+          required: true
+          description: AdCP release as MAJOR.MINOR
+          name: version
+          in: path
+      responses:
+        "200":
+          description: Embed code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  role:
+                    type: string
+                  verified:
+                    type: boolean
+                  adcp_version:
+                    type: string
+                  badge_svg_url:
+                    type: string
+                  registry_url:
+                    type: string
+                  html:
+                    type: string
+                  markdown:
+                    type: string
+                required:
+                  - agent_url
+                  - role
+                  - verified
+                  - badge_svg_url
+                  - registry_url
+                  - html
+                  - markdown
+        "400":
+          description: Invalid agent URL, role, or version
           content:
             application/json:
               schema:
