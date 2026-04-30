@@ -122,10 +122,11 @@ describe('verification-token', () => {
       expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
     });
 
-    it('drops a malformed adcp_version rather than smuggling it into a signed token', async () => {
-      // Defense in depth: a poisoned DB row that smuggled a non-MAJOR.MINOR
-      // value must NOT ride into a signed AAO claim. The token still issues
-      // (badge is otherwise valid), just without the version claim.
+    it('refuses to sign when adcp_version is malformed (fail-closed)', async () => {
+      // Security review: dropping the claim silently and emitting a token
+      // without it would let a poisoned DB row turn into a downgrade
+      // attack — verifiers might treat "no adcp_version" as "pre-Stage-2
+      // token, accept as authoritative." Fail closed instead.
       const signed = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
         role: 'sales',
@@ -134,11 +135,10 @@ describe('verification-token', () => {
         adcp_version: '3.0; DROP TABLE',
       });
 
-      const claims = await verifyVerificationToken(signed!.token);
-      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+      expect(signed).toBeNull();
     });
 
-    it('drops an adcp_version with a leading-zero major', async () => {
+    it('refuses to sign an adcp_version with a leading-zero major', async () => {
       // Matches the DB CHECK constraint: ^[1-9][0-9]*\.[0-9]+$.
       const signed = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
@@ -148,8 +148,22 @@ describe('verification-token', () => {
         adcp_version: '0.5',
       });
 
-      const claims = await verifyVerificationToken(signed!.token);
-      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+      expect(signed).toBeNull();
+    });
+
+    it('refuses to sign full semver (3.0.0) as adcp_version', async () => {
+      // The claim is MAJOR.MINOR, not full semver. Full semver lives in
+      // protocol_version. Mixing them up is a programming error that
+      // should fail loudly at sign time.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0.0',
+      });
+
+      expect(signed).toBeNull();
     });
 
     it('signs adcp_version with double-digit minor without truncation', async () => {

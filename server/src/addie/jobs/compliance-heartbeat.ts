@@ -152,44 +152,65 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           const aggregatedRevoked: Array<{ role: string; reason: string; adcp_version: string }> = [];
 
           for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
-            // Restrict storyboard statuses to the IDs that exist at this
-            // version. With a single supported version (3.0) this filter is
-            // a no-op since every storyboard's `introduced_in` is unset
-            // ("always applied"). When 3.1 ships with new storyboards, this
-            // is what isolates 3.0 badge issuance from 3.1-only fixtures.
-            const versionStoryboardIds = new Set(getStoryboardIdsForVersion(adcpVersion));
-            const versionScopedStatuses = storyboardStatuses.filter(s => versionStoryboardIds.has(s.storyboard_id));
+            // Per-version try/catch: a failure on 3.1 must not poison the
+            // notification for an already-completed 3.0 issuance, and a
+            // persistent per-version failure must surface via system-error
+            // alerts rather than disappear into a non-fatal warn.
+            try {
+              // Restrict storyboard statuses to the IDs that exist at this
+              // version. With a single supported version (3.0) this filter is
+              // a no-op since every storyboard's `introduced_in` is unset
+              // ("always applied"). When 3.1 ships with new storyboards, this
+              // is what isolates 3.0 badge issuance from 3.1-only fixtures.
+              const versionStoryboardIds = new Set(getStoryboardIdsForVersion(adcpVersion));
+              const versionScopedStatuses = storyboardStatuses.filter(s => versionStoryboardIds.has(s.storyboard_id));
 
-            const badgeResult = await processAgentBadges(
-              complianceDb,
-              agent.agent_url,
-              declaredSpecialisms,
-              versionScopedStatuses,
-              dbInput.overall_status === 'passing',
-              membershipOrgId,
-              adcpVersion,
-            );
+              const badgeResult = await processAgentBadges(
+                complianceDb,
+                agent.agent_url,
+                declaredSpecialisms,
+                versionScopedStatuses,
+                dbInput.overall_status === 'passing',
+                membershipOrgId,
+                adcpVersion,
+              );
 
-            for (const issued of badgeResult.issued) aggregatedIssued.push({ ...issued, adcp_version: adcpVersion });
-            for (const revoked of badgeResult.revoked) aggregatedRevoked.push({ ...revoked, adcp_version: adcpVersion });
+              for (const issued of badgeResult.issued) aggregatedIssued.push(issued);
+              for (const revoked of badgeResult.revoked) aggregatedRevoked.push(revoked);
+            } catch (versionError) {
+              const errorMessage = versionError instanceof Error ? versionError.message : String(versionError);
+              logger.error(
+                { versionError, agentUrl: agent.agent_url, adcpVersion },
+                'Badge processing failed for one AdCP version — continuing with remaining versions',
+              );
+              notifySystemError({
+                source: 'compliance-badge-issuance',
+                errorMessage: `Per-version badge processing failed for ${agent.agent_url} at AdCP ${adcpVersion}: ${errorMessage}`,
+              });
+            }
           }
 
-          // Notify on badge changes (aggregated across versions so a single
-          // notification surfaces "earned 3.0 + 3.1" cleanly rather than
-          // firing twice).
+          // Notify on badge changes from the versions that completed —
+          // skipping versions that threw above. A partial result that
+          // ships only completed-version notifications is correct: the
+          // system-error alert above carries the failure signal.
           if (aggregatedIssued.length > 0 || aggregatedRevoked.length > 0) {
             try {
               await notifyVerificationChange({
                 agentUrl: agent.agent_url,
-                issued: aggregatedIssued.map(({ role, specialisms }) => ({ role, specialisms })),
-                revoked: aggregatedRevoked.map(({ role, reason }) => ({ role, reason })),
+                issued: aggregatedIssued,
+                revoked: aggregatedRevoked,
               });
             } catch (notifyError) {
               logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification notification');
             }
           }
         } catch (badgeError) {
-          logger.warn({ badgeError, agentUrl: agent.agent_url }, 'Badge processing failed (non-fatal)');
+          logger.error({ badgeError, agentUrl: agent.agent_url }, 'Badge processing setup failed');
+          notifySystemError({
+            source: 'compliance-badge-issuance',
+            errorMessage: `Badge processing setup failed for ${agent.agent_url}: ${badgeError instanceof Error ? badgeError.message : String(badgeError)}`,
+          });
         }
       }
     } catch (error) {

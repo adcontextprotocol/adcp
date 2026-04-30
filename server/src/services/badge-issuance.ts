@@ -12,10 +12,13 @@ import { logger as baseLogger } from '../logger.js';
 const logger = baseLogger.child({ module: 'badge-issuance' });
 
 export interface BadgeIssuanceResult {
-  issued: Array<{ role: BadgeRole; specialisms: string[] }>;
-  revoked: Array<{ role: BadgeRole; reason: string }>;
-  degraded: Array<{ role: BadgeRole }>;
-  unchanged: Array<{ role: BadgeRole }>;
+  // Each entry includes adcp_version so the caller can route per-version
+  // issuances to the right notification text without re-deriving from
+  // surrounding loop state.
+  issued: Array<{ role: BadgeRole; specialisms: string[]; adcp_version: string }>;
+  revoked: Array<{ role: BadgeRole; reason: string; adcp_version: string }>;
+  degraded: Array<{ role: BadgeRole; adcp_version: string }>;
+  unchanged: Array<{ role: BadgeRole; adcp_version: string }>;
 }
 
 /**
@@ -56,7 +59,7 @@ export async function processAgentBadges(
   if (!membershipOrgId) {
     for (const existing of existingAllVersions) {
       await complianceDb.revokeBadge(agentUrl, existing.role, existing.adcp_version, 'Membership lapsed');
-      result.revoked.push({ role: existing.role, reason: 'Membership lapsed' });
+      result.revoked.push({ role: existing.role, reason: 'Membership lapsed', adcp_version: existing.adcp_version });
       logger.info({ agentUrl, role: existing.role, adcpVersion: existing.adcp_version }, 'Badge revoked — membership lapsed');
     }
     return result;
@@ -110,15 +113,15 @@ export async function processAgentBadges(
       });
 
       if (!existing) {
-        result.issued.push({ role: roleResult.role, specialisms: roleResult.specialisms });
+        result.issued.push({ role: roleResult.role, specialisms: roleResult.specialisms, adcp_version: adcpVersion });
         logger.info({ agentUrl, role: roleResult.role, adcpVersion, specialisms: roleResult.specialisms }, 'Badge issued');
       } else {
-        result.unchanged.push({ role: roleResult.role });
+        result.unchanged.push({ role: roleResult.role, adcp_version: adcpVersion });
       }
     } else if (existing) {
       if (existing.status === 'active') {
         await complianceDb.degradeBadge(agentUrl, roleResult.role, adcpVersion);
-        result.degraded.push({ role: roleResult.role });
+        result.degraded.push({ role: roleResult.role, adcp_version: adcpVersion });
         logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge degraded');
       } else if (existing.status === 'degraded') {
         const degradedAt = existing.updated_at;
@@ -126,10 +129,10 @@ export async function processAgentBadges(
 
         if (hoursSinceDegraded >= 48) {
           await complianceDb.revokeBadge(agentUrl, roleResult.role, adcpVersion, `Specialisms failing for 48+ hours: ${roleResult.failing.join(', ')}`);
-          result.revoked.push({ role: roleResult.role, reason: `Failing specialisms: ${roleResult.failing.join(', ')}` });
+          result.revoked.push({ role: roleResult.role, reason: `Failing specialisms: ${roleResult.failing.join(', ')}`, adcp_version: adcpVersion });
           logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge revoked after 48h grace');
         } else {
-          result.unchanged.push({ role: roleResult.role });
+          result.unchanged.push({ role: roleResult.role, adcp_version: adcpVersion });
         }
       }
     }
@@ -140,7 +143,7 @@ export async function processAgentBadges(
   for (const existing of existingBadges) {
     if (!activeRoles.has(existing.role)) {
       await complianceDb.revokeBadge(agentUrl, existing.role, adcpVersion, 'Role no longer in declared specialisms');
-      result.revoked.push({ role: existing.role, reason: 'Role no longer declared' });
+      result.revoked.push({ role: existing.role, reason: 'Role no longer declared', adcp_version: adcpVersion });
     }
   }
 

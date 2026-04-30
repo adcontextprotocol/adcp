@@ -131,12 +131,20 @@ export function getAllStoryboards(): Storyboard[] {
 /**
  * Compare two AdCP version strings (`MAJOR.MINOR`) numerically.
  * Returns -1 / 0 / 1 like a sort comparator. `'3.10'` is correctly
- * greater than `'3.2'`. Treats malformed values as `0.0` (sort first).
+ * greater than `'3.2'`.
+ *
+ * Malformed inputs coerce to `0.0` and emit a debug log. The DB CHECK
+ * constraint and the JWT regex prevent malformed values from reaching
+ * here in production paths; the coercion exists so a hand-edited
+ * storyboard YAML or test fixture doesn't crash the heartbeat. Callers
+ * that care about correctness should validate input separately.
  */
 export function compareAdcpVersions(a: string, b: string): number {
   const parse = (s: string): [number, number] => {
     const m = s.match(/^(\d+)\.(\d+)$/);
-    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : [0, 0];
+    if (m) return [Number(m[1]), Number(m[2])];
+    logger.debug({ value: s }, 'compareAdcpVersions received malformed input — coercing to 0.0');
+    return [0, 0];
   };
   const [aMajor, aMinor] = parse(a);
   const [bMajor, bMinor] = parse(b);
