@@ -30,6 +30,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -1534,6 +1535,64 @@ registry.registerPath({
       },
     },
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg",
+  operationId: "getAgentBadgeVersionedSvg",
+  summary: "Get version-pinned agent verification badge SVG",
+  description: "Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)" }),
+      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')" }),
+    }),
+  },
+  responses: {
+    200: { description: "SVG badge image", content: { "image/svg+xml": { schema: z.string() } } },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error" },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed",
+  operationId: "getAgentBadgeVersionedEmbed",
+  summary: "Get version-pinned embeddable badge code",
+  description: "Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role" }),
+      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Embed code",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            role: z.string(),
+            verified: z.boolean(),
+            adcp_version: z.string().optional(),
+            badge_svg_url: z.string(),
+            registry_url: z.string(),
+            html: z.string(),
+            markdown: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3904,6 +3963,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
+          // adcp_version is the load-bearing badge identity field — pairs
+          // with `(agent_url, role, adcp_version)` PK. Clients render
+          // version-pinned SVG/embed URLs from this. The legacy
+          // `badge_url` below auto-upgrades to the highest version per
+          // role (Stage 1 contract); a version-pinned URL can be derived
+          // client-side as `/badge/{role}/{adcp_version}.svg`.
+          //
+          // Defense-in-depth: validate shape at the API serialization
+          // boundary even though the DB CHECK already constrains the
+          // column. A hand-edited row or a relaxed CHECK can't push
+          // a malformed value into clients that trust the field.
+          adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
@@ -4002,37 +4073,60 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Badge SVG (public) ──────────────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/badge/:role.svg", async (req, res) => {
+  // Same shape constraint the JWT signer and DB CHECK use. Routes that
+  // accept a :version path segment validate before hitting the DB so we
+  // don't 404-vs-400 distinguish between "no badge at this version" and
+  // "this isn't a version string." Hard cap on length defends against
+  // pathological URLs filling logs.
+  const VALID_ADCP_VERSION_RE = /^[1-9][0-9]{0,3}\.[0-9]{1,3}$/;
+
+  function setBadgeSvgHeaders(res: import("express").Response, etag: string) {
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("Content-Security-Policy", "script-src 'none'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
+    // ETag covers role, version, and the mode set so a transition (e.g.
+    // add 'live', upgrade to 3.1) invalidates caches for the badge URL.
+    res.setHeader("ETag", etag);
+  }
+
+  router.get("/registry/agents/:encodedUrl/badge/:role.svg", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       if (!validateAgentUrlParam(agentUrl)) {
-        return res.status(400).send("Invalid agent URL");
+        return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
       }
 
-      // getHighestVersionActiveBadge returns the highest-version active +
-      // degraded badge. A degraded badge
-      // (within 48-hour grace period) still renders as verified -- the grace
-      // period is invisible to the public. Revocation only happens after 48h.
+      // Legacy URL: serves the highest-version active+degraded badge.
+      // Embedded badges in the wild auto-upgrade to the most recent
+      // version the agent has earned without changing the URL. The
+      // version-pinned URL `/badge/:role/:version.svg` (below) lets
+      // buyers freeze a specific version.
       let modes: string[] = [];
+      let adcpVersion: string | undefined;
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
-        if (badge) modes = badge.verification_modes;
+        if (badge) {
+          modes = badge.verification_modes;
+          adcpVersion = badge.adcp_version;
+        }
       } catch {
         // Table may not exist yet
       }
 
-      const svg = renderBadgeSvg(role, modes);
-      res.setHeader("Content-Type", "image/svg+xml");
-      res.setHeader("Content-Security-Policy", "script-src 'none'");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
-      // ETag covers both role and the mode set so a transition (e.g. add 'live')
-      // invalidates caches for the badge URL.
-      res.setHeader("ETag", `"${role}-${modes.slice().sort().join('-') || 'nv'}"`);
+      const svg = renderBadgeSvg(role, modes, { adcpVersion });
+      // ETag-safe version: filter the DB value through the same shape
+      // regex renderBadgeSvg uses. A poisoned row with control characters
+      // (CR/LF, NUL) would otherwise crash the response with
+      // ERR_INVALID_CHAR when Node serializes the header. Falls back to
+      // 'nv' (matching the modes-empty sentinel) for missing/malformed.
+      const etagVersion = adcpVersion && /^[1-9][0-9]*\.[0-9]+$/.test(adcpVersion) ? adcpVersion : 'nv';
+      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}"`;
+      setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to render badge SVG");
@@ -4040,9 +4134,82 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // Version-pinned badge URL — buyers who want to freeze on a specific
+  // AdCP release embed this instead of the legacy `/badge/:role.svg`.
+  // Returns the (Spec)/(Live) qualifier earned at exactly this version,
+  // or "Not Verified" if the agent never earned a badge at this version.
+  router.get("/registry/agents/:encodedUrl/badge/:role/:version.svg", agentReadRateLimiter, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const role = req.params.role;
+      const version = req.params.version;
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!VALID_BADGE_ROLES.includes(role as any)) {
+        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+      }
+      if (!VALID_ADCP_VERSION_RE.test(version)) {
+        return res.status(400).json({ error: `Invalid version "${version}". Expected MAJOR.MINOR (e.g. "3.0").` });
+      }
+
+      let modes: string[] = [];
+      try {
+        const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
+        if (badge) modes = badge.verification_modes;
+      } catch {
+        // Table may not exist yet
+      }
+
+      const svg = renderBadgeSvg(role, modes, { adcpVersion: version });
+      const etag = `"${role}-${version}-${modes.slice().sort().join('-') || 'nv'}"`;
+      setBadgeSvgHeaders(res, etag);
+      res.send(svg);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to render version-pinned badge SVG");
+      res.status(500).send("Failed to render badge");
+    }
+  });
+
   // ── Embeddable Badge (public) ──────────────────────────────────
 
-  router.get("/registry/agents/:encodedUrl/badge/:role/embed", async (req, res) => {
+  // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
+  const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  // Escape markdown alt text. Today altText is built from kebab-cased
+  // role + numeric version so it's safe — but a future caller that
+  // incorporates user-controlled text would otherwise be one
+  // unescaped `]` away from breaking the link syntax. Forward defense.
+  const escapeMdAltText = (text: string) => text.replace(/([\\\[\]])/g, '\\$1');
+  // Convert kebab-case role ("media-buy") to Title Case ("Media Buy") for embed alt text.
+  const roleLabelForEmbed = (role: string) =>
+    role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  function buildEmbedResponse(args: {
+    agentUrl: string;
+    role: string;
+    badgeSvgUrl: string;
+    altText: string;
+    verified: boolean;
+    adcpVersion?: string;
+  }) {
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
+    const encodedUrl = encodeURIComponent(args.agentUrl);
+    const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
+    const html = `<a href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(args.badgeSvgUrl)}" alt="${escapeHtml(args.altText)}" loading="lazy" height="20" /></a>`;
+    const markdown = `[![${escapeMdAltText(args.altText)}](${escapeMdUrl(args.badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
+    return {
+      agent_url: args.agentUrl,
+      role: args.role,
+      verified: args.verified,
+      ...(args.adcpVersion && { adcp_version: args.adcpVersion }),
+      badge_svg_url: args.badgeSvgUrl,
+      registry_url: registryUrl,
+      html,
+      markdown,
+    };
+  }
+
+  router.get("/registry/agents/:encodedUrl/badge/:role/embed", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
@@ -4054,9 +4221,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       let verified = false;
+      let adcpVersion: string | undefined;
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
+        adcpVersion = badge?.adcp_version;
       } catch {
         // Table may not exist yet
       }
@@ -4064,26 +4233,54 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
       const encodedUrl = encodeURIComponent(agentUrl);
       const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}.svg`;
-      const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
-      // Convert kebab-case domain to Title Case (e.g. "media-buy" → "Media Buy")
-      const roleLabel = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      // Embed alt text omits the version segment intentionally — the
+      // legacy URL auto-upgrades, so a buyer who copies this snippet
+      // gets the newest version's image without changing the alt text
+      // they pasted into their site.
+      const altText = `AAO Verified ${roleLabelForEmbed(role)} Agent`;
 
-      // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
-      const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
-      const html = `<a href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(badgeSvgUrl)}" alt="${escapeHtml(`AAO Verified ${roleLabel} Agent`)}" loading="lazy" height="20" /></a>`;
-      const markdown = `[![AAO Verified ${roleLabel} Agent](${escapeMdUrl(badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
-
-      res.json({
-        agent_url: agentUrl,
-        role,
-        verified,
-        badge_svg_url: badgeSvgUrl,
-        registry_url: registryUrl,
-        html,
-        markdown,
-      });
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate embed code");
+      res.status(500).json({ error: "Failed to generate embed code" });
+    }
+  });
+
+  // Version-pinned embed — renders snippets that point at the
+  // version-specific SVG URL. Buyers who want to call out "verified
+  // for AdCP 3.0" specifically (e.g., during a 3.1 transition) embed
+  // this instead of the legacy `/badge/:role/embed`.
+  router.get("/registry/agents/:encodedUrl/badge/:role/:version/embed", agentReadRateLimiter, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const role = req.params.role;
+      const version = req.params.version;
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!VALID_BADGE_ROLES.includes(role as any)) {
+        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+      }
+      if (!VALID_ADCP_VERSION_RE.test(version)) {
+        return res.status(400).json({ error: `Invalid version "${version}". Expected MAJOR.MINOR (e.g. "3.0").` });
+      }
+
+      let verified = false;
+      try {
+        const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
+        verified = !!badge;
+      } catch {
+        // Table may not exist yet
+      }
+
+      const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
+      const encodedUrl = encodeURIComponent(agentUrl);
+      const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}/${version}.svg`;
+      const altText = `AAO Verified ${roleLabelForEmbed(role)} Agent ${version}`;
+
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version }));
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to generate version-pinned embed code");
       res.status(500).json({ error: "Failed to generate embed code" });
     }
   });

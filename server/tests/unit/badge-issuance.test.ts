@@ -278,6 +278,36 @@ describe('processAgentBadges — per-AdCP-version isolation (#3524 stage 1)', ()
     expect(revokeCalls.every(call => call[3] === 'Membership lapsed')).toBe(true);
   });
 
+  it('multi-version revoke transition: 3.0 revoked while 3.1 active should leave 3.1 untouched', async () => {
+    // Security review concern: the legacy /badge/{role}.svg URL serves
+    // the highest-version active badge. If 3.0 is revoked (storyboard
+    // failure past 48h grace) while 3.1 is active, the legacy URL
+    // upgrades to 3.1 — that's the desired behavior. This test pins
+    // the invariant that a 3.0 run revoking 3.0 doesn't touch the 3.1
+    // badge, leaving the highest-version-picker free to upgrade.
+    const existing = [
+      makeBadge('media-buy', 'degraded', 49 * 60 * 60 * 1000, ['spec'], '3.0'), // past grace
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.1'),
+    ];
+    const db = makeMockDb(existing);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'failing')],
+      false,
+      'org_test',
+      '3.0',
+    );
+
+    const revokeCalls = (db.revokeBadge as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    // Only 3.0 should be revoked under this run; 3.1 stays untouched.
+    const revokedTuples = revokeCalls.map(call => `${call[1]}@${call[2]}`);
+    expect(revokedTuples).toContain('media-buy@3.0');
+    expect(revokedTuples).not.toContain('media-buy@3.1');
+  });
+
   it('partial overlap: issuing a new role at 3.0 does not touch creative@3.1', async () => {
     // Code-reviewer requested case: agent has media-buy@3.0 and creative@3.1.
     // A 3.0 run that issues creative for the first time at 3.0 must not
