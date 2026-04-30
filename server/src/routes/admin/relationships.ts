@@ -22,6 +22,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
 import { isUuid } from '../../utils/uuid.js';
+import { loadRelationshipContext } from '../../addie/services/relationship-context.js';
 
 const logger = createLogger('admin-relationships');
 
@@ -337,6 +338,25 @@ export function setupRelationshipRoutes(apiRouter: Router): void {
     } catch (error) {
       logger.error({ error }, 'Error getting timeline');
       res.status(500).json({ error: 'Failed to get timeline' });
+    }
+  });
+
+  // GET /api/admin/relationships/:personId/memory — Consolidated "what Addie knows"
+  apiRouter.get('/relationships/:personId/memory', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { personId } = req.params;
+      if (!isUuid(personId)) {
+        return res.status(400).json({ error: 'Invalid person ID format' });
+      }
+      const ctx = await loadRelationshipContext(personId, { includeCommunity: true });
+      res.json(ctx);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      if (message.startsWith('No relationship found')) {
+        return res.status(404).json({ error: 'Person not found' });
+      }
+      logger.error({ error }, 'Error loading person memory');
+      res.status(500).json({ error: 'Failed to load memory', message });
     }
   });
 }

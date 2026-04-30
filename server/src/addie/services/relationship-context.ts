@@ -42,6 +42,45 @@ export interface RelationshipContext {
   certification: CertificationSummary | null;
   community?: CommunityContext;
   journey?: JourneyContext;
+  /** Identity / account state — derived flags so callers don't re-check. */
+  identity: IdentityFlags;
+  /** Communication preferences gathered from the relationship row + email prefs. */
+  preferences: PreferencesContext;
+  /** Pending or recently-expired membership invites for this person's email. */
+  invites: InviteSummary[];
+  /** Last few threads with this person across surfaces (titled when known). */
+  recentThreads: ThreadSummary[];
+}
+
+export interface IdentityFlags {
+  account_linked: boolean;
+  has_slack: boolean;
+  has_email: boolean;
+}
+
+export interface PreferencesContext {
+  contact_preference: 'slack' | 'email' | null;
+  opted_out: boolean;
+  marketing_opt_in: boolean | null;
+}
+
+export interface InviteSummary {
+  org_id: string;
+  org_name: string | null;
+  lookup_key: string;
+  status: 'pending' | 'expired';
+  created_at: Date;
+  expires_at: Date;
+  invited_by_user_id: string;
+}
+
+export interface ThreadSummary {
+  thread_id: string;
+  channel: string;
+  title: string | null;
+  message_count: number;
+  last_message_at: Date;
+  created_at: Date;
 }
 
 export interface CrossSurfaceMessage {
@@ -83,36 +122,42 @@ export async function loadRelationshipContext(
     throw new Error(`No relationship found for person ${personId}`);
   }
 
-  const { slack_user_id, workos_user_id, prospect_org_id } = relationship;
+  const { slack_user_id, workos_user_id, prospect_org_id, email } = relationship;
 
   // Fan out all independent queries in parallel
-  const [messages, capabilities, company, certification, community, journey] = await Promise.all([
-    // Recent messages across all surfaces
-    loadRecentMessages(personId),
+  const [messages, capabilities, company, certification, community, journey, invites, marketingOptIn, recentThreads] =
+    await Promise.all([
+      // Recent messages across all surfaces
+      loadRecentMessages(personId),
 
-    // Member capabilities
-    slack_user_id
-      ? getMemberCapabilities(slack_user_id, workos_user_id ?? undefined)
-      : Promise.resolve(null),
+      // Member capabilities
+      slack_user_id
+        ? getMemberCapabilities(slack_user_id, workos_user_id ?? undefined)
+        : Promise.resolve(null),
 
-    // Company info
-    loadCompanyInfo(workos_user_id, prospect_org_id),
+      // Company info
+      loadCompanyInfo(workos_user_id, prospect_org_id),
 
-    // Certification progress
-    workos_user_id
-      ? loadCertificationSummary(workos_user_id)
-      : Promise.resolve(null),
+      // Certification progress
+      workos_user_id ? loadCertificationSummary(workos_user_id) : Promise.resolve(null),
 
-    // Community context (only when requested)
-    options?.includeCommunity
-      ? loadCommunityContext(workos_user_id, slack_user_id)
-      : Promise.resolve(undefined),
+      // Community context (only when requested)
+      options?.includeCommunity
+        ? loadCommunityContext(workos_user_id, slack_user_id)
+        : Promise.resolve(undefined),
 
-    // Journey context (tier, groups, credentials, notable colleagues)
-    workos_user_id
-      ? loadJourneyContext(workos_user_id)
-      : Promise.resolve(undefined),
-  ]);
+      // Journey context (tier, groups, credentials, notable colleagues)
+      workos_user_id ? loadJourneyContext(workos_user_id) : Promise.resolve(undefined),
+
+      // Pending + expired membership invites for this person's email
+      email ? loadInviteSummaries(email) : Promise.resolve([]),
+
+      // Marketing opt-in (lives on user_email_preferences keyed by workos user)
+      workos_user_id ? loadMarketingOptIn(workos_user_id) : Promise.resolve(null),
+
+      // Recent thread index (titles where set + channel + last_message_at)
+      loadRecentThreads(personId),
+    ]);
 
   return {
     relationship,
@@ -124,6 +169,18 @@ export async function loadRelationshipContext(
     certification,
     community,
     journey,
+    identity: {
+      account_linked: workos_user_id !== null,
+      has_slack: slack_user_id !== null,
+      has_email: email !== null,
+    },
+    preferences: {
+      contact_preference: relationship.contact_preference,
+      opted_out: relationship.opted_out,
+      marketing_opt_in: marketingOptIn,
+    },
+    invites,
+    recentThreads,
   };
 }
 
@@ -297,6 +354,93 @@ async function loadCommunityContext(
     upcomingEvents: totalEvents,
     recentGroupActivity: [],
   };
+}
+
+async function loadInviteSummaries(email: string): Promise<InviteSummary[]> {
+  // Pending or just-expired invites for this email across any org. Useful
+  // signal for "they have an invite waiting" / "their invite expired."
+  // Accepted/revoked are excluded — they're history, not actionable state.
+  try {
+    const result = await query<{
+      workos_organization_id: string;
+      org_name: string | null;
+      lookup_key: string;
+      created_at: Date;
+      expires_at: Date;
+      invited_by_user_id: string;
+      accepted_at: Date | null;
+      revoked_at: Date | null;
+    }>(
+      `SELECT mi.workos_organization_id, o.name AS org_name, mi.lookup_key,
+              mi.created_at, mi.expires_at, mi.invited_by_user_id,
+              mi.accepted_at, mi.revoked_at
+       FROM membership_invites mi
+       LEFT JOIN organizations o ON o.workos_organization_id = mi.workos_organization_id
+       WHERE mi.contact_email = $1
+         AND mi.accepted_at IS NULL
+         AND mi.revoked_at IS NULL
+       ORDER BY mi.created_at DESC
+       LIMIT 10`,
+      [email]
+    );
+    const now = Date.now();
+    return result.rows.map((r) => ({
+      org_id: r.workos_organization_id,
+      org_name: r.org_name,
+      lookup_key: r.lookup_key,
+      status: new Date(r.expires_at).getTime() > now ? 'pending' : 'expired',
+      created_at: new Date(r.created_at),
+      expires_at: new Date(r.expires_at),
+      invited_by_user_id: r.invited_by_user_id,
+    }));
+  } catch (err) {
+    logger.error({ err, email }, 'Failed to load invite summaries');
+    return [];
+  }
+}
+
+async function loadMarketingOptIn(workosUserId: string): Promise<boolean | null> {
+  try {
+    const result = await query<{ marketing_opt_in: boolean | null }>(
+      `SELECT marketing_opt_in FROM user_email_preferences WHERE workos_user_id = $1 LIMIT 1`,
+      [workosUserId]
+    );
+    return result.rows[0]?.marketing_opt_in ?? null;
+  } catch (err) {
+    logger.error({ err, workosUserId }, 'Failed to load marketing opt-in');
+    return null;
+  }
+}
+
+async function loadRecentThreads(personId: string): Promise<ThreadSummary[]> {
+  try {
+    const result = await query<{
+      thread_id: string;
+      channel: string;
+      title: string | null;
+      message_count: number;
+      last_message_at: Date;
+      created_at: Date;
+    }>(
+      `SELECT thread_id, channel, title, message_count, last_message_at, created_at
+       FROM addie_threads
+       WHERE person_id = $1
+       ORDER BY last_message_at DESC NULLS LAST
+       LIMIT 5`,
+      [personId]
+    );
+    return result.rows.map((r) => ({
+      thread_id: r.thread_id,
+      channel: r.channel,
+      title: r.title,
+      message_count: r.message_count,
+      last_message_at: new Date(r.last_message_at),
+      created_at: new Date(r.created_at),
+    }));
+  } catch (err) {
+    logger.error({ err, personId }, 'Failed to load recent threads');
+    return [];
+  }
 }
 
 async function loadJourneyContext(workosUserId: string): Promise<JourneyContext | undefined> {

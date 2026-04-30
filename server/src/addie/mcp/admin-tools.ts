@@ -1555,6 +1555,21 @@ For logo changes, use update_member_logo instead.`,
     },
   },
   {
+    name: 'get_person_memory',
+    description:
+      'Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Slack user ID (U...), email, or display name',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'get_engagement_plan',
     description: 'Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.',
     input_schema: {
@@ -8217,6 +8232,138 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, query: queryStr }, 'Error looking up person');
       return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_person_memory', async (input) => {
+    const queryStr = (input.query as string)?.trim();
+    if (!queryStr) {
+      return '❌ query is required (Slack user ID, email, or name).';
+    }
+
+    const pool = getPool();
+    try {
+      const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
+      const isEmail = queryStr.includes('@');
+      let personResult;
+      if (isSlackId) {
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE slack_user_id = $1`,
+          [queryStr]
+        );
+      } else if (isEmail) {
+        // Match lookup_person's casing convention — emails are typically stored
+        // normalized but resolvePersonId / lookup_person don't lowercase here.
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE email = $1`,
+          [queryStr]
+        );
+      } else {
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`,
+          [`%${queryStr}%`]
+        );
+      }
+
+      if (personResult.rows.length === 0) {
+        return `No person found for "${queryStr}".`;
+      }
+      if (personResult.rows.length > 1) {
+        return `Multiple matches for "${queryStr}". Use a more specific query (Slack ID or email).`;
+      }
+      const personId = personResult.rows[0].id;
+
+      const ctx = await loadRelationshipContext(personId, { includeCommunity: true });
+      const r = ctx.relationship;
+
+      const lines: string[] = [];
+      lines.push(`## Memory for ${r.display_name ?? queryStr}`);
+      lines.push('');
+
+      lines.push(`### Identity`);
+      lines.push(`- person_id: ${r.id}`);
+      if (r.email) lines.push(`- email: ${r.email}`);
+      if (r.slack_user_id) lines.push(`- slack: ${r.slack_user_id}`);
+      lines.push(`- account_linked: ${ctx.identity.account_linked ? 'yes' : 'no'}`);
+      lines.push('');
+
+      lines.push(`### Membership`);
+      if (ctx.profile.company) {
+        lines.push(`- company: ${ctx.profile.company.name} (${ctx.profile.company.type})`);
+        lines.push(`- paying member: ${ctx.profile.company.is_member ? 'yes' : 'no'}`);
+      } else {
+        lines.push(`- company: (none on file)`);
+      }
+      if (ctx.journey?.working_groups?.length) {
+        lines.push(`- working groups: ${ctx.journey.working_groups.join(', ')}`);
+      }
+      if (ctx.journey?.tier) {
+        lines.push(`- tier: ${ctx.journey.tier} (${ctx.journey.points} points)`);
+      }
+      if (ctx.journey?.credentials?.length) {
+        lines.push(`- credentials: ${ctx.journey.credentials.join(', ')}`);
+      }
+      lines.push('');
+
+      lines.push(`### Engagement`);
+      lines.push(`- stage: ${r.stage} (since ${r.stage_changed_at.toISOString().slice(0, 10)})`);
+      lines.push(`- sentiment: ${r.sentiment_trend}`);
+      lines.push(`- interactions: ${r.interaction_count}, unreplied to Addie: ${r.unreplied_outreach_count}`);
+      const lastAddie = r.last_addie_message_at?.toISOString().slice(0, 10) ?? 'never';
+      const lastPerson = r.last_person_message_at?.toISOString().slice(0, 10) ?? 'never';
+      lines.push(`- last contact: Addie ${lastAddie}, them ${lastPerson}`);
+      lines.push('');
+
+      lines.push(`### Preferences`);
+      lines.push(`- contact_preference: ${ctx.preferences.contact_preference ?? '(none)'}`);
+      lines.push(`- opted_out: ${ctx.preferences.opted_out ? 'yes' : 'no'}`);
+      lines.push(
+        `- marketing_opt_in: ${
+          ctx.preferences.marketing_opt_in === null
+            ? '(unknown)'
+            : ctx.preferences.marketing_opt_in
+              ? 'yes'
+              : 'no'
+        }`
+      );
+      lines.push('');
+
+      if (ctx.invites.length > 0) {
+        lines.push(`### Open invites (${ctx.invites.length})`);
+        for (const inv of ctx.invites) {
+          lines.push(
+            `- [${inv.status}] ${inv.lookup_key} at ${inv.org_name ?? inv.org_id} — created ${inv.created_at.toISOString().slice(0, 10)}, expires ${inv.expires_at.toISOString().slice(0, 10)}`
+          );
+        }
+        lines.push('');
+      }
+
+      if (ctx.recentThreads.length > 0) {
+        lines.push(`### Recent threads (${ctx.recentThreads.length})`);
+        for (const t of ctx.recentThreads) {
+          const title = t.title ?? '(no title set)';
+          lines.push(
+            `- [${t.channel}] "${title}" — ${t.message_count} messages, last ${t.last_message_at.toISOString().slice(0, 10)}`
+          );
+        }
+        lines.push('');
+      }
+
+      if (ctx.certification && ctx.certification.modulesCompleted > 0) {
+        lines.push(`### Certification`);
+        lines.push(
+          `- ${ctx.certification.modulesCompleted}/${ctx.certification.totalModules} modules complete`
+        );
+        if (ctx.certification.credentialsEarned.length > 0) {
+          lines.push(`- credentials: ${ctx.certification.credentialsEarned.join(', ')}`);
+        }
+        lines.push('');
+      }
+
+      return lines.join('\n').trim();
+    } catch (error) {
+      logger.error({ error, query: queryStr }, 'Error loading person memory');
+      return `❌ Failed to load person memory: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
