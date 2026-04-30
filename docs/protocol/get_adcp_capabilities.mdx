@@ -437,7 +437,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### measurement
 
-Measurement capability block. **Presence indicates the agent supports measurement-vendor discovery; absence means it does not.** Modeled as a capability block (like `compliance_testing` and `webhook_signing`), not as a `supported_protocols` value, because measurement agents have one surface — this catalog — not a tool-set with mandatory tasks.
+Measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`. The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
 
 Measurement agents publish a per-metric catalog so buyers know which metrics each vendor offers (attention scores, emissions, panel-based demographics, brand suitability, viewability, etc.). This is the canonical source of truth — AAO crawls it to populate the federated [measurement-vendor index](/docs/registry/index#measurement-vendor-discovery).
 

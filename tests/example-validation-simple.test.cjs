@@ -730,7 +730,7 @@ async function runTests() {
         "supported_versions": ["3.0"],
         "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
       },
-      "supported_protocols": ["sponsored_intelligence"],
+      "supported_protocols": ["measurement"],
       "account": {
         "supported_billing": ["operator"]
       },
@@ -776,7 +776,7 @@ async function runTests() {
         "supported_versions": ["3.0"],
         "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
       },
-      "supported_protocols": ["sponsored_intelligence"],
+      "supported_protocols": ["measurement"],
       "account": {
         "supported_billing": ["operator"]
       },

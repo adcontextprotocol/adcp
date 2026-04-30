@@ -8,13 +8,14 @@ entries. Closes #3612 (the protocol surface piece of the per-metric
 catalog discovery design from #3586). Unblocks #3613 (AAO crawler +
 index implementation).
 
-**Modeled as a capability block, not a `supported_protocols` value.**
-Measurement agents have one surface — this catalog — not a tool-set
-with mandatory tasks the way `media_buy` / `signals` / `governance` do.
-Following the `compliance_testing` / `webhook_signing` precedent: the
-presence of the capability block is the support signal, no
-companion `supported_protocols` enum value or compliance storyboard
-required.
+**Adds `measurement` to `supported_protocols` and `enums/adcp-protocol.json`.**
+Measurement is a protocol-in-development. The capability block ships
+now so measurement vendors can publish their catalogs and AAO can
+crawl them; additional measurement tasks (reporting, attribution,
+panel queries) and a baseline compliance storyboard land in
+subsequent minors. Same as every other protocol — `creative` is in
+`supported_protocols` AND has a capability block; same for
+`governance`. Measurement follows the same model.
 
 **Self-describing, parallels other agents.** Every AdCP agent type
 publishes capabilities at the agent itself (sales / creative /
