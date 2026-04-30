@@ -126,29 +126,64 @@ Text content for headlines, descriptions, CTAs, etc.
 
 ### URL Asset
 
-Links for clickthroughs, tracking, and landing pages.
+Links for clickthroughs, tracking, and landing pages. Two related but distinct fields describe a URL asset:
+
+- **`url_type`** (on the manifest asset) — the **mechanism** the receiver uses to invoke this URL.
+- **`url-asset-requirements.role`** (on the format) — the **purpose** this URL slot serves in the creative.
+
+A slot can be `click_tracker` (purpose) and accept a `tracker_pixel` (mechanism) URL — those describe different things.
+
+#### Manifest-side: `url_type` (mechanism)
+
+Senders **SHOULD** include `url_type` on every URL asset. The valid values are:
+
+| Value | Mechanism |
+|---|---|
+| `clickthrough` | User-click destination (landing page or ad-tech redirector) |
+| `tracker_pixel` | Fires HTTP GET, expects 1×1 pixel or 204 response (impression / event / 3P trackers) |
+| `tracker_script` | Loads as a `<script>` tag — measurement SDKs (OMID verification, native event trackers using `method: 2`) |
 
 ```json
 {
   "asset_type": "url",
-  "required": true,
-  "url_type": "clickthrough",
-  "must_be_https": true,
-  "tracking_macros_supported": true
+  "url_type": "tracker_pixel",
+  "url": "https://track.brand.com/imp?cb={CACHEBUSTER}"
 }
 ```
 
-**Properties:**
-- `url_type`: The purpose of the URL (used only in format requirements):
-  - `clickthrough` - User clicks this URL (may redirect through ad tech platforms before reaching destination)
-  - `impression_tracker` - Fires in background (returns 1x1 pixel, JavaScript snippet, or 204 No Content)
-  - `video_tracker` - Video ad tracking URL (for VAST, video events, etc.)
-  - `landing_page` - Landing page URL
-- `must_be_https`: Whether HTTPS is required
-- `allowed_domains`: List of allowed domains (if restricted)
-- `tracking_macros_supported`: Whether URL macros are supported
+If `url_type` is **absent**, receivers SHOULD fall back to the format's `url-asset-requirements.role`:
 
-**Note**: The `url_type` field is only used in format requirements to specify how the URL will be used. When providing URLs in creative manifests, you only need to supply the `url` value - the `asset_id` already indicates the semantic purpose (e.g., `impression_tracker`, `video_start_tracker`, `landing_url`).
+| `role` (format) | Fallback `url_type` (mechanism) |
+|---|---|
+| `clickthrough`, `landing_page` | `clickthrough` |
+| `impression_tracker`, `click_tracker`, `viewability_tracker`, `third_party_tracker` | `tracker_pixel` |
+
+If neither `url_type` nor a format-side `role` is available, receivers MAY reject the manifest. Receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) is a measurement and user-experience hazard.
+
+#### Format-side: `role` (purpose)
+
+In format requirements, `role` declares what the URL slot is for:
+
+```json
+{
+  "asset_type": "url",
+  "asset_id": "impression_tracker",
+  "required": true,
+  "requirements": {
+    "role": "impression_tracker",
+    "protocols": ["https"]
+  }
+}
+```
+
+`role` enum: `clickthrough`, `landing_page`, `impression_tracker`, `click_tracker`, `viewability_tracker`, `third_party_tracker`.
+
+#### Other URL-asset-requirements properties
+
+- `protocols`: Allowed schemes (`https`, `http`)
+- `allowed_domains`: List of allowed hostnames
+- `max_length`: Maximum URL length
+- `macro_support`: Whether macro substitution is permitted
 
 ### Audio Asset
 
