@@ -21,10 +21,13 @@ function safeSubscriptionStatus(status: string | null | undefined): string | nul
 import * as certDb from '../../db/certification-db.js';
 import { isUuid } from '../../utils/uuid.js';
 import { query } from '../../db/client.js';
+import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
+import { stripe } from '../../billing/stripe-client.js';
+import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 
 const logger = createLogger('certification-tools');
 
@@ -1185,13 +1188,55 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
 export function createCertificationToolHandlers(
-  memberContext: MemberContext | null,
+  initialMemberContext: MemberContext | null,
   options?: { threadId?: string },
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
 
+  // Mutable across heal attempts so a successful lazy-reconcile during this
+  // handler set's lifetime is visible to subsequent calls in the same turn.
+  // The next conversation turn rebuilds memberContext from the DB and
+  // reflects any heals naturally.
+  let memberContext = initialMemberContext;
+
   const getUserId = (): string | null => {
     return memberContext?.workos_user?.workos_user_id || null;
+  };
+
+  /**
+   * Lazy reconcile path: when a paywall gate is about to deny but the org
+   * holds an active membership in Stripe, pull state from Stripe and
+   * self-heal the org row. Returns true if the user is now (or already
+   * was) a member.
+   *
+   * Catches drift introduced by post-webhook customer-relink flows and
+   * (rarer) missed webhooks. The user clicking on a paid feature is the
+   * trigger that surfaces the latent state — they never see the drift.
+   */
+  const ensureMembership = async (): Promise<boolean> => {
+    if (memberContext?.is_member) return true;
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (!orgId || !stripe) return false;
+
+    const result = await attemptStripeReconciliation(orgId, {
+      pool: getPool(),
+      stripe,
+      logger,
+    });
+
+    if (!result.healed) return false;
+
+    if (memberContext?.organization) {
+      memberContext = {
+        ...memberContext,
+        is_member: true,
+        organization: {
+          ...memberContext.organization,
+          subscription_status: result.subscriptionStatus,
+        },
+      };
+    }
+    return true;
   };
 
   // ----- list_certification_tracks -----
@@ -1287,8 +1332,8 @@ export function createCertificationToolHandlers(
       const mod = await certDb.getModule(moduleId);
       if (!mod) return `Module "${moduleId}" not found. Use list_certification_tracks to see available modules.`;
 
-      // Check access
-      if (!mod.is_free && !memberContext?.is_member) {
+      // Check access — try lazy heal before denying.
+      if (!mod.is_free && !(await ensureMembership())) {
         return membershipRequiredMessage(moduleId, memberContext);
       }
 
@@ -1372,7 +1417,7 @@ export function createCertificationToolHandlers(
       const mod = await certDb.getModule(moduleId);
       if (!mod) return `Module "${moduleId}" not found.`;
 
-      if (!mod.is_free && !memberContext?.is_member) {
+      if (!mod.is_free && !(await ensureMembership())) {
         return membershipRequiredMessage(moduleId, memberContext);
       }
 
@@ -1706,7 +1751,7 @@ export function createCertificationToolHandlers(
         const mod = moduleMap.get(id);
         return mod && !mod.is_free;
       });
-      if (paidModules.length > 0 && !memberContext?.is_member) {
+      if (paidModules.length > 0 && !(await ensureMembership())) {
         return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
@@ -1765,7 +1810,7 @@ export function createCertificationToolHandlers(
         return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
       }
 
-      if (!memberContext?.is_member) {
+      if (!(await ensureMembership())) {
         return membershipRequiredMessage(moduleId, memberContext);
       }
 
