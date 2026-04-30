@@ -30,18 +30,11 @@
  *   SHADOW_EVAL_MODEL=primary ANTHROPIC_API_KEY=sk-… npx tsx server/tests/manual/prompt-variant-eval.ts
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 import { gradeShape, type ShapeReport } from '../../src/addie/testing/shape-grader.js';
 import { loadRules, loadResponseStyle } from '../../src/addie/rules/index.js';
 import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
 import { resolveShadowModel } from '../../src/addie/jobs/shadow-evaluator.js';
 import { RED_TEAM_SCENARIOS } from '../../src/addie/testing/redteam-scenarios.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const RULES_DIR = join(__dirname, '../../src/addie/rules');
 
 // ---------------------------------------------------------------------------
 // Variant transformations
