@@ -1146,7 +1146,8 @@
             "required": ["metric_id", "category"],
             "additionalProperties": false
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
       "required": ["metrics"]

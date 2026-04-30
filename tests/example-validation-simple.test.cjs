@@ -719,6 +719,79 @@ async function runTests() {
     'refine[] with new prefixed ids and omitted action (defaults to include)'
   );
 
+  // Measurement capability block — locks the discovery shape down
+  // (#3612). Two metrics, two categories, one with full accreditations[]
+  // and methodology_version, one with the minimum required fields. Buyer-side
+  // implementers can reference this as the canonical response shape.
+  await validateExample(
+    {
+      "adcp": {
+        "major_versions": [3],
+        "supported_versions": ["3.0"],
+        "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+      },
+      "supported_protocols": ["sponsored_intelligence"],
+      "account": {
+        "supported_billing": ["operator"]
+      },
+      "measurement": {
+        "metrics": [
+          {
+            "metric_id": "attention_units",
+            "category": "attention",
+            "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
+            "accreditations": [
+              {
+                "accrediting_body": "MRC",
+                "certification_id": "MRC-ATT-2026-001",
+                "valid_until": "2027-12-31",
+                "evidence_url": "https://mediaratingcouncil.org/accreditations/attentionvendor"
+              }
+            ],
+            "unit": "score",
+            "description": "Eye-tracking-based attention score (0-100). Computed from a panel of opted-in households.",
+            "methodology_url": "https://attentionvendor.example/docs/attention-units",
+            "methodology_version": "v2.1"
+          },
+          {
+            "metric_id": "gco2e_per_impression",
+            "category": "emissions",
+            "standard_reference": "https://garmadvertising.com/sustainability-framework",
+            "unit": "gCO2e",
+            "description": "Carbon emissions per impression, computed via supply-path analysis."
+          }
+        ]
+      }
+    },
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    'get_adcp_capabilities response with measurement capability block (#3612)'
+  );
+
+  // Negative case — duplicate metric_id within one agent's catalog is unambiguously a bug;
+  // schema-level uniqueItems on metrics[] catches it.
+  await expectInvalid(
+    {
+      "adcp": {
+        "major_versions": [3],
+        "supported_versions": ["3.0"],
+        "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+      },
+      "supported_protocols": ["sponsored_intelligence"],
+      "account": {
+        "supported_billing": ["operator"]
+      },
+      "measurement": {
+        "metrics": [
+          { "metric_id": "attention_units", "category": "attention" },
+          { "metric_id": "attention_units", "category": "attention" }
+        ]
+      }
+    },
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    'measurement.metrics[] rejects duplicate entries (uniqueItems)',
+    [/uniqueItems|duplicate/i]
+  );
+
   // Print results
   log('\n===========================================');
   log(`Tests completed: ${totalTests}`);
