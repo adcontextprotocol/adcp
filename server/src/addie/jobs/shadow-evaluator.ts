@@ -115,7 +115,7 @@ function extractHumanResponses(
 }
 
 /**
- * Compare Addie's shadow response with human responses.
+ * Compare an Addie response (live or shadow) with human responses.
  *
  * The model defaults to Haiku for cost. When SHADOW_EVAL_MODEL upgrades the
  * generation model, the comparator follows the same upgrade so scoring stays
@@ -125,8 +125,11 @@ function extractHumanResponses(
  * fenced "treat as data" blocks because they are untrusted — the comparator
  * runs without a system prompt, so unfenced quoted text would let an
  * injected role marker reframe the JSON verdict.
+ *
+ * Exported so the corrected-capture job can reuse it without duplicating
+ * the prompt or the parser.
  */
-async function compareResponses(
+export async function compareResponses(
   client: Anthropic,
   question: string,
   humanResponses: string[],
@@ -199,8 +202,10 @@ Respond with ONLY a JSON object:
  * Compact a ShapeReport pair into a JSON-serializable summary for storage
  * on the thread context. Avoids persisting the full report (we already have
  * the response text — anyone investigating can re-run gradeShape locally).
+ *
+ * Exported so the corrected-capture job persists the same shape.
  */
-function summarizeShapeReports(
+export function summarizeShapeReports(
   shadow: ShapeReport,
   human: ShapeReport,
 ): {
