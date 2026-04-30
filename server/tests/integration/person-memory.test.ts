@@ -182,6 +182,47 @@ describe('person memory (loadRelationshipContext additions)', () => {
     expect(ctx.orgMemberships).toEqual([]);
   });
 
+  it('is_paying_member is false for a canceled-but-still-in-period subscription', async () => {
+    // A subscription that is `active` (Stripe still serving the period) but
+    // `subscription_canceled_at` is set has signaled they're leaving. The
+    // canonical MEMBER_FILTER excludes these — both loadCompanyInfo and
+    // loadOrgMemberships should agree.
+    const personId = await resolvePersonId({ email: `canceled@${TEST_DOMAIN}` });
+    const workosUserId = 'user_pm_canceled';
+    await query(
+      `UPDATE person_relationships SET workos_user_id = $1 WHERE id = $2`,
+      [workosUserId, personId]
+    );
+    await query(
+      `INSERT INTO organizations
+         (workos_organization_id, name, email_domain,
+          subscription_status, subscription_canceled_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'active', NOW() - INTERVAL '2 days', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET
+         subscription_status = EXCLUDED.subscription_status,
+         subscription_canceled_at = EXCLUDED.subscription_canceled_at`,
+      ['org_pm_multi_a', 'Canceling Co', TEST_DOMAIN]
+    );
+    await query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, email, role, seat_type, created_at)
+       VALUES ($1, 'org_pm_multi_a', $2, 'member', 'contributor', NOW() - INTERVAL '90 days')
+       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+      [workosUserId, `canceled@${TEST_DOMAIN}`]
+    );
+
+    const ctx = await loadRelationshipContext(personId);
+
+    // profile.company answers "what company is this person at?" with the
+    // strict member predicate
+    expect(ctx.profile.company?.name).toBe('Canceling Co');
+    expect(ctx.profile.company?.is_member).toBe(false);
+
+    // orgMemberships agrees: same predicate, same answer
+    expect(ctx.orgMemberships).toHaveLength(1);
+    expect(ctx.orgMemberships[0].is_paying_member).toBe(false);
+  });
+
   it('orgMemberships surfaces every WorkOS org with role + seat_type + provisioning_source', async () => {
     const personId = await resolvePersonId({ email: `multi-org@${TEST_DOMAIN}` });
     const workosUserId = 'user_pm_multi_org';
