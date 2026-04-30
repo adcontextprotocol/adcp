@@ -40,9 +40,11 @@ describe('Rules Loader', () => {
   it('should include key rules from each base section', () => {
     const rules = loadRules();
 
-    // Identity
+    // Identity (now consolidates voice / character traits previously
+    // spread across constraints — Honesty, Welcoming people in, etc.)
     expect(rules).toContain('## Core Mission');
-    expect(rules).toContain('## Account Setup Priority');
+    expect(rules).toContain('## Welcoming people in');
+    expect(rules).toContain('## Honesty over confidence');
 
     // Behaviors
     expect(rules).toContain('## Verify Claims With Tools');
@@ -52,8 +54,8 @@ describe('Rules Loader', () => {
     expect(rules).toContain('## Prebid Expertise');
     expect(rules).toContain('## Trusted Match Protocol (TMP)');
 
-    // Constraints
-    expect(rules).toContain('## No Speculative Answers');
+    // Constraints (deterministic guardrails only after the voice migration)
+    expect(rules).toContain('## Tool Outcomes — Three Distinct Cases');
     expect(rules).toContain('## Domain Focus - CRITICAL');
   });
 
