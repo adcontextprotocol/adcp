@@ -73,13 +73,36 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { triageEmailDomain } from '../../src/services/prospect-triage.js';
 
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// Hyphen separator: triage doesn't validate domain format itself but
+// downstream code may, and matching the other integration tests' convention
+// keeps log lines greppable.
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const TEST_DOMAIN = `triage-test-${SUFFIX}.co`;
 
 function assessProspectResponse(input: unknown) {
   return {
     content: [{ type: 'tool_use', name: 'assess_prospect', id: 'toolu_test', input }],
   };
+}
+
+// triageEmailDomain calls logTriageDecision fire-and-forget (line ~449
+// of prospect-triage.ts) so the INSERT is racing the SELECT. Poll briefly
+// instead of awaiting, since changing the prod call to await would alter
+// caller-visible latency.
+async function awaitTriageLog<T>(
+  pool: Pool,
+  domain: string,
+  selectSql: string,
+  timeoutMs = 2000,
+): Promise<{ rows: T[] }> {
+  const deadline = Date.now() + timeoutMs;
+  let last: { rows: T[] } = { rows: [] };
+  while (Date.now() < deadline) {
+    last = await pool.query<T>(selectSql, [domain]);
+    if (last.rows.length > 0) return last;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return last;
 }
 
 describe('triageEmailDomain — assessWithClaude tool_use output → TriageResult + log contract', () => {
@@ -130,14 +153,15 @@ describe('triageEmailDomain — assessWithClaude tool_use output → TriageResul
 
     // prospect_triage_log row must exist and carry the same values —
     // the log write is the only DB side effect at this layer.
-    const row = await pool.query<{
+    const row = await awaitTriageLog<{
       action: string;
       owner: string;
       priority: string;
       reason: string;
     }>(
+      pool,
+      TEST_DOMAIN,
       'SELECT action, owner, priority, reason FROM prospect_triage_log WHERE domain = $1',
-      [TEST_DOMAIN],
     );
     expect(row.rows).toHaveLength(1);
     expect(row.rows[0].action).toBe('create');
@@ -165,9 +189,10 @@ describe('triageEmailDomain — assessWithClaude tool_use output → TriageResul
 
     expect(result.priority).toBe('standard');
 
-    const row = await pool.query<{ priority: string }>(
+    const row = await awaitTriageLog<{ priority: string }>(
+      pool,
+      TEST_DOMAIN,
       'SELECT priority FROM prospect_triage_log WHERE domain = $1',
-      [TEST_DOMAIN],
     );
     expect(row.rows[0].priority).toBe('standard');
   });

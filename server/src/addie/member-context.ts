@@ -1571,7 +1571,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   // Upcoming registered event — context for time-bound discussions.
   if (context.next_event) {
     const e = context.next_event;
-    const days = Math.floor(
+    // Round to the nearest day so a sub-millisecond gap between the caller
+    // setting starts_at and us computing the diff doesn't flip "in 5 days"
+    // to "in 4 days".
+    const days = Math.round(
       (e.starts_at.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
     );
     lines.push('');
