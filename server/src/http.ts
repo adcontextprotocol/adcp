@@ -3722,52 +3722,70 @@ export class HTTPServer {
               break;
             }
 
-            // Update database with subscription status, period end, and pricing details
-            // This allows admin dashboard to display data without querying Stripe API
+            // Update database with subscription status, period end, and pricing details.
+            // This allows admin dashboard to display data without querying Stripe API.
+            //
+            // IMPORTANT: the core UPDATE happens OUTSIDE the swallow-on-error
+            // outer try below. UPDATE on a single row by primary key is
+            // idempotent — if this fails (DB outage, constraint violation,
+            // race), let the exception propagate so Stripe retries. Silently
+            // logging it was the silent-swallow path that could leave a
+            // paying member with stale subscription_status until a human
+            // noticed (#3623 catch-block audit; #3681).
+            let subUpdate: ReturnType<typeof buildSubscriptionUpdate> | undefined;
+            let oldTier: string | null | undefined;
+            if (org && !suppressOrgUpdate) {
+              subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
+
+              const oldTierResult = await pool.query<{ membership_tier: string | null }>(
+                'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+                [org.workos_organization_id]
+              );
+              oldTier = oldTierResult.rows[0]?.membership_tier;
+
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_status = $1,
+                     stripe_subscription_id = $2,
+                     subscription_current_period_end = $3,
+                     subscription_amount = COALESCE($4, subscription_amount),
+                     subscription_currency = COALESCE($5, subscription_currency),
+                     subscription_interval = COALESCE($6, subscription_interval),
+                     subscription_canceled_at = $7,
+                     subscription_product_id = $8,
+                     subscription_product_name = COALESCE($9, subscription_product_name),
+                     subscription_price_id = $10,
+                     subscription_price_lookup_key = $11,
+                     membership_tier = $12,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $13`,
+                [
+                  subUpdate.subscription_status,
+                  subUpdate.stripe_subscription_id,
+                  subUpdate.subscription_current_period_end,
+                  subUpdate.subscription_amount,
+                  subUpdate.subscription_currency,
+                  subUpdate.subscription_interval,
+                  subUpdate.subscription_canceled_at,
+                  subUpdate.subscription_product_id,
+                  subUpdate.subscription_product_name,
+                  subUpdate.subscription_price_id,
+                  subUpdate.subscription_price_lookup_key,
+                  subUpdate.membership_tier,
+                  org.workos_organization_id,
+                ]
+              );
+            }
+
+            // Downstream side effects: tier-change enforcement, notifications,
+            // welcome email, autopublish, .deleted audit + activities. The
+            // existing pattern is "log + alert + continue" because some of
+            // these are non-idempotent (Slack, activity inserts) and a Stripe
+            // retry would refire them. Failures here are visible via
+            // notifySystemError; the column UPDATE that drives entitlement
+            // already happened above.
             try {
-              if (org && !suppressOrgUpdate) {
-                const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
-
-                // Capture current tier before update for change detection
-                const oldTierResult = await pool.query<{ membership_tier: string | null }>(
-                  'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
-                  [org.workos_organization_id]
-                );
-                const oldTier = oldTierResult.rows[0]?.membership_tier;
-
-                await pool.query(
-                  `UPDATE organizations
-                   SET subscription_status = $1,
-                       stripe_subscription_id = $2,
-                       subscription_current_period_end = $3,
-                       subscription_amount = COALESCE($4, subscription_amount),
-                       subscription_currency = COALESCE($5, subscription_currency),
-                       subscription_interval = COALESCE($6, subscription_interval),
-                       subscription_canceled_at = $7,
-                       subscription_product_id = $8,
-                       subscription_product_name = COALESCE($9, subscription_product_name),
-                       subscription_price_id = $10,
-                       subscription_price_lookup_key = $11,
-                       membership_tier = $12,
-                       updated_at = NOW()
-                   WHERE workos_organization_id = $13`,
-                  [
-                    subUpdate.subscription_status,
-                    subUpdate.stripe_subscription_id,
-                    subUpdate.subscription_current_period_end,
-                    subUpdate.subscription_amount,
-                    subUpdate.subscription_currency,
-                    subUpdate.subscription_interval,
-                    subUpdate.subscription_canceled_at,
-                    subUpdate.subscription_product_id,
-                    subUpdate.subscription_product_name,
-                    subUpdate.subscription_price_id,
-                    subUpdate.subscription_price_lookup_key,
-                    subUpdate.membership_tier,
-                    org.workos_organization_id,
-                  ]
-                );
-
+              if (org && !suppressOrgUpdate && subUpdate) {
                 // Enforce the visibility gate for any tier change, including
                 // full cancellation (new tier becomes null). The helper is a
                 // no-op when the new tier still has API access.
@@ -3917,41 +3935,70 @@ export class HTTPServer {
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
-                  // Record audit log for subscription cancellation (use system user since webhook context)
-                  await orgDb.recordAuditLog({
-                    workos_organization_id: org.workos_organization_id,
-                    workos_user_id: SYSTEM_USER_ID,
-                    action: 'subscription_cancelled',
-                    resource_type: 'subscription',
-                    resource_id: subscription.id,
-                    details: {
-                      status: subscription.status,
-                      stripe_customer_id: customerId,
-                    },
-                  });
+                  // Record audit log + activity for subscription cancellation. Wrapped
+                  // in their own try/catches: a failure here must not poison the rest
+                  // of the .deleted handling, but it must also be observable —
+                  // without inner try/catches the failure jumps to the outer
+                  // swallow and the audit row is silently lost forever (Stripe
+                  // sees 200, never retries). Surface via notifySystemError so
+                  // an admin can backfill the trail.
+                  try {
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: SYSTEM_USER_ID,
+                      action: 'subscription_cancelled',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+                  } catch (auditErr) {
+                    logger.error(
+                      { err: auditErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled audit log entry',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-audit-log',
+                      errorMessage: `Failed to record subscription_cancelled audit row for ${org.workos_organization_id} sub ${subscription.id}: ${auditErr instanceof Error ? auditErr.message : String(auditErr)}`,
+                    });
+                  }
 
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
 
-                  // Record to org_activities for prospect tracking
-                  await pool.query(
-                    `INSERT INTO org_activities (
-                      organization_id,
-                      activity_type,
-                      description,
-                      logged_by_user_id,
-                      logged_by_name,
-                      activity_date
-                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-                    [
-                      org.workos_organization_id,
-                      'subscription_cancelled',
-                      'Subscription cancelled',
-                      SYSTEM_USER_ID,
-                      'System',
-                    ]
-                  );
+                  // Record to org_activities for prospect tracking. Same pattern —
+                  // own try/catch with notifySystemError on failure.
+                  try {
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription_cancelled',
+                        'Subscription cancelled',
+                        SYSTEM_USER_ID,
+                        'System',
+                      ]
+                    );
+                  } catch (activityErr) {
+                    logger.error(
+                      { err: activityErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled org_activities row',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-org-activities',
+                      errorMessage: `Failed to record subscription_cancelled activity row for ${org.workos_organization_id} sub ${subscription.id}: ${activityErr instanceof Error ? activityErr.message : String(activityErr)}`,
+                    });
+                  }
                 }
               }
             } catch (syncError) {
