@@ -163,7 +163,13 @@ async function processCandidate(
   result: CorrectedCaptureResult,
 ): Promise<void> {
   const threadService = getThreadService();
-  const [channelId, threadTs] = thread.external_id.split(':');
+  // Slack thread external_ids are `channel_id:thread_ts`. Slack channel
+  // ids today don't contain colons, but the column is a 500-char varchar
+  // with no enforced shape — defensively split on the FIRST colon and
+  // treat the remainder as the thread timestamp.
+  const sepIdx = thread.external_id.indexOf(':');
+  const channelId = sepIdx > 0 ? thread.external_id.slice(0, sepIdx) : '';
+  const threadTs = sepIdx > 0 ? thread.external_id.slice(sepIdx + 1) : '';
   if (!channelId || !threadTs) {
     result.skipped++;
     return;

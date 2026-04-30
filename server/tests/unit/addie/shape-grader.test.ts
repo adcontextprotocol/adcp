@@ -68,6 +68,20 @@ describe('classifyQuestion', () => {
     expect(q.isMultiPart).toBe(false);
   });
 
+  it('does NOT treat "and" inside a noun phrase as multi-part', () => {
+    // The conjunction joins two nouns inside a single question. The
+    // tightened regex requires "and"/"also"/"plus" to be followed by an
+    // interrogative or auxiliary so this kind of phrase isn't mis-flagged.
+    expect(classifyQuestion("What's the difference between buyer and seller agents?").isMultiPart).toBe(false);
+    expect(classifyQuestion('How do publisher and platform agents differ?').isMultiPart).toBe(false);
+    expect(classifyQuestion('Tell me about TMP and OpenRTB.').isMultiPart).toBe(false);
+  });
+
+  it('treats "and <interrogative>" as multi-part', () => {
+    expect(classifyQuestion('How does the registry work and what does it cost?').isMultiPart).toBe(true);
+    expect(classifyQuestion('Where is the spec and how do I read it?').isMultiPart).toBe(true);
+  });
+
   it('scales the cap with question length above 30 words, capped at 400', () => {
     const longQuestion =
       'I want to walk through the full process of registering my seller agent for compliance monitoring including how to declare specialisms what storyboards run by default and what happens during the certification stage of the process please explain end to end?';
@@ -116,11 +130,35 @@ Some prose with **inline bold** that is not a heading.
     expect(r.bulletCount + r.numberedListCount).toBeGreaterThanOrEqual(4);
     expect(r.endsWithQuestion).toBe(true);
     expect(r.usesDefaultTemplate).toBe(true);
+    expect(r.structuredHeavy).toBe(true);
   });
 
-  it('does not flag the human TLDR as default-template', () => {
+  it('flags structuredHeavy on essay-shape that ends in a period (no closing question)', () => {
+    // The default-template detector requires a closing question; if a
+    // response has the same heading + list mass but ends in a period
+    // ("Let me know if that helps."), structuredHeavy still fires while
+    // usesDefaultTemplate does not.
+    const text = `Here's how registration works.
+
+**Self-hosted via adagents.json:**
+- free, no membership required
+- crawler indexes automatically
+- authoritative path
+
+**Dashboard registration:**
+- members-only visibility by default
+- Builder tier needed for public listing
+
+Let me know if that helps.`;
+    const r = analyzeResponseShape(text);
+    expect(r.structuredHeavy).toBe(true);
+    expect(r.usesDefaultTemplate).toBe(false);
+  });
+
+  it('does not flag the human TLDR as default-template or structuredHeavy', () => {
     const r = analyzeResponseShape(BRIAN_TLDR);
     expect(r.usesDefaultTemplate).toBe(false);
+    expect(r.structuredHeavy).toBe(false);
   });
 
   it('flags a sign-in opener', () => {

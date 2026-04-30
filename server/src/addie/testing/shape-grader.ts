@@ -49,8 +49,20 @@ export interface ResponseShape {
    * The default-template signature flagged in response-style.md:
    * "intro → bold heading → bullets → bold heading → bullets → closing question."
    * Detected as ≥2 bold headings AND ≥4 bullets/numbered items AND ending question.
+   * This is the strict variant — only fires when the closing question is also
+   * present. The closing-question requirement keeps false positives off
+   * legitimate structured deliverables ("here are the three options, pick one")
+   * that don't end in a question.
    */
   usesDefaultTemplate: boolean;
+  /**
+   * "Structurally heavy" — the same heading + list mass as the default
+   * template signature, but without requiring a closing question. Catches
+   * essay-shaped responses that end on a period instead of a follow-up
+   * question (e.g., "Let me know if that helps."). The closing-question gate
+   * on `usesDefaultTemplate` was missing this case in earlier eval runs.
+   */
+  structuredHeavy: boolean;
   /** Banned ritual phrases from response-postprocess.ts that leaked through. */
   bannedRitualHits: string[];
   /**
@@ -68,6 +80,8 @@ export interface ShapeViolations {
   ratioToExpected: number;
   /** ResponseShape.usesDefaultTemplate. Lifted for callers to short-circuit on. */
   defaultTemplateUsed: boolean;
+  /** ResponseShape.structuredHeavy — essay-shape without the closing-question requirement. */
+  structuredHeavy: boolean;
   /** Banned ritual phrases observed (lowercase). */
   bannedRituals: string[];
   /** Sign-in / no-tools disclaimer used as the response opener. */
@@ -111,8 +125,16 @@ function countWords(s: string): number {
 export function classifyQuestion(question: string): QuestionShape {
   const wordCount = countWords(question);
   const questionMarks = (question.match(/\?/g) || []).length;
-  const hasConjunction = /\b(and|also|plus)\b/i.test(question);
-  const isMultiPart = questionMarks >= 2 || hasConjunction;
+  // Multi-part is signalled either by ≥2 question marks (e.g. "How does X work?
+  // What about Y?") or by a clause-joining conjunction. The conjunction has to
+  // bridge two clauses, not just two nouns inside one clause —
+  // "What's the difference between buyer and seller agents?" must NOT count
+  // as multi-part. Detect by requiring the conjunction to be followed by an
+  // interrogative or auxiliary verb that opens a new clause.
+  const conjJoinsClauses = /\b(and|also|plus)\s+(do|does|how|what|why|can|is|are|will|should|when|where)\b/i.test(
+    question,
+  );
+  const isMultiPart = questionMarks >= 2 || conjJoinsClauses;
 
   let expectedMaxWords: number;
   if (wordCount <= 15) expectedMaxWords = 120;
@@ -142,10 +164,9 @@ export function analyzeResponseShape(response: string): ResponseShape {
   const trimmed = response.trim();
   const endsWithQuestion = trimmed.endsWith('?');
 
-  const usesDefaultTemplate =
-    boldHeadingCount >= 2 &&
-    bulletCount + numberedListCount >= 4 &&
-    endsWithQuestion;
+  const structuredHeavy =
+    boldHeadingCount >= 2 && bulletCount + numberedListCount >= 4;
+  const usesDefaultTemplate = structuredHeavy && endsWithQuestion;
 
   const lower = response.toLowerCase();
   const bannedRitualHits = BANNED_RITUALS.filter((phrase) =>
@@ -162,6 +183,7 @@ export function analyzeResponseShape(response: string): ResponseShape {
     numberedListCount,
     endsWithQuestion,
     usesDefaultTemplate,
+    structuredHeavy,
     bannedRitualHits,
     signInOpenerHit,
   };
@@ -184,6 +206,7 @@ export function gradeShape(question: string, response: string): ShapeReport {
     exceededLengthCap,
     ratioToExpected,
     defaultTemplateUsed: r.usesDefaultTemplate,
+    structuredHeavy: r.structuredHeavy,
     bannedRituals: r.bannedRitualHits,
     signInDeflectionInOpener: r.signInOpenerHit,
     comprehensiveDumpDetected,
@@ -194,6 +217,10 @@ export function gradeShape(question: string, response: string): ShapeReport {
     labels.push(`length_cap(${r.wordCount}>${q.expectedMaxWords})`);
   }
   if (r.usesDefaultTemplate) labels.push('default_template');
+  // Only emit `structured_heavy` when the strict template didn't already
+  // fire — otherwise every default-template hit also gets a redundant
+  // structured-heavy label.
+  else if (r.structuredHeavy) labels.push('structured_heavy');
   if (comprehensiveDumpDetected) labels.push('comprehensive_dump');
   if (r.signInOpenerHit) labels.push('signin_opener');
   for (const phrase of r.bannedRitualHits) {
