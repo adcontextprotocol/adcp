@@ -280,7 +280,7 @@ export const VerificationBadgeSchema = z
       .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional()
-      .openapi({ description: "Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{url}/badge/{role}/{adcp_version}.svg`." }),
+      .openapi({ description: "Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`." }),
   })
   .openapi("VerificationBadge");
 

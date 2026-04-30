@@ -30,6 +30,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -3968,7 +3969,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           // `badge_url` below auto-upgrades to the highest version per
           // role (Stage 1 contract); a version-pinned URL can be derived
           // client-side as `/badge/{role}/{adcp_version}.svg`.
-          adcp_version: b.adcp_version,
+          //
+          // Defense-in-depth: validate shape at the API serialization
+          // boundary even though the DB CHECK already constrains the
+          // column. A hand-edited row or a relaxed CHECK can't push
+          // a malformed value into clients that trust the field.
+          adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,

@@ -1629,6 +1629,11 @@
       // with their own embed snippets. The legacy /badge/{role}.svg
       // URL still works for callers that want the auto-upgrading
       // highest-version badge.
+      //
+      // Same shape as VALID_ADCP_VERSION_RE in registry-api.ts and
+      // ADCP_VERSION_RE in badge-svg.ts — kept inline because
+      // dashboard-agents.html has no module imports. Update all three
+      // call sites together if the constraint ever changes.
       const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
 
       const rowsHtml = badges.map((badge, idx) => {
@@ -1636,17 +1641,43 @@
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
-        // Defensive: a malformed adcp_version drops to legacy URL +
-        // version-less label. Mirrors the badge-svg.ts policy ("don't
-        // fail the badge over a degraded DB row").
+        // Defensive: the DB CHECK constraint and JWT signer regex
+        // prevent malformed adcp_version values from reaching here
+        // in production. Belt-and-suspenders for hand-edited rows
+        // and forward-compat against schema relaxation.
         const adcpVersion = typeof badge.adcp_version === 'string' && ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)
           ? badge.adcp_version
           : null;
+        if (badge.adcp_version && !adcpVersion) {
+          // Loud-warn: a row arrived with a non-shape-conformant
+          // adcp_version. Falls back to the legacy URL (which serves
+          // highest-version) so the row still renders, but the label
+          // is marked unversioned so it isn't visually identical to
+          // a normal pre-3.0 row.
+          console.warn(
+            'Verification panel: badge has malformed adcp_version, falling back to legacy URL',
+            { agentUrl, role: badge.role, adcp_version: badge.adcp_version },
+          );
+        }
+        // Server constructs badge.badge_url as
+        // `/api/registry/agents/{encodedUrl}/badge/{role}.svg`, but we
+        // validate the prefix anyway so a future federated-mirror that
+        // populates this field externally can't redirect the embedded
+        // <img src> to an arbitrary URL.
+        const safeLegacyBadgeUrl = (typeof badge.badge_url === 'string' && badge.badge_url.startsWith('/api/registry/agents/'))
+          ? badge.badge_url
+          : `/api/registry/agents/${encoded}/badge/${badge.role}.svg`;
         const versionedBadgeUrl = adcpVersion
           ? `/api/registry/agents/${encoded}/badge/${badge.role}/${adcpVersion}.svg`
-          : badge.badge_url;
+          : safeLegacyBadgeUrl;
         const badgeSvgUrl = `${baseUrl}${versionedBadgeUrl}`;
-        const versionSegment = adcpVersion ? ` ${adcpVersion}` : '';
+        // Label/alt segment: the version when shape-validated, an
+        // explicit "(unversioned)" tag when a malformed value forced
+        // the legacy fallback, or empty for true legacy rows where
+        // the API never set adcp_version at all.
+        const versionSegment = adcpVersion
+          ? ` ${adcpVersion}`
+          : (badge.adcp_version ? ' (unversioned)' : '');
         const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
         const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
@@ -1654,8 +1685,10 @@
 
         // Stable drawer id keyed on role+version so re-renders after
         // an issue/revoke don't randomize the open/closed state of
-        // an already-expanded drawer.
-        const drawerId = `verification-embed-${badge.role}-${adcpVersion ?? 'any'}-${idx}`;
+        // an already-expanded drawer. 'unv' for malformed-version
+        // rows so two malformed badges don't collide on 'any'.
+        const versionForId = adcpVersion ?? (badge.adcp_version ? 'unv' : 'any');
+        const drawerId = `verification-embed-${badge.role}-${versionForId}-${idx}`;
 
         return `
           <div class="verification-badge-row">
