@@ -62,7 +62,7 @@ const logger = createLogger("member-profile-routes");
  *    enum. Drop legacy strings like 'buyer' / 'seller' to 'unknown' so
  *    they cannot land in JSONB.
  */
-async function resolveAgentTypes(agents: unknown): Promise<unknown> {
+export async function resolveAgentTypes(agents: unknown): Promise<unknown> {
   if (!Array.isArray(agents) || agents.length === 0) return agents;
   const urls = agents
     .map((a) => (a && typeof a === 'object' && typeof (a as any).url === 'string' ? (a as any).url : null))

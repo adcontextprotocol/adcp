@@ -577,7 +577,25 @@ export class CrawlerService {
             this.snapshotDb.upsertHealth(agent.url, health, stats),
           ]);
 
-          if (!knownTypes.has(agent.url) && inferredType !== 'unknown') {
+          // Type-update policy:
+          //   - No stored type or stored 'unknown' + probe gave a non-unknown type → promote.
+          //   - Stored non-unknown disagrees with probe → log; do NOT auto-flip.
+          //     Operator runs the backfill script to flip explicitly. Single
+          //     probes can be wrong; auto-flipping would corrupt good rows on
+          //     a transient bad probe. See #3538.
+          const knownType = knownTypes.get(agent.url);
+          const canPromote = inferredType !== 'unknown' && (!knownType || knownType === 'unknown');
+          const isDisagreement =
+            !!knownType && knownType !== 'unknown' && inferredType !== 'unknown' && knownType !== inferredType;
+
+          if (isDisagreement) {
+            log.warn(
+              { url: agent.url, knownType, inferredType },
+              'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
+            );
+          }
+
+          if (canPromote) {
             await this.federatedIndex.updateAgentMetadata(agent.url, {
               agent_type: inferredType,
               protocol: profile.protocol,
