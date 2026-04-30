@@ -25,6 +25,19 @@ const logger = createLogger('org-filters');
 /** Organization has an active, non-canceled subscription */
 export const MEMBER_FILTER = `subscription_status = 'active' AND subscription_canceled_at IS NULL`;
 
+/**
+ * TS-side mirror of MEMBER_FILTER for callers that already have the row in
+ * memory and don't want to round-trip through SQL. A canceled-but-still-in-
+ * period subscription does NOT count as paying — the org has signaled they're
+ * leaving even though Stripe is still serving the period.
+ */
+export function isPayingMembership(row: {
+  subscription_status: string | null;
+  subscription_canceled_at: Date | null;
+}): boolean {
+  return row.subscription_status === 'active' && row.subscription_canceled_at === null;
+}
+
 /** Organization has at least one user (site account or Slack user) */
 export const HAS_USER = `(
   EXISTS (

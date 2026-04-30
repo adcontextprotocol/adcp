@@ -1,4 +1,5 @@
 import { query } from '../../db/client.js';
+import { isPayingMembership } from '../../db/org-filters.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import { getMemberCapabilities, hasRelevantUpcomingEvents } from '../../db/outbound-db.js';
 import * as certDb from '../../db/certification-db.js';
@@ -258,9 +259,11 @@ async function loadCompanyInfo(
       company_types: string[];
       persona: string | null;
       subscription_status: string | null;
+      subscription_canceled_at: Date | null;
       prospect_owner: string | null;
     }>(
-      `SELECT o.name, o.company_types, o.persona, o.subscription_status, o.prospect_owner
+      `SELECT o.name, o.company_types, o.persona, o.subscription_status,
+              o.subscription_canceled_at, o.prospect_owner
        FROM organizations o
        JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
        WHERE om.workos_user_id = $1
@@ -275,7 +278,7 @@ async function loadCompanyInfo(
       name: row.name,
       type: row.company_types?.[0] ?? 'unknown',
       persona: row.persona ?? undefined,
-      is_member: row.subscription_status === 'active',
+      is_member: isPayingMembership(row),
       is_addie_prospect: row.prospect_owner !== null,
     };
   }
@@ -286,9 +289,11 @@ async function loadCompanyInfo(
       company_types: string[];
       persona: string | null;
       subscription_status: string | null;
+      subscription_canceled_at: Date | null;
       prospect_owner: string | null;
     }>(
-      `SELECT name, company_types, persona, subscription_status, prospect_owner
+      `SELECT name, company_types, persona, subscription_status,
+              subscription_canceled_at, prospect_owner
        FROM organizations
        WHERE workos_organization_id = $1
        LIMIT 1`,
@@ -302,7 +307,7 @@ async function loadCompanyInfo(
       name: row.name,
       type: row.company_types?.[0] ?? 'unknown',
       persona: row.persona ?? undefined,
-      is_member: row.subscription_status === 'active',
+      is_member: isPayingMembership(row),
       is_addie_prospect: row.prospect_owner !== null,
     };
   }
@@ -460,6 +465,7 @@ async function loadOrgMemberships(workosUserId: string): Promise<OrgMembership[]
       seat_type: string | null;
       provisioning_source: string | null;
       subscription_status: string | null;
+      subscription_canceled_at: Date | null;
       created_at: Date;
     }>(
       `SELECT om.workos_organization_id,
@@ -468,6 +474,7 @@ async function loadOrgMemberships(workosUserId: string): Promise<OrgMembership[]
               om.seat_type,
               om.provisioning_source,
               o.subscription_status,
+              o.subscription_canceled_at,
               om.created_at
        FROM organization_memberships om
        JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
@@ -484,7 +491,7 @@ async function loadOrgMemberships(workosUserId: string): Promise<OrgMembership[]
           ? r.seat_type
           : null,
       provisioning_source: r.provisioning_source,
-      is_paying_member: r.subscription_status === 'active',
+      is_paying_member: isPayingMembership(r),
       joined_at: new Date(r.created_at),
     }));
   } catch (err) {
