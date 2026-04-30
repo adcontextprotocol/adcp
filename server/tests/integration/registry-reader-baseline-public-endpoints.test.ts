@@ -447,10 +447,16 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(x.added_date.length).toBeGreaterThan(0);
     });
 
-    it('GET /api/registry/agents?properties=true enriches buying agents only', async () => {
-      // Seed an additional buyer-typed agent so we exercise the
-      // properties-enrichment branch. The current readers attach
-      // property_summary + publisher_domains for type=buying.
+    it('GET /api/registry/agents?properties=true enriches sales agents only', async () => {
+      // Post-#3540 (refs #3538 Problem 1b), enrichment runs on type='sales'
+      // — the agents that hold publisher authorizations and call
+      // list_authorized_properties. Pre-#3540 the readers filtered on
+      // 'buying' (an inverted-but-aligned bug from #3495). This test pins
+      // the corrected polarity.
+      //
+      // Seed an additional buying-typed agent so we exercise the negative
+      // branch. AGENT_X (already seeded above as 'sales' with property auth
+      // on PUB_A's home) drives the positive branch.
       const BUYER_URL = 'https://endpoint-buyer.registry-baseline.example';
       await fedDb.upsertAgent({
         agent_url: BUYER_URL,
@@ -460,7 +466,9 @@ describe('Registry reader baseline — public endpoints', () => {
         protocol: 'mcp',
         name: 'Endpoint Buyer',
       });
-      // Authorize the buyer on the existing PUB_A home property.
+      // Authorize the buyer on the existing PUB_A home property. Post-#3540
+      // this auth must NOT produce enrichment, because the filter is now
+      // 'sales' and buying agents are excluded.
       const props = await fedDb.getPropertiesForDomain(PUB_A);
       const home = props.find((p) => p.name === 'Endpoint Home') as unknown as { id: string };
       await fedDb.upsertAgentPropertyAuthorization({
@@ -471,21 +479,22 @@ describe('Registry reader baseline — public endpoints', () => {
       const res = await request(app).get('/api/registry/agents?properties=true');
       expect(res.status).toBe(200);
 
-      const buyer = res.body.agents.find((a: { url: string }) => a.url === BUYER_URL);
-      expect(buyer).toBeTruthy();
-      expect(buyer.publisher_domains).toEqual([PUB_A]);
-      expect(buyer.property_summary).toMatchObject({
+      // AGENT_X (sales, property auth on home) MUST be enriched.
+      const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
+      expect(x).toBeTruthy();
+      expect(x.publisher_domains).toEqual([PUB_A]);
+      expect(x.property_summary).toMatchObject({
         total_count: 1,
         publisher_count: 1,
         count_by_type: { website: 1 },
       });
 
-      // Sales-typed agents must NOT receive property enrichment, even
-      // when ?properties=true is set.
-      const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
-      expect(x).toBeTruthy();
-      expect(x.publisher_domains).toBeUndefined();
-      expect(x.property_summary).toBeUndefined();
+      // Buying-typed agents must NOT receive property enrichment, even
+      // when ?properties=true is set. This is the inversion fix in #3540.
+      const buyer = res.body.agents.find((a: { url: string }) => a.url === BUYER_URL);
+      expect(buyer).toBeTruthy();
+      expect(buyer.publisher_domains).toBeUndefined();
+      expect(buyer.property_summary).toBeUndefined();
     });
   });
 
