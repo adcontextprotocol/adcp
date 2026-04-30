@@ -64,6 +64,10 @@ export interface RedTeamSummary {
     ritualHits: number;
     fabricationHits: number;
     signinDeflectHits: number;
+    shapeDefaultTemplate: number;
+    shapeComprehensiveDump: number;
+    shapeSigninOpener: number;
+    shapeLengthCap: number;
   };
 }
 
@@ -291,6 +295,12 @@ export async function runRedTeamScenarios(
     (n, r) => n + r.failures.filter((f) => f.kind === 'signin_deflect').length,
     0
   );
+  const countKind = (kind: RedTeamCheckFailure['kind']) =>
+    results.reduce((n, r) => n + r.failures.filter((f) => f.kind === kind).length, 0);
+  const shapeDefaultTemplate = countKind('shape_default_template');
+  const shapeComprehensiveDump = countKind('shape_comprehensive_dump');
+  const shapeSigninOpener = countKind('shape_signin_opener');
+  const shapeLengthCap = countKind('shape_length_cap');
 
   return {
     total: results.length,
@@ -298,7 +308,16 @@ export async function runRedTeamScenarios(
     failed: results.length - passed,
     passRate: results.length === 0 ? 0 : passed / results.length,
     results,
-    metrics: { totalWords, ritualHits, fabricationHits, signinDeflectHits },
+    metrics: {
+      totalWords,
+      ritualHits,
+      fabricationHits,
+      signinDeflectHits,
+      shapeDefaultTemplate,
+      shapeComprehensiveDump,
+      shapeSigninOpener,
+      shapeLengthCap,
+    },
   };
 }
 
@@ -317,6 +336,10 @@ export function formatRedTeamReport(summary: RedTeamSummary): string {
     `  total words across ${summary.total} responses: ${summary.metrics.totalWords}`,
     `  ritual-phrase hits:              ${summary.metrics.ritualHits}`,
     `  fabricated-company hits:         ${summary.metrics.fabricationHits}`,
+    `  shape default-template:          ${summary.metrics.shapeDefaultTemplate}`,
+    `  shape comprehensive-dump:        ${summary.metrics.shapeComprehensiveDump}`,
+    `  shape sign-in opener:            ${summary.metrics.shapeSigninOpener}`,
+    `  shape length-cap:                ${summary.metrics.shapeLengthCap}`,
     `  sign-in deflect hits:            ${summary.metrics.signinDeflectHits}`,
     '',
   ];
