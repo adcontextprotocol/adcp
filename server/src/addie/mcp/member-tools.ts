@@ -11,7 +11,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
@@ -5119,7 +5121,10 @@ export function createMemberToolHandlers(
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error({ status: response.status, repo }, 'create_github_issue: GitHub API error');
+        logger.warn(
+          { status: response.status, repo, errorText: errorText.slice(0, 500) },
+          'create_github_issue: GitHub API error',
+        );
         if (response.status === 422 && errorText.includes('label')) {
           const retryResponse = await fetch(apiUrl, {
             method: 'POST',
@@ -5160,7 +5165,7 @@ export function createMemberToolHandlers(
         if (response.status === 404) {
           return `Issue #${issueNumber} not found in ${org}/${repo}.`;
         }
-        logger.error({ status: response.status, repo, issueNumber }, 'get_github_issue: GitHub API error');
+        logger.warn({ status: response.status, repo, issueNumber }, 'get_github_issue: GitHub API error');
         return githubErrorMessage(response, `read issue #${issueNumber}`);
       }
       const issue = await response.json() as {
@@ -5217,7 +5222,7 @@ export function createMemberToolHandlers(
             : `Comments (${comments.length})`;
           out += `\n---\n\n${wrapUntrusted(`${issue.html_url}#comments`, `### ${shownLabel}\n\n${commentBlock}`)}\n`;
         } else {
-          logger.error({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
+          logger.warn({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
         }
       }
       return out;
@@ -5260,7 +5265,7 @@ export function createMemberToolHandlers(
     try {
       const response = await fetch(apiUrl, { headers });
       if (!response.ok) {
-        logger.error({ status: response.status, repo }, 'list_github_issues: GitHub API error');
+        logger.warn({ status: response.status, repo }, 'list_github_issues: GitHub API error');
         return githubErrorMessage(response, 'list issues');
       }
       const data = await response.json() as {
