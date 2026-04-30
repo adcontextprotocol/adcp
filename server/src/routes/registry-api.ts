@@ -3962,6 +3962,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
+          // adcp_version is the load-bearing badge identity field — pairs
+          // with `(agent_url, role, adcp_version)` PK. Clients render
+          // version-pinned SVG/embed URLs from this. The legacy
+          // `badge_url` below auto-upgrades to the highest version per
+          // role (Stage 1 contract); a version-pinned URL can be derived
+          // client-side as `/badge/{role}/{adcp_version}.svg`.
+          adcp_version: b.adcp_version,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,

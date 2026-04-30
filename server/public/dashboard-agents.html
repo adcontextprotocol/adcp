@@ -1622,24 +1622,47 @@
       const encoded = encodeURIComponent(agentUrl);
       const registryUrl = `${baseUrl}/registry/agents/${encoded}`;
 
+      // Per-version badge rendering (#3524 stage 4): one row per
+      // (role, adcp_version). Each row's embed snippets point at the
+      // version-pinned SVG URL so a buyer who copies them gets the
+      // exact version's badge — newer versions land in their own rows
+      // with their own embed snippets. The legacy /badge/{role}.svg
+      // URL still works for callers that want the auto-upgrading
+      // highest-version badge.
+      const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
+
       const rowsHtml = badges.map((badge, idx) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
-        const badgeSvgUrl = `${baseUrl}${badge.badge_url}`;
-        const altText = `AAO Verified ${protocol} Agent (${qualifier})`;
+        // Defensive: a malformed adcp_version drops to legacy URL +
+        // version-less label. Mirrors the badge-svg.ts policy ("don't
+        // fail the badge over a degraded DB row").
+        const adcpVersion = typeof badge.adcp_version === 'string' && ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)
+          ? badge.adcp_version
+          : null;
+        const versionedBadgeUrl = adcpVersion
+          ? `/api/registry/agents/${encoded}/badge/${badge.role}/${adcpVersion}.svg`
+          : badge.badge_url;
+        const badgeSvgUrl = `${baseUrl}${versionedBadgeUrl}`;
+        const versionSegment = adcpVersion ? ` ${adcpVersion}` : '';
+        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
+        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 
-        const drawerId = `verification-embed-${idx}-${Math.random().toString(36).slice(2, 8)}`;
+        // Stable drawer id keyed on role+version so re-renders after
+        // an issue/revoke don't randomize the open/closed state of
+        // an already-expanded drawer.
+        const drawerId = `verification-embed-${badge.role}-${adcpVersion ?? 'any'}-${idx}`;
 
         return `
           <div class="verification-badge-row">
             <div class="verification-badge-row-top">
-              <span class="verification-badge-svg"><img src="${escapeHtml(badge.badge_url)}" alt="${escapeHtml(altText)}" /></span>
+              <span class="verification-badge-svg"><img src="${escapeHtml(versionedBadgeUrl)}" alt="${escapeHtml(altText)}" /></span>
               <span class="verification-badge-meta">
-                <strong>${escapeHtml(protocol)} Agent (${escapeHtml(qualifier)})</strong>
+                <strong>${escapeHtml(labelStrong)}</strong>
                 ${verifiedAt ? ' · ' + escapeHtml(verifiedAt) : ''}
                 ${specialisms.length ? '<br>' + specialisms.map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') : ''}
               </span>
