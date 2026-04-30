@@ -428,6 +428,19 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         search, tool, user_search
       } = req.query;
 
+      // ?tool=A or ?tool=A,B,C — single string, split into list when commas present.
+      // Cap each entry at 100 chars and the whole list at 20 entries to bound query cost.
+      let toolName: string | undefined;
+      let toolNames: string[] | undefined;
+      if (typeof tool === 'string' && tool.length > 0 && tool.length <= 2000) {
+        const parts = tool.split(',').map((s) => s.trim()).filter((s) => s.length > 0 && s.length <= 100);
+        if (parts.length > 1) {
+          toolNames = parts.slice(0, 20);
+        } else if (parts.length === 1) {
+          toolName = parts[0];
+        }
+      }
+
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
         flagged_only: flagged_only === "true",
@@ -440,7 +453,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         offset: clampOffset(offset),
         // Search filters (with length limits to prevent performance issues)
         search_text: typeof search === 'string' && search.length <= 500 ? search : undefined,
-        tool_name: typeof tool === 'string' && tool.length <= 100 ? tool : undefined,
+        tool_name: toolName,
+        tool_names: toolNames,
         user_search: typeof user_search === 'string' && user_search.length <= 200 ? user_search : undefined,
       });
 
