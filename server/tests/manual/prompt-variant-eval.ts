@@ -107,6 +107,23 @@ interface Variant {
   name: string;
   description: string;
   build: SystemPromptBuilder;
+  /**
+   * How the variant's prompt size should differ from the baseline. Checked
+   * before any API calls so a no-op transform fails loud instead of
+   * producing misleading "no signal" eval results — silent no-ops are the
+   * specific failure mode flagged by the prompt-engineer review on
+   * PR #3601 (e.g., a future rule edit renames a heading the strip
+   * targeted).
+   *
+   *  - `same`: variant must produce the same byte size as baseline (pure
+   *    reorders fall here — Variant A and Z).
+   *  - `smaller`: variant must produce a prompt strictly smaller than
+   *    baseline (every strip / dedupe transform).
+   *  - `larger`: variant must produce a prompt strictly larger than
+   *    baseline (placeholder for future "add a section" experiments).
+   *  - `any`: skip the check (only set this with a comment explaining why).
+   */
+  expectedSizeVsBaseline: 'same' | 'smaller' | 'larger' | 'any';
 }
 
 const VARIANTS: Variant[] = [
@@ -115,6 +132,7 @@ const VARIANTS: Variant[] = [
     name: 'Baseline (style-last)',
     description: 'Current production prompt: base rules + tool reference + response-style.md.',
     build: buildBaselinePrompt,
+    expectedSizeVsBaseline: 'same',
   },
   {
     id: 'Z',
@@ -122,18 +140,21 @@ const VARIANTS: Variant[] = [
     description:
       'Pre-eval prompt order (style sandwiched between rules and tool ref). Regression check.',
     build: buildLegacyOrderPrompt,
+    expectedSizeVsBaseline: 'same',
   },
   {
     id: 'C',
     name: 'Dedupe',
     description: 'Remove duplicate Response length section in tool reference.',
     build: () => applyToolRefDedupe(buildBaselinePrompt()),
+    expectedSizeVsBaseline: 'smaller',
   },
   {
     id: 'E',
     name: 'Drop spec-exploration',
     description: 'Drop "Spec Exploration Follow-Up" section in behaviors.md.',
     build: () => stripBehaviorsSection(buildBaselinePrompt(), 'Spec Exploration Follow-Up'),
+    expectedSizeVsBaseline: 'smaller',
   },
   {
     id: 'F',
@@ -148,6 +169,7 @@ const VARIANTS: Variant[] = [
       p = stripBehaviorsSection(p, 'Opportunistic Information Gathering');
       return p;
     },
+    expectedSizeVsBaseline: 'smaller',
   },
   {
     id: 'G',
@@ -160,8 +182,61 @@ const VARIANTS: Variant[] = [
       p = stripBehaviorsSection(p, 'Opportunistic Information Gathering');
       return p;
     },
+    expectedSizeVsBaseline: 'smaller',
   },
 ];
+
+/**
+ * Validate every variant's prompt builder before any API calls. A silent
+ * no-op transform (e.g., a future rule edit renames a heading the strip
+ * targeted) would otherwise produce a "no signal" eval result that looks
+ * like the change didn't matter. Failing loud here forces the runner to
+ * be updated alongside the rule edit.
+ *
+ * Returns the list of validation errors. Empty list = all variants OK.
+ */
+function validateVariants(): string[] {
+  const errors: string[] = [];
+  let baselineSize: number | null = null;
+  for (const v of VARIANTS) {
+    if (v.id === 'A') {
+      try {
+        baselineSize = v.build().length;
+      } catch (err) {
+        errors.push(`Baseline (A) build failed: ${err}`);
+      }
+    }
+  }
+  if (baselineSize === null) {
+    errors.push('Could not establish baseline size — A variant missing or failed to build.');
+    return errors;
+  }
+  for (const v of VARIANTS) {
+    if (v.expectedSizeVsBaseline === 'any') continue;
+    let size: number;
+    try {
+      size = v.build().length;
+    } catch (err) {
+      errors.push(`Variant ${v.id} (${v.name}): build threw — ${err}`);
+      continue;
+    }
+    const cmp = v.expectedSizeVsBaseline;
+    if (cmp === 'same' && size !== baselineSize) {
+      errors.push(
+        `Variant ${v.id} (${v.name}): declared 'same' but size ${size} ≠ baseline ${baselineSize}`,
+      );
+    } else if (cmp === 'smaller' && size >= baselineSize) {
+      errors.push(
+        `Variant ${v.id} (${v.name}): declared 'smaller' but size ${size} >= baseline ${baselineSize} — transform likely silently no-opped (anchor heading renamed?)`,
+      );
+    } else if (cmp === 'larger' && size <= baselineSize) {
+      errors.push(
+        `Variant ${v.id} (${v.name}): declared 'larger' but size ${size} <= baseline ${baselineSize}`,
+      );
+    }
+  }
+  return errors;
+}
 
 // ---------------------------------------------------------------------------
 // Question battery
@@ -215,23 +290,37 @@ function buildBattery(): BatteryQuestion[] {
 // Runner
 // ---------------------------------------------------------------------------
 
+/** One run per (variant, question). When N>1, multiple of these accumulate per question. */
+interface SingleRun {
+  response: string;
+  shape: ShapeReport;
+  durationMs: number;
+}
+
 interface VariantResult {
   variant: Variant;
   promptSize: number;
+  runsPerQuestion: number;
   perQuestion: Array<{
     question: BatteryQuestion;
-    response: string;
-    shape: ShapeReport;
-    durationMs: number;
+    runs: SingleRun[];
   }>;
   aggregate: {
     totalQuestions: number;
+    runsPerQuestion: number;
     avgResponseWords: number;
+    /** Sum across questions of (run-fires / runs-per-question). With N=1 these
+     *  match the integer count behavior of the original runner. With N≥2 they
+     *  surface partial firing rates so a 1/3-flake doesn't read the same as
+     *  3/3-consistent. */
     lengthCapHits: number;
     defaultTemplateHits: number;
+    structuredHeavyHits: number;
     comprehensiveDumpHits: number;
     signinOpenerHits: number;
     bannedRitualHits: number;
+    /** A question counts toward AnyViol when ≥50% of its runs had any violation
+     *  (majority-vote framing — robust to single-run noise). */
     questionsWithAnyViolation: number;
     avgRatioToExpected: number;
   };
@@ -242,61 +331,96 @@ async function runVariant(
   model: string,
   variant: Variant,
   battery: BatteryQuestion[],
+  runsPerQuestion: number,
 ): Promise<VariantResult> {
   const systemPrompt = variant.build();
   const perQuestion: VariantResult['perQuestion'] = [];
 
   for (const q of battery) {
-    const t0 = Date.now();
-    let response = '';
-    try {
-      const result = await client.messages.create({
-        model,
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: q.question }],
-      });
-      response = result.content[0]?.type === 'text' ? result.content[0].text : '';
-    } catch (err) {
-      console.error(`  ! variant ${variant.id} / question ${q.id} failed:`, err);
-      response = '';
+    const runs: SingleRun[] = [];
+    for (let i = 0; i < runsPerQuestion; i++) {
+      const t0 = Date.now();
+      let response = '';
+      try {
+        const result = await client.messages.create({
+          model,
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: q.question }],
+        });
+        response = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      } catch (err) {
+        console.error(`  ! variant ${variant.id} / question ${q.id} run ${i + 1} failed:`, err);
+        response = '';
+      }
+      const shape = gradeShape(q.question, response);
+      runs.push({ response, shape, durationMs: Date.now() - t0 });
+      process.stdout.write('.');
     }
-    const shape = gradeShape(q.question, response);
-    perQuestion.push({ question: q, response, shape, durationMs: Date.now() - t0 });
-    process.stdout.write('.');
+    perQuestion.push({ question: q, runs });
   }
   process.stdout.write(' done\n');
 
-  // Aggregate
+  // Aggregate. With N>1, each per-question contribution is the FRACTION of
+  // runs that fired the metric — so 1/3 = 0.33 is distinguishable from 3/3
+  // = 1.0. Sum these fractions across questions. With N=1 every fraction
+  // is 0 or 1 so totals match the original integer counts.
   const total = perQuestion.length;
   let totalWords = 0;
   let lengthCapHits = 0;
   let defaultTemplateHits = 0;
+  let structuredHeavyHits = 0;
   let comprehensiveDumpHits = 0;
   let signinOpenerHits = 0;
   let bannedRitualHits = 0;
   let withAnyViolation = 0;
   let totalRatio = 0;
   for (const r of perQuestion) {
-    totalWords += r.shape.response.wordCount;
-    if (r.shape.violations.exceededLengthCap) lengthCapHits++;
-    if (r.shape.violations.defaultTemplateUsed) defaultTemplateHits++;
-    if (r.shape.violations.comprehensiveDumpDetected) comprehensiveDumpHits++;
-    if (r.shape.violations.signInDeflectionInOpener) signinOpenerHits++;
-    bannedRitualHits += r.shape.response.bannedRitualHits.length;
-    if (r.shape.violationLabels.length > 0) withAnyViolation++;
-    totalRatio += r.shape.violations.ratioToExpected;
+    const n = r.runs.length;
+    if (n === 0) continue;
+    let qWordSum = 0;
+    let qRatioSum = 0;
+    let qLengthCap = 0;
+    let qTemplate = 0;
+    let qStructured = 0;
+    let qDump = 0;
+    let qSignin = 0;
+    let qRituals = 0;
+    let qAnyViol = 0;
+    for (const run of r.runs) {
+      qWordSum += run.shape.response.wordCount;
+      qRatioSum += run.shape.violations.ratioToExpected;
+      if (run.shape.violations.exceededLengthCap) qLengthCap++;
+      if (run.shape.violations.defaultTemplateUsed) qTemplate++;
+      if (run.shape.violations.structuredHeavy) qStructured++;
+      if (run.shape.violations.comprehensiveDumpDetected) qDump++;
+      if (run.shape.violations.signInDeflectionInOpener) qSignin++;
+      qRituals += run.shape.response.bannedRitualHits.length;
+      if (run.shape.violationLabels.length > 0) qAnyViol++;
+    }
+    totalWords += qWordSum / n;
+    totalRatio += qRatioSum / n;
+    lengthCapHits += qLengthCap / n;
+    defaultTemplateHits += qTemplate / n;
+    structuredHeavyHits += qStructured / n;
+    comprehensiveDumpHits += qDump / n;
+    signinOpenerHits += qSignin / n;
+    bannedRitualHits += qRituals / n;
+    if (qAnyViol / n >= 0.5) withAnyViolation++;
   }
 
   return {
     variant,
     promptSize: systemPrompt.length,
+    runsPerQuestion,
     perQuestion,
     aggregate: {
       totalQuestions: total,
+      runsPerQuestion,
       avgResponseWords: total === 0 ? 0 : Math.round(totalWords / total),
       lengthCapHits,
       defaultTemplateHits,
+      structuredHeavyHits,
       comprehensiveDumpHits,
       signinOpenerHits,
       bannedRitualHits,
@@ -306,12 +430,31 @@ async function runVariant(
   };
 }
 
+/** Format a fractional hit count for display. With N=1 every value is an
+ *  integer (matches the original output). With N>1 partial firings show
+ *  one decimal place so a 1/3-flake reads differently from a 3/3 hit. */
+function fmtHits(value: number, total: number, runsPerQuestion: number): string {
+  if (runsPerQuestion === 1) return `${Math.round(value)}/${total}`;
+  return `${value.toFixed(1)}/${total}`;
+}
+
 function printComparison(results: VariantResult[]): void {
+  if (results.length === 0) return;
+  const runsPerQuestion = results[0].runsPerQuestion;
   console.log('\n');
-  console.log('='.repeat(110));
+  console.log('='.repeat(118));
   console.log(' VARIANT COMPARISON');
-  console.log('='.repeat(110));
-  console.log('Lower is better. Each cell is "count / total" for that violation across the question battery.');
+  console.log('='.repeat(118));
+  if (runsPerQuestion > 1) {
+    console.log(
+      `${runsPerQuestion} runs per (variant, question). Hit counts are mean fires-per-question across runs.`,
+    );
+    console.log(
+      'AnyViol uses majority-vote framing — a question counts if ≥50% of its runs had any violation.',
+    );
+  } else {
+    console.log('Lower is better. Each cell is "count / total" for that violation across the question battery.');
+  }
   console.log('');
   const header = [
     'Variant'.padEnd(28),
@@ -319,14 +462,15 @@ function printComparison(results: VariantResult[]): void {
     'AvgWords'.padStart(9),
     'AvgRatio'.padStart(9),
     'LenCap'.padStart(8),
-    'Tmpl'.padStart(6),
+    'Tmpl'.padStart(7),
+    'Heavy'.padStart(7),
     'Dump'.padStart(6),
     'Signin'.padStart(7),
     'Ritual'.padStart(7),
     'AnyViol'.padStart(8),
   ].join(' ');
   console.log(header);
-  console.log('-'.repeat(110));
+  console.log('-'.repeat(118));
   for (const r of results) {
     const a = r.aggregate;
     const total = a.totalQuestions;
@@ -335,29 +479,34 @@ function printComparison(results: VariantResult[]): void {
       `${(r.promptSize / 1024).toFixed(0)}KB`.padStart(8),
       String(a.avgResponseWords).padStart(9),
       a.avgRatioToExpected.toFixed(2).padStart(9),
-      `${a.lengthCapHits}/${total}`.padStart(8),
-      `${a.defaultTemplateHits}/${total}`.padStart(6),
-      `${a.comprehensiveDumpHits}/${total}`.padStart(6),
-      `${a.signinOpenerHits}/${total}`.padStart(7),
-      String(a.bannedRitualHits).padStart(7),
+      fmtHits(a.lengthCapHits, total, runsPerQuestion).padStart(8),
+      fmtHits(a.defaultTemplateHits, total, runsPerQuestion).padStart(7),
+      fmtHits(a.structuredHeavyHits, total, runsPerQuestion).padStart(7),
+      fmtHits(a.comprehensiveDumpHits, total, runsPerQuestion).padStart(6),
+      fmtHits(a.signinOpenerHits, total, runsPerQuestion).padStart(7),
+      runsPerQuestion === 1
+        ? String(Math.round(a.bannedRitualHits)).padStart(7)
+        : a.bannedRitualHits.toFixed(1).padStart(7),
       `${a.questionsWithAnyViolation}/${total}`.padStart(8),
     ].join(' ');
     console.log(row);
   }
   console.log('');
   console.log('Legend:');
-  console.log('  AvgWords    = mean response word count across battery');
+  console.log('  AvgWords    = mean response word count across battery (and across runs when N>1)');
   console.log('  AvgRatio    = mean (response_words / expected_max_words) — under 1.0 is in-budget');
-  console.log('  LenCap      = responses that exceeded calibrated length cap for question shape');
-  console.log('  Tmpl        = default template (bold→bullets→bold→bullets→closing question)');
+  console.log('  LenCap      = response exceeded calibrated length cap for question shape');
+  console.log('  Tmpl        = default template (≥2 bold + ≥4 list items + closing question)');
+  console.log('  Heavy       = structurally heavy (Tmpl criteria minus closing question)');
   console.log('  Dump        = ≥6 bullets/numbered items on a single-part question');
   console.log('  Signin      = sign-in / no-tools opener pattern');
-  console.log('  Ritual      = banned ritual phrase hits (total, not per-question)');
+  console.log('  Ritual      = banned ritual phrase hits (mean per question when N>1)');
   console.log('  AnyViol     = questions where any shape violation fired');
 }
 
 function printPerQuestion(results: VariantResult[]): void {
   // Show Katie's question across every variant since it's the load-bearing fixture.
+  // With N>1 runs, print each run separately so variance is visible.
   console.log('\n');
   console.log('='.repeat(110));
   console.log(" KATIE/REGISTRY FIXTURE — RESPONSE PER VARIANT");
@@ -366,17 +515,38 @@ function printPerQuestion(results: VariantResult[]): void {
     const k = r.perQuestion.find((p) => p.question.id === 'katie');
     if (!k) continue;
     console.log(`\n--- Variant ${r.variant.id}: ${r.variant.name} ---`);
-    console.log(`Words: ${k.shape.response.wordCount} | Ratio: ${k.shape.violations.ratioToExpected.toFixed(2)} | Violations: ${k.shape.violationLabels.join(', ') || '(none)'}`);
-    console.log(`Response (truncated to 400 chars):`);
-    console.log(`  ${k.response.slice(0, 400).replace(/\n/g, '\n  ')}${k.response.length > 400 ? '…' : ''}`);
+    for (let i = 0; i < k.runs.length; i++) {
+      const run = k.runs[i];
+      const tag = k.runs.length > 1 ? `Run ${i + 1}/${k.runs.length} | ` : '';
+      console.log(
+        `${tag}Words: ${run.shape.response.wordCount} | Ratio: ${run.shape.violations.ratioToExpected.toFixed(2)} | Violations: ${run.shape.violationLabels.join(', ') || '(none)'}`,
+      );
+      if (k.runs.length === 1) {
+        console.log(`Response (truncated to 400 chars):`);
+        console.log(`  ${run.response.slice(0, 400).replace(/\n/g, '\n  ')}${run.response.length > 400 ? '…' : ''}`);
+      }
+    }
   }
 }
 
 async function main() {
+  // Validate every variant's transform actually moves the prompt the way
+  // the variant declares. Silent no-ops (e.g., a future rule edit renames
+  // a heading the strip targeted) would otherwise look like "no signal"
+  // and silently mislead future eval cycles. Run this gate BEFORE any
+  // API calls.
+  const validationErrors = validateVariants();
+  if (validationErrors.length > 0) {
+    console.error('Variant validation failed:');
+    for (const err of validationErrors) console.error(`  ✗ ${err}`);
+    console.error('\nFix the transform or update the variant definition before re-running.');
+    process.exit(1);
+  }
+
   // Sanity-check the variant transformations even without an API key —
   // useful for verifying a transform actually changes prompt size before
   // burning API budget.
-  console.log('Variant prompt sizes:');
+  console.log('Variant prompt sizes (validated):');
   for (const v of VARIANTS) {
     try {
       const p = v.build();
@@ -404,20 +574,27 @@ async function main() {
     ? VARIANTS.filter((v) => onlySet.has(v.id))
     : VARIANTS;
 
+  // Runs per (variant, question). Default 1 to match the original runner.
+  // The prompt-engineer review on PR #3601 recommended N≥3 for statistical
+  // power on future variant decisions; the multi-run aggregation distinguishes
+  // a 1/3-flake from a 3/3-consistent fire so the comparison reads correctly.
+  const runsPerQuestion = Math.max(1, Number(process.env.RUNS_PER_QUESTION ?? '1'));
+
   const model = resolveShadowModel();
   const battery = buildBattery();
 
   console.log(`Model: ${model}`);
   console.log(`Question battery: ${battery.length} questions (${battery.filter((b) => b.category === 'fixture').length} fixture, ${battery.filter((b) => b.category === 'redteam').length} redteam, ${battery.filter((b) => b.category === 'common').length} common)`);
   console.log(`Variants: ${variantsToRun.length}${onlySet ? ` (filtered from ${VARIANTS.length})` : ''}`);
-  console.log(`Total calls: ${battery.length * variantsToRun.length}`);
+  console.log(`Runs per question: ${runsPerQuestion}`);
+  console.log(`Total calls: ${battery.length * variantsToRun.length * runsPerQuestion}`);
   console.log('');
 
   const client = new Anthropic({ apiKey });
   const results: VariantResult[] = [];
   for (const v of variantsToRun) {
     process.stdout.write(`Running variant ${v.id} (${v.name}) `);
-    const r = await runVariant(client, model, v, battery);
+    const r = await runVariant(client, model, v, battery, runsPerQuestion);
     results.push(r);
   }
 
