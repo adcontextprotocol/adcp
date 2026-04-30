@@ -1,0 +1,97 @@
+---
+title: Trust & Security
+sidebarTitle: Trust & Security
+description: "How AdCP structures decisions for verifiability and oversight — the seams the protocol provides, and what deployers are responsible for."
+"og:title": "AdCP — Trust & Security"
+---
+
+<Note>
+AdCP is a building block, not a compliance shortcut. The protocol exposes structured fields that let a deployer discharge their obligations — it does not itself perform conformity assessment, enforce policy, or guarantee outcomes. See [Known Limitations](/dist/docs/3.0.2/reference/known-limitations) for an explicit list of what AdCP does not do.
+</Note>
+
+AdCP's trust posture rests on a single structural principle: **no single agent can act unilaterally, and every decision is cryptographically re-verifiable by any party that cares to check.** A governance agent validates plans before money moves. A JWS-signed `governance_context` travels with every buy so the seller can independently confirm authorization without trusting the buyer's word. The compliance runner can re-execute storyboard output from a `runner-output.json` months later, producing the same pass/fail rows a regulator would see.
+
+What AdCP does not do is enforce deployer policy. The seams are hooks — the deployer wires them to their own governance platform, policy registry, and human-review workflow. The authority to approve a campaign stays with a human-defined rule; the protocol carries it, signs it, and makes it auditable.
+
+This page maps the six trust surfaces for CISOs, compliance reviewers, and procurement teams evaluating an AdCP deployment. For each surface: what AdCP provides, what it explicitly does not provide, and where to find the canonical detail.
+
+---
+
+## Governance
+
+**What AdCP provides.** A three-party structure in which the agent that spends money is never the agent that approves the spend. The orchestrator proposes plans via [`sync_plans`](/dist/docs/3.0.2/governance/campaign/specification). An independently operated governance agent validates each plan against deployer-configured policies via [`check_governance`](/dist/docs/3.0.2/governance/campaign/specification) before the orchestrator proceeds. Every governance decision produces a [`get_plan_audit_logs`](/dist/docs/3.0.2/governance/campaign/tasks/get_plan_audit_logs) entry — immutable, timestamped, and reproducible.
+
+**What AdCP does not provide.** `check_governance` is a seam, not an enforcer. A seller that has not configured a governance agent, or a misconfigured one, will not call `check_governance` at all — the protocol does not prevent a non-conformant seller from transacting. Regulated verticals (credit, insurance, employment, housing) get schema-level enforcement for the three categories named in AdCP 3.0 (`fair_housing`, `fair_lending`, `fair_employment`), but every other regulated category — political, pharmaceutical, gambling, financial promotions — relies on the governance-agent implementation. See the [Known Limitations — Governance](/dist/docs/3.0.2/reference/known-limitations#governance) section.
+
+→ [Governance overview](/dist/docs/3.0.2/governance/overview) · [Embedded human judgment](/dist/docs/3.0.2/governance/embedded-human-judgment) · [Policy registry](/dist/docs/3.0.2/governance/policy-registry) · [Annex III & Art 22 obligations](/dist/docs/3.0.2/governance/annex-iii-obligations)
+
+---
+
+## Regulatory
+
+**What AdCP provides.** Structured fields that let a deployer discharge EU AI Act Annex III and GDPR Article 22 obligations: `plan.human_review_required` for human oversight (Art. 14), `policy_categories` and `restricted_attributes` for input-data governance (Art. 10), `get_plan_audit_logs` for automatic logging (Art. 12), `brand.data_subject_contestation` as a discoverable contestation contact point (Art. 22(3)).
+
+**What AdCP does not provide.** AdCP does not perform conformity assessment, DPIA, or contestation handling. Those remain the deployer's responsibility. The Warning block at the top of [Annex III & Art 22 obligations](/dist/docs/3.0.2/governance/annex-iii-obligations) is the authoritative framing.
+
+→ [Annex III & Art 22 obligations](/dist/docs/3.0.2/governance/annex-iii-obligations)
+
+---
+
+## Privacy
+
+**What AdCP provides.** Schema-level PII controls: `hashed_email` and `hashed_phone` fields in `sync_audiences` reject cleartext. Structural privacy for the Trusted Match Protocol — separated code paths and schema prohibitions that prevent cross-party data leakage in TMP. No protocol-level PII transport elsewhere in the spec.
+
+**What AdCP does not provide.** Structural privacy applies only to TMP. Other domains rely on contractual confidentiality or per-session consent. AdCP does not carry a normative consent signal (IAB TCF, GPP, or equivalents). Cross-border transfer lawfulness is a contract and configuration property of the parties. See [Known Limitations — Security and Privacy](/dist/docs/3.0.2/reference/known-limitations#security-and-privacy).
+
+→ [Privacy Considerations](/dist/docs/3.0.2/reference/privacy-considerations) · [Trusted Match Protocol](/dist/docs/3.0.2/trusted-match/index)
+
+---
+
+## Security
+
+**What AdCP provides.** RFC 9421 HTTP message signatures as the baseline mechanism for signed requests on mutating calls (normative in 3.1; allowed in 3.0 — see below) and for outbound webhook deliveries (with an opt-in HMAC fallback for receivers that require it). Idempotency keys on all state-changing operations to prevent replay attacks. Per-`(agent, account)` credential scoping to limit the blast radius of a stolen token. JWS-signed governance context traveling with every media buy, independently verifiable by the seller without trusting the buyer.
+
+**What AdCP does not provide — two limitations to know.**
+
+First: **signed requests are normative in 3.1, not 3.0.** AdCP 3.0 allows bearer-token auth on mutating calls. Requiring RFC 9421 signing on all mutating calls is tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) for 3.1. Deployments that require signing today should enforce it at the platform layer and opt into AdCP Verified when the program launches with 3.1.
+
+Second: **signing keys are not yet anchored in a key-transparency log.** In 3.x, RFC 9421 buyer keys, governance JWS keys, and agent signing keys are ultimately rooted in each counterparty's own infrastructure — an attacker controlling a counterparty's CDN, DNS, or `/.well-known` path can serve attacker-controlled keys. TLS does not close this gap. AdCP 3.x delivers trust-on-first-use with continuity (multi-source cross-check, publication-delay windows, out-of-band rotation signalling) — detectably raising the bar, but not cryptographically closing it. A key-transparency layer is a 4.0 deliverable. See [Known Limitations — Authentication and Identity](/dist/docs/3.0.2/reference/known-limitations#authentication-and-identity) for the full description.
+
+→ [Security Model](/dist/docs/3.0.2/building/understanding/security-model) · [Security implementation reference](/dist/docs/3.0.2/building/implementation/security)
+
+---
+
+## Provenance
+
+**What AdCP provides.** Right-use assertions in creative payloads, the `ai_generated_image` boolean flag for AI-generated imagery, and the `governance_context` JWS that traces each media buy back to the governance decision that authorized it.
+
+**What AdCP does not provide.** The `ai_generated_image` flag is a boolean marker, not a signed provenance assertion. There is no cryptographically signed provenance graph accumulating assertions as a creative passes through generation, editing, and adaptation. Interoperation with CAI/C2PA is tracked as future work.
+
+→ [Creative provenance verification](/dist/docs/3.0.2/governance/creative/provenance-verification) · [adagents.json and agent identity](/dist/docs/3.0.2/governance/property/adagents)
+
+---
+
+## Disclosure
+
+**What AdCP provides.** The AI Disclosure page at [/docs/ai-disclosure](/dist/docs/3.0.2/ai-disclosure) names every surface where AgenticAdvertising.org uses AI, the models behind it, and how to request human review. `sync_plans` and `create_media_buy` carry the orchestrating agent's identity, making the AI-origin of each decision discoverable.
+
+**What AdCP does not provide.** No normative disclosure requirement for AI-generated ad content in the delivered creative. Disclosure obligations in served ads are the deployer's responsibility under applicable law (e.g., FTC guidance, EU AI Act Art. 50, DSA Art. 26).
+
+→ [AI Disclosure](/dist/docs/3.0.2/ai-disclosure)
+
+---
+
+## For compliance reviewers
+
+These are the wire-level hooks deployers implement. They are seams, not guarantees — a non-conformant deployer can bypass them.
+
+| Control | Wire hook | AdCP role |
+|---|---|---|
+| Human oversight gate | `plan.human_review_required: true` + `check_governance` returning `APPROVED` | Provides the gate; deployer configures the threshold |
+| Audit trail | [`get_plan_audit_logs`](/dist/docs/3.0.2/governance/campaign/tasks/get_plan_audit_logs) | Immutable, timestamped; deployer is responsible for retention |
+| Contestation contact point | `brand.data_subject_contestation` | Discoverable endpoint; deployer operates the process |
+| Request signing | RFC 9421 `Signature` / `Signature-Input` headers | Normative in 3.1; allowed in 3.0 |
+| Governance attestation | JWS-signed `governance_context` on `create_media_buy` | Verifiable by seller independently |
+| Regulated-category block | Schema-level rejection of `authority_level: agent_full` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
+
+**See [Known Limitations](/dist/docs/3.0.2/reference/known-limitations)** for what AdCP explicitly does not do — that page is the adversarial read this one assumes you've taken.
