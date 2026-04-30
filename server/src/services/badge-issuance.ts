@@ -45,23 +45,29 @@ export async function processAgentBadges(
   }
 
   const verification = deriveVerificationStatus(declaredSpecialisms, storyboardStatuses);
-  // Scope the existing-badge lookup to the AdCP version we're processing.
-  // Other versions held by this agent are off-limits to this run — a 3.1
-  // failing run never touches a 3.0 badge and vice-versa.
   const existingAllVersions = await complianceDb.getBadgesForAgent(agentUrl);
-  const existingBadges = existingAllVersions.filter(b => b.adcp_version === adcpVersion);
-  const existingByRole = new Map(existingBadges.map(b => [b.role, b]));
 
-  // If the agent's org no longer has API-access membership, revoke all existing
-  // badges. Badge issuance is a public trust signal tied to active membership.
+  // Membership is an agent-level fact, not a version-level fact. When
+  // membership lapses, every badge across every version must revoke
+  // immediately — not just the version under test. Otherwise a non-paying
+  // agent's other-version badges would keep signaling "AAO Verified" until
+  // their own heartbeats land (12-24h later), which is wrong for a public
+  // trust mark.
   if (!membershipOrgId) {
-    for (const existing of existingBadges) {
-      await complianceDb.revokeBadge(agentUrl, existing.role, adcpVersion, 'Membership lapsed');
+    for (const existing of existingAllVersions) {
+      await complianceDb.revokeBadge(agentUrl, existing.role, existing.adcp_version, 'Membership lapsed');
       result.revoked.push({ role: existing.role, reason: 'Membership lapsed' });
-      logger.info({ agentUrl, role: existing.role, adcpVersion }, 'Badge revoked — membership lapsed');
+      logger.info({ agentUrl, role: existing.role, adcpVersion: existing.adcp_version }, 'Badge revoked — membership lapsed');
     }
     return result;
   }
+
+  // Scope further reads/writes to the AdCP version we're processing —
+  // for issuance, degradation, and 48-hour-grace revocation, this run
+  // only touches its own version. A 3.1 failing run never affects a 3.0
+  // badge and vice-versa.
+  const existingBadges = existingAllVersions.filter(b => b.adcp_version === adcpVersion);
+  const existingByRole = new Map(existingBadges.map(b => [b.role, b]));
 
   for (const roleResult of verification.roles) {
     const existing = existingByRole.get(roleResult.role);

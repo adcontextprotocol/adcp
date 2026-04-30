@@ -8,6 +8,15 @@
 -- (e.g. '3.0', '3.1'). Full semver lives separately in
 -- verified_protocol_version as informational metadata.
 --
+-- Lock window: this migration takes ACCESS EXCLUSIVE on
+-- agent_verification_badges from the first ALTER TABLE through COMMIT.
+-- Acceptable because the table is small (one row per badged agent) and
+-- the body completes in milliseconds against any production-scale data.
+-- Concurrent writers from a pre-migration Node process block on the
+-- lock and resume after commit; they then fail the new NOT-NULL-no-
+-- default constraint rather than silently writing '3.0' for the wrong
+-- version.
+--
 -- Behavior change is gated to a follow-up PR (stage 2). This migration:
 --   1. Adds adcp_version with a default of '3.0' so existing writes keep
 --      working unchanged during the rollout.
@@ -25,11 +34,14 @@ ALTER TABLE agent_verification_badges
   ADD COLUMN IF NOT EXISTS adcp_version TEXT NOT NULL DEFAULT '3.0';
 
 -- 2. Backfill from verified_protocol_version where available.
---    'X.Y.Z' → 'X.Y'; null or non-matching stays at the default '3.0'.
+--    'X.Y.Z' → 'X.Y'; null, malformed, or leading-zero-major rows stay
+--    at the default '3.0'. The leading-zero guard matches the downstream
+--    CHECK constraint — without it, '0.5.0' would extract to '0.5' and
+--    fail the CHECK at step 5, aborting the migration.
 UPDATE agent_verification_badges
-SET adcp_version = substring(verified_protocol_version FROM '^(\d+\.\d+)')
+SET adcp_version = substring(verified_protocol_version FROM '^([1-9][0-9]*\.[0-9]+)')
 WHERE verified_protocol_version IS NOT NULL
-  AND verified_protocol_version ~ '^\d+\.\d+';
+  AND verified_protocol_version ~ '^[1-9][0-9]*\.[0-9]+';
 
 -- 3. Rebuild the primary key.
 ALTER TABLE agent_verification_badges DROP CONSTRAINT agent_verification_badges_pkey;

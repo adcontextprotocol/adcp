@@ -246,10 +246,16 @@ describe('processAgentBadges — per-AdCP-version isolation (#3524 stage 1)', ()
     expect(upsertCalls[0][0]).toMatchObject({ adcp_version: '3.0' });
   });
 
-  it('membership lapse only revokes badges at the version under test', async () => {
+  it('membership lapse revokes ALL of an agent\'s badges across every version', async () => {
+    // Membership is an agent-level fact, not a version-level fact. A
+    // non-paying agent must lose its trust mark immediately on every
+    // version — not wait 12-24h for each version's own heartbeat to
+    // land. Otherwise the public registry would briefly show parallel
+    // versions with conflicting truth (some revoked, some not).
     const existing = [
       makeBadge('media-buy', 'active', 0, ['spec'], '3.0'),
       makeBadge('media-buy', 'active', 0, ['spec'], '3.1'),
+      makeBadge('creative', 'active', 0, ['spec'], '3.1'),
     ];
     const db = makeMockDb(existing);
 
@@ -263,10 +269,49 @@ describe('processAgentBadges — per-AdCP-version isolation (#3524 stage 1)', ()
       '3.0',
     );
 
-    // Only 3.0 should be revoked under this run; 3.1 stays untouched.
-    // Stage 2 will issue a separate per-version run for 3.1.
     const revokeCalls = (db.revokeBadge as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(revokeCalls).toHaveLength(1);
-    expect(revokeCalls[0][2]).toBe('3.0');
+    // Every existing badge should be revoked, each at its own version.
+    expect(revokeCalls).toHaveLength(3);
+    const revokedTuples = revokeCalls.map(call => `${call[1]}@${call[2]}`).sort();
+    expect(revokedTuples).toEqual(['creative@3.1', 'media-buy@3.0', 'media-buy@3.1']);
+    // All revocations carry the lapse reason.
+    expect(revokeCalls.every(call => call[3] === 'Membership lapsed')).toBe(true);
+  });
+
+  it('partial overlap: issuing a new role at 3.0 does not touch creative@3.1', async () => {
+    // Code-reviewer requested case: agent has media-buy@3.0 and creative@3.1.
+    // A 3.0 run that issues creative for the first time at 3.0 must not
+    // touch the existing creative@3.1 badge — different versions are
+    // independent.
+    const existing = [
+      makeBadge('media-buy', 'active', 0, ['spec'], '3.0'),
+      makeBadge('creative', 'active', 0, ['spec'], '3.1'),
+    ];
+    const db = makeMockDb(existing);
+
+    await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['creative-ad-server'],
+      [makeStatus('creative_ad_server', 'passing')],
+      true,
+      'org_test',
+      '3.0',
+    );
+
+    const upsertCalls = (db.upsertBadge as unknown as { mock: { calls: Array<[Record<string, unknown>]> } }).mock.calls;
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0][0]).toMatchObject({ role: 'creative', adcp_version: '3.0' });
+    // Neither degrade nor revoke should fire — media-buy@3.0 isn't in the
+    // run's declared specialisms but it's still active (Stage 2 will run a
+    // separate process for media-buy if its specialism is still declared).
+    // creative@3.1 is on a different version and out of scope for this run.
+    expect(db.degradeBadge).not.toHaveBeenCalled();
+    // The cross-version creative@3.1 must not be touched.
+    const revokeCalls = (db.revokeBadge as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const touchedCreativeOtherVersion = revokeCalls.some(
+      call => call[1] === 'creative' && call[2] !== '3.0',
+    );
+    expect(touchedCreativeOtherVersion).toBe(false);
   });
 });

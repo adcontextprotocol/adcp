@@ -837,10 +837,17 @@ export class ComplianceDatabase {
   }
 
   async getBadgesForAgent(agentUrl: string): Promise<AgentVerificationBadge[]> {
+    // Numeric sort on adcp_version: split MAJOR.MINOR and compare each
+    // segment as int so '10.0' sorts above '3.0'. Text sort would
+    // serve a stale older badge once the spec hits double-digit
+    // major or minor numbers. CHECK constraint guarantees both
+    // segments are valid integers.
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = $1 AND status IN ('active', 'degraded')
-       ORDER BY adcp_version DESC, role`,
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                role`,
       [agentUrl],
     );
     return result.rows as AgentVerificationBadge[];
@@ -877,10 +884,12 @@ export class ComplianceDatabase {
     agentUrl: string,
     role: BadgeRole,
   ): Promise<AgentVerificationBadge | null> {
+    // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = $1 AND role = $2 AND status IN ('active', 'degraded')
-       ORDER BY adcp_version DESC
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC
        LIMIT 1`,
       [agentUrl, role],
     );
@@ -916,10 +925,14 @@ export class ComplianceDatabase {
 
   async bulkGetActiveBadges(agentUrls: string[]): Promise<Map<string, AgentVerificationBadge[]>> {
     if (agentUrls.length === 0) return new Map();
+    // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = ANY($1) AND status IN ('active', 'degraded')
-       ORDER BY agent_url, adcp_version DESC, role`,
+       ORDER BY agent_url,
+                split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                role`,
       [agentUrls],
     );
     const map = new Map<string, AgentVerificationBadge[]>();
@@ -932,10 +945,13 @@ export class ComplianceDatabase {
   }
 
   async getVerifiedAgentsByRole(role: BadgeRole): Promise<AgentVerificationBadge[]> {
+    // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE role = $1 AND status IN ('active', 'degraded')
-       ORDER BY adcp_version DESC, verified_at DESC`,
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                verified_at DESC`,
       [role],
     );
     return result.rows as AgentVerificationBadge[];
