@@ -33,7 +33,11 @@ export type PersonEventType =
   | 'email_bounced'
   | 'slack_dm_delivered'
   | 'preference_changed'
-  | 'admin_nudge_requested';
+  | 'admin_nudge_requested'
+  | 'invite_sent'           // membership invite emailed to recipient
+  | 'invite_accepted'       // recipient signed in and accepted
+  | 'invite_revoked'        // admin revoked before accept
+  | 'invite_expired';       // expires_at passed without accept/revoke (sweep)
 
 export interface PersonEvent {
   id: number;
@@ -72,6 +76,40 @@ export async function recordEvent(
       options.occurredAt ?? null,
     ]
   );
+}
+
+export type InviteEventType = Extract<
+  PersonEventType,
+  'invite_sent' | 'invite_accepted' | 'invite_revoked' | 'invite_expired'
+>;
+
+/**
+ * Record a membership-invite lifecycle event, deduplicated on (event_type, invite_id).
+ * Safe to call repeatedly — relies on the partial unique index from migration 458.
+ * Returns true if a new row was inserted, false if the dedupe index skipped it.
+ */
+export async function recordInviteEvent(
+  personId: string,
+  eventType: InviteEventType,
+  inviteId: string,
+  options: {
+    data?: Record<string, unknown>;
+    occurredAt?: Date;
+  } = {}
+): Promise<boolean> {
+  const data = { ...(options.data ?? {}), invite_id: inviteId };
+  // The WHERE clause below must match the predicate of idx_person_events_invite_dedupe
+  // (migration 458) exactly — otherwise PG can't pick the partial unique index and
+  // the insert silently stops being idempotent. Keep both lists in lockstep.
+  const result = await query(
+    `INSERT INTO person_events (person_id, event_type, channel, data, occurred_at)
+     VALUES ($1, $2, 'system', $3::jsonb, COALESCE($4, NOW()))
+     ON CONFLICT (event_type, ((data->>'invite_id')))
+     WHERE event_type IN ('invite_sent', 'invite_accepted', 'invite_revoked', 'invite_expired')
+     DO NOTHING`,
+    [personId, eventType, JSON.stringify(data), options.occurredAt ?? null]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /**
