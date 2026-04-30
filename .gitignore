@@ -63,6 +63,7 @@ skills/*/schemas/
 
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
+.stripe-key
 test-results/
 tests/screenshots/
 
