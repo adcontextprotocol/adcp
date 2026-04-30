@@ -5,6 +5,13 @@
   "description": "Third-party-served display tag (JS, iframe, or 1×1 redirect). The buyer's adserver hosts the creative; the seller calls the tag URL at impression time. Slot: `tag_url` (url asset with appropriate `url_type`). Tracking model: opaque to seller — third party serves and measures. Click tracking via redirect URL substitution using universal_macros. Distinct from `image` (static asset hosted by seller) and `html5` (zip bundle hosted by seller).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "tag_url", "asset_type": "url", "required": true },
+        { "asset_group_id": "backup_image", "asset_type": "image", "required": false }
+      ],
+      "description": "Default slots for display_tag canonical. Buyer ships a URL pointing at the third-party-served creative (JS, iframe, or 1×1 redirect) plus an optional backup image. Click and impression macros are substituted into the tag URL by the seller using `universal_macros`."
+    },
     "width": {
       "type": "integer",
       "minimum": 1,

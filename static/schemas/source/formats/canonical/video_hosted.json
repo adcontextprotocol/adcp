@@ -5,6 +5,16 @@
   "description": "Direct video file (mp4/webm/mov) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "video_main", "asset_type": "video", "required": true },
+        { "asset_group_id": "headline", "asset_type": "text", "required": false },
+        { "asset_group_id": "brand_name", "asset_type": "text", "required": false },
+        { "asset_group_id": "companion_banner", "asset_type": "image", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for video_hosted canonical. Buyer ships a video asset (file or hosted URL); optional headline, brand_name (typical for vertical short-form), companion_banner (typical for horizontal instream), and clickthrough URL. Products MAY override or extend the default."
+    },
     "orientation": {
       "type": "string",
       "enum": ["vertical", "horizontal", "square"],

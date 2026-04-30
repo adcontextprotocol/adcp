@@ -57,8 +57,8 @@
           24,
           30
         ],
-        "audio_source": "agent_synthesized",
-        "buyer_audio_acceptance": "rejected",
+        "video_source": "agent_synthesized",
+        "buyer_video_acceptance": "rejected",
         "captions": "recommended",
         "composition_model": "deterministic",
         "synthesis_nondeterministic": true,

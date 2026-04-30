@@ -5,6 +5,15 @@
   "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+        { "asset_group_id": "headline", "asset_type": "text", "required": false },
+        { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, and clickthrough URL. Products MAY override the default with narrowing (e.g., make `headline` required, or add a `cta` slot)."
+    },
     "width": {
       "type": "integer",
       "minimum": 1,

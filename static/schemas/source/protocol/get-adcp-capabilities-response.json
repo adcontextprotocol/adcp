@@ -925,7 +925,7 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "v2 path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as products' inline `format` field — keyed by canonical format name with parameter narrowing and `inputs` describing what the agent needs from the buyer. Replaces the v1 `list_creative_formats` discovery surface for creative agents. Each entry MAY include a `capability_id` for stable identification across versions; the format key already disambiguates which canonical the entry targets.",
+          "description": "v2 path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
           "items": {
             "type": "object",
             "properties": {
@@ -935,7 +935,7 @@
               },
               "format": {
                 "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration this agent can produce. Same shape as a product's inline `format`: keyed by canonical name with parameters and inputs."
+                "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
               }
             },
             "required": ["format"],

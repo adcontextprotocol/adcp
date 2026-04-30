@@ -5,6 +5,13 @@
   "description": "DAAST-tag-delivered audio creative (audio analog of VAST). Slot: `daast_tag` (daast asset, URL or inline XML). Tracking model: DAAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `clickTracking`, `error`. Distinct from `audio_hosted` (direct file with external tracking).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "daast_tag", "asset_type": "daast", "required": true },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for audio_daast canonical. Buyer ships a DAAST tag (URL or inline XML, 1.0 or 1.1) plus an optional clickthrough URL. Tracking events are inherent to DAAST and don't require explicit slots."
+    },
     "daast_version": {
       "type": "string",
       "enum": ["1.0", "1.1"]

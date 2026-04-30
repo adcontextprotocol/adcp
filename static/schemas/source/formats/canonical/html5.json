@@ -5,6 +5,14 @@
   "description": "Interactive HTML5 banner delivered as a zip archive. Slot: `html5_bundle` (zip asset). Tracking model: MRAID + IAB Open Measurement (OM-SDK) + click-tag macro substitution + backup image fallback. Receivers unpack the zip, validate internal structure, and serve from CDN. Distinct from `image` (static, non-interactive) and `display_tag` (third-party served). The zip's entry point is typically `index.html`; click handling uses `clickTag` (or `clickTAG`) macro substitution.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "html5_bundle", "asset_type": "zip", "required": true },
+        { "asset_group_id": "backup_image", "asset_type": "image", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for html5 canonical. Buyer ships a zip bundle plus optional backup image (required when `backup_image_required: true`) and clickthrough URL. The zip's entry point is typically `index.html`; click handling uses the `clickTag` (or `clickTAG`) macro substituted by the seller at serve time."
+    },
     "width": {
       "type": "integer",
       "minimum": 1,

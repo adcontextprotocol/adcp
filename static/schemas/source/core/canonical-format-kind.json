@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-format-kind.json",
+  "title": "Canonical Format Kind",
+  "description": "Discriminator value naming one of the 11 canonical creative formats. Used by `product-format-declaration.json` (the product's inline format declaration), `creative-manifest.json` (the buyer's v2 manifest path), and any other surface that needs to identify which canonical a payload targets. The enum mirrors the `oneOf` branches in `product-format-declaration.json`; keep them in sync.",
+  "type": "string",
+  "enum": [
+    "image",
+    "html5",
+    "display_tag",
+    "image_carousel",
+    "video_hosted",
+    "video_vast",
+    "audio_hosted",
+    "audio_daast",
+    "sponsored_placement",
+    "responsive_creative",
+    "agent_placement"
+  ]
+}

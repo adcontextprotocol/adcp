@@ -5,6 +5,13 @@
   "description": "VAST-tag-delivered video creative. Slot: `vast_tag` (vast asset, URL or inline XML, VAST 2.x-4.x). Tracking model: VAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `expand`, `collapse`, `fullscreen`, `creativeView`, `clickTracking`, `error`. VPAID interactivity via `vpaid_enabled: true` flag. SIMID extensions for interactive video supported as VAST extensions. Orientation is a parameter (vertical / horizontal / square). Distinct from `video_hosted` (direct file with external tracking).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for video_vast canonical. Buyer ships a VAST tag (URL or inline XML, VAST 2.x-4.x) plus an optional clickthrough URL (which falls back to the VAST `ClickThrough` element when omitted). Tracking events are inherent to VAST and don't require explicit slots."
+    },
     "orientation": {
       "type": "string",
       "enum": ["vertical", "horizontal", "square"]

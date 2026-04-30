@@ -2,10 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-format-declaration.json",
   "title": "Product Format Declaration",
-  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Optional `capability_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`) and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.",
   "type": "object",
   "required": ["format_kind", "params"],
   "discriminator": { "propertyName": "format_kind" },
+  "properties": {
+    "capability_id": {
+      "type": "string",
+      "description": "Optional stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). Recommended for any declaration that may be referenced by capability_id over time. Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search'."
+    },
+    "applies_to_channels": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "uniqueItems": true,
+      "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
+    }
+  },
   "oneOf": [
     {
       "title": "Image Format Declaration",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/platform-extension-ref.json",
   "title": "Platform Extension Reference",
-  "description": "Reference to a platform extension definition. The agent that owns the URI is authoritative for the extension's schema. Buyers fetch the definition once per content digest and cache it. Platform extensions are typically bundled in `get_products` responses under an `extensions` map keyed by `uri@digest`, eliminating the need for a separate fetch.",
+  "description": "Reference to a platform extension definition. The agent that owns the URI is authoritative for the extension's schema. Buyers fetch the definition once per content digest and cache it. Platform extensions are typically bundled in `get_products` responses under an `extensions` map keyed by `uri@digest`, eliminating the need for a separate fetch.\n\n**Within a single response**, multiple references to the same `uri` MUST carry the same `digest` — divergent digests in one response indicate producer-side error (e.g., concurrent extension revision mid-render). Buyers encountering divergent digests for the same URI MUST fail closed: treat all references to that URI as unresolved and surface a validation error rather than picking one branch silently. **Across responses**, digest divergence is normal — extension authors revise their schemas, the new digest differs, the cache key changes, and the buyer refetches. Cache by `uri@digest`, not by `uri` alone.",
   "type": "object",
   "required": ["uri", "digest"],
   "properties": {
