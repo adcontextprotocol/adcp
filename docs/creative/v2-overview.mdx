@@ -242,49 +242,17 @@ For brief-driven (talking-points-style) host-reads, the same shape applies with 
 
 ## Worked example — third-party creative agent (Flashtalking + NYTimes display)
 
-The host-read example above is single-actor by necessity: the publisher's host has to be the producer. The opposite case is the multi-actor display path, where the buyer chooses a third-party creative agent that the seller has declared in its capabilities. The seller does **not** compose creatives — it just accepts canonical-conformant manifests.
+The host-read example above is single-actor by necessity: the publisher's host has to be the producer. The opposite case is the multi-actor display path, where the buyer chooses a third-party creative agent independently and ships the produced manifest to the seller. The seller does **not** compose creatives — it just accepts canonical-conformant manifests.
 
 Three actors:
 
-- **Buyer** (Acme DSP) — discovers products, picks a creative agent, submits manifests
-- **Sales agent** (NYTimes) — sells the placement, validates manifests against canonical, doesn't compose creatives
-- **Creative agent** (Flashtalking) — produces creatives via `build_creative`, declares its capabilities via `creative.supported_formats` on `get_adcp_capabilities`
+- **Buyer** (Acme DSP) — discovers products, picks a creative agent (out-of-band: brand-side relationships, AAO registry, direct knowledge), submits manifests
+- **Sales agent** (NYTimes) — sells the placement, validates manifests against the canonical its product narrows, doesn't compose creatives, doesn't maintain a list of "approved creative agents" in v2
+- **Creative agent** (Flashtalking) — produces creatives via `build_creative`, declares its own producible catalog via `creative.supported_formats` on its OWN `get_adcp_capabilities`
 
-### 1. Buyer reads NYTimes capabilities
+The buyer chooses the creative agent independently of the seller. Sellers do not declare a list of creative agents in v2 — the v1 `creative_agents[]` recursive-discovery hint on `list_creative_formats` is part of the deprecated v1 surface. Buyers reason about creative-agent ↔ seller-product compatibility client-side: "Flashtalking can produce `image` 300×250 ≤200KB; NYTimes accepts `image` 300×250 ≤200KB; they're compatible."
 
-Buyer calls `get_adcp_capabilities` on NYTimes. NYTimes declares which creative agents it accepts under `creative.creative_agents` and surfaces the union of their producible formats under `creative.supported_formats`:
-
-```json test=false
-{
-  "creative": {
-    "supports_transformation": false,
-    "creative_agents": [
-      { "agent_url": "https://flashtalking.adcp" },
-      { "agent_url": "https://creative.nytimes.adcp" }
-    ],
-    "supported_formats": [
-      {
-        "capability_id": "flashtalking_image_300x250",
-        "format": {
-          "format_kind": "image",
-          "params": { "width": 300, "height": 250, "max_file_size_kb": 200, "ssl_required": true }
-        }
-      },
-      {
-        "capability_id": "flashtalking_video_vast",
-        "format": {
-          "format_kind": "video_vast",
-          "params": { "vast_version": "4.2", "duration_ms_range": [6000, 30000], "linear_required": true }
-        }
-      }
-    ]
-  }
-}
-```
-
-`supported_formats` is the buyer-facing flat catalog; `creative_agents` is the source-of-truth list. Buyers SHOULD treat `supported_formats` as authoritative for "what can I ship?" — the SDK derives it by fetching each `creative_agents[].agent_url` and unioning. (Sellers MAY override the auto-projection to narrow what they accept, e.g., "I trust Flashtalking but only for hosted html5, not VAST"; that override happens server-side and the catalog reflects the narrowed view.)
-
-### 2. Buyer reads NYTimes products
+### 1. Buyer reads NYTimes products
 
 Buyer calls `get_products` on NYTimes. The MREC product narrows canonical `image`:
 
@@ -302,7 +270,7 @@ Buyer calls `get_products` on NYTimes. The MREC product narrows canonical `image
 
 The product narrows the canonical; the canonical is what NYTimes commits to validating against. NYTimes does NOT validate against Flashtalking's narrowing — buyers don't need to know which creative agent produced the manifest, and Flashtalking-specific parameters (e.g., a Flashtalking placement ID) live in Flashtalking's platform extensions if at all.
 
-### 3. Buyer calls Flashtalking's `build_creative`
+### 2. Buyer calls Flashtalking's `build_creative`
 
 ```json test=false
 // POST https://flashtalking.adcp/build_creative
@@ -333,7 +301,7 @@ Flashtalking renders an MREC PNG, returns a manifest with the produced asset:
 }
 ```
 
-### 4. Buyer ships to NYTimes
+### 3. Buyer ships to NYTimes
 
 Buyer calls `sync_creatives` on NYTimes with the manifest from Flashtalking. NYTimes:
 
