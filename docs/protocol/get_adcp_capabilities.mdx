@@ -450,7 +450,7 @@ Array of metrics this measurement agent computes.
 | `standard_reference` | string (URI) | Optional URI pointing at the published standard this metric implements (IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Anchors buyer trust and supports cross-vendor comparability. |
 | `unit` | string | Unit of the value when reported in `vendor_metric_values.value` (`score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, etc.). Sellers populating `vendor_metric_values.unit` MUST match this declaration. |
 | `description` | string | Human-readable description (max 1000 chars). |
-| `documentation_url` | string (URI) | URL to vendor's full methodology documentation. |
+| `methodology_url` | string (URI) | URL to vendor's full methodology documentation. |
 
 ```json Response example
 {
@@ -463,7 +463,7 @@ Array of metrics this measurement agent computes.
         "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
         "unit": "score",
         "description": "Eye-tracking-based attention score (0-100). Computed from a panel of 25K opted-in households.",
-        "documentation_url": "https://attentionvendor.example/docs/attention-units"
+        "methodology_url": "https://attentionvendor.example/docs/attention-units"
       },
       {
         "metric_id": "engagement_seconds",

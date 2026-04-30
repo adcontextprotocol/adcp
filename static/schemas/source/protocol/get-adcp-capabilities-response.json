@@ -1166,10 +1166,10 @@
                 "description": "Human-readable description of what this metric measures and any relevant methodology notes. Surfaced in buyer-agent UX when explaining the metric to humans.",
                 "maxLength": 1000
               },
-              "documentation_url": {
+              "methodology_url": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL to the vendor's full methodology documentation for this metric. Buyers SHOULD link or fetch this when human review of the methodology is in scope (compliance, RFP review, MRC audit)."
+                "description": "URL to the vendor's full methodology documentation for this metric. Buyers SHOULD link or fetch this when human review of the methodology is in scope (compliance, RFP review, MRC audit). Field name mirrors `governance.property_features[].methodology_url`."
               }
             },
             "required": ["metric_id", "category"],
