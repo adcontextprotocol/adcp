@@ -51,7 +51,7 @@ The two axes are related but answer different questions, and the badge surfaces 
 
 The (Live) axis is the strongest signal a buyer can rely on: AAO is the active counterparty, not just an attesting body. If something breaks in the production code path, the compliance engine sees it within days and the qualifier expires.
 
-## Two marks: AdCP Conformant vs AAO Verified, or one mark with two qualifiers?
+## Naming history
 
 Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two distinct mark names — one per axis. This page uses a **single brand mark with axis qualifiers in parens** instead. Same shape, different naming convention:
 
@@ -59,7 +59,7 @@ Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two dist
 |---|---|
 | AdCP Conformant | AAO Verified (Spec) |
 | AAO Verified | AAO Verified (Live) |
-| Both held | AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
+| AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
 
 The reasoning behind the rename: a single brand word ("Verified") with composable qualifiers is cleaner for buyer messaging. Buyers don't have to learn two distinct marks; they read the qualifier inline. Test agents earning **Verified (Spec)** is a complete, dignified claim — they're test agents, that's the whole point — rather than a "junior" Conformant tier. The wire format reflects this: a single `verification_modes: string[]` array in the JWT and registry API, where an agent might have `["spec"]` or `["spec", "live"]`. One badge URL per agent + role; the qualifier evolves as axes are earned, embedded badges automatically reflect the current state.
 
