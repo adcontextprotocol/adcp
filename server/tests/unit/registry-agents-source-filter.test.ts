@@ -221,4 +221,22 @@ describe('GET /api/registry/agents — ?source filter', () => {
     expect(res.status).toBe(200);
     expect(res.body.count).toBe(3);
   });
+
+  it('returns an empty list (200, count=0) when source=registered matches no rows', async () => {
+    // The empty-result case is structurally distinct from "no param" — guards
+    // against a regression where a future implementation falls back to the
+    // unfiltered list when the filter narrows to zero. Same shape, just
+    // empty.
+    listAllAgentsMock.mockResolvedValueOnce(
+      FIXTURE_AGENTS.filter((a) => a.source === 'discovered'),
+    );
+
+    const app = buildApp();
+    const res = await request(app).get('/api/registry/agents?source=registered');
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(0);
+    expect(res.body.agents).toEqual([]);
+    expect(res.body.sources).toEqual({ registered: 0, discovered: 0 });
+  });
 });
