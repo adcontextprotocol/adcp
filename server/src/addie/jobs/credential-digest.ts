@@ -6,7 +6,9 @@
  * This job aggregates all awards from the past 7 days for the weekly digest.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('credential-digest');
 import { query } from '../../db/client.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';

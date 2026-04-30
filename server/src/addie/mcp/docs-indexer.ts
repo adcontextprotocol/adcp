@@ -8,7 +8,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-docs-indexer');
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 
 // Website pages to EXCLUDE from indexing (admin, dashboard, etc.)

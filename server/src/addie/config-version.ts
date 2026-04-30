@@ -12,7 +12,9 @@
 
 import { createHash } from 'crypto';
 import { query } from '../db/client.js';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-config-version');
 import { ROUTING_RULES } from './router.js';
 import { loadRules } from './rules/index.js';
 

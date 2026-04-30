@@ -15,7 +15,9 @@
 import { query } from '../../db/client.js';
 import { resolvePersonId } from '../../db/relationship-db.js';
 import { recordInviteEvent } from '../../db/person-events-db.js';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('invite-expiry-sweep');
 
 const log = logger.child({ module: 'invite-expiry-sweep' });
 

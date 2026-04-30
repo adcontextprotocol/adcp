@@ -9,7 +9,9 @@
  * Posts one article at a time to encourage engagement.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('industry-alerts');
 import { sendChannelMessage } from '../../slack/client.js';
 import type { SlackBlock } from '../../slack/types.js';
 import { query } from '../../db/client.js';

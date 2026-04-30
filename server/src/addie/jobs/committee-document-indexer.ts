@@ -14,7 +14,9 @@
 
 import * as crypto from 'crypto';
 import sharp from 'sharp';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('committee-document-indexer');
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {
   isGoogleDocsUrl,

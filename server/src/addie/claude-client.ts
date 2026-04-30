@@ -6,7 +6,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-claude-client');
 import type { AddieTool } from './types.js';
 import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';

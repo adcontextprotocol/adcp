@@ -6,7 +6,9 @@
  */
 
 import Parser from 'rss-parser';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('feed-fetcher');
 import { decodeHtmlEntities } from '../../utils/html-entities.js';
 import {
   getFeedsToFetch,

@@ -15,7 +15,9 @@ import { buildStats } from './builders/stats.js';
 import { buildAdminPanel } from './builders/admin.js';
 import { pickPrompts } from './builders/suggested-prompts.js';
 import { recordPromptsShown } from '../../db/addie-prompt-telemetry-db.js';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-web-home-service');
 
 /**
  * Get home content for a web user (WorkOS user ID)
