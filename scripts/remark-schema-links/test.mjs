@@ -53,9 +53,9 @@ const expectations = {
 for (const [mode, expected] of Object.entries(expectations)) {
   const out = await run(mode);
   assert.match(out, regexFor(expected), `[${mode}] expected URL not found:\n${out}`);
-  assert.ok(out.includes('https://example.com/foo'), `[${mode}] external link mangled`);
-  assert.ok(out.includes('`/schemas/enums/foo.json`'), `[${mode}] inline code rewritten`);
-  assert.ok(out.includes('"$ref": "/schemas/enums/foo.json"'), `[${mode}] code block rewritten`);
+  assert.match(out, regexFor('[docs](https://example.com/foo)'), `[${mode}] external link mangled`);
+  assert.match(out, regexFor('`/schemas/enums/foo.json`'), `[${mode}] inline code rewritten`);
+  assert.match(out, regexFor('"$ref": "/schemas/enums/foo.json"'), `[${mode}] code block rewritten`);
   console.log(`✓ ${mode}: bare → ${expected}`);
 }
 
@@ -64,14 +64,14 @@ const ABSOLUTE = 'https://adcontextprotocol.org/schemas/v3/enums/viewability-sta
 const LOCALHOST = 'http://localhost:3000/schemas/latest/enums/viewability-standard.json';
 
 const devOut = await run('dev');
-assert.ok(devOut.includes(LOCALHOST), `dev did not rewrite absolute prod URL to localhost:\n${devOut}`);
-assert.ok(!devOut.includes(`(${ABSOLUTE})`), `dev left an absolute prod URL un-rewritten:\n${devOut}`);
+assert.match(devOut, regexFor(LOCALHOST), `dev did not rewrite absolute prod URL to localhost:\n${devOut}`);
+assert.doesNotMatch(devOut, regexFor(`(${ABSOLUTE})`), `dev left an absolute prod URL un-rewritten:\n${devOut}`);
 console.log(`✓ dev: absolute prod URL → ${LOCALHOST}`);
 
 for (const mode of ['prod', 'preview']) {
   const out = await run(mode);
-  assert.ok(out.includes(ABSOLUTE), `[${mode}] absolute prod URL was modified:\n${out}`);
-  assert.ok(!out.includes(LOCALHOST), `[${mode}] localhost URL leaked into output:\n${out}`);
+  assert.match(out, regexFor(ABSOLUTE), `[${mode}] absolute prod URL was modified:\n${out}`);
+  assert.doesNotMatch(out, regexFor(LOCALHOST), `[${mode}] localhost URL leaked into output:\n${out}`);
   console.log(`✓ ${mode}: absolute prod URL untouched`);
 }
 
