@@ -483,12 +483,9 @@ Rules:
 - Focus on the top consumer brands — aim for completeness but prioritize well-known brands
 - Domains must be real, active consumer websites
 
-Respond with ONLY valid JSON (no markdown fences):
-{
-  "brands": [
-    { "brand_name": "Tide", "domain": "tide.com", "keller_type": "sub_brand" }
-  ]
-}`;
+Call discover_sub_brands with the list.`;
+
+const VALID_SUB_KELLER_TYPES = ['sub_brand', 'endorsed'] as const;
 
 /**
  * Use Sonnet to discover sub-brands for a house, then seed and enrich each one.
@@ -527,26 +524,53 @@ export async function expandHouse(houseDomain: string, options: {
   }
 
   const anthropic = new Anthropic();
+  // Anthropic tool_use with input_schema: the model emits typed args matching
+  // the schema rather than free-form JSON text. The keller_type schema enum
+  // constrains values to {sub_brand, endorsed}; the upsert defaults to
+  // 'sub_brand' for any drift.
   const response = await anthropic.messages.create({
     model: ModelConfig.primary,
     max_tokens: 4096,
+    tools: [
+      {
+        name: 'discover_sub_brands',
+        description: 'List the consumer/product brands owned by the corporate house.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            brands: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  brand_name: { type: 'string' },
+                  domain: { type: 'string' },
+                  keller_type: { type: 'string', enum: VALID_SUB_KELLER_TYPES as unknown as string[] },
+                },
+                required: ['brand_name', 'domain', 'keller_type'],
+              },
+            },
+          },
+          required: ['brands'],
+        },
+      },
+    ],
+    tool_choice: { type: 'tool', name: 'discover_sub_brands' },
     messages: [{
       role: 'user',
       content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustries: ${((house.brand_manifest?.company as Record<string, unknown>)?.industries as string[] | undefined)?.join(', ') || 'unknown'}`,
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
-
-  let discovered: DiscoveredSubBrand[];
-  try {
-    const parsed = JSON.parse(cleaned);
-    discovered = Array.isArray(parsed.brands) ? parsed.brands : [];
-  } catch {
-    logger.error({ houseDomain, text: cleaned.slice(0, 200) }, 'Failed to parse Sonnet response');
+  const toolUse = response.content.find(
+    (block) => block.type === 'tool_use' && block.name === 'discover_sub_brands',
+  );
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    logger.error({ houseDomain }, 'House expansion: model did not invoke discover_sub_brands');
     throw new Error('Failed to parse brand discovery response');
   }
+  const parsed = toolUse.input as { brands?: DiscoveredSubBrand[] };
+  const discovered: DiscoveredSubBrand[] = Array.isArray(parsed.brands) ? parsed.brands : [];
 
   logger.info({ houseDomain, count: discovered.length }, 'Discovered sub-brands');
 
