@@ -212,6 +212,15 @@ npx @adcp/client@latest \
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
 
+#### Reporting contract on confirmed packages
+
+Each package in the response MAY carry `committed_metrics` and `committed_vendor_metrics` — frozen snapshots of the product's `reporting_capabilities.available_metrics` and `vendor_metrics` at the moment the buy was created. These become the binding reporting contract for the package's lifetime, independent of subsequent product mutations:
+
+- `missing_metrics` on `get_media_buy_delivery` is computed against `committed_metrics` when present (against the product's current `available_metrics` when absent).
+- The fields MUST NOT change post-creation. Sellers MUST reject `update_media_buy` requests that attempt to modify either field with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). Renegotiating the metric contract requires a new buy.
+- Optional in v1 — sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant, but it carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat the absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
+- Empty array is rejected at the schema level (`minItems: 1`) — absence is the only "no snapshot" signal, eliminating ambiguity between "I committed to nothing" and "I didn't snapshot."
+
 ### Error Response
 
 | Field | Description |
@@ -627,7 +636,7 @@ const result = await testAgent.createMediaBuy({
       credentials: 'secret_token_xyz_minimum_32_chars'
     },
     reporting_frequency: 'daily',
-    requested_metrics: ['impressions', 'spend', 'video_completions']
+    requested_metrics: ['impressions', 'spend', 'completed_views']
   }
 });
 
@@ -678,7 +687,7 @@ async def create_with_reporting():
                 'credentials': 'secret_token_xyz_minimum_32_chars'
             },
             'reporting_frequency': 'daily',
-            'requested_metrics': ['impressions', 'spend', 'video_completions']
+            'requested_metrics': ['impressions', 'spend', 'completed_views']
         }
     )
 

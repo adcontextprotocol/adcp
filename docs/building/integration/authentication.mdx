@@ -183,6 +183,10 @@ If you're getting "authentication required" errors:
 3. **Test with the public test agent** - verify your setup works before testing custom agents
 4. **Check protocol version** - ensure client and server protocol versions are compatible
 
+<Tip>
+For OAuth handshake failures and RFC 9421 signing issues, use the [CLI auth graders](/docs/building/grading) — `diagnose-auth` probes RFC 9728 + RFC 8414 discovery and ranks hypotheses; `grade request-signing` runs every signing vector with per-vector diagnostics.
+</Tip>
+
 ## Obtaining Credentials
 
 ### Account Setup Process
@@ -231,7 +235,7 @@ AAO runs an OAuth 2.1 + OIDC authorization server. Clients discover it via stand
 - **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
 - **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` (REST API) and `/.well-known/oauth-protected-resource/mcp` (MCP). Both list `https://agenticadvertising.org` as the authorization server.
 - **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
-- **Dynamic client registration (RFC 7591):** `POST https://agenticadvertising.org/register`.
+- **Dynamic client registration (RFC 7591):** `POST /register`.
 - **Server-to-server:** there is no `client_credentials` grant. Backend services should use a WorkOS organization API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys), not the OAuth `/token` endpoint.
 
 All AAO endpoints are HTTPS-only; reject any discovery document served over plain HTTP.

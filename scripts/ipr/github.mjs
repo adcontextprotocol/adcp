@@ -69,11 +69,11 @@ export class GitHubClient {
   }
 
   createIssueComment(owner, repo, number, body) {
-    return this.request('POST', `/repos/${owner}/${repo}/issues/${number}/comments`, { body });
+    return this.request('POST', `/repos/${owner}/${repo}/issues/${number}/comments`, { body: { body } });
   }
 
   updateIssueComment(owner, repo, commentId, body) {
-    return this.request('PATCH', `/repos/${owner}/${repo}/issues/comments/${commentId}`, { body });
+    return this.request('PATCH', `/repos/${owner}/${repo}/issues/comments/${commentId}`, { body: { body } });
   }
 
   createStatus(owner, repo, sha, { state, context, description, targetUrl }) {

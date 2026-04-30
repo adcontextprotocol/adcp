@@ -4,6 +4,11 @@
   "title": "Get Collection List Response",
   "description": "Response payload for get_collection_list task. Returns resolved collection entries with identification and key metadata for matching. Consumers should cache the resolved collections and refresh based on cache_valid_until.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "list": {
       "$ref": "/schemas/collection/collection-list.json",
@@ -61,14 +66,7 @@
             "description": "Taxonomy system for genre values"
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "series",
-              "publication",
-              "event_series",
-              "rotation"
-            ],
-            "description": "What kind of content program this is"
+            "$ref": "/schemas/enums/collection-kind.json"
           }
         },
         "required": [

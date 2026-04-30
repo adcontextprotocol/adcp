@@ -71,6 +71,40 @@
       },
       "minItems": 1
     },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Frozen snapshot of the product's `reporting_capabilities.available_metrics` at the moment this package was created. Becomes the binding reporting contract for the package's lifetime, independent of subsequent product mutations. The seller stamps this on the `create_media_buy` response; once set, it MUST NOT change for the lifetime of the package. Sellers MUST reject `update_media_buy` requests that attempt to modify `committed_metrics` with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). If the buyer/seller need to renegotiate the metric contract, that is a new buy. The `missing_metrics` field on `get_media_buy_delivery` is computed against `committed_metrics` when present, and against the product's current `available_metrics` when absent. Optional in v1: sellers without per-package snapshot infrastructure can adopt incrementally — absence is conformant, but it carries a known audit gap (without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect the contract at create time; sellers that omit `committed_metrics` accept this risk). Expected to become required at the next major once the audit pattern is established. Empty array (`[]`) is a valid frozen snapshot meaning 'this package commits to no metrics' — semantically distinct from omitting the field.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [
+        ["impressions", "spend", "completed_views", "completion_rate"],
+        ["impressions", "spend", "clicks", "ctr", "viewability"]
+      ]
+    },
+    "committed_vendor_metrics": {
+      "type": "array",
+      "description": "Frozen snapshot of the product's `reporting_capabilities.vendor_metrics` at the moment this package was created. Same contract semantics as `committed_metrics` but for vendor-defined metrics — buyers reconcile delivery against the snapshotted vendor list, not the product's live state. Optional in v1; absent means sellers without snapshot infrastructure fall back to the current `vendor_metrics` declaration (same audit-gap caveat as `committed_metrics`). MUST NOT change post-creation; sellers MUST reject `update_media_buy` attempts to modify with `validation_error`.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json"
+          },
+          "metric_id": {
+            "$ref": "/schemas/core/vendor-metric-id.json"
+          }
+        },
+        "required": ["vendor", "metric_id"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "examples": [
+        [{ "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units" }]
+      ]
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Creative assets assigned to this package",

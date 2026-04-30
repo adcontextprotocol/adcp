@@ -3,8 +3,13 @@
   "$id": "/schemas/governance/get-plan-audit-logs-response.json",
   "title": "Get Plan Audit Logs Response",
   "description": "Governance state and audit trail for one or more plans.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "plans": {
       "type": "array",
@@ -251,12 +256,7 @@
                   "description": "The AdCP tool (present for check entries)."
                 },
                 "status": {
-                  "type": "string",
-                  "enum": [
-                    "approved",
-                    "denied",
-                    "conditions"
-                  ],
+                  "$ref": "/schemas/enums/governance-decision.json",
                   "description": "Governance check status (present for check entries)."
                 },
                 "check_type": {

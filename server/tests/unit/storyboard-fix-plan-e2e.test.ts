@@ -1,5 +1,5 @@
 /**
- * End-to-end: real `@adcp/client` runner emits a `context_value_rejected`
+ * End-to-end: real `@adcp/sdk` runner emits a `context_value_rejected`
  * hint, our formatter renders the verbatim fix plan.
  *
  * Drives the full `runAgainstLocalAgent` loop — `createAdcpServer` with
@@ -8,15 +8,15 @@
  * `renderAllHintFixPlans` and produces the Diagnose / Locate / Fix /
  * Verify playbook a builder can act on.
  *
- * If `@adcp/client`'s hint emission ever silently regresses (e.g. the
+ * If `@adcp/sdk`'s hint emission ever silently regresses (e.g. the
  * detector stops firing, the StoryboardStepResult contract drops the
  * `hints` field, or runAgainstLocalAgent re-shapes the result), this
  * test fails before the regression reaches Addie.
  */
 import { describe, it, expect } from 'vitest';
-import { runAgainstLocalAgent } from '@adcp/client/testing';
-import { createAdcpServer } from '@adcp/client/server';
-import type { Storyboard } from '@adcp/client/testing';
+import { runAgainstLocalAgent } from '@adcp/sdk/testing';
+import { createAdcpServer } from '@adcp/sdk/server';
+import type { Storyboard } from '@adcp/sdk/testing';
 import { renderAllHintFixPlans } from '../../src/addie/services/storyboard-fix-plan.js';
 
 /**
@@ -297,7 +297,7 @@ describe('e2e: real runner → formatter — shape_drift fix plan', () => {
     expect(fixPlan).toContain('💡 **Wire-shape drift detected.**');
     expect(fixPlan).toContain('`build_creative`');
     expect(fixPlan).toContain('`platform_native_fields`');
-    expect(fixPlan).toContain('`@adcp/client/server`');
+    expect(fixPlan).toContain('`@adcp/sdk/server`');
     expect(fixPlan).toContain('"build"'); // verify call cites the step id
   }, 30_000);
 });

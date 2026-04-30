@@ -74,11 +74,18 @@ import {
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
 import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from './mcp/auth-grader-tools.js';
+import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { pickPrompts } from './home/builders/suggested-prompts.js';
+import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
+import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -772,14 +779,19 @@ export function invalidateAddieRulesCache(): void {
   }
 }
 
-/**
- * Get dynamic suggested prompts for a Slack user
- */
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
     const userIsAdmin = await isSlackUserAAOAdmin(userId);
-    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
+    const { prompts, ruleIds } = pickPrompts(memberContext, userIsAdmin);
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId && ruleIds.length > 0) {
+      void recordPromptsShown(workosUserId, ruleIds);
+    }
+    return prompts.map((p) => ({
+      title: p.label,
+      message: p.prompt,
+    }));
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
@@ -951,6 +963,16 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
+
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Available
+  // to every user; the underlying graders only probe the target agent's
+  // public surface and live-side-effect vectors are opt-in.
+  const authGraderHandlers = createAuthGraderToolHandlers();
+  allTools.push(...AUTH_GRADER_TOOLS);
+  for (const [name, handler] of authGraderHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Auth grader tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
@@ -1460,13 +1482,22 @@ async function handleUserMessage({
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for thread creation');
   }
 
+  // Heuristic click telemetry: if the incoming message text matches a
+  // known suggested-prompt verbatim, record a click against that rule.
+  // Reuses the memberContext lookup above to avoid a second DB round-trip.
+  const matchedRuleId = matchRuleIdFromMessage(messageText);
+  const clickWorkosUserId = memberContext?.workos_user?.workos_user_id;
+  if (matchedRuleId && clickWorkosUserId) {
+    void recordPromptClicked(clickWorkosUserId, matchedRuleId);
+  }
+
   // Get or create unified thread (including user_display_name for admin UI)
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: slackThreadContext,
   });
 
@@ -1530,6 +1561,7 @@ async function handleUserMessage({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleId ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -2092,7 +2124,7 @@ async function handleAppMention({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(mentionMemberContext),
     context: {
       mention_channel_id: channelId,
       channel_name: mentionChannelContext.viewing_channel_name,
@@ -2157,6 +2189,7 @@ async function handleAppMention({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3081,7 +3114,7 @@ async function handleDirectMessage(
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_type: 'im',
     },
@@ -3125,6 +3158,7 @@ async function handleDirectMessage(
   }
 
   // Log user message to unified thread
+  const matchedRuleIdDm = matchRuleIdFromMessage(messageText);
   const userMessageFlagged = inputValidation.flagged;
   try {
     await threadService.addMessage({
@@ -3136,6 +3170,7 @@ async function handleDirectMessage(
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: matchedRuleIdDm ? 'cta_chip' : 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3432,7 +3467,7 @@ async function handleActiveThreadReply({
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
-    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    user_display_name: resolveSpeakerDisplayName(memberContext),
     context: {
       channel_id: channelId,
       channel_name: channelContext?.viewing_channel_name,
@@ -3499,6 +3534,7 @@ async function handleActiveThreadReply({
       flag_reason: inputValidation.reason || undefined,
       user_id: userId,
       user_display_name: resolveSpeakerDisplayName(memberContext),
+      message_source: 'typed',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -3577,11 +3613,17 @@ async function handleActiveThreadReply({
   const activeThreadGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'active-thread-reply' });
   const outputValidation = validateOutput(activeThreadGuarded.text);
 
-  // Send response in the thread
+  // Send response in the thread. Slack rejects postMessage with an empty
+  // `text` (no_text). If the model returned nothing or everything was
+  // sanitized away, fall back to a plain apology so the user isn't ignored.
+  const activeThreadSlackText = wrapUrlsForSlack(outputValidation.sanitized);
+  const activeThreadOutgoing = activeThreadSlackText.trim().length > 0
+    ? activeThreadSlackText
+    : "I'm sorry, I encountered an error. Please try again.";
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
+      text: activeThreadOutgoing,
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -3956,7 +3998,7 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
-      user_display_name: memberContext?.slack_user?.display_name || undefined,
+      user_display_name: resolveSpeakerDisplayName(memberContext),
       context: {
         channel_id: channelId,
         channel_name: channelContext?.viewing_channel_name,
@@ -3979,6 +4021,7 @@ async function handleChannelMessage({
         router_decision: buildRouterDecision(plan),
         user_id: userId,
         user_display_name: resolveSpeakerDisplayName(memberContext),
+        message_source: 'typed',
       });
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
@@ -4878,6 +4921,7 @@ async function handleReactionAdded({
       content_sanitized: userInput,
       user_id: reactingUserId,
       user_display_name: resolveSpeakerDisplayName(reactingMemberContext),
+      message_source: 'unknown',
     });
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save reaction message');

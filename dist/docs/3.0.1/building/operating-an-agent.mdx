@@ -1,0 +1,128 @@
+---
+title: Operating an Agent
+sidebarTitle: Operating an Agent
+description: "What sits behind a protocol-compliant agent — products, activation, hosting, and whether to partner, self-host, or build."
+"og:title": "AdCP — Operating an Agent"
+---
+
+The 2–8 minute [Build an Agent](/dist/docs/3.0.1/building/build-an-agent) path gets you a protocol-compliant agent. This page is what comes after — the business infrastructure behind each tool call, and how to decide who runs it.
+
+The worked example here is a **sales agent**, since that's the most infrastructure-heavy case. Short callouts mark where the operational concerns diverge for signals, creative, and retail-media agents.
+
+## What the SDK already handles
+
+Before listing what's missing, it helps to be explicit about what a storyboard-validated agent already gives you:
+
+- AdCP tool schemas and typed registration
+- Request/response shapes that pass compliance
+- Error formats and version negotiation
+- A starting point with example products you can swap for real ones
+
+Everything below is what sits behind those tool handlers.
+
+## Partner, self-host, or build
+
+There are three paths to a live agent. They differ in how much you own, not whether you own anything at all — in every case you still own products, pricing, and the activation into your ad server.
+
+**Partner with a managed sales agent platform.** The platform runs the agent endpoint, holds state, and exposes admin UIs for your ad ops team to manage products, pricing, and approvals. You connect your ad server; the platform handles the protocol and the operations around it. Fastest to live, least control.
+
+**Self-host a prebuilt agent.** Deploy an existing open-source agent — today this usually means the [Prebid Sales Agent](https://github.com/prebid/salesagent), a community full-stack seller agent with GAM integration — on your own infrastructure, and connect it to your systems. You skip writing the protocol layer and admin UI, but you own hosting, upgrades, database, and the ad-server wiring. Middle ground: more control than partnering, less work than building.
+
+**Build your own.** Use the SDK and skill files to write a custom agent. You get full control over business logic, pricing models, and activation paths, at the cost of owning the code alongside everything else. Right answer when no prebuilt agent fits your stack or pricing model.
+
+The SDKs and storyboards cover protocol compliance across all three paths. Everything in the table below is what's outside that line, regardless of which path you take.
+
+## What you'll still need to build or provision
+
+| Component | What it does | Example approaches |
+|---|---|---|
+| **Product & pricing management** | Lets ad ops define products, rate cards, packaging, and availability without code changes. The skill files hardcode example products; a real agent needs these dynamic and editable. | A partner platform's product catalog, a prebuilt agent's admin UI (e.g. Prebid Sales Agent), or a custom admin UI backed by a database. |
+| **Persistent storage** | Stores products, pricing, media buys, creative assignments, and delivery state across requests. | PostgreSQL, MySQL, or any datastore your team is comfortable operating. |
+| **Creative review & policy** | Applies brand-safety, legal, and format checks to creatives before they go live. The protocol carries the creative; your policy decides whether to accept it. | Human review queue, automated policy engine (IAB categories, brand lists), or a hybrid. Often the first thing ad ops teams underestimate. |
+| **Trafficking & fulfillment** | Turns a sold media buy into a live campaign in your ad server. This sits entirely outside AdCP and is usually the hardest piece. | *Manual:* email or Slack alerts that prompt ad ops to set up campaigns in GAM. *Semi-automated:* Google Ad Manager API to create line items and assign creatives. *Full automation:* end-to-end pipeline from buy confirmation to live delivery. |
+| **Delivery reporting & performance** | Powers `get_media_buy_delivery` and `provide_performance_feedback` with real numbers. The protocol tools exist; the log ingest, aggregation, and attribution pipeline behind them is yours to build. | Ad server reporting API pulls, log-level ingest into a warehouse, or a managed analytics tool feeding the agent. |
+| **Order management** | Tracks buy status, approval workflows, creative deadlines, and pacing beyond what the protocol's task lifecycle covers. | Status fields in your database to start; a dashboard as volume grows. |
+| **Hosting** | Keeps your agent live at the URL you declare in `adagents.json`. Downtime or URL drift breaks buyer discovery. | Cloud VM, container service (Cloud Run, ECS, Fly.io), or a managed hosting platform. |
+| **Discovery registration** | Tells buyer agents your agent exists and which protocols it supports. Handled via `adagents.json` on your domain — not through a central registry. | Publish `adagents.json` at your domain root. See [How Agents Communicate](/dist/docs/3.0.1/building/understanding/how-agents-communicate) and [Authorized Properties](/dist/docs/3.0.1/governance/property/authorized-properties). |
+
+## Where the protocol ends and your business begins
+
+AdCP defines the shape of the conversation between agents. It does not define:
+
+- **Pricing strategy** — how you price inventory, how rate cards flex, when discounts apply
+- **Approval policy** — which campaigns you accept or reject, and on what grounds
+- **Billing and invoicing** — no spec-level billing; you reconcile with buyers out-of-band
+- **Identity and consent** — user-level identity, consent capture, and data-subject rights are regulated and implementation-specific
+- **SLA monitoring** — uptime, latency, and error budgets for your agent endpoint
+- **Ad ops workflow** — how your team monitors pacing, makegoods, and escalations
+
+A partner platform makes default choices for most of these; a self-hosted prebuilt agent gives you its defaults to override; a self-built agent makes you make every call.
+
+## Where this differs by agent type
+
+The components table above assumes a sales agent. Other agent types share most of it but have specific additions:
+
+- **Signals agents** — consent and provenance are load-bearing. You need a defensible data lineage (where a segment came from, what consent covers it) and the ability to honor opt-outs. Activation is less about ad-server trafficking and more about delivering segments to platforms that already ingest them.
+- **Creative agents** — asset storage, transcoding, and rendering SLAs replace ad-server trafficking. Creative review becomes policy on what you'll render, not what you'll traffic.
+- **Retail-media agents** — catalog freshness is the operational constraint; your products change as SKUs change. Activation often runs through retail-specific ad platforms rather than GAM.
+
+## Operating the agent in production
+
+A protocol-compliant agent is not the same as a well-operated agent. That's two different concerns: **ongoing ad-ops health** (the protocol stuff actually doing its job) and **security** (the protocol stuff staying trustworthy when it does). Treat both with the same seriousness you give your ad-server integration.
+
+### Ad-ops health monitoring — what you actually watch
+
+This is the day-to-day job. Most of it is protocol-aware extensions of the monitoring any ad ops team already runs. The point is not "new concepts to learn" — it's "here are the specific protocol signals you need dashboards for." Addie can help you set these up.
+
+| What to watch | Why it matters | Signals to alert on |
+|---|---|---|
+| **Open task queue depth** | Async tasks (`create_media_buy` proposals, `sync_creatives` approvals, `si_initiate_session`) stack up when approvers fall behind. Deep queues mean buyers are waiting. | Tasks open > SLA (e.g. creative approvals > 4h), oldest task age trending up, queue growing faster than it drains. |
+| **Creative approval throughput** | Creatives need to actually get approved or rejected. A queue that silently stops moving looks identical to "everything's fine" — except buys aren't launching. | Approval/rejection rate vs. submission rate, creatives older than expected review window still `pending`, rejection reason distribution. |
+| **Lifecycle transitions firing on time** | The seller MUST transition `pending_start` → `active` when the flight date arrives. Missed transitions leave campaigns never-delivered even though they "created" fine. | Buys still in `pending_start` past flight start, buys in `pending_creatives` past creative arrival, `paused` buys that should have auto-resumed. |
+| **Webhook delivery health** | Webhooks are how buyers learn about async state changes. Silent delivery failures mean buyers poll instead — or don't, and miss the event entirely. | Failed delivery rate, retry backlog, dead-letter queue size, time from state change to successful push. |
+| **Status correctness for non-launchable buys** | Campaigns that *can't* go live (creative rejected, account suspended, policy denial) MUST be reflected in the status — not silently stuck. Governance depends on this. | Buys that are neither delivering nor showing a terminal/blocked status; mismatch between ad-server state and AdCP state. |
+| **Delivery reporting freshness and accuracy** | `get_media_buy_delivery` should return current numbers. Stale reporting means buyers optimize on lies. | Last-updated timestamp trailing, spend deltas that don't reconcile with ad-server logs. |
+| **Idempotency-cache behavior** | A retried `create_media_buy` must return the cached response, not create a duplicate. Compliance tests this in a sandbox — production drift is its own signal. | `IDEMPOTENCY_CONFLICT` rate (bug in buyer or attacker probing), `IDEMPOTENCY_EXPIRED` for ongoing work (TTL too short), duplicate media buys created in the ad server (cache failure). |
+| **Error-code distribution** | A spike in a specific error code from a specific buyer is usually the first signal of a real problem. | Top-N error codes per buyer per hour, new error codes you haven't seen before. |
+
+This is the monitoring a sales agent needs regardless of who wrote the code. A partner platform should expose dashboards for most of this; a self-hosted prebuilt agent requires you to wire them up; a self-built agent puts every row on your team.
+
+### Security monitoring — what compliance covers vs. what stays with you
+
+**Most AdCP security mechanics are enforced by the [compliance suite](/dist/docs/3.0.1/building/validate-your-agent) — you don't need to hand-verify them.** The storyboard runner verifies authentication, idempotency, schema conformance, error handling, and governance behavior against your agent. If the suite passes, the wire-level behavior is correct. You don't need to learn agent/account scoping internals, JWS verification steps, or canonical JSON — the tests do.
+
+What the compliance suite checks (so you don't have to teach it):
+
+| Storyboard | What it verifies |
+|---|---|
+| `security_baseline` (universal) | Auth is required on protected operations; invalid keys rejected; at least one of API key or OAuth 2.0 is correctly advertised. |
+| `idempotency` (universal) | Mutating requests honor `idempotency_key`: replay returns cached, conflict returns `IDEMPOTENCY_CONFLICT`, missing key returns `INVALID_REQUEST`. |
+| `schema-validation`, `error-compliance` | Responses match schemas; errors use the standard taxonomy. |
+| Protocol + specialism storyboards | Per-protocol behavior (media buy lifecycle, creative workflow, signals activation) is correct end-to-end. |
+| Request-signing test vectors | RFC 9421 signed requests validate correctly across 25+ positive and negative cases. |
+
+**What you still own**, regardless of who wrote the code:
+
+| Concern | What you decide and run |
+|---|---|
+| **Credential storage and rotation** | Store tokens in a KMS/secret manager. Use short-lived tokens (≤24h for write-capable; consider ≤1h for tokens that can commit spend). Never log in full, never commit. The right rotation cadence depends on the blast radius of a leaked token — justify yours, don't copy a number. |
+| **Key ceremony and break-glass** | Have a documented process for generating, transporting, and destroying high-value keys (webhook secrets, governance signing keys). Maintain sealed break-glass credentials for incident recovery — and a procedure for using them that leaves an audit trail. |
+| **Idempotency replay TTL** | Declare `capabilities.idempotency.replay_ttl_seconds` — floor 1h, recommended 24h, max 7d — and verify the declared value matches actual cache retention. Prebuilt agents expose this as config; self-built bake it in. |
+| **Cross-instance and multi-region failover** | The idempotency cache, session store, and webhook dedup state must survive an instance restart and be shared across horizontally scaled instances. In a multi-region deployment, the cache must be consistent enough that a retry routed to region B replays a buy originally processed in region A. Memory-only state breaks at-most-once guarantees on the first pod restart. |
+| **Security signal monitoring** | Watch for `IDEMPOTENCY_CONFLICT` spikes (probing), failed governance verifications (spoofing), SSRF rejections from a single counterparty, 401/403 spikes from one peer. Same dashboard as ops monitoring — just different alerts. |
+| **Vendor risk on your counterparties** | Your governance agent, your signals providers, your creative vendors all hold credentials or issue signed tokens that affect your campaigns. Assess them the way you assess any processor: disclosure policy, breach notification commitment, compliance attestations, uptime SLA. |
+| **Incident response runbook** | Know how to revoke a compromised credential in under an hour, rotate webhook secrets, notify counterparties, publish a `revoked_kids` entry if you issue governance tokens. Tabletop it before you need it. |
+
+If you're **partnering**, ask the vendor: "Do you pass the AdCP compliance suite on every release? Which version? Can I see the latest run?" That single question covers most of the code-controls surface. Also ask whether they hold SOC 2 Type II, ISO 27001, or the equivalent attestation for your industry — and what their breach-notification commitment is. If you're **self-hosting a prebuilt agent**, run the compliance suite yourself against your deployment. If you're **self-building**, the compliance suite is your regression harness.
+
+<Note>
+**For security and IT leaders:** The [Security Model](/dist/docs/3.0.1/building/understanding/security-model) page is written for you — CISOs, security architects, and third-party risk reviewers at brands, agencies, publishers, and platforms alike. It explains the threat landscape and what AdCP defends against by design, and includes a checklist of questions to ask your engineering team (or your vendor) before going live.
+</Note>
+
+## What's next
+
+- **[Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent)** — The compliance suite referenced above
+- **[Security](/dist/docs/3.0.1/building/implementation/security)** — The normative reference for HMAC, idempotency, SSRF, and governance verification
+- **[How Agents Communicate](/dist/docs/3.0.1/building/understanding/how-agents-communicate)** — Discovery via `adagents.json` and `brand.json`
+- **[Seller Integration](/dist/docs/3.0.1/building/implementation/seller-integration)** — Patterns for connecting an agent to an ad server
+- **[Authorized Properties](/dist/docs/3.0.1/governance/property/authorized-properties)** — Who can sell what, and how that's declared

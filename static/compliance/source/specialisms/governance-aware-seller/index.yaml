@@ -25,6 +25,7 @@ requires_scenarios:
   - media_buy_seller/governance_conditions
   - media_buy_seller/governance_denied
   - media_buy_seller/governance_denied_recovery
+  - governance_aware_seller/governance_multi_agent_rejected
 
 narrative: |
   Governance composition is an optional seller capability. A seller agent can be
@@ -59,8 +60,9 @@ narrative: |
   reclassified in 3.1 to a universal capability-gated storyboard.)
 
   Composition means the seller:
-  - accepts `sync_governance` to register the buyer's governance agent URL and
-    authority categories,
+  - accepts `sync_governance` to register the buyer's single governance agent
+    URL for the account (one agent per account; internal specialist review
+    composes inside the agent, not at registration — see #3010 / #3015),
   - calls `check_governance` on the registered agent before confirming a
     spend-committing request,
   - returns `GOVERNANCE_DENIED` with the governance findings propagated

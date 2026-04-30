@@ -347,6 +347,23 @@ export async function getUserAttempts(userId: string): Promise<CertificationAtte
   return result.rows;
 }
 
+/**
+ * Latest attempt for a user, preferring in-progress over completed when both
+ * exist. Used to power the "Continue certification" suggested-prompt rule —
+ * we want the unfinished thing if there is one, else the most recent attempt
+ * for context.
+ */
+export async function getLatestAttempt(userId: string): Promise<CertificationAttempt | null> {
+  const result = await query<CertificationAttempt>(
+    `SELECT * FROM certification_attempts
+     WHERE workos_user_id = $1
+     ORDER BY (status = 'in_progress')::int DESC, created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function getUserCertifications(userId: string): Promise<CertificationAttempt[]> {
   const result = await query<CertificationAttempt>(
     `SELECT * FROM certification_attempts

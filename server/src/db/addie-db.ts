@@ -1,4 +1,4 @@
-import { query, getClient } from './client.js';
+import { query } from './client.js';
 import type { AddieInteractionLog } from '../addie/types.js';
 
 /**
@@ -194,38 +194,6 @@ export interface WebConversationStats {
   conversations_last_24h: number;
   avg_latency_ms: number;
   tool_usage: Record<string, number>;
-}
-
-// ============== Rules Types ==============
-
-export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style';
-
-export interface AddieRule {
-  id: number;
-  rule_type: RuleType;
-  name: string;
-  description: string | null;
-  content: string;
-  priority: number;
-  is_active: boolean;
-  version: number;
-  supersedes_rule_id: number | null;
-  interactions_count: number;
-  positive_ratings: number;
-  negative_ratings: number;
-  avg_rating: number | null;
-  created_by: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface AddieRuleInput {
-  rule_type: RuleType;
-  name: string;
-  description?: string;
-  content: string;
-  priority?: number;
-  created_by?: string;
 }
 
 /**
@@ -1150,143 +1118,6 @@ export class AddieDatabase {
       by_event_type: byEventType,
       avg_latency_ms: parseFloat(row.avg_latency_ms),
     };
-  }
-
-  // ============== Rules Management ==============
-
-  /**
-   * Get all active rules, ordered by priority
-   */
-  async getActiveRules(): Promise<AddieRule[]> {
-    const result = await query<AddieRule>(
-      `SELECT * FROM addie_rules
-       WHERE is_active = TRUE
-       ORDER BY priority DESC, rule_type, name`
-    );
-    return result.rows;
-  }
-
-  /**
-   * Get rules by type
-   */
-  async getRulesByType(ruleType: RuleType): Promise<AddieRule[]> {
-    const result = await query<AddieRule>(
-      `SELECT * FROM addie_rules
-       WHERE rule_type = $1 AND is_active = TRUE
-       ORDER BY priority DESC, name`,
-      [ruleType]
-    );
-    return result.rows;
-  }
-
-  /**
-   * Get all rules (including inactive) for admin
-   */
-  async getAllRules(): Promise<AddieRule[]> {
-    const result = await query<AddieRule>(
-      `SELECT * FROM addie_rules
-       ORDER BY is_active DESC, priority DESC, rule_type, name`
-    );
-    return result.rows;
-  }
-
-  /**
-   * Get a rule by ID
-   */
-  async getRuleById(id: number): Promise<AddieRule | null> {
-    const result = await query<AddieRule>(
-      'SELECT * FROM addie_rules WHERE id = $1',
-      [id]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Create a new rule
-   */
-  async createRule(input: AddieRuleInput): Promise<AddieRule> {
-    const result = await query<AddieRule>(
-      `INSERT INTO addie_rules (rule_type, name, description, content, priority, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [
-        input.rule_type,
-        input.name,
-        input.description || null,
-        input.content,
-        input.priority ?? 0,
-        input.created_by || null,
-      ]
-    );
-    return result.rows[0];
-  }
-
-  /**
-   * Update a rule (creates new version)
-   * Uses a transaction to ensure atomicity of deactivation and new version creation
-   */
-  async updateRule(id: number, updates: Partial<Omit<AddieRuleInput, 'created_by'>>, updatedBy?: string): Promise<AddieRule | null> {
-    // Get current rule
-    const current = await this.getRuleById(id);
-    if (!current) return null;
-
-    const client = await getClient();
-    try {
-      await client.query('BEGIN');
-
-      // Deactivate current rule
-      await client.query(
-        'UPDATE addie_rules SET is_active = FALSE WHERE id = $1',
-        [id]
-      );
-
-      // Create new version
-      const result = await client.query<AddieRule>(
-        `INSERT INTO addie_rules (rule_type, name, description, content, priority, version, supersedes_rule_id, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING *`,
-        [
-          updates.rule_type ?? current.rule_type,
-          updates.name ?? current.name,
-          updates.description ?? current.description,
-          updates.content ?? current.content,
-          updates.priority ?? current.priority,
-          current.version + 1,
-          id,
-          updatedBy || null,
-        ]
-      );
-
-      await client.query('COMMIT');
-      return result.rows[0];
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Toggle rule active status
-   */
-  async setRuleActive(id: number, isActive: boolean): Promise<AddieRule | null> {
-    const result = await query<AddieRule>(
-      `UPDATE addie_rules SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [isActive, id]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Delete a rule (soft delete by deactivating)
-   */
-  async deleteRule(id: number): Promise<boolean> {
-    const result = await query(
-      'UPDATE addie_rules SET is_active = FALSE WHERE id = $1',
-      [id]
-    );
-    return (result.rowCount ?? 0) > 0;
   }
 
   // ============== Thread Context Store ==============

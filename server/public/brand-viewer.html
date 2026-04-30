@@ -378,6 +378,69 @@
         color: var(--color-text-heading);
       }
 
+      /* Agents list (operated / authorized) */
+      .agents-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .agents-list__item {
+        padding: var(--space-3) 0;
+        border-bottom: 1px solid var(--color-border);
+      }
+      .agents-list__item:last-child {
+        border-bottom: none;
+      }
+      .agents-list__name {
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+        margin-bottom: var(--space-1);
+      }
+      .agents-list__url {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--color-text-secondary);
+        word-break: break-all;
+      }
+      .agents-list__url a {
+        color: var(--color-brand);
+        text-decoration: none;
+      }
+      .agents-list__type {
+        display: inline-block;
+        margin-top: var(--space-1);
+        padding: var(--space-0_5) var(--space-2);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-full);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+      }
+      .agents-list__scope {
+        margin-top: var(--space-1);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+      }
+
+      /* Empty state for agent sections */
+      .empty-state {
+        padding: var(--space-2) 0;
+      }
+      .empty-state p {
+        margin: 0 0 var(--space-2) 0;
+        color: var(--color-text-secondary);
+      }
+      .empty-state__hint {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+      }
+      .empty-state code {
+        background: var(--color-bg-subtle);
+        padding: var(--space-0_5) var(--space-1);
+        border-radius: var(--radius-sm);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+      }
+
       /* Properties table */
       .properties-table {
         width: 100%;
@@ -1380,6 +1443,28 @@
           </div>
         </div>
 
+        <!-- Agents this brand operates -->
+        <div id="agents-operated-section" class="viewer-section">
+          <div class="section-heading">
+            <span class="section-icon">&#129302;</span>
+            Agents this brand operates
+          </div>
+          <div id="agents-operated-content" class="card">
+            <div class="loading">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Agents authorized to sell this brand's inventory -->
+        <div id="agents-authorized-section" class="viewer-section">
+          <div class="section-heading">
+            <span class="section-icon">&#128274;</span>
+            Agents authorized to sell this brand's inventory
+          </div>
+          <div id="agents-authorized-content" class="card">
+            <div class="loading">Loading…</div>
+          </div>
+        </div>
+
         <!-- Collections -->
         <div id="collections-section" class="viewer-section hidden">
           <div class="section-heading">
@@ -1553,7 +1638,10 @@
           });
           const result = await resp.json();
           if (resp.ok) {
-            status.innerHTML = '<span style="color:var(--color-success-600);">Logo uploaded — pending review.</span>';
+            const uploadMsg = result.review_status === 'approved'
+              ? 'Logo uploaded and live.'
+              : 'Logo uploaded — pending review.';
+            status.innerHTML = `<span style="color:var(--color-success-600);">${uploadMsg}</span>`;
             setTimeout(() => {
               hideUploadModal();
               window.location.reload();
@@ -2355,6 +2443,9 @@
           }
         }
 
+        // Agent sections render regardless of brand.json state — empty states explain what's missing.
+        loadAgents(domain);
+
         // Always try loading revision history (works for community brands even without brand.json)
         const hasCommunityData = await loadRevisionHistory(domain);
 
@@ -2845,6 +2936,91 @@
                 </tr>`;
             }).join('')}
           </tbody>`;
+      }
+
+      async function loadAgents(domain) {
+        const [operatorResp, publisherResp] = await Promise.allSettled([
+          fetch(`/api/registry/operator?domain=${encodeURIComponent(domain)}`),
+          fetch(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`),
+        ]);
+
+        let operator = null;
+        if (operatorResp.status === 'fulfilled' && operatorResp.value.ok) {
+          try { operator = await operatorResp.value.json(); } catch {}
+        }
+
+        let publisher = null;
+        if (publisherResp.status === 'fulfilled' && publisherResp.value.ok) {
+          try { publisher = await publisherResp.value.json(); } catch {}
+        }
+
+        renderAgentsOperated(operator);
+        renderAgentsAuthorized(publisher);
+      }
+
+      function renderAgentsOperated(operator) {
+        const el = document.getElementById('agents-operated-content');
+        const member = operator?.member;
+        const agents = operator?.agents || [];
+
+        if (!member) {
+          el.innerHTML = `
+            <div class="empty-state">
+              <p><strong>No operator on record.</strong></p>
+              <p class="empty-state__hint">No member has claimed this domain. To list operated agents here, an authenticated member of the controlling organization needs to claim this domain in their member profile.</p>
+            </div>`;
+          return;
+        }
+
+        const memberLink = `<a href="/members/${escapeAttr(member.slug)}">${escapeHtml(member.display_name)}</a>`;
+
+        if (agents.length === 0) {
+          el.innerHTML = `
+            <div class="empty-state">
+              <p>Operated by ${memberLink}.</p>
+              <p class="empty-state__hint">${escapeHtml(member.display_name)} has not registered any agents for this brand.</p>
+            </div>`;
+          return;
+        }
+
+        el.innerHTML = `
+          <div style="margin-bottom:var(--space-3);color:var(--color-text-secondary);">Operated by ${memberLink}</div>
+          <ul class="agents-list">
+            ${agents.map(a => `
+              <li class="agents-list__item">
+                <div class="agents-list__name">${escapeHtml(a.name || a.url)}</div>
+                <div class="agents-list__url">${isSafeUrl(a.url) ? `<a href="${escapeAttr(a.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.url)}</a>` : escapeHtml(a.url)}</div>
+                ${a.type && a.type !== 'unknown' ? `<span class="agents-list__type">${escapeHtml(a.type)}</span>` : ''}
+              </li>`).join('')}
+          </ul>`;
+      }
+
+      function renderAgentsAuthorized(publisher) {
+        const el = document.getElementById('agents-authorized-content');
+        const adagentsValid = publisher?.adagents_valid;
+        const authorized = publisher?.authorized_agents || [];
+
+        if (authorized.length === 0) {
+          const hint = adagentsValid
+            ? `An <code>adagents.json</code> is published for this domain but lists no agents.`
+            : `No <code>adagents.json</code> found at this domain. To authorize a sales agent, publish <code>https://&lt;domain&gt;/adagents.json</code> listing each agent's URL.`;
+          el.innerHTML = `
+            <div class="empty-state">
+              <p><strong>No authorized agents.</strong></p>
+              <p class="empty-state__hint">${hint}</p>
+            </div>`;
+          return;
+        }
+
+        el.innerHTML = `
+          <ul class="agents-list">
+            ${authorized.map(a => `
+              <li class="agents-list__item">
+                <div class="agents-list__url">${isSafeUrl(a.url) ? `<a href="${escapeAttr(a.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.url)}</a>` : escapeHtml(a.url)}</div>
+                ${a.source ? `<span class="agents-list__type">${escapeHtml(a.source)}</span>` : ''}
+                ${Array.isArray(a.authorized_for) && a.authorized_for.length > 0 ? `<div class="agents-list__scope">Authorized for: ${a.authorized_for.map(s => escapeHtml(typeof s === 'string' ? s : JSON.stringify(s))).join(', ')}</div>` : ''}
+              </li>`).join('')}
+          </ul>`;
       }
 
       function renderCollections(collections) {

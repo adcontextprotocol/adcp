@@ -4,6 +4,11 @@
   "title": "Validate Property Delivery Response",
   "description": "Response payload for validate_property_delivery task. Returns aggregate compliance statistics and per-record validation results.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "compliant": {
       "type": "boolean",

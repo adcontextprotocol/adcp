@@ -34,8 +34,7 @@
             "description": "Which feature was evaluated. Data features come from the governance agent's feature catalog (e.g., 'mfa_score', 'carbon_score'). Record-level structural checks use reserved namespaces: 'record:list_membership', 'record:excluded', 'delivery:seller_authorization', 'delivery:click_url_presence'. Reserved prefixes: 'record:', 'delivery:'."
           },
           "status": {
-            "type": "string",
-            "enum": ["passed", "failed", "warning", "unevaluated"]
+            "$ref": "/schemas/enums/feature-check-status.json"
           },
           "policy_id": {
             "type": "string",

@@ -37,9 +37,8 @@
       "x-entity": "operator"
     },
     "billing": {
-      "type": "string",
-      "enum": ["operator", "agent", "advertiser"],
-      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. See billing_entity for the invoiced party's business details."
+      "$ref": "/schemas/enums/billing-party.json",
+      "description": "Who is invoiced on this account. See billing_entity for the invoiced party's business details."
     },
     "billing_entity": {
       "$ref": "/schemas/core/business-entity.json",
@@ -91,13 +90,11 @@
       "additionalProperties": true
     },
     "account_scope": {
-      "type": "string",
-      "enum": ["operator", "brand", "operator_brand", "agent"],
-      "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
+      "$ref": "/schemas/enums/account-scope.json"
     },
     "governance_agents": {
       "type": "array",
-      "description": "Governance agent endpoints registered on this account. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
+      "description": "Governance agent endpoint registered on this account. Exactly one entry per sync_governance's one-agent-per-account invariant. The array shape is preserved for wire compatibility with 3.0; `maxItems: 1` is load-bearing and mirrors the singular `governance_context` on the protocol envelope. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
       "items": {
         "type": "object",
         "properties": {
@@ -106,18 +103,13 @@
             "format": "uri",
             "pattern": "^https://",
             "description": "Governance agent endpoint URL. Must use HTTPS."
-          },
-          "categories": {
-            "type": "array",
-            "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
-            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
-            "maxItems": 20
           }
         },
         "required": ["url"],
         "additionalProperties": false
       },
-      "maxItems": 10
+      "minItems": 1,
+      "maxItems": 1
     },
     "reporting_bucket": {
       "type": "object",

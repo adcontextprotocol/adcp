@@ -4,6 +4,11 @@
   "title": "List Creatives Response",
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "query_summary": {
       "type": "object",
@@ -39,7 +44,10 @@
           }
         }
       },
-      "required": ["total_matching", "returned"],
+      "required": [
+        "total_matching",
+        "returned"
+      ],
       "additionalProperties": true
     },
     "pagination": {
@@ -88,21 +96,51 @@
             "patternProperties": {
               "^[a-z0-9_]+$": {
                 "oneOf": [
-                  { "$ref": "/schemas/core/assets/image-asset.json" },
-                  { "$ref": "/schemas/core/assets/video-asset.json" },
-                  { "$ref": "/schemas/core/assets/audio-asset.json" },
-                  { "$ref": "/schemas/core/assets/vast-asset.json" },
-                  { "$ref": "/schemas/core/assets/text-asset.json" },
-                  { "$ref": "/schemas/core/assets/url-asset.json" },
-                  { "$ref": "/schemas/core/assets/html-asset.json" },
-                  { "$ref": "/schemas/core/assets/javascript-asset.json" },
-                  { "$ref": "/schemas/core/assets/zip-asset.json" },
-                  { "$ref": "/schemas/core/assets/webhook-asset.json" },
-                  { "$ref": "/schemas/core/assets/css-asset.json" },
-                  { "$ref": "/schemas/core/assets/daast-asset.json" },
-                  { "$ref": "/schemas/core/assets/markdown-asset.json" },
-                  { "$ref": "/schemas/core/assets/brief-asset.json" },
-                  { "$ref": "/schemas/core/assets/catalog-asset.json" }
+                  {
+                    "$ref": "/schemas/core/assets/image-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/video-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/audio-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/vast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/text-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/url-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/html-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/javascript-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/zip-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/webhook-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/css-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/daast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/markdown-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/brief-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/catalog-asset.json"
+                  }
                 ],
                 "discriminator": {
                   "propertyName": "asset_type"
@@ -205,13 +243,8 @@
             "additionalProperties": true
           },
           "snapshot_unavailable_reason": {
-            "type": "string",
-            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative.",
-            "enum": [
-              "SNAPSHOT_UNSUPPORTED",
-              "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
-              "SNAPSHOT_PERMISSION_DENIED"
-            ]
+            "$ref": "/schemas/enums/snapshot-unavailable-reason.json",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative."
           },
           "items": {
             "type": "array",
@@ -349,7 +382,10 @@
                 "url": "https://acmecorp.example.com/holiday-sale"
               }
             },
-            "tags": ["holiday_2026", "display"],
+            "tags": [
+              "holiday_2026",
+              "display"
+            ],
             "concept_id": "concept_holiday_2026",
             "concept_name": "Holiday 2026 Campaign",
             "variables": [
@@ -392,7 +428,10 @@
                 "url": "https://acmecorp.example.com/holiday-sale"
               }
             },
-            "tags": ["holiday_2026", "display"],
+            "tags": [
+              "holiday_2026",
+              "display"
+            ],
             "concept_id": "concept_holiday_2026",
             "concept_name": "Holiday 2026 Campaign",
             "variables": []

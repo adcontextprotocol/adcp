@@ -80,6 +80,73 @@ Use **sentence case** for all UI labels, headings, and section headers:
 - ✅ "Brand identity", "Creative assets", "Contact information"
 - ❌ "Brand Identity", "Creative Assets", "Contact Information"
 
+### Addie MemberContext invariant: hydrate once, surface twice
+**Mistake this prevents:** adding a new context field for a
+suggested-prompts rule, watching the rule fire correctly, but having
+Addie's conversational responses behave as if the data isn't there.
+Two parallel data planes silently drift.
+
+Adding a field to `MemberContext` (`server/src/addie/member-context.ts`)
+means **you must surface it in two places**:
+
+1. The hydration path — `getMemberContext` (Slack) and
+   `resolveContextFromLocalDb` (web). Populates the field.
+2. `formatMemberContextForPrompt` — so Addie's system prompt actually
+   sees the signal when reasoning. Canonical example: the
+   `certification` block at lines 1505-1525 of
+   `server/src/addie/member-context.ts`.
+
+If you only do (1), the suggested-prompts engine sees the field but
+Addie's conversational responses don't. Closed in PR #3377; don't
+reintroduce the gap.
+
+`formatMemberContextForPrompt` should render **facts only**. Response
+policy ("gently suggest X", "encourage retry") belongs in
+`server/src/addie/rules/*.md`, not in the user-context block.
+Otherwise each user gets a slightly different policy depending on
+hydration and the prompt-injection surface widens.
+
+### Addie CTA registry: one catalog, per-surface eligibility
+**Mistake this prevents:** maintaining the same CTA in two places
+(rule registry + a separate picker), drifting on copy, eligibility,
+or priority. We had this with `digest-nudge.ts` until PR #3382.
+
+Cross-cut CTAs (firing on suggested-prompts + newsletter digest, etc.)
+are co-located in
+`server/src/addie/home/builders/rules/prompt-rules.ts`. Each rule
+keeps its **own `when` clause per surface** (typed against that
+surface's native shape — `MemberContext`, `DigestEmailRecipient`,
+etc.). We share the *catalog* of CTAs, not the eligibility logic.
+
+Per-surface gating is honest about each surface's constraints — e.g.,
+the digest WG nudge gates on `has_slack` because joining a WG without
+Slack is harder; the pull-surface WG nudge doesn't, because the user
+is already in a chat surface that supports the join flow. Canonical
+example: `wg.find_groups` rule with both `pull` (the bare `when:
+({memberContext}) => ...`) and `digest: { when: (r) => ... }` clauses.
+
+Surface-specific facets live alongside the rule's pull-surface fields.
+The digest facet is on `PromptRule.digest`. CTAs with no pull-surface
+analog live in `DIGEST_ONLY_NUDGES`
+(`server/src/addie/home/builders/rules/digest-only-nudges.ts`).
+
+When adding a new surface that wants to consume the registry, add a
+new facet type (parallel to `DigestNudgeFacet`) and a new
+`*_ONLY_NUDGES` array. Don't try to reshape an existing surface's
+context to fit yours — `DigestEmailRecipient` and `MemberContext` are
+intentionally different and the lossy adapter would be worse than
+two `when` clauses.
+
+### Addie rule registry: function prompts require matchClick
+**Mistake this prevents:** adding a rule with a dynamic `prompt`
+function (e.g., "Continue A1") and silently getting zero click
+attribution because the static reverse-index can't enumerate function
+output. The boot-time assertion in
+`server/src/addie/home/builders/rules/prompt-rules.ts` catches this
+at module load — see the loop right after `ALL_RULES`. If it throws,
+add a `matchClick` callback (see `cert.continue_in_progress` for the
+pattern).
+
 ## JSON Schema Guidelines
 
 ### Discriminated Unions
@@ -164,6 +231,85 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 - **PATCH**: Fix typos, clarify descriptions
 - **MINOR**: Add optional fields, new enum values, new tasks
 - **MAJOR**: Remove/rename fields, change types, remove enum values
+
+### Release lines
+
+AdCP runs two release lines simultaneously:
+
+- **`main`** → next minor (currently `3.1.0-beta.N` while in pre mode; see `.changeset/pre.json`)
+- **`3.0.x`** → patches to the current minor (`3.0.2`, `3.0.3`, …)
+
+Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
+
+#### Cherry-pick convention
+
+Default flow when a fix is needed in both lines:
+
+1. Author lands on `main` first (normal PR flow)
+2. After merge, cherry-pick to `3.0.x`:
+   ```bash
+   git checkout 3.0.x && git pull
+   git cherry-pick <main-sha>
+   git push origin 3.0.x
+   ```
+3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it is a near-no-op (the cherry-pick is already in `main`) but keeps the lines provably in sync.
+
+#### Patch eligibility
+
+For each surface a PR touches, the corresponding rule must hold. A PR touching multiple surfaces must satisfy all relevant rules.
+
+**Stable schemas** — no new fields, no renamed fields, no new enum values, no new error codes, no new normative requirements. Clarifications are patch-eligible only when both:
+1. The prior spec was demonstrably silent or ambiguous on the input (not just unstated), AND
+2. Any conformant 3.0.0 implementation of the surrounding behavior would already satisfy the new MUST.
+
+If a previously-conformant implementation could fail the clause, it's a new requirement and ships in `3.1.x` only. (This is the IETF errata vs. bis test.)
+
+**Experimental surfaces** (governance, TMP, anything `x-status: experimental`) — additive changes are always patch-eligible without notice. Breaking changes follow the 6-week notice rule in `docs/reference/experimental-status.mdx` and therefore ship in the next minor, not a patch.
+
+**Conformance harness** (`comply_test_controller`, storyboards, `runner-output.json`) — additive scenarios, additive `comply_test_controller` enum values, new universal storyboards, and additive `runner-output.json` step kinds are patch-eligible. Renaming or repurposing existing step kinds is not.
+
+**Non-normative docs and release tooling** — always patch-eligible. Includes typo fixes, link corrections, example updates, runbook changes.
+
+**Normative docs** (security guidance, idempotency rules, error semantics, signing/transport behavior, `.well-known` files like `adagents.json`/`brand.json` schemas) — follow the stable-schemas rule above. "It's just docs" doesn't apply when the docs change required behavior.
+
+**Never patch-eligible** (per `docs/reference/experimental-status.mdx`):
+- Transport-layer changes (MCP, A2A, REST envelope semantics)
+- Auth profile changes (RFC 9728, OAuth scopes)
+- Signing profile changes (RFC 9421 covered components, JWS algorithms)
+
+These are version-level concerns. Security fixes ship as out-of-band advisories or in the next minor.
+
+If unsure, default to `--empty` and discuss whether the change belongs on `3.0.x` at all. Many fixes are stable-only and ship in `3.1.x` only.
+
+#### Pre mode (beta releases)
+
+`.changeset/pre.json` puts main in **pre mode** — every Version Packages cut produces `3.1.0-beta.N` instead of `3.1.0`. This is a deliberate safety net: if a `minor` changeset slips into `main` accidentally, it ships as a beta drop, not as 3.1.0 stable.
+
+To exit pre mode and cut 3.1.0 stable:
+
+```bash
+npx changeset pre exit   # deletes .changeset/pre.json
+git add -A && git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
+# open PR, land it
+```
+
+Next Version Packages cut after the exit PR merges produces `3.1.0` stable.
+
+#### Known friction (until #3417 lands)
+
+GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. This affects three places in the release pipeline:
+
+1. **Version Packages PR** required CI doesn't auto-fire — push from a human identity to trigger
+2. **`release-docs.yml`** doesn't fire on `release: published` — manually `workflow_dispatch` after each tag
+3. **Auto-snapshot PR** required CI doesn't auto-fire — admin-merge
+
+Switching `release.yml` to a GitHub App token closes all three. Tracked in #3417.
+
+#### Runbooks
+
+- `.agents/shortcuts/cut-patch.md` — cutting a `3.0.X` patch
+- `.agents/shortcuts/cut-beta.md` — cutting a `3.1.0-beta.N` and exiting pre mode for 3.1.0 stable
+- `.agents/shortcuts/cut-major.md` — cutting a major (4.0 when its time comes)
 
 ### Addie Code Version
 When making significant changes to Addie's core logic, bump `CODE_VERSION` in `server/src/addie/config-version.ts`.

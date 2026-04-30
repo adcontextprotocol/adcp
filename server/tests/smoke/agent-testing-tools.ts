@@ -2,7 +2,7 @@
  * Smoke test: evaluate_agent_quality and compare_media_kit tools
  *
  * Tests the tool handlers directly by importing them.
- * The tools call comply() from @adcp/client which hits the training agent over HTTP,
+ * The tools call comply() from @adcp/sdk which hits the training agent over HTTP,
  * so the local server must be running.
  *
  * Requires: local server running on localhost:55020

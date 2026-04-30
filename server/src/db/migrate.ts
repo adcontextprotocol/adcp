@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import type { PoolClient } from "pg";
 import { getPool, initializeDatabase } from "./client.js";
 import { DatabaseConfig } from "../config.js";
 
@@ -151,6 +152,18 @@ async function applyMigration(migration: Migration): Promise<void> {
 }
 
 /**
+ * Stable session-scoped pg advisory lock key. Any concurrent caller of
+ * runMigrations() blocks on this key until the holder releases — prevents
+ * two processes (release_command + a stray app boot, two devs locally,
+ * etc.) from racing on schema_migrations or applying the same migration
+ * twice.
+ *
+ * 0x6D696772 = ASCII "migr". Fits in int32 so it routes to the
+ * pg_advisory_lock(bigint) overload without ambiguity.
+ */
+const MIGRATION_LOCK_KEY = 0x6d696772;
+
+/**
  * Run all pending migrations
  */
 export async function runMigrations(config?: DatabaseConfig): Promise<void> {
@@ -159,6 +172,55 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
     initializeDatabase(config);
   }
 
+  const pool = getPool();
+  const lockClient = await pool.connect();
+  try {
+    await acquireMigrationLock(lockClient);
+    await runMigrationsLocked();
+  } finally {
+    // Don't let unlock failures shadow a real migration error. Session-scoped
+    // locks are released automatically by pg when the connection closes.
+    try {
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+    } catch (err) {
+      console.warn("Failed to release migration advisory lock:", err);
+    }
+    lockClient.release();
+  }
+}
+
+/**
+ * Acquire the migration advisory lock, bounded by a 5-minute statement_timeout
+ * so a wedged prior session doesn't hang the deploy until pg keepalive reaps it
+ * (default ≈2 hours). The timeout only caps how long we *wait* for the lock —
+ * once acquired, we clear the timeout so the migration itself can run as long
+ * as it needs.
+ *
+ * pg error code 57014 = query_canceled (statement_timeout fired).
+ */
+const ACQUIRE_LOCK_TIMEOUT = "5min";
+
+async function acquireMigrationLock(client: PoolClient): Promise<void> {
+  await client.query(`SET statement_timeout = '${ACQUIRE_LOCK_TIMEOUT}'`);
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+  } catch (err) {
+    if ((err as { code?: string })?.code === "57014") {
+      throw new Error(
+        `Could not acquire migration advisory lock (key=${MIGRATION_LOCK_KEY}) within ${ACQUIRE_LOCK_TIMEOUT}. ` +
+        `A prior runMigrations() session is likely wedged. Find the holder:\n` +
+        `  SELECT pid, state, query_start, query FROM pg_stat_activity\n` +
+        `  WHERE pid IN (SELECT pid FROM pg_locks WHERE locktype='advisory' AND objid=${MIGRATION_LOCK_KEY});\n` +
+        `Then terminate it: SELECT pg_terminate_backend(<pid>);`
+      );
+    }
+    throw err;
+  } finally {
+    await client.query("SET statement_timeout = 0");
+  }
+}
+
+async function runMigrationsLocked(): Promise<void> {
   // Create migrations table
   await createMigrationsTable();
 

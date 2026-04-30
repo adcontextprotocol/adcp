@@ -2,7 +2,7 @@ name: Training Agent Storyboards
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
@@ -10,7 +10,7 @@ on:
       - 'package-lock.json'
       - 'static/compliance/source/**'
   push:
-    branches: [main]
+    branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/tests/manual/run-storyboards.ts'
@@ -103,9 +103,11 @@ jobs:
         run: |
           SRC="static/compliance/source"
           # 5.13 moved the cache dir from `latest` to the AdCP version
-          # string (e.g. `3.0.0`). Resolve whichever subdir exists so the
-          # overlay step doesn't have to bump with every SDK release.
-          CACHE_ROOT="node_modules/@adcp/client/compliance/cache"
+          # string (e.g. `3.0.0`). 5.23.0 renamed the package
+          # `@adcp/client` -> `@adcp/sdk` and the compliance bundle moved
+          # with it. Resolve whichever subdir exists so the overlay step
+          # doesn't have to bump with every SDK release.
+          CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
           DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
           if [ -z "$DST" ] || [ ! -d "$DST" ]; then
             echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
@@ -148,7 +150,7 @@ jobs:
 
       - name: Upload storyboards log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: storyboards-log-${{ matrix.mode }}
           path: /tmp/storyboards.log
@@ -202,7 +204,7 @@ jobs:
 
       - name: Persist matrix results for summary job
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: storyboard-results-${{ matrix.mode }}
           path: /tmp/storyboard-results/results.txt
@@ -221,7 +223,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download both matrix results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: storyboard-results-*
           path: /tmp/storyboard-results

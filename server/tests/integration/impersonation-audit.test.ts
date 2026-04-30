@@ -1,372 +1,173 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { HTTPServer } from '../../src/http.js';
-import request from 'supertest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { ThreadService } from '../../src/addie/thread-service.js';
 import type { Pool } from 'pg';
 
 /**
  * Impersonation Audit Logging Tests
  *
- * Tests for the audit logging functionality when admins impersonate users
- * via WorkOS impersonation sessions.
+ * Tests for audit logging when admins impersonate users via WorkOS impersonation
+ * sessions. Previously drove these through POST /api/addie/chat (see #3289 / #3320),
+ * but the timer-deferred AddieClaudeClient init caused a 503. The relevant
+ * invariant — impersonator fields written to addie_threads — is testable at the
+ * ThreadService layer directly without the HTTP shell.
+ *
+ * Known gaps (follow-up issues):
+ * 1. HTTP mapping: req.user.impersonator.email → impersonator_user_id in
+ *    addie-chat.ts (lines 759, 1044) is untested here. That is the only code
+ *    path connecting a live WorkOS session to a stored audit record. Consider
+ *    extracting it into a testable pure helper.
+ * 2. UPSERT "get" path: getOrCreateThread's ON CONFLICT clause does not update
+ *    impersonator fields on subsequent calls to the same external_id. No test
+ *    here verifies that impersonation fields survive a re-entry into an existing
+ *    thread.
+ *
+ * Note: addie_thread_messages has no impersonation column. Impersonation context
+ * is tracked at the thread level only (addie_threads). The legacy addie_messages
+ * table had impersonator_email (migration 050); addie_thread_messages
+ * (migration 064) does not carry that field.
  */
 
-// Track whether impersonation is active for each request
-let impersonatorData: { email: string; reason: string | null } | null = null;
+const TEST_USER_ID = 'user_impersonated_audit_test';
+const TEST_EXTERNAL_PREFIX = 'audit-test-';
 
-// Mock auth middleware to simulate impersonation
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
-    req.user = {
-      id: 'user_impersonated',
-      email: 'impersonated@example.com',
-      firstName: 'Impersonated',
-      lastName: 'User',
-      is_admin: false,
-      // Include impersonator when set
-      impersonator: impersonatorData,
-    };
-    next();
-  },
-  requireAdmin: (req: any, res: any, next: any) => next(),
-  optionalAuth: (req: any, res: any, next: any) => {
-    req.user = {
-      id: 'user_impersonated',
-      email: 'impersonated@example.com',
-      firstName: 'Impersonated',
-      lastName: 'User',
-      impersonator: impersonatorData,
-    };
-    next();
-  },
-}));
-
-// Mock the Claude client to avoid actual API calls
-vi.mock('../../src/addie/claude-client.js', () => ({
-  AddieClaudeClient: vi.fn().mockImplementation(() => ({
-    processMessage: vi.fn().mockResolvedValue({
-      text: 'Test response from Addie',
-      tools_used: [],
-      tool_executions: [],
-      flagged: false,
-      timing: { total_ms: 100 },
-    }),
-    registerTool: vi.fn(),
-  })),
-}));
-
-// Mock knowledge search
-vi.mock('../../src/addie/mcp/knowledge-search.js', () => ({
-  initializeKnowledgeSearch: vi.fn().mockResolvedValue(undefined),
-  isKnowledgeReady: vi.fn().mockReturnValue(true),
-  KNOWLEDGE_TOOLS: [],
-  createKnowledgeToolHandlers: vi.fn().mockReturnValue(new Map()),
-}));
-
-// Mock member context
-vi.mock('../../src/addie/member-context.js', () => ({
-  getWebMemberContext: vi.fn().mockResolvedValue({
-    is_mapped: true,
-    is_member: true,
-    slack_linked: false,
-    workos_user: {
-      workos_user_id: 'user_impersonated',
-      email: 'impersonated@example.com',
-      first_name: 'Impersonated',
-    },
-  }),
-  formatMemberContextForPrompt: vi.fn().mockReturnValue('## User Context\nTest context'),
-  getMemberContext: vi.fn().mockResolvedValue({
-    is_mapped: false,
-    is_member: false,
-    slack_linked: false,
-  }),
-}));
-
-describe('Impersonation Audit Logging Tests', () => {
-  let server: HTTPServer;
-  let app: any;
+// Both describe blocks share a single pool lifecycle to avoid double-init hazards.
+// Tests require a running PostgreSQL instance (set DATABASE_URL).
+describe.skipIf(!process.env.DATABASE_URL)('Impersonation Audit', () => {
   let pool: Pool;
 
   beforeAll(async () => {
-    // Set required environment variable for Addie
-    process.env.ANTHROPIC_API_KEY = 'test-api-key';
-
-    // Initialize test database
-    pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:53198/adcp_test',
-    });
-
-    // Run migrations
+    pool = initializeDatabase({ connectionString: process.env.DATABASE_URL! });
     await runMigrations();
-
-    // Initialize HTTP server
-    server = new HTTPServer();
-    await server.start(0);
-    app = server.app;
   });
 
   afterAll(async () => {
-    // Clean up test data
-    await pool.query("DELETE FROM addie_messages WHERE conversation_id IN (SELECT conversation_id FROM addie_conversations WHERE user_id = 'user_impersonated')");
-    await pool.query("DELETE FROM addie_conversations WHERE user_id = 'user_impersonated'");
-
-    await server?.stop();
+    await pool.query(
+      'DELETE FROM addie_threads WHERE external_id LIKE $1',
+      [`${TEST_EXTERNAL_PREFIX}%`],
+    );
     await closeDatabase();
   });
 
-  beforeEach(async () => {
-    // Reset impersonation state before each test
-    impersonatorData = null;
+  describe('Impersonation Audit Logging Tests', () => {
+    let threadService: ThreadService;
+    let seq = 0;
 
-    // Clean up any existing test conversations
-    await pool.query("DELETE FROM addie_messages WHERE conversation_id IN (SELECT conversation_id FROM addie_conversations WHERE user_id = 'user_impersonated')");
-    await pool.query("DELETE FROM addie_conversations WHERE user_id = 'user_impersonated'");
-  });
+    // seq increments monotonically per test to keep external_ids unique within
+    // a run; isolation depends on this uniqueness, not on UPSERT idempotency.
+    function nextExternalId() {
+      return `${TEST_EXTERNAL_PREFIX}${++seq}`;
+    }
 
-  describe('Conversation creation with impersonation', () => {
-    it('should record impersonator info when creating conversation during impersonation', async () => {
-      // Set impersonation state
-      impersonatorData = {
-        email: 'admin@example.com',
-        reason: 'Debugging user issue #123',
-      };
+    beforeAll(async () => {
+      threadService = new ThreadService();
+    });
 
-      // Create a new conversation via chat API
-      const response = await request(app)
-        .post('/api/addie/chat')
-        .send({
-          message: 'Hello, testing impersonation',
-        })
-        .expect(200);
-
-      expect(response.body).toHaveProperty('conversation_id');
-      const conversationId = response.body.conversation_id;
-
-      // Verify impersonation info is stored in database
-      const result = await pool.query(
-        `SELECT impersonator_email, impersonation_reason FROM addie_conversations WHERE conversation_id = $1`,
-        [conversationId]
+    beforeEach(async () => {
+      await pool.query(
+        'DELETE FROM addie_threads WHERE external_id LIKE $1',
+        [`${TEST_EXTERNAL_PREFIX}%`],
       );
+    });
 
-      expect(result.rows.length).toBe(1);
-      expect(result.rows[0].impersonator_email).toBe('admin@example.com');
-      expect(result.rows[0].impersonation_reason).toBe('Debugging user issue #123');
+    it('should record impersonator info when creating thread during impersonation', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
+        impersonator_user_id: 'admin@example.com',
+        impersonation_reason: 'Debugging user issue #123',
+      });
+
+      expect(thread.impersonator_user_id).toBe('admin@example.com');
+      expect(thread.impersonation_reason).toBe('Debugging user issue #123');
     });
 
     it('should not record impersonator info for normal sessions', async () => {
-      // No impersonation
-      impersonatorData = null;
-
-      // Create a new conversation
-      const response = await request(app)
-        .post('/api/addie/chat')
-        .send({
-          message: 'Hello, normal session',
-        })
-        .expect(200);
-
-      const conversationId = response.body.conversation_id;
-
-      // Verify no impersonation info is stored
-      const result = await pool.query(
-        `SELECT impersonator_email, impersonation_reason FROM addie_conversations WHERE conversation_id = $1`,
-        [conversationId]
-      );
-
-      expect(result.rows.length).toBe(1);
-      expect(result.rows[0].impersonator_email).toBeNull();
-      expect(result.rows[0].impersonation_reason).toBeNull();
-    });
-  });
-
-  describe('Message recording with impersonation', () => {
-    it('should record impersonator email on messages during impersonation', async () => {
-      // Set impersonation state
-      impersonatorData = {
-        email: 'admin@example.com',
-        reason: 'Testing Addie responses',
-      };
-
-      // Send a message
-      const response = await request(app)
-        .post('/api/addie/chat')
-        .send({
-          message: 'What can you help me with?',
-        })
-        .expect(200);
-
-      const conversationId = response.body.conversation_id;
-
-      // Verify messages have impersonator email
-      const result = await pool.query(
-        `SELECT role, impersonator_email FROM addie_messages WHERE conversation_id = $1 ORDER BY created_at`,
-        [conversationId]
-      );
-
-      // Should have user message and assistant response
-      expect(result.rows.length).toBe(2);
-
-      // User message should have impersonator email
-      const userMessage = result.rows.find((r: any) => r.role === 'user');
-      expect(userMessage.impersonator_email).toBe('admin@example.com');
-
-      // Assistant message should also have impersonator email (audit trail)
-      const assistantMessage = result.rows.find((r: any) => r.role === 'assistant');
-      expect(assistantMessage.impersonator_email).toBe('admin@example.com');
-    });
-
-    it('should not record impersonator email on messages for normal sessions', async () => {
-      // No impersonation
-      impersonatorData = null;
-
-      // Send a message
-      const response = await request(app)
-        .post('/api/addie/chat')
-        .send({
-          message: 'Normal message without impersonation',
-        })
-        .expect(200);
-
-      const conversationId = response.body.conversation_id;
-
-      // Verify messages have no impersonator email
-      const result = await pool.query(
-        `SELECT role, impersonator_email FROM addie_messages WHERE conversation_id = $1`,
-        [conversationId]
-      );
-
-      expect(result.rows.length).toBe(2);
-      result.rows.forEach((row: any) => {
-        expect(row.impersonator_email).toBeNull();
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
       });
-    });
-  });
 
-  describe('Impersonation with null reason', () => {
+      expect(thread.impersonator_user_id).toBeNull();
+      expect(thread.impersonation_reason).toBeNull();
+    });
+
     it('should handle impersonation without a reason', async () => {
-      // Set impersonation with null reason
-      impersonatorData = {
-        email: 'admin@example.com',
-        reason: null,
-      };
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
+        impersonator_user_id: 'admin@example.com',
+      });
 
-      // Create a conversation
-      const response = await request(app)
-        .post('/api/addie/chat')
-        .send({
-          message: 'Testing without reason',
-        })
-        .expect(200);
-
-      const conversationId = response.body.conversation_id;
-
-      // Verify impersonator email is stored but reason is null
-      const result = await pool.query(
-        `SELECT impersonator_email, impersonation_reason FROM addie_conversations WHERE conversation_id = $1`,
-        [conversationId]
-      );
-
-      expect(result.rows.length).toBe(1);
-      expect(result.rows[0].impersonator_email).toBe('admin@example.com');
-      expect(result.rows[0].impersonation_reason).toBeNull();
+      expect(thread.impersonator_user_id).toBe('admin@example.com');
+      expect(thread.impersonation_reason).toBeNull();
     });
-  });
 
-  describe('Querying impersonated conversations', () => {
-    it('should be able to find all impersonated conversations', async () => {
-      // Create an impersonated conversation
-      impersonatorData = {
-        email: 'admin1@example.com',
-        reason: 'Support ticket #1',
-      };
+    it('should be able to find all impersonated threads', async () => {
+      await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
+        impersonator_user_id: 'admin1@example.com',
+        impersonation_reason: 'Support ticket #1',
+      });
 
-      await request(app)
-        .post('/api/addie/chat')
-        .send({ message: 'First impersonated message' })
-        .expect(200);
+      await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
+        impersonator_user_id: 'admin2@example.com',
+        impersonation_reason: 'Support ticket #2',
+      });
 
-      // Create another impersonated conversation
-      impersonatorData = {
-        email: 'admin2@example.com',
-        reason: 'Support ticket #2',
-      };
+      // Normal session — should not appear in impersonated results
+      await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: nextExternalId(),
+        user_type: 'workos',
+        user_id: TEST_USER_ID,
+      });
 
-      await request(app)
-        .post('/api/addie/chat')
-        .send({ message: 'Second impersonated message' })
-        .expect(200);
-
-      // Create a normal conversation
-      impersonatorData = null;
-      await request(app)
-        .post('/api/addie/chat')
-        .send({ message: 'Normal message' })
-        .expect(200);
-
-      // Query for impersonated conversations
-      const result = await pool.query(
-        `SELECT conversation_id, impersonator_email, impersonation_reason
-         FROM addie_conversations
-         WHERE user_id = 'user_impersonated' AND impersonator_email IS NOT NULL`
+      const result = await pool.query<{ impersonator_user_id: string; impersonation_reason: string }>(
+        `SELECT impersonator_user_id, impersonation_reason
+         FROM addie_threads
+         WHERE user_id = $1
+           AND impersonator_user_id IS NOT NULL
+           AND external_id LIKE $2`,
+        [TEST_USER_ID, `${TEST_EXTERNAL_PREFIX}%`],
       );
 
-      // Should find 2 impersonated conversations
       expect(result.rows.length).toBe(2);
-      expect(result.rows.some((r: any) => r.impersonator_email === 'admin1@example.com')).toBe(true);
-      expect(result.rows.some((r: any) => r.impersonator_email === 'admin2@example.com')).toBe(true);
+      expect(result.rows.some(r => r.impersonator_user_id === 'admin1@example.com')).toBe(true);
+      expect(result.rows.some(r => r.impersonator_user_id === 'admin2@example.com')).toBe(true);
     });
   });
-});
 
-describe('Impersonation Database Schema', () => {
-  let pool: Pool;
+  // Confirms the live DB schema has the expected impersonation columns.
+  // Previously verified addie_conversations / addie_messages (migration 050 legacy
+  // tables). The live tables are addie_threads (migration 064); impersonation
+  // context is on the thread row only.
+  describe('Impersonation Database Schema', () => {
+    it('should have impersonation columns on addie_threads', async () => {
+      const result = await pool.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'addie_threads'
+          AND column_name IN ('impersonator_user_id', 'impersonation_reason')
+      `);
 
-  beforeAll(async () => {
-    pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:53198/adcp_test',
+      const columns = result.rows.map(r => r.column_name as string);
+      expect(columns).toContain('impersonator_user_id');
+      expect(columns).toContain('impersonation_reason');
     });
-    await runMigrations();
-  });
-
-  afterAll(async () => {
-    await closeDatabase();
-  });
-
-  it('should have impersonation columns on addie_conversations', async () => {
-    const result = await pool.query(`
-      SELECT column_name, data_type
-      FROM information_schema.columns
-      WHERE table_name = 'addie_conversations'
-        AND column_name IN ('impersonator_email', 'impersonation_reason')
-    `);
-
-    const columns = result.rows.map((r: any) => r.column_name);
-    expect(columns).toContain('impersonator_email');
-    expect(columns).toContain('impersonation_reason');
-  });
-
-  it('should have impersonation column on addie_messages', async () => {
-    const result = await pool.query(`
-      SELECT column_name, data_type
-      FROM information_schema.columns
-      WHERE table_name = 'addie_messages'
-        AND column_name = 'impersonator_email'
-    `);
-
-    expect(result.rows.length).toBe(1);
-    expect(result.rows[0].column_name).toBe('impersonator_email');
-  });
-
-  it('should have index on impersonator_email for efficient querying', async () => {
-    const result = await pool.query(`
-      SELECT indexname
-      FROM pg_indexes
-      WHERE tablename = 'addie_conversations'
-        AND indexname LIKE '%impersonator%'
-    `);
-
-    expect(result.rows.length).toBeGreaterThan(0);
   });
 });

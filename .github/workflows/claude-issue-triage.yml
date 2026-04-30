@@ -1,11 +1,17 @@
 name: Claude Issue Triage
 
 # Fires the Claude Code triage routine's /fire endpoint when a new issue
-# opens OR when a repo member invokes `/triage` via comment (dispatched by
+# opens, when a comment lands on an issue OR PR, or when a repo member
+# invokes `/triage` via comment (dispatched by
 # `.github/workflows/slash-command-dispatch.yml`).
 #
-# The issue body is fetched fresh and passed as *data* (fenced, size-capped) —
-# the routine's prompt treats anything inside the fence as untrusted content.
+# Both issue comments and PR comments are routed to the same routine; the
+# payload's `is_pr` flag and `pr` block tell the routine which context it's
+# in so it can pick the right response (issue triage vs PR-feedback fix).
+#
+# The issue/PR body is fetched fresh and passed as *data* (fenced, size-
+# capped) — the routine's prompt treats anything inside the fence as
+# untrusted content.
 #
 # Required repo secrets:
 #   CLAUDE_ROUTINE_TRIAGE_URL    — full /fire URL including routine ID
@@ -40,8 +46,9 @@ jobs:
     #   - issue_comment.created     → skip bots, skip self-loop (routine's
     #                                 own comments contain "Triaged by
     #                                 Claude Code"), skip /triage (handled
-    #                                 by slash-command-dispatch path), skip
-    #                                 PR comments (auto-fix handles those)
+    #                                 by slash-command-dispatch path).
+    #                                 Both issue and PR comments fire — the
+    #                                 routine receives `is_pr` to branch on.
     #   - repository_dispatch       → always allow (slash-dispatch already
     #                                 gated by member-association check)
     if: >-
@@ -58,7 +65,7 @@ jobs:
         github.event.sender.type != 'Bot' &&
         !startsWith(github.event.comment.body, '/triage') &&
         !contains(github.event.comment.body, 'Triaged by Claude Code') &&
-        github.event.issue.pull_request == null
+        !contains(github.event.comment.body, 'Fixed by Claude Code')
       ) ||
       github.event_name == 'repository_dispatch'
     defaults:
@@ -121,8 +128,27 @@ jobs:
           assoc=$(echo   "$issue" | jq -r '.author_association // "NONE"')
           labels=$(echo  "$issue" | jq -c '[.labels[].name]')
           html_url=$(echo "$issue" | jq -r '.html_url')
+          # GitHub's issues API populates `pull_request` only when the issue
+          # is actually a PR. When present, fetch PR-specific fields so the
+          # routine can branch on context (head/base ref, draft status, etc.).
+          is_pr=$(echo   "$issue" | jq -r 'if .pull_request then "true" else "false" end')
 
           body_safe=$(printf '%s' "$body" | tr -d '\000' | head -c 8192)
+
+          pr_block=""
+          if [ "$is_pr" = "true" ]; then
+            pr=$(gh api "repos/$REPO/pulls/$ISSUE_NUMBER")
+            pr_head=$(echo "$pr" | jq -r '.head.ref')
+            pr_base=$(echo "$pr" | jq -r '.base.ref')
+            pr_draft=$(echo "$pr" | jq -r '.draft')
+            pr_state=$(echo "$pr" | jq -r '.state')
+            pr_block=$(jq -n \
+              --arg head "$pr_head" \
+              --arg base "$pr_base" \
+              --arg draft "$pr_draft" \
+              --arg state "$pr_state" \
+              '{head_ref: $head, base_ref: $base, draft: ($draft == "true"), state: $state}')
+          fi
 
           # For comment-driven runs, fetch the specific comment so the routine
           # can act on it. The full issue body is also included so the routine
@@ -158,13 +184,36 @@ jobs:
             --arg comment_body "$comment_body_safe" \
             --arg comment_author "$comment_author" \
             --arg comment_assoc "$comment_assoc" \
+            --arg is_pr "$is_pr" \
+            --arg pr_block "$pr_block" \
             '{text: (
               "Event: " + $kind + "." + $action + "\n" +
               "Repo: " + $repo + "\n" +
-              "Issue: #" + $num + " \"" + $title + "\"\n" +
+              (if $is_pr == "true" then "PR" else "Issue" end) +
+                ": #" + $num + " \"" + $title + "\"\n" +
               "URL: " + $url + "\n" +
               "Author: @" + $author + " (association: " + $assoc + ")\n" +
               "Labels: " + ($labels | join(", ")) + "\n" +
+              (if $is_pr == "true" then
+                "is_pr: true\n" +
+                "pr: " + $pr_block + "\n" +
+                "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. If the comment requests a fix, apply it as a follow-up commit on the PR head branch — do not open a new PR. If the comment asks a question, answer it as a reply comment. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
+              else
+                "is_pr: false\n" +
+                "LABEL POLICY: When your triage status is `ready-for-human` (a real scope/policy/protocol decision is needed before code can land), apply the `needs-wg-review` label via `gh issue edit <num> --add-label needs-wg-review` AND apply the relevant domain label so the working group queue can route. Domain label vocabulary (pick one or more that match the issue's subject area):\n" +
+                "  - media-buy           — campaign / order / package / pricing / makegood / measurement\n" +
+                "  - signals             — audience / signal-marketplace / activation / data-clean-room\n" +
+                "  - creative            — assets / format / build_creative / preview / VAST / DAAST\n" +
+                "  - brand               — brand.json / brand registry / hierarchy / property catalog\n" +
+                "  - governance          — sync_governance / check_governance / IO / approval flows / audit\n" +
+                "  - sponsored-intelligence — TMP / SI sessions / context-match / identity-match\n" +
+                "  - schema              — JSON Schema source-of-truth / codegen / validation hygiene\n" +
+                "  - compliance-suite    — storyboards / conformance / certification testing\n" +
+                "  - addie               — Addie behavior / prompts / KB / chat surface / training\n" +
+                "  - rfc                 — protocol change proposal that needs WG vote\n" +
+                "  - admin-tool / website / member-tools — non-protocol surfaces\n" +
+                "Apply BOTH `needs-wg-review` AND at least one domain label on `ready-for-human`. Skip the WG labels if the issue is pure engineering (CI infra, deps, internal tooling) or already a confirmed bug awaiting only implementation. The label only fires the WG signal — it doesn't replace the triage comment.\n"
+              end) +
               (if $nudge == "" then "" else $nudge + "\n" end) +
               (if $comment_body == "" then "" else
                 "\nNew comment by @" + $comment_author +

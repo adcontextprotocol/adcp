@@ -1168,32 +1168,11 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // =========================================================================
-  // RULES MANAGEMENT API (mounted at /api/admin/addie/rules)
+  // SYSTEM PROMPT API
   // =========================================================================
 
-  // GET /api/admin/addie/rules - List all rules
-  apiRouter.get("/rules", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { active_only } = req.query;
-      const rules = active_only === "true"
-        ? await addieDb.getActiveRules()
-        : await addieDb.getAllRules();
-
-      res.json({
-        rules,
-        total: rules.length,
-      });
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching rules");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch rules",
-      });
-    }
-  });
-
-  // GET /api/admin/addie/rules/system-prompt - Get the built system prompt
-  apiRouter.get("/rules/system-prompt", requireAuth, requireAdmin, (_req, res) => {
+  // GET /api/admin/addie/system-prompt - Get the compiled system prompt (from MD files)
+  apiRouter.get("/system-prompt", requireAuth, requireAdmin, (_req, res) => {
     try {
       const systemPrompt = loadRules();
       res.json({ system_prompt: systemPrompt });
@@ -1202,29 +1181,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to build system prompt",
-      });
-    }
-  });
-
-  // GET /api/admin/addie/rules/:id - Get a specific rule
-  apiRouter.get("/rules/:id", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const numericId = parseNumericId(req.params.id);
-      if (!numericId) {
-        return res.status(400).json({ error: "Invalid rule ID" });
-      }
-      const rule = await addieDb.getRuleById(numericId);
-
-      if (!rule) {
-        return res.status(404).json({ error: "Rule not found" });
-      }
-
-      res.json(rule);
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching rule");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch rule",
       });
     }
   });
@@ -1573,6 +1529,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
         router_decision: routerDecision,
+        message_source: 'unknown',
       });
 
       logger.info({

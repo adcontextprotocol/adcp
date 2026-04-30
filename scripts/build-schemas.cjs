@@ -214,6 +214,107 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
   }
 }
 
+// ── Vendor metric semantic uniqueness lint ────────────────────────────────
+//
+// The reporting-capabilities.json `vendor_metrics` array and the
+// delivery-metrics.json `vendor_metric_values` array both carry a semantic
+// uniqueness key `(vendor.domain, vendor.brand_id, metric_id)`. JSON Schema
+// `uniqueItems` was deliberately omitted because BrandRef carries optional
+// fields whose absence/presence defeats deep-equal (e.g., `{domain:"x"}` and
+// `{domain:"x",brand_id:"y"}` are structurally different objects even if they
+// describe the same brand). This lint enforces the MUST constraint by
+// normalizing the semantic tuple and checking for duplicates.
+//
+// Key normalization: use `|`-delimited string `domain|brand_id|metric_id`.
+// The `|` separator is safe because domain (`[a-z0-9.-]`), brand_id
+// (`[a-z0-9_]`), and metric_id (`[a-z][a-z0-9_]*`) cannot contain `|`. Absent
+// brand_id normalizes to "" (empty string) — the empty string is distinct from
+// any valid brand_id so `{domain:"x"}` and `{domain:"x",brand_id:""}` cannot
+// collide with each other. This normalization is documented so the storyboard
+// runner's future `field_unique_by_keys` implementation must match it.
+//
+// Scan surfaces:
+//   1. `examples` arrays inside JSON schema files (at any depth).
+//   2. TypeScript training-agent fixtures (`server/src/training-agent/**/*.ts`)
+//      are explicitly called out in issue #3502 but currently contain no vendor
+//      metric data. TS scanning would require a parser — deferred until a
+//      fixture adds vendor metrics, at which point build failures will surface
+//      the gap. See #3502 item 1 for the tracking comment.
+
+/**
+ * Recursively collect all `examples` values that contain vendor metric arrays.
+ * Returns an array of { schemaPath, arrayField, tuples[] } objects.
+ */
+function collectVendorMetricExamples(obj, schemaPath, out = []) {
+  if (!obj || typeof obj !== 'object') return out;
+  if (Array.isArray(obj)) {
+    for (const item of obj) collectVendorMetricExamples(item, schemaPath, out);
+    return out;
+  }
+  // If this object has vendor_metric_values or vendor_metrics, scan them.
+  for (const field of ['vendor_metric_values', 'vendor_metrics']) {
+    const arr = obj[field];
+    if (!Array.isArray(arr) || arr.length < 2) continue;
+    const tuples = [];
+    for (const entry of arr) {
+      if (!entry || typeof entry !== 'object' || !entry.vendor) continue;
+      const domain = typeof entry.vendor.domain === 'string' ? entry.vendor.domain : '';
+      const brandId = typeof entry.vendor.brand_id === 'string' ? entry.vendor.brand_id : '';
+      const metricId = typeof entry.metric_id === 'string' ? entry.metric_id : '';
+      tuples.push(`${domain}|${brandId}|${metricId}`);
+    }
+    if (tuples.length > 0) out.push({ schemaPath, arrayField: field, tuples });
+  }
+  // Recurse into all object values (handles nested examples inside `examples` arrays, etc.).
+  for (const val of Object.values(obj)) collectVendorMetricExamples(val, schemaPath, out);
+  return out;
+}
+
+function lintVendorMetricSemanticUniqueness(sourceDir) {
+  const violations = [];
+
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'extensions' || entry.name === 'bundled') continue;
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('.json')) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      // Collect from top-level `examples` array and from any nested examples.
+      const exampleValues = collectVendorMetricExamples(schema, path.relative(sourceDir, p));
+      for (const { schemaPath, arrayField, tuples } of exampleValues) {
+        const seen = new Set();
+        for (const tuple of tuples) {
+          if (seen.has(tuple)) {
+            violations.push({ schemaPath, arrayField, tuple });
+          }
+          seen.add(tuple);
+        }
+      }
+    }
+  }
+
+  walk(sourceDir);
+
+  if (violations.length > 0) {
+    const lines = violations.map(v =>
+      `  ${v.schemaPath} — ${v.arrayField}: duplicate tuple "${v.tuple}" (key: domain|brand_id|metric_id)`
+    );
+    throw new Error(
+      `Vendor metric uniqueness lint: ${violations.length} duplicate tuple(s) found in schema examples.\n\n` +
+      lines.join('\n') +
+      `\n\nFix: each (vendor.domain, vendor.brand_id, metric_id) tuple MUST appear at most once per array.\n` +
+      `See static/schemas/source/core/reporting-capabilities.json and delivery-metrics.json for the\n` +
+      `normative uniqueness constraint. Issue: adcontextprotocol/adcp#3502.`
+    );
+  }
+}
+
 /**
  * Compare two minor versions (e.g., "2.5" vs "2.6")
  * Returns: negative if a < b, 0 if equal, positive if a > b
@@ -470,6 +571,12 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       // Update baseUrl and metadata in registry
       if (entry.name === 'index.json') {
         const schema = JSON.parse(content);
+        // published_version: full semver of the bundle at this URL.
+        // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility;
+        // semantically the same as published_version on this meta-object.
+        // DISTINCT from the per-request/response wire `adcp_version` field defined
+        // in core/version-envelope.json, which uses release-precision.
+        schema.published_version = version;
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
@@ -488,7 +595,8 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
 function updateSourceRegistry(version) {
   const registryPath = path.join(SOURCE_DIR, 'index.json');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  registry.adcp_version = version;
+  registry.published_version = version;
+  registry.adcp_version = version; // legacy alias through 3.x; sunset at 4.0
   fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   console.log(`✏️  Updated source registry: ${registryPath}`);
 }
@@ -670,6 +778,125 @@ function hoistNestedDefsToRoot(schema) {
 }
 
 /**
+ * After resolveRefs inlines every $ref, the same pure-enum schema can appear
+ * at multiple paths in the bundled output. json-schema-to-typescript sees two
+ * structurally identical inline shapes and emits both as Foo and Foo1, making
+ * the generated type look like a versioned duplicate that doesn't exist.
+ *
+ * This function detects pure-enum schemas (type === 'string', has enum,
+ * ≤ 4 top-level keys — allows title, description alongside type+enum) that
+ * appear at 2+ distinct non-$defs locations, hoists each into root $defs, and
+ * replaces every occurrence with a $ref pointer. Single-occurrence enums are
+ * left inline — no change to those bundled schemas.
+ *
+ * Complex object schemas ($defs hoisting for objects) is intentionally out of
+ * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
+ */
+function hoistDuplicateInlineEnums(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  function isPureEnum(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+    return (
+      s.type === 'string' &&
+      Array.isArray(s.enum) &&
+      !Object.keys(s).some(k => ['properties', 'items', 'oneOf', 'anyOf', 'allOf', 'not', '$ref', 'patternProperties'].includes(k))
+    );
+  }
+
+  function fingerprint(s) {
+    // Preserve enum value order — order-different arrays are distinct schemas.
+    // Include title so two enums with same values but different titles are NOT
+    // collapsed into one $ref (would silently rename one of them).
+    return JSON.stringify({ type: s.type, enum: s.enum, title: s.title || null });
+  }
+
+  // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
+  // Check array elements directly (symmetry with Pass 2's array branch).
+  const seen = new Map(); // fingerprint -> { schema, count }
+
+  function track(s) {
+    const fp = fingerprint(s);
+    const entry = seen.get(fp);
+    if (entry) { entry.count++; } else { seen.set(fp, { schema: s, count: 1 }); }
+  }
+
+  function collect(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (isPureEnum(item)) track(item);
+        collect(item);
+      }
+      return;
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      if (isPureEnum(val)) track(val);
+      collect(val);
+    }
+  }
+
+  collect(schema);
+
+  // Build fingerprint → defName map for titled enums that appear 2+ times.
+  // Untitled enums are left inline — we can't derive a meaningful type name
+  // for them, and a generic "InlineEnumN" is worse than the status quo.
+  const hoistMap = new Map();
+  const usedNames = new Set(Object.keys(schema.$defs || {}));
+
+  for (const [fp, { schema: s, count }] of seen) {
+    if (count < 2 || !s.title) continue;
+    let name = s.title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+    name = name.charAt(0).toUpperCase() + name.slice(1);
+    if (!name) continue; // skip titles that sanitize to empty string
+    let safeName = name;
+    let idx = 2;
+    while (usedNames.has(safeName)) { safeName = name + idx++; }
+    usedNames.add(safeName);
+    hoistMap.set(fp, safeName);
+  }
+
+  if (hoistMap.size === 0) return schema;
+
+  const rootDefs = { ...(schema.$defs || {}) };
+  // Pre-populate $defs with all hoisted definitions before the replace pass.
+  for (const [fp, defName] of hoistMap) {
+    rootDefs[defName] = seen.get(fp).schema;
+  }
+
+  // Pass 2: replace duplicate inline occurrences with $ref pointers.
+  function replace(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (isPureEnum(node[i])) {
+          const fp = fingerprint(node[i]);
+          if (hoistMap.has(fp)) { node[i] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+        }
+        replace(node[i]);
+      }
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      const val = node[key];
+      if (isPureEnum(val)) {
+        const fp = fingerprint(val);
+        if (hoistMap.has(fp)) { node[key] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+      }
+      replace(val);
+    }
+  }
+
+  replace(schema);
+  schema.$defs = rootDefs;
+  return schema;
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -722,6 +949,11 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Hoist every nested `$defs` / `definitions` block to the root so
       // those pointers resolve. See #2648.
       hoistNestedDefsToRoot(dereferenced);
+
+      // Hoist pure-enum schemas that were inlined 2+ times to $defs and
+      // replace duplicates with $ref pointers. Eliminates the Foo / Foo1
+      // numbered-suffix codegen artifact. See #3145.
+      hoistDuplicateInlineEnums(dereferenced);
 
       // Update $id to indicate this is a bundled schema
       if (dereferenced.$id) {
@@ -843,6 +1075,14 @@ async function main() {
   // that's supposed to be mutating but forgets idempotency_key is a
   // latent spec bug that silently bypasses the storyboard-level lint.
   lintMutatingRequestsRequireIdempotencyKey(SOURCE_DIR);
+
+  // Lint vendor metric uniqueness: enforce the semantic uniqueness key
+  // (vendor.domain, vendor.brand_id, metric_id) documented in
+  // reporting-capabilities.json and delivery-metrics.json. JSON Schema
+  // uniqueItems was deliberately omitted because BrandRef's optional
+  // fields defeat deep-equal; this build-time check enforces the MUST
+  // constraint on example payloads embedded in schema files. Issue #3502.
+  lintVendorMetricSemanticUniqueness(SOURCE_DIR);
 
   // Update source registry version
   updateSourceRegistry(version);
@@ -988,7 +1228,11 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-main().catch(err => {
-  console.error('❌ Build failed:', err.message);
-  process.exit(1);
-});
+module.exports = { hoistDuplicateInlineEnums };
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ Build failed:', err.message);
+    process.exit(1);
+  });
+}

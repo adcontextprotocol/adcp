@@ -16,7 +16,7 @@ export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
 
 /**
  * Auth shape resolved from an agent_context for outbound compliance/test
- * requests. Matches the SDK's `TestOptions.auth` union in `@adcp/client/testing`.
+ * requests. Matches the SDK's `TestOptions.auth` union in `@adcp/sdk/testing`.
  * Resolvers return `ResolvedOwnerAuth | undefined`; `undefined` is not part
  * of the domain type so post-null-check call sites don't carry the
  * possibility forward.
@@ -122,6 +122,44 @@ export interface AgentComplianceStatus {
 
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
 const VALID_STORYBOARD_STATUSES = new Set<StoryboardStatus>(['passing', 'failing', 'partial', 'untested']);
+
+// Badge roles map to AdCP protocols (enums/adcp-protocol.json via adcp-taxonomy).
+// Re-exported here as BadgeRole to avoid circular imports.
+export type BadgeRole = 'media-buy' | 'creative' | 'signals' | 'governance' | 'brand' | 'sponsored-intelligence';
+export type BadgeStatus = 'active' | 'degraded' | 'revoked';
+
+export interface AgentVerificationBadge {
+  agent_url: string;
+  role: BadgeRole;
+  // AdCP release this badge was earned against (MAJOR.MINOR, e.g. '3.0',
+  // '3.1'). Part of the composite PK alongside agent_url and role — an
+  // agent can hold parallel badges per release. See migration 457.
+  adcp_version: string;
+  verified_at: Date;
+  // Full semver ('3.0.0') for support/audit. Informational; the load-bearing
+  // field for badge identity is adcp_version.
+  verified_protocol_version: string | null;
+  verified_specialisms: string[];
+  // Verification axes earned: ['spec'] (storyboards pass), ['spec', 'live']
+  // (also observed via canonical campaigns), etc. See VERIFICATION_MODES in
+  // services/badge-svg.ts. Stored as TEXT[] in agent_verification_badges.
+  verification_modes: string[];
+  verification_token: string | null;
+  token_expires_at: Date | null;
+  membership_org_id: string | null;
+  status: BadgeStatus;
+  revoked_at: Date | null;
+  revocation_reason: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Default AdCP version Stage 1 hardcodes everywhere an adcp_version is
+ * needed. Replaced by per-call version targeting in Stage 2 once the
+ * heartbeat fans out per supported AdCP release.
+ */
+export const DEFAULT_BADGE_ADCP_VERSION = '3.0';
 
 export interface StoryboardStatusEntry {
   storyboard_id: string;
@@ -442,6 +480,25 @@ export class ComplianceDatabase {
     return result.rows;
   }
 
+  async getLatestDeclaredSpecialisms(agentUrl: string): Promise<string[]> {
+    const result = await query(
+      `SELECT agent_profile_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    const profile = result.rows[0]?.agent_profile_json;
+    const list = profile?.specialisms;
+    if (list != null && !Array.isArray(list)) {
+      logger.debug({ agentUrl, specialismsType: typeof list }, 'agent_profile_json.specialisms is not an array');
+      return [];
+    }
+    if (!Array.isArray(list)) return [];
+    return list.filter((s: unknown): s is string => typeof s === 'string');
+  }
+
   // ----- Due-for-Check Query -----
 
   /**
@@ -600,7 +657,7 @@ export class ComplianceDatabase {
    * that owns the agent (via member_profiles.agents), not arbitrary orgs.
    *
    * Returns the full `oauth` shape when a refresh token is saved so the
-   * @adcp/client SDK can refresh on 401 instead of failing once the access
+   * @adcp/sdk SDK can refresh on 401 instead of failing once the access
    * token drifts near expiry. Without a refresh token, returns the raw
    * access token as a bearer so callers surface a clear 401 from the agent
    * rather than sending no Authorization header at all.
@@ -729,6 +786,175 @@ export class ComplianceDatabase {
       logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
+  }
+
+  // ----- Verification Badges -----
+
+  async upsertBadge(badge: {
+    agent_url: string;
+    role: BadgeRole;
+    adcp_version: string;
+    verified_specialisms: string[];
+    verification_modes?: string[];
+    verified_protocol_version?: string;
+    verification_token?: string;
+    token_expires_at?: Date;
+    membership_org_id?: string;
+  }): Promise<AgentVerificationBadge> {
+    const modes = badge.verification_modes ?? ['spec'];
+    const result = await query(
+      `INSERT INTO agent_verification_badges (
+        agent_url, role, adcp_version, verified_specialisms, verification_modes, verified_protocol_version,
+        verification_token, token_expires_at, membership_org_id,
+        status, verified_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW())
+      ON CONFLICT (agent_url, role, adcp_version) DO UPDATE SET
+        verified_specialisms = $4,
+        verification_modes = $5,
+        verified_protocol_version = COALESCE($6, agent_verification_badges.verified_protocol_version),
+        verification_token = COALESCE($7, agent_verification_badges.verification_token),
+        token_expires_at = COALESCE($8, agent_verification_badges.token_expires_at),
+        membership_org_id = COALESCE($9, agent_verification_badges.membership_org_id),
+        status = 'active',
+        verified_at = CASE WHEN agent_verification_badges.status = 'degraded' THEN NOW() ELSE agent_verification_badges.verified_at END,
+        revoked_at = NULL,
+        revocation_reason = NULL,
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        badge.agent_url,
+        badge.role,
+        badge.adcp_version,
+        badge.verified_specialisms,
+        modes,
+        badge.verified_protocol_version ?? null,
+        badge.verification_token ?? null,
+        badge.token_expires_at ?? null,
+        badge.membership_org_id ?? null,
+      ],
+    );
+    return result.rows[0] as AgentVerificationBadge;
+  }
+
+  async getBadgesForAgent(agentUrl: string): Promise<AgentVerificationBadge[]> {
+    // Numeric sort on adcp_version: split MAJOR.MINOR and compare each
+    // segment as int so '10.0' sorts above '3.0'. Text sort would
+    // serve a stale older badge once the spec hits double-digit
+    // major or minor numbers. CHECK constraint guarantees both
+    // segments are valid integers.
+    const result = await query(
+      `SELECT * FROM agent_verification_badges
+       WHERE agent_url = $1 AND status IN ('active', 'degraded')
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                role`,
+      [agentUrl],
+    );
+    return result.rows as AgentVerificationBadge[];
+  }
+
+  /**
+   * Returns the active badge for an agent+role at a specific AdCP version.
+   * Stage 2 will use this when the heartbeat fans out per version. Stage 1
+   * callers pass DEFAULT_BADGE_ADCP_VERSION.
+   */
+  async getActiveBadge(
+    agentUrl: string,
+    role: BadgeRole,
+    adcpVersion: string,
+  ): Promise<AgentVerificationBadge | null> {
+    const result = await query(
+      `SELECT * FROM agent_verification_badges
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+         AND status IN ('active', 'degraded')`,
+      [agentUrl, role, adcpVersion],
+    );
+    return (result.rows[0] as AgentVerificationBadge) ?? null;
+  }
+
+  /**
+   * Returns the highest-version active badge for an agent+role.
+   *
+   * Powers the legacy `/badge/{role}.svg` URL — embedded badges in the
+   * wild auto-upgrade to the most recent version the agent has earned
+   * without changing the URL. The version-specific URL
+   * `/badge/{role}/{version}.svg` (Stage 3) lets buyers pin a version.
+   */
+  async getHighestVersionActiveBadge(
+    agentUrl: string,
+    role: BadgeRole,
+  ): Promise<AgentVerificationBadge | null> {
+    // Numeric sort — see getBadgesForAgent comment.
+    const result = await query(
+      `SELECT * FROM agent_verification_badges
+       WHERE agent_url = $1 AND role = $2 AND status IN ('active', 'degraded')
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC
+       LIMIT 1`,
+      [agentUrl, role],
+    );
+    return (result.rows[0] as AgentVerificationBadge) ?? null;
+  }
+
+  async revokeBadge(
+    agentUrl: string,
+    role: BadgeRole,
+    adcpVersion: string,
+    reason: string,
+  ): Promise<void> {
+    await query(
+      `UPDATE agent_verification_badges
+       SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status IN ('active', 'degraded')`,
+      [agentUrl, role, adcpVersion, reason],
+    );
+  }
+
+  async degradeBadge(
+    agentUrl: string,
+    role: BadgeRole,
+    adcpVersion: string,
+  ): Promise<void> {
+    await query(
+      `UPDATE agent_verification_badges
+       SET status = 'degraded', updated_at = NOW()
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status = 'active'`,
+      [agentUrl, role, adcpVersion],
+    );
+  }
+
+  async bulkGetActiveBadges(agentUrls: string[]): Promise<Map<string, AgentVerificationBadge[]>> {
+    if (agentUrls.length === 0) return new Map();
+    // Numeric sort — see getBadgesForAgent comment.
+    const result = await query(
+      `SELECT * FROM agent_verification_badges
+       WHERE agent_url = ANY($1) AND status IN ('active', 'degraded')
+       ORDER BY agent_url,
+                split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                role`,
+      [agentUrls],
+    );
+    const map = new Map<string, AgentVerificationBadge[]>();
+    for (const row of result.rows) {
+      const badges = map.get(row.agent_url) || [];
+      badges.push(row as AgentVerificationBadge);
+      map.set(row.agent_url, badges);
+    }
+    return map;
+  }
+
+  async getVerifiedAgentsByRole(role: BadgeRole): Promise<AgentVerificationBadge[]> {
+    // Numeric sort — see getBadgesForAgent comment.
+    const result = await query(
+      `SELECT * FROM agent_verification_badges
+       WHERE role = $1 AND status IN ('active', 'degraded')
+       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
+                split_part(adcp_version, '.', 2)::int DESC,
+                verified_at DESC`,
+      [role],
+    );
+    return result.rows as AgentVerificationBadge[];
   }
 
   private computeStatus(overallRunStatus: OverallRunStatus): ComplianceStatus {

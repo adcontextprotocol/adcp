@@ -1,10 +1,10 @@
 /**
  * Internal types for the training agent.
- * Schema-level types (Product, Format, etc.) come from @adcp/client.
+ * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
-import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
+import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/sdk';
 
-// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
+// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
 
 /** Matches the talent-role.json enum in static/schemas/source/enums/ */
@@ -29,6 +29,12 @@ export interface TrainingContext {
    *  presence-gated signing at the auth layer. Default `/mcp` leaves
    *  `required_for` empty so unsigned bearer callers keep working. */
   strict?: boolean;
+  /**
+   * `covers_content_digest` mode advertised by this route. Only meaningful
+   * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
+   * `/mcp-strict-required` uses `'required'`; `/mcp-strict-forbidden` uses `'forbidden'`.
+   */
+  digestMode?: 'either' | 'required' | 'forbidden';
 }
 
 export interface ShowSpecial {
@@ -132,7 +138,7 @@ export interface PricingTemplate {
 }
 
 export interface CatalogProduct {
-  product: import('@adcp/client').Product;
+  product: import('@adcp/sdk').Product;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];

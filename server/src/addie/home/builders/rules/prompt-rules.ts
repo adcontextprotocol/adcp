@@ -1,0 +1,554 @@
+import type { MemberContext } from '../../../member-context.js';
+import type { PromptRule, PromptRuleContext } from './types.js';
+
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isMapped(ctx: MemberContext | null): boolean {
+  return !!ctx?.workos_user?.workos_user_id;
+}
+
+function isMember(ctx: MemberContext | null): boolean {
+  return !!ctx?.is_member;
+}
+
+/**
+ * True for users who can act on org-level setup (owner or admin in WorkOS).
+ * Day-to-day org operations at most companies are run by admins, not the
+ * original owner — gating only on 'owner' would miss them.
+ */
+function isOrgOperator(ctx: MemberContext | null): boolean {
+  const role = ctx?.org_membership?.role;
+  return role === 'owner' || role === 'admin';
+}
+
+function isLinkedNonMember(ctx: MemberContext | null): boolean {
+  return isMapped(ctx) && !isMember(ctx);
+}
+
+function persona(ctx: MemberContext | null): string | null {
+  return ctx?.persona?.persona ?? null;
+}
+
+function lastLoginMs(ctx: MemberContext | null): number | null {
+  const last = ctx?.engagement?.last_login;
+  return last ? new Date(last).getTime() : null;
+}
+
+function isLapsed(ctx: MemberContext | null): boolean {
+  const last = lastLoginMs(ctx);
+  if (last === null) return false;
+  const sinceLogin = Date.now() - last;
+  // Re-engage for 30–90 days. Past that, the user is dormant and the prompt
+  // becomes nagging rather than helpful.
+  return sinceLogin > THIRTY_DAYS_MS && sinceLogin < 3 * THIRTY_DAYS_MS;
+}
+
+/**
+ * True when the user has an in-progress certification attempt that's
+ * fresh enough to "continue." Started >45 days ago without completion
+ * usually means the learner has moved on; nudging them about it is
+ * stale-state behaviour, not re-engagement.
+ */
+function hasFreshInProgressCertification(ctx: MemberContext | null): boolean {
+  const cert = ctx?.certification;
+  if (!cert || cert.status !== 'in_progress') return false;
+  const age = Date.now() - new Date(cert.started_at).getTime();
+  return age < 45 * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Most-specific identifier we have for the user's current certification
+ * attempt — module_id when we know it (e.g. 'A1'), else track_id (e.g.
+ * 'A'), else null. Used by the cert continuation rule to personalize
+ * its label and prompt without baking in track-specific copy.
+ */
+function certModuleLabel(ctx: MemberContext | null): string | null {
+  const cert = ctx?.certification;
+  if (!cert) return null;
+  return cert.module_id ?? cert.track_id ?? null;
+}
+
+/**
+ * True for active members who have never published a perspective. Gated
+ * on having logged in at least once in the last 30 days so we don't ask
+ * dormant accounts to write. The rule's audience is engaged members
+ * who have something to share but haven't shipped one yet.
+ */
+function hasZeroPerspectives(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const count = ctx?.perspectives?.published_count;
+  if (count === undefined || count > 0) return false;
+  return (ctx?.engagement?.login_count_30d ?? 0) > 0;
+}
+
+/**
+ * Days from now until the user's next registered event, or null when
+ * there's no upcoming registration. Past-the-start events shouldn't be
+ * here — fetchNextEvent filters on start_time > NOW() — but defensively
+ * return null for negative deltas.
+ */
+function daysToNextEvent(ctx: MemberContext | null): number | null {
+  const start = ctx?.next_event?.starts_at;
+  if (!start) return null;
+  const ms = new Date(start).getTime() - Date.now();
+  if (ms < 0) return null;
+  return ms / (24 * 60 * 60 * 1000);
+}
+
+/**
+ * True for builder personas whose last agent test was either never run
+ * or older than 14 days. Gates the agent-staleness rule so builders
+ * actively iterating (last test < 14d) don't get nagged.
+ */
+function hasStaleAgentTest(ctx: MemberContext | null): boolean {
+  if (!isMember(ctx)) return false;
+  const p = persona(ctx);
+  if (p !== 'molecule_builder' && p !== 'pragmatic_builder') return false;
+  const last = ctx?.agent_testing?.last_test_at;
+  if (!last) return true; // never tested → definitely worth a nudge
+  const age = Date.now() - new Date(last).getTime();
+  return age > 14 * 24 * 60 * 60 * 1000;
+}
+
+function isLowLoginActive(ctx: MemberContext | null): boolean {
+  const last = lastLoginMs(ctx);
+  if (last === null) return false;
+  const lapsed = Date.now() - last > THIRTY_DAYS_MS;
+  if (lapsed) return false;
+  if ((ctx?.engagement?.login_count_30d ?? 0) >= 3) return false;
+  // Suppress for brand-new members — they haven't been around long enough to
+  // have missed anything.
+  const joined = ctx?.org_membership?.joined_at;
+  if (joined) {
+    const joinedMs = new Date(joined).getTime();
+    if (Date.now() - joinedMs < 14 * 24 * 60 * 60 * 1000) return false;
+  }
+  return true;
+}
+
+export const ADMIN_RULES: PromptRule[] = [
+  {
+    id: 'admin.pending_invoices',
+    priority: 110,
+    when: ({ isAdmin }) => isAdmin,
+    label: 'Pending invoices',
+    prompt: 'Show me all organizations with pending invoices',
+  },
+  {
+    id: 'admin.lookup_company',
+    priority: 109,
+    when: ({ isAdmin }) => isAdmin,
+    label: 'Look up a company',
+    prompt: 'What is the membership status for [company name]?',
+  },
+  {
+    id: 'admin.prospect_pipeline',
+    priority: 108,
+    when: ({ isAdmin }) => isAdmin,
+    label: 'Prospect pipeline',
+    prompt: 'Show me the current prospect pipeline',
+  },
+  {
+    id: 'admin.my_working_groups',
+    priority: 107,
+    when: ({ isAdmin }) => isAdmin,
+    label: 'My working groups',
+    prompt: "What's happening in my working groups?",
+  },
+];
+
+export const MEMBER_RULES: PromptRule[] = [
+  {
+    id: 'discovery.what_is_adcp',
+    priority: 100,
+    when: ({ memberContext }) => !isMember(memberContext),
+    label: "What's AdCP?",
+    prompt: 'Give me the short version of AdCP.',
+  },
+  {
+    id: 'discovery.what_brings_you',
+    priority: 95,
+    when: ({ memberContext }) => !isMember(memberContext),
+    label: 'New here',
+    prompt: 'I just landed here — what is this place?',
+  },
+  {
+    id: 'engagement.lapsed',
+    priority: 92,
+    when: ({ memberContext }) => isMember(memberContext) && isLapsed(memberContext),
+    label: "What's new since you were last here?",
+    prompt: "What's happened at AgenticAdvertising.org since I last checked in?",
+  },
+  {
+    id: 'discovery.how_to_join',
+    priority: 90,
+    when: ({ memberContext }) => !isMember(memberContext),
+    label: 'Join AgenticAdvertising.org',
+    prompt: 'How do I join, and what do I get?',
+  },
+  // Persona rules use decay: false because they're not nudges — they're
+  // a stable entry point reflecting who the user is. Suppressing them
+  // would leave the user with strictly worse fallbacks for their persona.
+  {
+    id: 'persona.molecule_builder',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && persona(memberContext) === 'molecule_builder',
+    label: 'Build a sales agent',
+    prompt: 'Walk me through setting up a sales agent on AdCP.',
+  },
+  {
+    id: 'persona.pragmatic_builder',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && persona(memberContext) === 'pragmatic_builder',
+    label: 'Fastest path to AdCP',
+    prompt: "What's the fastest way to plug AdCP into what I already have?",
+  },
+  {
+    id: 'persona.data_decoder',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) => isMember(memberContext) && persona(memberContext) === 'data_decoder',
+    label: 'Prove the outcomes',
+    prompt: 'How do I measure agentic vs. traditional and prove AdCP improves outcomes?',
+  },
+  {
+    id: 'persona.resops_integrator',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && persona(memberContext) === 'resops_integrator',
+    label: 'Fit AdCP into my stack',
+    prompt: 'Where does AdCP sit next to my SSP, DSP, and data tools?',
+  },
+  {
+    id: 'persona.ladder_or_simple_starter',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const p = persona(memberContext);
+      if (p !== 'ladder_climber' && p !== 'simple_starter') return false;
+      // Once the learner is in a certification, "Continue certification"
+      // (id: cert.continue_in_progress) is more accurate than "Start with
+      // the Academy."
+      return !hasFreshInProgressCertification(memberContext);
+    },
+    label: 'Start with the Academy',
+    prompt: 'Which Academy module should I start with?',
+  },
+  {
+    id: 'persona.pureblood_protector',
+    priority: 90,
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && persona(memberContext) === 'pureblood_protector',
+    label: 'Brand safety controls',
+    prompt: 'How do I keep my brand off the wrong inventory with AdCP?',
+  },
+  {
+    id: 'membership.linked_not_member',
+    priority: 85,
+    when: ({ memberContext }) => isLinkedNonMember(memberContext),
+    label: 'Membership options',
+    prompt: 'What membership tiers are available?',
+  },
+  {
+    id: 'tier.explorer_upgrade',
+    priority: 85,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      memberContext?.organization?.membership_tier === 'individual_academic',
+    label: 'Upgrade for Slack & working group access',
+    prompt: 'What do I get if I upgrade from Explorer?',
+  },
+  {
+    id: 'event.upcoming_registered',
+    priority: 89,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const days = daysToNextEvent(memberContext);
+      if (days === null) return false;
+      return days <= 14;
+    },
+    label: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title ? `Prep for ${title}` : 'Prep for your event';
+    },
+    prompt: ({ memberContext }) => {
+      const title = memberContext?.next_event?.title;
+      return title
+        ? `${title} is coming up. What do I need to know?`
+        : 'My next event is coming up. What do I need to know?';
+    },
+    // Dynamic prompt → matchClick fallback. Match either the
+    // event-titled phrasing or the no-title fallback. Title characters
+    // are not escaped: false positives from a user happening to type a
+    // matching string are fine for telemetry purposes.
+    matchClick: (msg) =>
+      / is coming up\. What do I need to know\?$/.test(msg) ||
+      msg === 'My next event is coming up. What do I need to know?',
+  },
+  {
+    id: 'agent.stale_test',
+    priority: 91,
+    when: ({ memberContext }) => hasStaleAgentTest(memberContext),
+    label: 'Run a fresh agent test',
+    prompt: 'When did I last test my agent, and can we run a fresh evaluation?',
+  },
+  {
+    id: 'cert.continue_in_progress',
+    priority: 93,
+    // Never auto-suppress: re-engaging a stalled learner is exactly the
+    // high-value case. The 45-day freshness guard inside `when` handles
+    // genuinely abandoned attempts.
+    decay: false,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && hasFreshInProgressCertification(memberContext),
+    label: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id ? `Continue ${id}` : 'Continue certification';
+    },
+    prompt: ({ memberContext }) => {
+      const id = certModuleLabel(memberContext);
+      return id
+        ? `Let's keep going with ${id}. Where did we leave off?`
+        : 'Pick up where I left off in certification.';
+    },
+    // Dynamic prompt → can't live in the static reverse-index. Match
+    // against either the module-specific or the generic phrasing. The
+    // character class stays in sync with certModuleLabel's output (the
+    // module_id or track_id from the certification schema) — \w lets
+    // future ids like 'A1_intro' still register as a click on this rule.
+    matchClick: (msg) =>
+      /^Let's keep going with [\w-]+\. Where did we leave off\?$/.test(msg) ||
+      msg === 'Pick up where I left off in certification.',
+    digest: {
+      // Each surface keeps its own when clause — the recipient shape has
+      // module counts, the MemberContext shape has track/module/started_at.
+      // Both correctly identify "in progress."
+      priority: 3,
+      when: (r) => r.cert_modules_completed > 0 && r.cert_modules_completed < r.cert_total_modules,
+      text: (r) => {
+        const remaining = r.cert_total_modules - r.cert_modules_completed;
+        const completed = r.cert_modules_completed;
+        return `You're ${completed} module${completed > 1 ? 's' : ''} in — ${remaining} to go for your certification.`;
+      },
+      ctaLabel: 'Continue learning',
+      ctaUrl: `${BASE_URL}/academy`,
+    },
+  },
+  {
+    id: 'profile.incomplete',
+    priority: 80,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      (memberContext?.community_profile?.completeness ?? 100) < 80,
+    label: 'Complete my profile',
+    prompt: 'Help me complete my community profile.',
+    digest: {
+      priority: 6,
+      when: (r) => !r.has_profile && r.is_member,
+      text: 'Complete your profile so other members can find you.',
+      ctaLabel: 'Update your profile',
+      ctaUrl: `${BASE_URL}/dashboard`,
+    },
+  },
+  {
+    id: 'org.owner_solo_invite_team',
+    priority: 78,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      memberContext?.org_membership?.role === 'owner' &&
+      memberContext?.org_membership?.member_count === 1,
+    label: 'Invite your team',
+    prompt: 'Help me invite my team to the organization.',
+  },
+  {
+    id: 'org.owner_set_company_listing',
+    priority: 76,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      isOrgOperator(memberContext) &&
+      memberContext?.organization?.is_personal === false &&
+      memberContext?.adoption?.has_company_listing === false,
+    label: 'List my company in the directory',
+    prompt: 'Help me add my company to the directory.',
+  },
+  {
+    id: 'org.owner_team_wg_coverage_low',
+    priority: 73,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      if (!isOrgOperator(memberContext)) return false;
+      // Fire for any team of 3+ where less than half are in working groups.
+      // Below 3 people, coverage math is too noisy to act on.
+      if ((memberContext?.org_membership?.member_count ?? 0) < 3) return false;
+      const coverage = memberContext?.adoption?.team_wg_coverage;
+      return (coverage ?? 1) < 0.5;
+    },
+    label: 'Find working groups for my team',
+    prompt: 'Which working groups should my team join?',
+  },
+  {
+    id: 'wg.find_groups',
+    priority: 75,
+    when: ({ memberContext }) =>
+      isMember(memberContext) && (memberContext?.working_groups?.length ?? 0) === 0,
+    label: 'Find a working group',
+    prompt: 'What working groups would be relevant for my work?',
+    digest: {
+      // Digest gates on `has_slack` too — without Slack access, joining a
+      // working group is harder. Suggested-prompts doesn't gate on Slack
+      // because the user is already in a chat surface that supports the
+      // join flow.
+      priority: 4,
+      when: (r) => r.has_slack && r.wg_count === 0,
+      text: 'Working groups are where the standards get built. Find one that matches your work.',
+      ctaLabel: 'Browse working groups',
+      ctaUrl: `${BASE_URL}/committees`,
+    },
+  },
+  {
+    id: 'wg.leader_todos',
+    priority: 72,
+    when: ({ memberContext }) =>
+      isMember(memberContext) &&
+      (memberContext?.working_groups ?? []).some((g) => g.is_leader),
+    label: 'Working group to-dos',
+    prompt: 'What needs my attention in the working groups I lead?',
+  },
+  {
+    id: 'wg.member_updates',
+    priority: 70,
+    when: ({ memberContext }) => {
+      if (!isMember(memberContext)) return false;
+      const groups = memberContext?.working_groups ?? [];
+      return groups.length > 0 && !groups.some((g) => g.is_leader);
+    },
+    label: "What's happening in my working groups?",
+    prompt: 'Catch me up on my working groups.',
+  },
+  {
+    id: 'engagement.low_login_active',
+    priority: 58,
+    when: ({ memberContext }) => isMember(memberContext) && isLowLoginActive(memberContext),
+    label: "Here's what you missed",
+    prompt: "Give me a quick catch-up on what's happened recently.",
+  },
+  {
+    id: 'perspectives.share_first_one',
+    priority: 55,
+    when: ({ memberContext }) => hasZeroPerspectives(memberContext),
+    label: "Share what I'm building",
+    prompt: "Help me draft a perspective about what I'm working on.",
+  },
+  {
+    id: 'member.test_my_agent',
+    priority: 50,
+    // The high-priority agent.stale_test rule (id: 'agent.stale_test')
+    // is more accurate for builder personas with stale agents — duplicating
+    // the generic "Test my agent" filler in the same render is redundant.
+    when: ({ memberContext }) =>
+      isMember(memberContext) && !hasStaleAgentTest(memberContext),
+    label: 'Test my agent',
+    prompt: 'Can you check if my agent is set up correctly?',
+  },
+  {
+    id: 'addie.few_interactions',
+    priority: 40,
+    when: ({ memberContext }) =>
+      (memberContext?.addie_history?.total_interactions ?? 0) < 3 && !!memberContext,
+    label: 'What can you help me with?',
+    prompt: 'What kinds of things can I ask you about?',
+  },
+  {
+    id: 'member.help_post',
+    priority: 30,
+    when: ({ memberContext }) => isMember(memberContext),
+    label: 'Help me post something',
+    prompt: 'Anything I should be posting about this week?',
+  },
+  {
+    id: 'fallback.whats_new',
+    priority: 10,
+    when: () => true,
+    label: "What's new?",
+    prompt: "What's new at AgenticAdvertising.org?",
+  },
+  // Sentinel rule for Sage module-start CTAs (e.g. "Start module A1").
+  // These strings are synthesized at runtime from URL params in chat.html
+  // and never appear in PROMPT_TO_RULE_ID, so they need a matchClick callback.
+  // when: () => false means this rule never renders in the suggestion list.
+  {
+    id: 'sage.start_module',
+    priority: 0,
+    when: () => false,
+    label: 'Start module',
+    prompt: 'Start module',
+    matchClick: (msg) => /^Start module \w+$/.test(msg),
+  },
+];
+
+export const ALL_RULES: PromptRule[] = [...ADMIN_RULES, ...MEMBER_RULES];
+
+/**
+ * Boot-time invariant: any rule with a function-valued `prompt` must
+ * provide a `matchClick` callback. Without it, click telemetry can
+ * never attribute a click on the dynamic prompt to its rule (the
+ * static reverse-index can only enumerate string prompts). Catching
+ * this at module load is cheaper than discovering it weeks later
+ * when CTR data is silently zero for the new rule.
+ */
+for (const rule of ALL_RULES) {
+  if (typeof rule.prompt === 'function' && typeof rule.matchClick !== 'function') {
+    throw new Error(
+      `Prompt rule "${rule.id}" has a function-valued prompt but no matchClick callback — clicks cannot be detected. Add a matchClick (see cert.continue_in_progress for an example) or use a static prompt string.`
+    );
+  }
+}
+
+/**
+ * Reverse index from prompt text → rule id, built once at module load.
+ *
+ * Used by the message-receipt path to detect heuristic clicks: when an
+ * incoming user message exactly matches a known rule's prompt string,
+ * we record a click against that rule. Click telemetry feeds the admin
+ * dashboard's CTR column.
+ *
+ * Exact-string match (after .trim()) is intentionally strict — false
+ * positives (a user paraphrases the same idea) would inflate the CTR
+ * for popular rules. We accept a few false negatives (a user manually
+ * retypes the prompt with a different period) for cleaner data.
+ *
+ * Rules with dynamic (function) `prompt` are not in the static index —
+ * they must provide a `matchClick` callback instead.
+ */
+const PROMPT_TO_RULE_ID = new Map<string, string>(
+  ALL_RULES
+    .filter((r): r is PromptRule & { prompt: string } => typeof r.prompt === 'string')
+    .map((r) => [r.prompt.trim(), r.id]),
+);
+
+const RULES_WITH_MATCH_CLICK = ALL_RULES.filter((r) => typeof r.matchClick === 'function');
+
+/**
+ * Look up the rule_id whose prompt text matches the given user message
+ * verbatim. Falls back to per-rule `matchClick` callbacks for rules
+ * with dynamic prompts. Returns null when there is no match.
+ */
+export function matchRuleIdFromMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  const trimmed = message.trim();
+  const staticHit = PROMPT_TO_RULE_ID.get(trimmed);
+  if (staticHit) return staticHit;
+  for (const rule of RULES_WITH_MATCH_CLICK) {
+    if (rule.matchClick!(trimmed)) return rule.id;
+  }
+  return null;
+}

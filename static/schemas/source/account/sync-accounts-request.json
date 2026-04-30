@@ -3,15 +3,14 @@
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
   "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
-  "x-mutates-state": true,
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
@@ -36,13 +35,8 @@
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
-            "type": "string",
-            "enum": [
-              "operator",
-              "agent",
-              "advertiser"
-            ],
-            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The seller must either accept this billing model or reject the request."
+            "$ref": "/schemas/enums/billing-party.json",
+            "description": "Who should be invoiced. The seller must either accept this billing model or reject the request."
           },
           "billing_entity": {
             "$ref": "/schemas/core/business-entity.json",

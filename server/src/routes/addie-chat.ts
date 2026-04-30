@@ -23,6 +23,8 @@ import {
   sanitizeInput,
   validateOutput,
 } from "../addie/security.js";
+import { matchRuleIdFromMessage } from "../addie/home/builders/rules/prompt-rules.js";
+import { recordPromptClicked } from "../db/addie-prompt-telemetry-db.js";
 import {
   isKnowledgeReady,
   initializeKnowledgeSearch,
@@ -102,6 +104,10 @@ import {
   IMAGE_TOOLS,
   createImageToolHandlers,
 } from "../addie/mcp/image-tools.js";
+import {
+  AUTH_GRADER_TOOLS,
+  createAuthGraderToolHandlers,
+} from "../addie/mcp/auth-grader-tools.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
@@ -140,6 +146,10 @@ let initialized = false;
 let authenticatedOnlyTools: RequestTools | null = null;
 
 const ANONYMOUS_MAX_ITERATIONS = 5;
+
+// Sources the web client is permitted to assert. Voice / email / unknown are
+// set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
+const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
 
 /**
  * Merge per-request member tools with cached authenticated-only tools,
@@ -559,6 +569,17 @@ export async function prepareRequestWithMemberTools(
     }
   }
 
+  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
+  // users only on the web path; each call spawns a child Node process and
+  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
+  if (userId) {
+    allTools.push(...AUTH_GRADER_TOOLS);
+    for (const [name, handler] of createAuthGraderToolHandlers()) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
   // Permission-gated tools (for authenticated users)
   if (userId) {
     const workingGroupDb = new WorkingGroupDatabase();
@@ -700,7 +721,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource } = req.body;
 
       if (!message || typeof message !== "string") {
         return res.status(400).json({ error: "Message is required" });
@@ -711,6 +732,20 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
+
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
+      }
+
+      // Accept message_source from client (chip click vs typed); fall back to
+      // heuristic detection so old clients without the field still tag correctly.
+      const messageSource: 'typed' | 'cta_chip' =
+        typeof rawMessageSource === 'string' && VALID_WEB_SOURCES.has(rawMessageSource as 'typed' | 'cta_chip')
+          ? rawMessageSource as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
 
       // Get or create thread using unified service
       // For web chat, the external_id is the conversation_id (UUID)
@@ -783,6 +818,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: messageSource,
       });
 
       // Record inbound message in the relationship system
@@ -980,7 +1016,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream } = req.body;
 
       if (!message || typeof message !== "string") {
         sendEvent("error", { error: "Message is required" });
@@ -993,6 +1029,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
       }
+
+      // Heuristic click telemetry: if the incoming message text matches a
+      // known suggested-prompt verbatim, record a click against that rule.
+      const matchedRuleId = matchRuleIdFromMessage(message);
+      if (matchedRuleId && req.user?.id) {
+        void recordPromptClicked(req.user.id, matchedRuleId);
+      }
+
+      const messageSourceStream: 'typed' | 'cta_chip' =
+        typeof rawMessageSourceStream === 'string' && VALID_WEB_SOURCES.has(rawMessageSourceStream as 'typed' | 'cta_chip')
+          ? rawMessageSourceStream as 'typed' | 'cta_chip'
+          : matchedRuleId ? 'cta_chip' : 'typed';
 
       // Get or create thread
       const impersonator = req.user?.impersonator;
@@ -1058,6 +1106,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
         user_id: userId || undefined,
         user_display_name: displayName || undefined,
+        message_source: messageSourceStream,
       });
 
       // Record inbound message in the relationship system

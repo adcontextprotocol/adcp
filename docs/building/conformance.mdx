@@ -13,14 +13,22 @@ description: "What 'AdCP-conformant' means, defined by the storyboards that veri
 AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
 
 - **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
-- **Verified** — AAO has tested the agent recently against those storyboards and issued a signed attestation ([AAO Verified badge](/docs/building/compliance-catalog)). Gated on active membership and a live heartbeat.
+- **Verified** — AAO has tested the agent recently and issued a signed attestation. Gated on active membership and a live heartbeat. The [AAO Verified badge](/docs/building/aao-verified) carries one of two qualifiers: **(Spec)** for storyboard-conformance against a test-mode endpoint, **(Live)** for AAO-observed real production traffic via canonical campaigns. An agent can earn either or both.
 - **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
 
 Put differently:
 
 - Conformance is a property of the agent's wire behavior.
-- Verification is a time-bounded third-party attestation that an agent is conformant.
-- Verified ⊆ Conformant. You can be conformant without being verified; you cannot be verified without being conformant.
+- Verification is a time-bounded third-party attestation. **(Spec)** verifies conformance via simulation; **(Live)** verifies the underlying production capability via real-traffic observation. Each independently demonstrates conformance through different evidence.
+- Verified (Spec) ⊆ Conformant via storyboards. Verified (Live) ⊆ Conformant via the eight observability checks (which exercise wire format, filters, lifecycle, and scope through real traffic). The two axes are independent: a seller without a test-mode endpoint can earn (Live) directly, and a test agent that can never serve real impressions earns (Spec) as a complete claim.
+
+## Storyboard conformance vs. AAO Verified
+
+This page indexes **storyboard conformance** — the property an agent's wire behavior has when it matches the spec, verified by storyboards running against seeded test data. Storyboard passing earns the **AAO Verified (Spec)** qualifier on an agent's badge.
+
+A second axis — **AAO Verified (Live)** — verifies the production code path behind the protocol actually delivers real impressions on real inventory. (Live) is opt-in, observed continuously over a 7–14 day rolling window on a designated compliance account, and orthogonal to storyboard conformance: a seller can pass every storyboard with a broken ad-server integration because `simulate_delivery` is a parallel code path from the production reporting path. (Live) closes that gap.
+
+The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Live) are independent**: each independently demonstrates conformance through different evidence. (Spec) verifies it via simulated interactions against a test endpoint; (Live) verifies it via observed real traffic that the eight checks exercise (wire format, filters, lifecycle, scope introspection). A seller without a test-mode endpoint can earn (Live) directly; a test agent that can never serve real impressions earns (Spec) as a complete claim. See [AAO Verified](/docs/building/aao-verified) for the full qualifier model and the (Live) spec; the rest of this page indexes the storyboards that back (Spec).
 
 ## Storyboards are the truth
 
@@ -151,6 +159,7 @@ Conformance is per-version; the suite is per-version. A 3.0-conformant agent is 
 
 ## Further reading
 
+- **[AAO Verified](/docs/building/aao-verified)** — Continuous-observability verification of the seller's live ad-server integration
 - **[Compliance Catalog](/docs/building/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
 - **[Validate Your Agent](/docs/building/validate-your-agent)** — How to run the suite
 - **[Security Model](/docs/building/understanding/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce

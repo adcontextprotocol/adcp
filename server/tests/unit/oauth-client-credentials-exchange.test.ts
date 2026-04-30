@@ -7,7 +7,7 @@ import { adaptAuthForSdk } from '../../src/services/sdk-auth-adapter.js';
 
 /**
  * Tests for the server-side OAuth 2.0 client-credentials exchange
- * (#2800 follow-up). `@adcp/client`'s ComplyOptions/TestOptions don't
+ * (#2800 follow-up). `@adcp/sdk`'s ComplyOptions/TestOptions don't
  * accept the `oauth_client_credentials` auth variant, so we exchange
  * for a bearer token server-side before handing it to the SDK.
  */

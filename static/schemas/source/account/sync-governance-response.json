@@ -4,6 +4,11 @@
   "title": "Sync Governance Response",
   "description": "Response from governance agent sync. Returns per-account results confirming sync, or operation-level errors on complete failure.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "SyncGovernanceSuccess",
@@ -22,12 +27,15 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["synced", "failed"],
+                "enum": [
+                  "synced",
+                  "failed"
+                ],
                 "description": "Sync result. synced: governance agents persisted. failed: could not complete (see errors)."
               },
               "governance_agents": {
                 "type": "array",
-                "description": "Governance agents now synced on this account. Reflects the persisted state after sync.",
+                "description": "Governance agent now synced on this account. Reflects the persisted state after sync. Exactly one entry; the array shape mirrors the request schema and the one-agent-per-account invariant. See sync_governance request schema.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -36,17 +44,15 @@
                       "format": "uri",
                       "pattern": "^https://",
                       "description": "Governance agent endpoint URL."
-                    },
-                    "categories": {
-                      "type": "array",
-                      "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
-                      "description": "Governance categories this agent handles.",
-                      "maxItems": 20
                     }
                   },
-                  "required": ["url"],
+                  "required": [
+                    "url"
+                  ],
                   "additionalProperties": false
-                }
+                },
+                "minItems": 1,
+                "maxItems": 1
               },
               "errors": {
                 "type": "array",
@@ -56,7 +62,10 @@
                 }
               }
             },
-            "required": ["account", "status"],
+            "required": [
+              "account",
+              "status"
+            ],
             "additionalProperties": true
           }
         },
@@ -67,10 +76,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["accounts"],
+      "required": [
+        "accounts"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -93,10 +106,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["accounts"]
+        "required": [
+          "accounts"
+        ]
       }
     }
   ],
@@ -106,22 +123,24 @@
       "data": {
         "accounts": [
           {
-            "account": { "account_id": "acct-social-001" },
+            "account": {
+              "account_id": "acct-social-001"
+            },
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/budget",
-                "categories": ["budget_authority"]
+                "url": "https://governance.pinnacle-media.com"
               }
             ]
           },
           {
-            "account": { "account_id": "acct-social-002" },
+            "account": {
+              "account_id": "acct-social-002"
+            },
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/compliance",
-                "categories": ["geo_compliance"]
+                "url": "https://governance.acme-buyer.com"
               }
             ]
           }
@@ -133,17 +152,20 @@
       "data": {
         "accounts": [
           {
-            "account": { "account_id": "acct-social-001" },
+            "account": {
+              "account_id": "acct-social-001"
+            },
             "status": "synced",
             "governance_agents": [
               {
-                "url": "https://governance.pinnacle-media.com/budget",
-                "categories": ["budget_authority"]
+                "url": "https://governance.pinnacle-media.com"
               }
             ]
           },
           {
-            "account": { "account_id": "acct-unknown" },
+            "account": {
+              "account_id": "acct-unknown"
+            },
             "status": "failed",
             "errors": [
               {
@@ -155,5 +177,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

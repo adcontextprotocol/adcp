@@ -1,6 +1,6 @@
 /**
  * Storyboard smoke test: runs all storyboards against the training agent
- * using @adcp/client's storyboard runner over real MCP transport.
+ * using @adcp/sdk's storyboard runner over real MCP transport.
  *
  * Usage:
  *   npx tsx server/tests/manual/storyboard-smoke.ts
@@ -13,7 +13,7 @@ import {
   listAllComplianceStoryboards,
   type StoryboardResult,
   type StoryboardStepResult,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;

@@ -4,6 +4,11 @@
   "title": "Validate Content Delivery Response",
   "description": "Response payload with per-record verdicts and optional feature breakdown",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -13,11 +18,21 @@
           "type": "object",
           "description": "Summary counts across all records",
           "properties": {
-            "total_records": { "type": "integer" },
-            "passed_records": { "type": "integer" },
-            "failed_records": { "type": "integer" }
+            "total_records": {
+              "type": "integer"
+            },
+            "passed_records": {
+              "type": "integer"
+            },
+            "failed_records": {
+              "type": "integer"
+            }
           },
-          "required": ["total_records", "passed_records", "failed_records"]
+          "required": [
+            "total_records",
+            "passed_records",
+            "failed_records"
+          ]
         },
         "results": {
           "type": "array",
@@ -30,9 +45,7 @@
                 "description": "Which delivery record was evaluated"
               },
               "verdict": {
-                "type": "string",
-                "enum": ["pass", "fail"],
-                "description": "Overall pass/fail verdict for this record"
+                "$ref": "/schemas/enums/binary-verdict.json"
               },
               "features": {
                 "type": "array",
@@ -45,8 +58,7 @@
                       "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'image_dpi'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact', 'delivery:authorization'. Reserved prefixes: 'record:', 'delivery:'."
                     },
                     "status": {
-                      "type": "string",
-                      "enum": ["passed", "failed", "warning", "unevaluated"]
+                      "$ref": "/schemas/enums/feature-check-status.json"
                     },
                     "policy_id": {
                       "type": "string",
@@ -64,11 +76,17 @@
                       "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
                     }
                   },
-                  "required": ["feature_id", "status"]
+                  "required": [
+                    "feature_id",
+                    "status"
+                  ]
                 }
               }
             },
-            "required": ["record_id", "verdict"]
+            "required": [
+              "record_id",
+              "verdict"
+            ]
           }
         },
         "context": {
@@ -78,7 +96,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["summary", "results"]
+      "required": [
+        "summary",
+        "results"
+      ]
     },
     {
       "type": "object",
@@ -86,7 +107,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -95,7 +118,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

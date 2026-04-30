@@ -62,7 +62,7 @@ export interface OAuthClient {
 /**
  * OAuth 2.0 client-credentials configuration stored for machine-to-machine
  * agent auth (RFC 6749 §4.4). Mirrors the SDK's `AgentOAuthClientCredentials`
- * shape in `@adcp/client`. `client_secret` is either a literal value or a
+ * shape in `@adcp/sdk`. `client_secret` is either a literal value or a
  * `$ENV:VAR_NAME` reference — the SDK resolves the reference at exchange time.
  */
 export interface OAuthClientCredentials {
@@ -76,7 +76,7 @@ export interface OAuthClientCredentials {
   /**
    * Client-credentials auth placement. `basic` = HTTP Basic header
    * (RFC 6749 §2.3.1 preferred); `body` = client_id/client_secret as form
-   * fields. Passed through to `@adcp/client`'s exchange helper.
+   * fields. Passed through to `@adcp/sdk`'s exchange helper.
    */
   auth_method?: 'basic' | 'body';
 }
@@ -959,11 +959,37 @@ export class AgentContextDatabase {
   }
 
   /**
+   * Most recent agent test the user has run, across all of their saved
+   * agents. Powers the "agent not tested in X days" suggested-prompts
+   * rule for builder personas.
+   *
+   * Returns null if the user has never tested any registered agent.
+   * Tests against the public test agent or unsaved URLs are not
+   * recorded in agent_test_history (they don't have an agent_context),
+   * so they don't count here either — which is the right semantic for
+   * the rule's audience (builders with their own seller agent).
+   */
+  async getLatestTestForUser(workosUserId: string): Promise<{
+    started_at: Date;
+    overall_passed: boolean;
+  } | null> {
+    const result = await query<{ started_at: Date; overall_passed: boolean }>(
+      `SELECT started_at, overall_passed
+         FROM agent_test_history
+         WHERE user_id = $1
+         ORDER BY started_at DESC
+         LIMIT 1`,
+      [workosUserId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
    * Infer agent type from discovered tools
    */
   inferAgentType(tools: string[]): AgentType {
     if (tools.includes('get_products') || tools.includes('create_media_buy')) {
-      return 'buying';
+      return 'sales';
     }
     if (tools.includes('list_creative_formats') && !tools.includes('get_products')) {
       return 'creative';

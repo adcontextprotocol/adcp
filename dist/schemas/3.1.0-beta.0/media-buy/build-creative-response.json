@@ -1,0 +1,371 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/media-buy/build-creative-response.json",
+  "title": "Build Creative Response",
+  "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) terminal failure — an errors array; (4) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive — a response has exactly one.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "BuildCreativeSuccess",
+      "description": "Single-format success response. Returned when the request used target_format_id.",
+      "type": "object",
+      "properties": {
+        "creative_manifest": {
+          "$ref": "/schemas/3.1.0-beta.0/core/creative-manifest.json",
+          "description": "The generated or transformed creative manifest"
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs."
+        },
+        "preview": {
+          "type": "object",
+          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains the same content fields as a preview_creative single response (previews, interactive_url, expires_at) minus the response_type discriminator, so clients can reuse the same preview rendering logic.",
+          "properties": {
+            "previews": {
+              "type": "array",
+              "description": "Array of preview variants. Each preview corresponds to an input set from preview_inputs, or a single default preview if no inputs were provided.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "preview_id": {
+                    "type": "string",
+                    "description": "Unique identifier for this preview variant"
+                  },
+                  "renders": {
+                    "type": "array",
+                    "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
+                    "items": {
+                      "$ref": "/schemas/3.1.0-beta.0/creative/preview-render.json"
+                    },
+                    "minItems": 1
+                  },
+                  "input": {
+                    "type": "object",
+                    "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Human-readable name for this variant"
+                      },
+                      "macros": {
+                        "type": "object",
+                        "description": "Macro values applied to this variant",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "context_description": {
+                        "type": "string",
+                        "description": "Context description applied to this variant"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "preview_id",
+                  "renders",
+                  "input"
+                ]
+              },
+              "minItems": 1
+            },
+            "interactive_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional URL to an interactive testing page that shows all preview variants with controls to switch between them."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when preview URLs expire. May differ from the manifest's expires_at."
+            }
+          },
+          "required": [
+            "previews",
+            "expires_at"
+          ]
+        },
+        "preview_error": {
+          "$ref": "/schemas/3.1.0-beta.0/core/error.json",
+          "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Distinguishes 'agent does not support inline preview' (preview and preview_error both absent) from 'preview generation failed' (preview absent, preview_error present). Omitted when preview succeeded or was not requested."
+        },
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Which rate card pricing option was applied for this build. Present when the creative agent charges for its services. Pass this in report_usage to identify which pricing option was applied.",
+          "x-entity": "vendor_pricing_option"
+        },
+        "vendor_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost incurred for this build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time rather than build time."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code for vendor_cost."
+        },
+        "consumption": {
+          "$ref": "/schemas/3.1.0-beta.0/core/creative-consumption.json",
+          "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": [
+        "creative_manifest"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "BuildCreativeMultiSuccess",
+      "description": "Multi-format success response. Returned when the request used target_format_ids. Contains one manifest per requested format. Multi-format requests are atomic — all formats must succeed or the entire request fails with an error response. Array order corresponds to the target_format_ids request order.",
+      "type": "object",
+      "properties": {
+        "creative_manifests": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.0/core/creative-manifest.json"
+          },
+          "minItems": 1,
+          "description": "Array of generated creative manifests, one per requested format. Each manifest contains its own format_id identifying which format it was generated for."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the earliest generated asset URL expires across all manifests. Re-build after this time to get fresh URLs."
+        },
+        "preview": {
+          "type": "object",
+          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains one default preview per requested format. preview_inputs is ignored for multi-format requests.",
+          "properties": {
+            "previews": {
+              "type": "array",
+              "description": "Array of preview entries, one per requested format. Array order matches creative_manifests. Each entry includes a format_id for explicit correlation.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "preview_id": {
+                    "type": "string",
+                    "description": "Unique identifier for this preview"
+                  },
+                  "format_id": {
+                    "$ref": "/schemas/3.1.0-beta.0/core/format-id.json",
+                    "description": "The format this preview was generated for. Matches one of the requested target_format_ids."
+                  },
+                  "renders": {
+                    "type": "array",
+                    "description": "Array of rendered pieces for this format's preview. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
+                    "items": {
+                      "$ref": "/schemas/3.1.0-beta.0/creative/preview-render.json"
+                    },
+                    "minItems": 1
+                  },
+                  "input": {
+                    "type": "object",
+                    "description": "The input parameters that generated this preview. For multi-format responses, this is always a default input.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Human-readable name for this preview"
+                      },
+                      "macros": {
+                        "type": "object",
+                        "description": "Macro values applied to this preview",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "context_description": {
+                        "type": "string",
+                        "description": "Context description applied to this preview"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "preview_id",
+                  "format_id",
+                  "renders",
+                  "input"
+                ]
+              },
+              "minItems": 1
+            },
+            "interactive_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional URL to an interactive testing page that shows all format previews with controls to switch between them."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when preview URLs expire. May differ from the manifest's expires_at."
+            }
+          },
+          "required": [
+            "previews",
+            "expires_at"
+          ]
+        },
+        "preview_error": {
+          "$ref": "/schemas/3.1.0-beta.0/core/error.json",
+          "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Omitted when preview succeeded or was not requested."
+        },
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Which rate card pricing option was applied for this build. Represents the total cost of the entire multi-format build call. Present when the creative agent charges for its services.",
+          "x-entity": "vendor_pricing_option"
+        },
+        "vendor_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total cost incurred for this multi-format build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code for vendor_cost."
+        },
+        "consumption": {
+          "$ref": "/schemas/3.1.0-beta.0/core/creative-consumption.json",
+          "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card."
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": [
+        "creative_manifests"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "BuildCreativeError",
+      "description": "Error response - creative generation failed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why creative generation failed",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.0/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "creative_manifests"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "BuildCreativeSubmitted",
+      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creative_manifest(s) land on the completion artifact, not this envelope.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shapes, whose creative_manifest or creative_manifests are issued in-line. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Generative build queued; typical turnaround 3–5 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.0/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "creative_manifests"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

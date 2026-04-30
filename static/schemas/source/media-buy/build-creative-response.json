@@ -2,8 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response containing the transformed or generated creative manifest(s), ready for use with preview_creative or sync_creatives. Returns either a single creative_manifest, an array of creative_manifests (for multi-format requests), or error information.",
+  "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) terminal failure — an errors array; (4) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
@@ -287,7 +292,86 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "creative_manifests"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "BuildCreativeSubmitted",
+      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creative_manifest(s) land on the completion artifact, not this envelope.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shapes, whose creative_manifest or creative_manifests are issued in-line. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Generative build queued; typical turnaround 3–5 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "creative_manifests"
+            ]
+          }
+        ]
+      }
     }
-  ]
+  ],
+  "properties": {}
 }

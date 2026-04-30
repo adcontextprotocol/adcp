@@ -1,7 +1,7 @@
 import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
-import { is401Error, AuthenticationRequiredError } from "@adcp/client";
+import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 
@@ -141,7 +141,7 @@ export class CapabilityDiscovery {
   private async discoverMCPTools(url: string): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
-      const { AdCPClient } = await import("@adcp/client");
+      const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
@@ -178,7 +178,7 @@ export class CapabilityDiscovery {
   private async discoverA2ATools(url: string): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
-      const { AdCPClient } = await import("@adcp/client");
+      const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
@@ -213,16 +213,23 @@ export class CapabilityDiscovery {
   }
 
   /**
-   * Infer agent type from discovered tools.
-   * Buying agents have: get_products, create_media_buy, list_authorized_properties
-   * Creative agents have: list_creative_formats, build_creative, validate_creative
-   * Signals agents have: get_signals, match_audience, activate_signal
+   * Infer agent type from the tool list a remote agent advertises.
+   *
+   * The discovery vector is "what tools does this agent EXPOSE" — sell-side
+   * agents publish get_products / create_media_buy / list_authorized_
+   * properties for buyers to call; buy-side agents typically do NOT
+   * advertise those (they call them). So advertising SALES_TOOLS maps to
+   * type 'sales'. Buy-side agents are not reliably typed from this signal
+   * and return 'unknown' until a stronger source (e.g. member self-
+   * registration) sets the type.
    */
-  private inferAgentType(tools: ToolCapability[]): 'buying' | 'creative' | 'signals' | 'unknown' {
+  private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Priority: buying > creative > signals (buying is the primary commerce type)
-    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'buying';
+    // Priority: sales > creative > signals when an agent advertises tools
+    // from multiple buckets — sell-side wins because the rest of the
+    // registry UI treats it as the primary integration surface.
+    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'sales';
     if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) return 'creative';
     if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) return 'signals';
 
@@ -232,7 +239,7 @@ export class CapabilityDiscovery {
   private analyzeSalesCapabilities(tools: ToolCapability[]): StandardOperations {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Based on actual AdCP spec tools from @adcp/client types
+    // Based on actual AdCP spec tools from @adcp/sdk types
     return {
       can_search_inventory: toolNames.has("get_products"),
       can_get_availability: toolNames.has("get_products"), // Included in get_products
@@ -297,8 +304,8 @@ export class CapabilityDiscovery {
    * Infer agent type from a capability profile.
    * Use this to avoid duplicating the type inference logic.
    */
-  inferTypeFromProfile(profile: AgentCapabilityProfile): 'buying' | 'creative' | 'signals' | 'unknown' {
-    if (profile.standard_operations) return 'buying';
+  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'unknown' {
+    if (profile.standard_operations) return 'sales';
     if (profile.creative_capabilities) return 'creative';
     if (profile.signals_capabilities) return 'signals';
     return 'unknown';

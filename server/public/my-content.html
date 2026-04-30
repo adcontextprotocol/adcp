@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="/nav.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
@@ -686,7 +687,7 @@
         <!-- Common Fields -->
         <div class="form-group">
           <label>Title</label>
-          <input type="text" id="title" required placeholder="Enter title">
+          <input type="text" id="title" required maxlength="500" placeholder="Enter title">
         </div>
 
         <div class="form-group">
@@ -727,10 +728,11 @@
           <div class="form-group" id="statusGroup">
             <label>Status</label>
             <select id="statusSelect">
-              <option value="draft">Draft</option>
+              <option value="pending_review" selected>Submit for Review</option>
+              <option value="draft">Save as Draft</option>
               <option value="published">Publish Now</option>
             </select>
-            <small id="statusHint"></small>
+            <small id="statusHint">Submit for review so a committee lead or admin approves before it goes live.</small>
           </div>
         </div>
 
@@ -1180,6 +1182,40 @@
       preview.innerHTML = DOMPurify.sanitize(marked.parse(text));
     }
 
+    // Rich-text paste: when the user pastes from Google Docs / Notion / Word
+    // (anywhere that puts HTML on the clipboard), convert the HTML to
+    // markdown via turndown so headings, bold, italics, lists, and links
+    // survive into the content textarea. Plain-text paste falls through
+    // to the browser default — no regression for members who already have
+    // markdown in their clipboard.
+    function wireRichTextPaste(textareaId) {
+      const el = document.getElementById(textareaId);
+      if (!el || typeof TurndownService === 'undefined') return;
+      const td = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+        bulletListMarker: '-',
+      });
+      el.addEventListener('paste', (event) => {
+        const html = event.clipboardData?.getData('text/html');
+        if (!html || !html.trim()) return; // let browser handle plain paste
+        event.preventDefault();
+        // Sanitize before converting — turndown escapes most HTML but we
+        // still want to strip scripts/styles before running it.
+        const cleanHtml = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+        const markdown = td.turndown(cleanHtml);
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const before = el.value.slice(0, start);
+        const after = el.value.slice(end);
+        el.value = `${before}${markdown}${after}`;
+        const caret = start + markdown.length;
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    window.addEventListener('DOMContentLoaded', () => wireRichTextPaste('articleContent'));
+
     // Update status hint based on collection
     function updateStatusHint() {
       const collectionSlug = document.getElementById('collection').value;
@@ -1188,15 +1224,19 @@
 
       const collection = committees.find(c => c.slug === collectionSlug);
 
+      // Dropdown is always enabled — non-leads can still pick Submit for
+      // Review or Save as Draft. The server demotes a Publish Now request
+      // to pending_review for non-leads (see proposeContentForUser); we
+      // surface that with a post-submit toast in saveContent().
+      statusSelect.disabled = false;
+
       if (collection?.canPublishDirectly || isAdmin) {
         hint.textContent = collection?.type === 'committee'
           ? 'As a lead, you can publish directly.'
           : 'You can publish directly.';
-        statusSelect.disabled = false;
       } else {
-        hint.textContent = 'Will be submitted for review.';
-        statusSelect.value = 'draft';
-        statusSelect.disabled = true;
+        const reviewer = collection?.type === 'committee' ? 'a committee lead' : 'an admin';
+        hint.textContent = `Submit for Review sends it to ${reviewer}. Save as Draft keeps it private. Publish Now will be routed to review since you are not a lead.`;
       }
     }
 
@@ -1275,9 +1315,12 @@
           throw new Error(err.message || 'Failed to save');
         }
 
+        const result = await response.json();
         closeModal();
         await loadMyContent();
         if (canReview) await loadPendingContent();
+
+        showStatusOutcomeToast(statusValue, result.status);
       } catch (error) {
         console.error('Save error:', error);
         alert('Failed to save: ' + error.message);
@@ -1285,6 +1328,58 @@
 
       btn.disabled = false;
       btn.textContent = 'Save';
+    }
+
+    // Compare requested vs server-resolved status and announce the outcome.
+    // The propose endpoint demotes a non-lead's "published" request to
+    // pending_review (see proposeContentForUser in server/src/routes/content.ts);
+    // without this toast that demotion is silent.
+    function showStatusOutcomeToast(requested, actual) {
+      if (!actual) {
+        console.warn('Save response missing status — toast suppressed', { requested });
+        return;
+      }
+      if (requested === 'published' && actual === 'pending_review') {
+        const collection = committees.find(c => c.slug === document.getElementById('collection').value);
+        const reviewer = collection?.type === 'committee' ? 'a committee lead' : 'an admin';
+        showToast(`Submitted for review — ${reviewer} will approve before publishing. Track it in the Pending tab.`);
+        return;
+      }
+      if (actual === 'pending_review') {
+        showToast('Submitted for review.');
+      } else if (actual === 'published') {
+        showToast('Published.');
+      } else if (actual === 'draft') {
+        showToast('Saved as draft.');
+      }
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      const bg = type === 'error' ? 'var(--color-error-600)' : 'var(--color-success-600)';
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: ${bg};
+        color: white;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        max-width: 480px;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
     }
 
     // Show review modal

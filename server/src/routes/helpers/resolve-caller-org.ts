@@ -9,14 +9,15 @@
  *      integrations. Validated via the existing `validateWorkOSApiKey` helper.
  *   3. Sealed session — web/native app sessions whose cookie or bearer
  *      unsealed in `optionalAuth`, producing `req.user`. Organization is
- *      looked up via `users.primary_organization_id`.
+ *      resolved via `resolvePrimaryOrganization`, which falls back to the
+ *      user's organization_memberships when the cached column is NULL.
  */
 
 import type { Request } from 'express';
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { isWorkOSApiKeyFormat } from '../../middleware/api-key-format.js';
 import { validateWorkOSApiKey } from '../../middleware/auth.js';
-import { query as dbQuery } from '../../db/client.js';
+import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('resolve-caller-org');
@@ -93,11 +94,7 @@ export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null
 
   if (req.user?.id) {
     try {
-      const row = await dbQuery<{ primary_organization_id: string | null }>(
-        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-        [req.user.id],
-      );
-      return row.rows[0]?.primary_organization_id ?? null;
+      return await resolvePrimaryOrganization(req.user.id);
     } catch (err) {
       logger.warn({ err, userId: req.user.id }, 'caller org resolution failed — falling back to public-only');
     }

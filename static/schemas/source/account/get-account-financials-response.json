@@ -4,6 +4,11 @@
   "title": "Get Account Financials Response",
   "description": "Financial status for an operator-billed account. Returns spend summary, credit/balance status, payment status, and invoice history. The level of detail varies by seller — only account, currency, and period are guaranteed on success.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "GetAccountFinancialsSuccess",
@@ -42,7 +47,9 @@
               "description": "Number of active media buys in the period"
             }
           },
-          "required": ["total_spend"]
+          "required": [
+            "total_spend"
+          ]
         },
         "credit": {
           "type": "object",
@@ -64,7 +71,10 @@
               "description": "Credit utilization as a percentage (0-100)"
             }
           },
-          "required": ["credit_limit", "available_credit"]
+          "required": [
+            "credit_limit",
+            "available_credit"
+          ]
         },
         "balance": {
           "type": "object",
@@ -90,14 +100,23 @@
                   "description": "Date of top-up"
                 }
               },
-              "required": ["amount", "date"]
+              "required": [
+                "amount",
+                "date"
+              ]
             }
           },
-          "required": ["available"]
+          "required": [
+            "available"
+          ]
         },
         "payment_status": {
           "type": "string",
-          "enum": ["current", "past_due", "suspended"],
+          "enum": [
+            "current",
+            "past_due",
+            "suspended"
+          ],
           "description": "Overall payment status. current: all obligations met. past_due: one or more invoices overdue. suspended: account suspended due to payment issues."
         },
         "payment_terms": {
@@ -125,7 +144,13 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["draft", "issued", "paid", "past_due", "void"],
+                "enum": [
+                  "draft",
+                  "issued",
+                  "paid",
+                  "past_due",
+                  "void"
+                ],
                 "description": "Invoice status"
               },
               "due_date": {
@@ -139,7 +164,11 @@
                 "description": "Date payment was received. Present when status is 'paid'."
               }
             },
-            "required": ["invoice_id", "amount", "status"]
+            "required": [
+              "invoice_id",
+              "amount",
+              "status"
+            ]
           }
         },
         "context": {
@@ -149,10 +178,17 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["account", "currency", "period", "timezone"],
+      "required": [
+        "account",
+        "currency",
+        "period",
+        "timezone"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -175,14 +211,32 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["account"] },
-          { "required": ["currency"] },
-          { "required": ["period"] },
-          { "required": ["timezone"] }
+          {
+            "required": [
+              "account"
+            ]
+          },
+          {
+            "required": [
+              "currency"
+            ]
+          },
+          {
+            "required": [
+              "period"
+            ]
+          },
+          {
+            "required": [
+              "timezone"
+            ]
+          }
         ]
       }
     }
@@ -191,7 +245,9 @@
     {
       "description": "Credit account — current, with invoice history",
       "data": {
-        "account": { "account_id": "acc_acme_001" },
+        "account": {
+          "account_id": "acc_acme_001"
+        },
         "currency": "USD",
         "period": {
           "start": "2026-02-01",
@@ -199,12 +255,12 @@
         },
         "timezone": "America/New_York",
         "spend": {
-          "total_spend": 45230.00,
+          "total_spend": 45230,
           "media_buy_count": 3
         },
         "credit": {
-          "credit_limit": 100000.00,
-          "available_credit": 54770.00,
+          "credit_limit": 100000,
+          "available_credit": 54770,
           "utilization_percent": 45.23
         },
         "payment_status": "current",
@@ -212,8 +268,11 @@
         "invoices": [
           {
             "invoice_id": "inv_2026_01",
-            "period": { "start": "2026-01-01", "end": "2026-01-31" },
-            "amount": 38500.00,
+            "period": {
+              "start": "2026-01-01",
+              "end": "2026-01-31"
+            },
+            "amount": 38500,
             "status": "paid",
             "due_date": "2026-02-28",
             "paid_date": "2026-02-15"
@@ -225,7 +284,9 @@
       "description": "Prepay account with low balance",
       "data": {
         "account": {
-          "brand": { "domain": "acme-corp.com" },
+          "brand": {
+            "domain": "acme-corp.com"
+          },
           "operator": "acme-corp.com"
         },
         "currency": "USD",
@@ -235,13 +296,13 @@
         },
         "timezone": "America/Los_Angeles",
         "spend": {
-          "total_spend": 8200.00,
+          "total_spend": 8200,
           "media_buy_count": 2
         },
         "balance": {
-          "available": 1800.00,
+          "available": 1800,
           "last_top_up": {
-            "amount": 10000.00,
+            "amount": 10000,
             "date": "2026-02-01"
           }
         },
@@ -260,5 +321,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

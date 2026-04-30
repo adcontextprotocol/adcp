@@ -22,7 +22,8 @@ vi.mock('../../src/addie/jobs/github-filer.js', () => ({
   fileGitHubIssue: mocks.fileGitHubIssue,
 }));
 
-vi.mock('../../src/middleware/auth.js', () => ({
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     (req as { user: unknown }).user = {
       id: 'user_test_admin',
@@ -32,6 +33,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
     next();
   },
   requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 // Stripe is mocked in other integration tests to avoid the billing init path.

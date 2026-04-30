@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/protocol/get-adcp-capabilities-request.json",
+  "title": "Get AdCP Capabilities Request",
+  "description": "Request payload for get_adcp_capabilities task. Protocol-level capability discovery that works across all AdCP protocols.",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. When provided, the seller validates this against its supported major_versions and returns VERSION_UNSUPPORTED if the version is not in range. When omitted, the seller assumes the highest major version it supports.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "protocols": {
+      "type": "array",
+      "description": "Specific protocols to query capabilities for. If omitted, returns capabilities for all supported protocols.",
+      "items": {
+        "type": "string",
+        "enum": ["media_buy", "signals", "governance", "sponsored_intelligence", "creative"]
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

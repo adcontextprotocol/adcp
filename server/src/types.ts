@@ -7,9 +7,9 @@ export type AgentType = "brand" | "rights" | "measurement" | "governance" | "cre
 export const VALID_AGENT_TYPES: readonly AgentType[] = ["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"] as const;
 
 /**
- * Type guard to check if a string is a valid AgentType
+ * Type guard to check if a value is a valid AgentType
  */
-export function isValidAgentType(value: string | undefined | null): value is AgentType {
+export function isValidAgentType(value: unknown): value is AgentType {
   return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
 }
 
@@ -376,7 +376,7 @@ export interface AgentConfig {
   visibility: AgentVisibility;
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
-  type?: AgentType | 'buyer';
+  type?: AgentType;
 }
 
 /**
@@ -1006,6 +1006,8 @@ export interface AgentCompliance {
   headline: string | null;
   monitoring_paused: boolean;
   check_interval_hours: number;
+  verified?: boolean;
+  verified_roles?: string[];
 }
 
 // Federated Discovery Types
@@ -1016,7 +1018,7 @@ export interface AgentCompliance {
 export interface FederatedAgent {
   url: string;
   name?: string;
-  type?: AgentType | 'buyer';
+  type?: AgentType;
   protocol?: 'mcp' | 'a2a';
   source: 'registered' | 'discovered';
   // For registered agents

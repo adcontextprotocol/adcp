@@ -3,7 +3,7 @@
  *
  * Context: PR #2800 added an `oauth_client_credentials` variant to
  * `ResolvedOwnerAuth` (the server's internal auth union for agents
- * with saved credentials), but `@adcp/client`'s `ComplyOptions.auth`
+ * with saved credentials), but `@adcp/sdk`'s `ComplyOptions.auth`
  * and `TestOptions.auth` unions only accept `bearer | basic | oauth`.
  * Passing the client-credentials variant to the SDK is a type error and
  * would also fail at runtime because the SDK doesn't implement the
@@ -18,7 +18,7 @@
  * Tradeoff: no caching / expiry tracking yet. Compliance heartbeat and
  * the registry test paths are both low-frequency (minutes / per-request
  * hit counts, not steady-state traffic), so re-exchanging each call is
- * acceptable. When `@adcp/client` learns native client-credentials
+ * acceptable. When `@adcp/sdk` learns native client-credentials
  * support with 401-triggered refresh, this bridge can be removed and
  * the configs passed through untouched.
  */

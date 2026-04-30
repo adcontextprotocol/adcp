@@ -4,13 +4,29 @@
   "title": "List Creative Formats Request (Creative Agent)",
   "description": "Request parameters for discovering creative formats provided by this creative agent",
   "type": "object",
-  "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
     },
+    {
+      "if": {
+        "properties": {
+          "include_pricing": {
+            "const": true
+          }
+        },
+        "required": [
+          "include_pricing"
+        ]
+      },
+      "then": {
+        "required": [
+          "account"
+        ]
+      }
+    }
+  ],
+  "properties": {
     "format_ids": {
       "type": "array",
       "description": "Return only these specific format IDs",
@@ -127,24 +143,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true,
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "include_pricing": {
-            "const": true
-          }
-        },
-        "required": [
-          "include_pricing"
-        ]
-      },
-      "then": {
-        "required": [
-          "account"
-        ]
-      }
-    }
-  ]
+  "additionalProperties": true
 }

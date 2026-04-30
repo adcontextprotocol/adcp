@@ -38,7 +38,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Governance context token issued by a governance agent during check_governance. Buyers attach it to governed purchase requests (media buys, rights acquisitions, signal activations, creative services); sellers persist it and include it on all subsequent governance calls for that action's lifecycle.\n\nValue format: in 3.0 governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context). Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. In 3.1 all sellers MUST verify. Non-JWS values from pre-3.0 governance agents are deprecated.\n\nThis is the primary correlation key for audit and reporting across the governance lifecycle.",
+      "description": "Governance context token issued by the account's governance agent during check_governance. Buyers attach it to governed purchase requests (media buys, rights acquisitions, signal activations, creative services); sellers persist it and include it on all subsequent governance calls for that action's lifecycle. An account binds to one governance agent (see sync_governance); governance is phased across `purchase` / `modification` / `delivery`, not partitioned across specialist agents, so the envelope carries a single token for the full lifecycle.\n\nValue format: governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context). Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged. In 3.1 all sellers MUST verify. Non-JWS values from pre-3.0 governance agents are deprecated.\n\nThis is the primary correlation key for audit and reporting across the governance lifecycle.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
@@ -47,14 +47,6 @@
       "type": "object",
       "description": "The actual task-specific response data. This is the content defined in individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). Contains only domain-specific data without protocol-level fields.",
       "additionalProperties": true
-    },
-    "task_status": {
-      "$comment": "Explicitly forbidden: v2 legacy field name with no semantics in v3. MUST NOT appear on v3 protocol envelopes. See docs/reference/migration/index.mdx and docs/building/implementation/task-lifecycle.mdx.",
-      "not": {}
-    },
-    "response_status": {
-      "$comment": "Explicitly forbidden: v2 legacy field name with no semantics in v3. MUST NOT appear on v3 protocol envelopes. See docs/reference/migration/index.mdx and docs/building/implementation/task-lifecycle.mdx.",
-      "not": {}
     }
   },
   "required": [

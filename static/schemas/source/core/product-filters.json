@@ -264,9 +264,7 @@
                 "description": "Travel time limit"
               },
               "unit": {
-                "type": "string",
-                "enum": ["min", "hr"],
-                "description": "Time unit"
+                "$ref": "/schemas/enums/travel-time-unit.json"
               }
             },
             "required": ["value", "unit"],
@@ -352,6 +350,48 @@
       },
       "minItems": 1
     },
+    "required_metrics": {
+      "type": "array",
+      "description": "Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery responses. Use this for capability-level discovery (e.g., 'I need products that report `completed_views` for a CTV CPCV buy'); guarantee-level requirements with thresholds belong in `required_performance_standards` and `measurement_terms`. Sellers MUST silently exclude products that cannot meet this list (filter-not-fail; do not return an error). The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy — the same metric vocabulary is used to compute `missing_metrics` on `get_media_buy_delivery`.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [
+        ["completed_views"],
+        ["completed_views", "completion_rate"],
+        ["impressions", "spend", "engagements"]
+      ]
+    },
+    "required_vendor_metrics": {
+      "type": "array",
+      "description": "Filter to products whose `reporting_capabilities.vendor_metrics` matches these criteria. Each entry pins a `vendor` (matches any metric from that vendor), a `metric_id` (matches the metric across any vendor that uses that identifier), or both (specific vendor's specific metric). A product matches if its declared `vendor_metrics` covers ALL listed entries (AND across entries; pins within an entry are conjunctive). Cross-vendor discovery (e.g., 'I need attention measurement from any vendor that does it') is the buyer agent's responsibility — the agent resolves which vendors offer a category via the vendors' `brand.json` records, then enumerates them as filter entries. AdCP does not carry vendor-side metric metadata (category, methodology, standard alignment) in the filter surface; that lives at the vendor and is queried out-of-band. Sellers MUST silently exclude non-matching products (filter-not-fail; do not return an error) — same convention as the other `required_*` filters.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Pin to a specific vendor. Optional — omit to match any vendor offering this `metric_id`."
+          },
+          "metric_id": {
+            "$ref": "/schemas/core/vendor-metric-id.json",
+            "description": "Pin to an exact metric identifier within a vendor's vocabulary. Optional — omit to match any metric from the pinned vendor. Cross-vendor identifier matching only works after vendors converge on identifiers (typically post-standardization)."
+          }
+        },
+        "anyOf": [
+          { "required": ["vendor"] },
+          { "required": ["metric_id"] }
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "examples": [
+        [{ "vendor": { "domain": "attentionvendor.example" } }],
+        [{ "vendor": { "domain": "panelmeasurement.example" }, "metric_id": "demographic_reach" }],
+        [{ "vendor": { "domain": "attentionvendor.example" } }, { "vendor": { "domain": "secondattentionvendor.example" } }]
+      ]
+    },
     "keywords": {
       "type": "array",
       "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",
@@ -364,10 +404,8 @@
             "description": "The keyword to target"
           },
           "match_type": {
-            "type": "string",
-            "enum": ["broad", "phrase", "exact"],
-            "default": "broad",
-            "description": "Desired match type: broad matches related queries, phrase matches queries containing the keyword phrase, exact matches the query exactly. Defaults to broad."
+            "$ref": "/schemas/enums/match-type.json",
+            "default": "broad"
           }
         },
         "required": ["keyword"],

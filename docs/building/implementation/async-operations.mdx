@@ -52,8 +52,10 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 | Operation | Description |
 |-----------|-------------|
 | `create_media_buy` | Publisher approval workflows |
+| `update_media_buy` | Manual seller review for budget, targeting, or creative changes |
 | `sync_creatives` | Asset review and transcoding pipelines |
 | `build_creative` (with review) | Human creative review before finalizing |
+| `sync_catalogs` | Large feeds or feeds requiring content policy review |
 | `activate_signal` | Platform deployment pipelines |
 
 These operations integrate with external systems or require human approval.

@@ -132,11 +132,11 @@ ${quickstart}
 ## Validate an agent
 
 \`\`\`bash
-npx @adcp/client@latest storyboard run https://my-agent.example.com
+npx @adcp/sdk@latest storyboard run https://my-agent.example.com
 \`\`\`
 
 The CLI uses the same \`compliance/\` tree bundled here. For offline runs, point it at
-the extracted directory (see @adcp/client docs).
+the extracted directory (see @adcp/sdk docs).
 
 ## What's in the bundle
 
@@ -216,7 +216,12 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
         .sort()
     : [];
 
+  // published_version: full semver of this bundle.
+  // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility
+  // (ComplianceIndex.adcp_version). Both carry full semver; distinct from the
+  // wire field in core/version-envelope.json (release-precision).
   const manifest = {
+    published_version: version,
     adcp_version: version,
     generated_at: new Date().toISOString(),
     root_dir: rootDirName,

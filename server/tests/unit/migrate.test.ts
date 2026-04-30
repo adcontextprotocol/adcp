@@ -16,7 +16,7 @@ describe("Database Migrations", () => {
     vi.clearAllMocks();
 
     mockClient = {
-      query: vi.fn(),
+      query: vi.fn().mockResolvedValue({}),
       release: vi.fn(),
     };
 
@@ -27,6 +27,12 @@ describe("Database Migrations", () => {
 
     vi.mocked(clientModule.getPool).mockReturnValue(mockPool);
   });
+
+  /** runMigrations always grabs one client for pg_advisory_lock. Tests that
+   * want to verify "no migration was applied" should check for BEGIN, not
+   * raw connect() count. */
+  const wasMigrationApplied = () =>
+    mockClient.query.mock.calls.some((call: any[]) => call[0] === "BEGIN");
 
   describe("migration filename validation", () => {
     it("should reject invalid migration filenames", async () => {
@@ -88,8 +94,7 @@ describe("Database Migrations", () => {
 
       await runMigrations();
 
-      // Should not apply migration (no client connection needed)
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
     });
 
     it("should apply pending migrations in transaction", async () => {
@@ -116,9 +121,15 @@ describe("Database Migrations", () => {
         .mockResolvedValueOnce({}) // CREATE migrations table
         .mockResolvedValueOnce({ rows: [] }); // No applied migrations
 
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockRejectedValueOnce(new Error("SQL error")); // Migration fails
+      // First call to mockClient.query is the advisory lock; default mock
+      // (resolves to {}) handles it. Override the migration SQL itself to
+      // reject so applyMigration triggers ROLLBACK.
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "CREATE TABLE test;") {
+          return Promise.reject(new Error("SQL error"));
+        }
+        return Promise.resolve({});
+      });
 
       await expect(runMigrations()).rejects.toThrow();
 
@@ -208,7 +219,7 @@ describe("Database Migrations", () => {
         expect.stringContaining("Historical migration filename mismatches")
       );
       // Should NOT re-apply the mismatched migration
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
 
       consoleSpy.mockRestore();
     });
@@ -230,7 +241,51 @@ describe("Database Migrations", () => {
       );
 
       // Should NOT re-apply the mismatched migration
-      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(wasMigrationApplied()).toBe(false);
+    });
+  });
+
+  describe("migrations directory invariant", () => {
+    // Real filesystem (un-mocks the fs/promises mock that the rest of the
+    // suite uses). This is a fast structural assertion — the migrations
+    // directory itself, as committed, must have no duplicate version
+    // numbers and no malformed filenames. Catches the case where two
+    // branches both passed the pull_request workflow on different snapshots
+    // of main and got merged with colliding numbers.
+    it("has no duplicate migration version numbers on disk", async () => {
+      vi.doUnmock("fs/promises");
+      const realFs = await vi.importActual<typeof import("fs/promises")>("fs/promises");
+      const { fileURLToPath } = await import("node:url");
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const migrationsDir = path.resolve(here, "../../src/db/migrations");
+
+      const files = await realFs.readdir(migrationsDir);
+      const sqlFiles = files.filter((f) => f.endsWith(".sql"));
+
+      const versionsByNumber: Record<number, string[]> = {};
+      const malformed: string[] = [];
+      for (const file of sqlFiles) {
+        const m = file.match(/^(\d+)_(.+)\.sql$/);
+        if (!m) {
+          malformed.push(file);
+          continue;
+        }
+        const version = parseInt(m[1], 10);
+        if (isNaN(version)) {
+          malformed.push(file);
+          continue;
+        }
+        (versionsByNumber[version] ||= []).push(file);
+      }
+
+      const dupes = Object.entries(versionsByNumber).filter(([, fs]) => fs.length > 1);
+      expect(
+        dupes.map(([v, fs]) => `version ${v}: ${fs.join(", ")}`),
+        "Duplicate migration version numbers found — rebase your branch and renumber the colliding migration",
+      ).toEqual([]);
+      expect(malformed, "Migration filenames must match NNN_description.sql").toEqual([]);
+
+      vi.doMock("fs/promises");
     });
   });
 
@@ -250,6 +305,108 @@ describe("Database Migrations", () => {
       mockPool.query.mockResolvedValue({ rows: [] });
 
       await expect(runMigrations()).rejects.toThrow();
+    });
+  });
+
+  describe("advisory lock", () => {
+    // Hard-code rather than import: this *is* the wire-format check.
+    // If the constant in migrate.ts changes, that's a behavior change
+    // that requires a deliberate test update — we don't want test/source
+    // to drift in lockstep through a shared import.
+    const EXPECTED_LOCK_KEY = 0x6d696772;
+
+    it("acquires and releases pg_advisory_lock around the run", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [] });
+
+      await runMigrations();
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_lock($1)",
+        [EXPECTED_LOCK_KEY],
+      );
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_unlock($1)",
+        [EXPECTED_LOCK_KEY],
+      );
+      expect(mockClient.release).toHaveBeenCalled();
+
+      // Lock must precede the migrations table create; unlock must follow it.
+      const calls = mockClient.query.mock.calls;
+      const lockIdx = calls.findIndex((c: any[]) => c[0] === "SELECT pg_advisory_lock($1)");
+      const unlockIdx = calls.findIndex((c: any[]) => c[0] === "SELECT pg_advisory_unlock($1)");
+      expect(lockIdx).toBeGreaterThanOrEqual(0);
+      expect(unlockIdx).toBeGreaterThan(lockIdx);
+    });
+
+    it("releases the lock even when migrations throw", async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error("boom"));
+
+      await expect(runMigrations()).rejects.toThrow("boom");
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        "SELECT pg_advisory_unlock($1)",
+        [EXPECTED_LOCK_KEY],
+      );
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it("does not shadow migration errors when unlock itself fails", async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error("real migration error"));
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "SELECT pg_advisory_unlock($1)") {
+          return Promise.reject(new Error("unlock failed"));
+        }
+        return Promise.resolve({});
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await expect(runMigrations()).rejects.toThrow("real migration error");
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to release migration advisory lock:",
+        expect.any(Error),
+      );
+      expect(mockClient.release).toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("bounds lock acquisition with statement_timeout, then clears it", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [] });
+
+      await runMigrations();
+
+      const calls = mockClient.query.mock.calls.map((c: any[]) => c[0]);
+      const setTimeoutIdx = calls.findIndex((q: string) => /SET statement_timeout = '5min'/.test(q));
+      const lockIdx = calls.findIndex((q: string) => q === "SELECT pg_advisory_lock($1)");
+      const clearTimeoutIdx = calls.findIndex((q: string) => /SET statement_timeout = 0/.test(q));
+
+      expect(setTimeoutIdx).toBeGreaterThanOrEqual(0);
+      expect(lockIdx).toBeGreaterThan(setTimeoutIdx);
+      expect(clearTimeoutIdx).toBeGreaterThan(lockIdx);
+    });
+
+    it("surfaces a clear error when lock acquisition times out (pg 57014)", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([] as any);
+      mockClient.query.mockImplementation((text: string) => {
+        if (text === "SELECT pg_advisory_lock($1)") {
+          const err = new Error("canceling statement due to statement timeout") as Error & { code: string };
+          err.code = "57014";
+          return Promise.reject(err);
+        }
+        return Promise.resolve({});
+      });
+
+      await expect(runMigrations()).rejects.toThrow(/A prior runMigrations\(\) session is likely wedged/);
+
+      // Even on the timeout path, the connection must be released.
+      expect(mockClient.release).toHaveBeenCalled();
     });
   });
 });

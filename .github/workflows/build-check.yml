@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main, develop, '2.6.x']
+    branches: [main, develop, '3.0.x', '2.6.x']
   push:
-    branches: [main, develop, '2.6.x']
+    branches: [main, develop, '3.0.x', '2.6.x']
 
 concurrency:
   group: build-check-${{ github.ref }}
@@ -49,3 +49,46 @@ jobs:
 
       - name: HMAC webhook conformance (verifier + signer)
         run: npm run test:hmac-vectors && npm run test:hmac-signer-conformance
+
+  server-integration:
+    name: Server integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Throwaway service container; credentials live for the job only and are
+        # never reachable from outside the runner. Long literal value below is to
+        # satisfy GitGuardian's generic-password heuristic — not a real secret.
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_runner
+          POSTGRES_PASSWORD: ci_runner_throwaway_no_secret_value
+          POSTGRES_DB: adcp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_runner -d adcp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Apply migrations to test database
+        run: npx tsx server/src/db/migrate.ts
+
+      - name: Run server integration tests
+        run: npm run test:server-integration

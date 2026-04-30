@@ -4,15 +4,18 @@
   "title": "Calibrate Content Response",
   "description": "Response payload with verdict and detailed explanations for collaborative calibration",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
       "description": "Success response with detailed calibration feedback",
       "properties": {
         "verdict": {
-          "type": "string",
-          "enum": ["pass", "fail"],
-          "description": "Overall pass/fail verdict for the content evaluation"
+          "$ref": "/schemas/enums/binary-verdict.json"
         },
         "confidence": {
           "type": "number",
@@ -35,9 +38,7 @@
                 "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'competitor_adjacency'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact'. Reserved prefixes: 'record:', 'delivery:'."
               },
               "status": {
-                "type": "string",
-                "enum": ["passed", "failed", "warning", "unevaluated"],
-                "description": "Evaluation status for this feature"
+                "$ref": "/schemas/enums/feature-check-status.json"
               },
               "policy_id": {
                 "type": "string",
@@ -55,7 +56,10 @@
                 "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
               }
             },
-            "required": ["feature_id", "status"]
+            "required": [
+              "feature_id",
+              "status"
+            ]
           }
         },
         "context": {
@@ -65,7 +69,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["verdict"]
+      "required": [
+        "verdict"
+      ]
     },
     {
       "type": "object",
@@ -73,7 +79,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -82,7 +90,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

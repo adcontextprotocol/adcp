@@ -16,12 +16,13 @@ import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import { CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -48,7 +49,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -107,6 +108,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
@@ -650,6 +652,14 @@ export class HTTPServer {
       res.redirect(302, '/openapi/registry.yaml');
     });
 
+    // RFC 7517 JWKS publishing Addie's request-signing public key. Verifiers
+    // (sellers receiving signed AdCP requests from Addie) fetch this to
+    // resolve the `kid` carried in `Signature-Input`.
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(getPublicSigningJwks());
+    });
+
     // RFC 9728 protected-resource metadata for the REST API. Points at the same
     // OAuth 2.1 authorization server that the MCP endpoint uses, so a single
     // SSO'd token issued via mcpAuthRouter works against /api/* too.
@@ -1002,6 +1012,12 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+
+    // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.json(getPublicJwks());
+    });
 
     // Mount property catalog API routes (resolve, browse, sync, disputes)
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
@@ -5681,6 +5697,11 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-addie-costs.html');
     });
 
+    // Suggested-prompts metrics dashboard.
+    this.app.get('/admin/prompt-metrics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-prompt-metrics.html');
+    });
+
     // Note: /admin/billing is now served from billing.ts router
 
     // Admin content management — now lives in dashboard
@@ -6052,8 +6073,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         safeReturnTo = return_to;
       }
 
-      // Set dev session cookie
-      res.cookie(getDevSessionCookieName(), user, {
+      // Set dev session cookie. Value is HMAC-signed with a per-process
+      // secret so a cookie minted on someone else's box (or set by an
+      // attacker via XSS / sibling-subdomain) is rejected on read.
+      res.cookie(getDevSessionCookieName(), encodeDevSessionCookie(user), {
         httpOnly: true,
         secure: false, // Dev mode is always HTTP on localhost
         sameSite: 'lax',
@@ -8508,7 +8531,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Initialize database
     const { initializeDatabase, onPoolError } = await import("./db/client.js");
-    const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
@@ -8521,7 +8543,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       notifySystemError({ source: 'database-pool', errorMessage: 'Database pool error — check application logs' });
     });
 
-    await runMigrations();
+    // Migrations run once per deploy via fly.toml `release_command`, and
+    // for local/docker via RUN_MIGRATIONS=true in index.ts. Don't run them
+    // here — every machine doing it during a rolling deploy exhausts pg
+    // connection slots.
 
     // Validate the idempotency backend can actually query its table — fails
     // fast on a stale pool, missing migration, or wrong-credentials boot
@@ -8638,6 +8663,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
             startSeatRequestReminders(workos!);
           }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+
+          // Daily auto-provision new-member digest for org admins/owners.
+          // Consent receipt for the auto_provision_verified_domain default.
+          import('./scheduled/auto-provision-digest.js').then(({ startAutoProvisionDigest }) => {
+            startAutoProvisionDigest(workos!);
+          }).catch(err => logger.warn({ err }, 'Failed to start auto-provision digest'));
         }
 
         // Start Luma calendar sync (catches events missed by webhooks)
@@ -8690,6 +8721,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
         stopSeatRequestReminders();
+      }).catch(() => {});
+
+      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+        stopAutoProvisionDigest();
       }).catch(() => {});
 
       import('./luma/sync.js').then(({ stopLumaSync }) => {

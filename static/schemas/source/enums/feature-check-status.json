@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/feature-check-status.json",
+  "title": "Feature Check Status",
+  "description": "Per-feature evaluation outcome in content standards checks. For the two-outcome overall record verdict, see binary-verdict.",
+  "type": "string",
+  "enum": ["passed", "failed", "warning", "unevaluated"],
+  "enumDescriptions": {
+    "passed": "Feature met the applicable content standard",
+    "failed": "Feature did not meet the applicable content standard",
+    "warning": "Feature is within tolerance but approaching a threshold — informational, not blocking",
+    "unevaluated": "Feature was not assessed in this evaluation run (e.g., required data not present)"
+  }
+}

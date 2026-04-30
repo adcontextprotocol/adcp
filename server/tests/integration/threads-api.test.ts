@@ -6,8 +6,9 @@ import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+  requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_threads',
       email: 'test@example.com',
@@ -16,8 +17,8 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
-  requireAdmin: (req: any, res: any, next: any) => next(),
-  optionalAuth: (req: any, res: any, next: any) => {
+  requireAdmin: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_threads',
       email: 'test@example.com',
@@ -25,6 +26,10 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
+}));
+
+vi.mock('../../src/middleware/csrf.js', () => ({
+  csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock Stripe client
@@ -355,8 +360,10 @@ describe('Threads API Integration Tests', () => {
     let webThreadExternalId: string;
 
     beforeAll(async () => {
-      // Create a web thread for testing
-      webThreadExternalId = 'test-api-web-chat-' + Date.now();
+      // Create a web thread for testing — must be a valid UUID since the
+      // route now enforces UUID-shaped conversation IDs for web threads.
+      const { randomUUID } = await import('crypto');
+      webThreadExternalId = randomUUID();
       await pool.query(`
         INSERT INTO addie_threads (channel, external_id, user_type, user_id, user_display_name)
         VALUES ('web', $1, 'workos', 'user_test_threads', 'Test User')
@@ -392,8 +399,9 @@ describe('Threads API Integration Tests', () => {
     });
 
     it('should return 404 for non-existent conversation', async () => {
-      // This is a valid UUID format but doesn't exist
-      const fakeUuid = '12345678-1234-1234-1234-123456789012';
+      // Valid v4 UUID shape (version digit 4, variant bits 8) — the uuid
+      // package's validate() requires these or it rejects the string.
+      const fakeUuid = '00000000-0000-4000-8000-000000000000';
       const response = await request(app)
         .get(`/api/addie/chat/${fakeUuid}`)
         .expect(404);

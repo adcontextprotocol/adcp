@@ -47,7 +47,7 @@ import {
   type Storyboard,
   type StoryboardContext,
   type StoryboardStepResult,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import {
@@ -62,6 +62,7 @@ import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
@@ -75,6 +76,7 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
+import { recordAgentTestRun } from '../../db/agent-test-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -104,7 +106,7 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 };
 
 /**
- * Known error patterns that indicate bugs in the @adcp/client testing library
+ * Known error patterns that indicate bugs in the @adcp/sdk testing library
  * rather than in the agent being tested.
  *
  * Each pattern should be specific enough to avoid false positives where an agent
@@ -1987,11 +1989,7 @@ export function createMemberToolHandlers(
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
     }
@@ -2097,11 +2095,7 @@ export function createMemberToolHandlers(
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const userRow = await query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [userId]
-    );
-    const orgId = userRow.rows[0]?.primary_organization_id;
+    const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
     }
@@ -3584,6 +3578,33 @@ export function createMemberToolHandlers(
 
       output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
+      const workosUserIdForRecord = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForRecord) {
+        const evalOutcome = ((): 'pass' | 'fail' | 'partial' | 'error' => {
+          switch (result.overall_status) {
+            case 'passing': return 'pass';
+            case 'partial': return 'partial';
+            case 'failing': return 'fail';
+            default: return 'error';
+          }
+        })();
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForRecord,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: 'quality_evaluation',
+          outcome: evalOutcome,
+          duration_ms: result.total_duration_ms,
+        }).then(async () => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
+        }).catch(err => logger.warn({ err }, 'Could not record agent test run'));
+      }
+
       return output;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -3610,7 +3631,7 @@ export function createMemberToolHandlers(
         }
         return (
           `**Unknown specialism.** The agent declares ${safeSpec}, which isn't in the local ` +
-          `compliance cache. Either the cache is stale (re-sync the \`@adcp/client\` compliance ` +
+          `compliance cache. Either the cache is stale (re-sync the \`@adcp/sdk\` compliance ` +
           `tarball) or the specialism id is a typo — cross-check against ` +
           `https://adcontextprotocol.org/compliance/latest/index.json.`
         );
@@ -3666,7 +3687,14 @@ export function createMemberToolHandlers(
     } catch (err) {
       logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
-    const docsVersion = index?.adcp_version || 'latest';
+    // Build emits both `published_version` (preferred) and `adcp_version`
+    // (legacy alias) on the compliance index. Prefer the new field; fall
+    // back to the legacy alias because `@adcp/client.ComplianceIndex` still
+    // types the legacy field at compile time.
+    const docsVersion =
+      (index as { published_version?: string } | null)?.published_version ||
+      index?.adcp_version ||
+      'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
     const knownProtocolIds = index?.protocols?.map(p => p.id.replace(/-/g, '_')) ?? [
@@ -3739,7 +3767,7 @@ export function createMemberToolHandlers(
       if (knownIds.length > 0) {
         output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
       }
-      output += `Either the cache is stale (re-sync the \`@adcp/client\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
+      output += `Either the cache is stale (re-sync the \`@adcp/sdk\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
       return output;
     }
 
@@ -3764,7 +3792,7 @@ export function createMemberToolHandlers(
       output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
     }
 
-    // Group by bundle kind. `@adcp/client@5.x` returns kind: 'domain' for protocol baselines;
+    // Group by bundle kind. `@adcp/sdk@5.x` returns kind: 'domain' for protocol baselines;
     // v6 will return 'protocol'. Accept either during transition.
     const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], protocol: [], specialism: [] };
     for (const b of nonEmpty) {
@@ -3890,6 +3918,34 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
 
+      // Record the run in agent_test_history when we have a saved
+      // agent_context for this org+url. Mirrors evaluate_agent_quality's
+      // pattern; powers the "agent not tested in 14d" prompt rule.
+      // Storyboard runs don't carry a structured agent_profile (only
+      // evaluate_agent_quality probes get_adcp_capabilities), so we
+      // omit agent_profile_json — readers tolerate null.
+      if (organizationId) {
+        try {
+          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+          if (context) {
+            await agentContextDb.recordTest({
+              agent_context_id: context.id,
+              scenario: `storyboard:${sb.id}`,
+              overall_passed: result.overall_passed,
+              steps_passed: result.passed_count,
+              steps_failed: result.failed_count,
+              total_duration_ms: result.total_duration_ms,
+              summary: result.storyboard_title,
+              dry_run: dryRun,
+              triggered_by: 'user',
+              user_id: memberContext?.workos_user?.workos_user_id,
+            });
+          }
+        } catch (error) {
+          logger.debug({ error }, 'Could not record storyboard run');
+        }
+      }
+
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
 
@@ -3915,7 +3971,7 @@ export function createMemberToolHandlers(
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
-          // @adcp/client contract — render them on passing steps too so
+          // @adcp/sdk contract — render them on passing steps too so
           // catalog drift caught by a downstream tool surfaces even when
           // this step happened to pass on its own response shape.
           if (!step.skipped) {
@@ -3939,6 +3995,26 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+
+      const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
+      if (workosUserIdForStoryboard) {
+        recordAgentTestRun({
+          workos_user_id: workosUserIdForStoryboard,
+          workos_organization_id: memberContext?.organization?.workos_organization_id,
+          agent_hostname: getAgentHostname(resolved.resolvedUrl),
+          agent_protocol: 'mcp',
+          test_kind: storyboardId,
+          outcome: result.overall_passed ? 'pass' : 'fail',
+          duration_ms: result.total_duration_ms,
+          storyboard_id: storyboardId,
+        }).then(async () => {
+          const slackId = memberContext?.slack_user?.slack_user_id;
+          if (slackId) {
+            const { invalidateMemberContextCache } = await import('../member-context.js');
+            invalidateMemberContextCache(slackId);
+          }
+        }).catch(err => logger.warn({ err }, 'Could not record storyboard run'));
+      }
 
       return output;
     } catch (error) {
@@ -4028,7 +4104,7 @@ export function createMemberToolHandlers(
         }
 
         // Hints are diagnostic-only and don't flip pass/fail per the
-        // @adcp/client contract — surface them whether the step passed
+        // @adcp/sdk contract — surface them whether the step passed
         // or failed, so catalog drift caught by a downstream tool isn't
         // hidden when an individual step's own validations happen to pass.
         const fixPlan = renderAllHintFixPlans(result.hints, {
@@ -4131,7 +4207,7 @@ export function createMemberToolHandlers(
     }
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
 
       const agentConfig = {
         id: 'target',
@@ -4327,7 +4403,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
@@ -4545,7 +4621,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,

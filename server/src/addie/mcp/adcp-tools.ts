@@ -13,11 +13,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('adcp-tools');
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
-import { AuthenticationRequiredError } from '@adcp/client';
+import { AuthenticationRequiredError } from '@adcp/sdk';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
@@ -678,7 +680,26 @@ export function createAdcpToolHandlers(
     logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.authType, debug }, `AdCP: executing ${task}`);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
+      const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
+
+      // Sign outbound AdCP requests with the GCP KMS-backed Ed25519 key
+      // when configured. Verifiers fetch the public key from
+      // `${BASE_URL}/.well-known/jwks.json` (kid: aao-signing-2026-04).
+      //
+      // Init failures (KMS unreachable, wrong algorithm, tripwire mismatch,
+      // bad SA JSON) are fail-closed: structured-log the full error for
+      // operators, surface a generic message to the LLM. KMS error chains
+      // include the project ID, IAM principal email, and resource paths;
+      // those don't belong in the model's context window or in the tool
+      // result rendered to the end user.
+      let signingProvider;
+      try {
+        signingProvider = await getRequestSigningProvider();
+      } catch (kmsErr) {
+        logger.error({ err: kmsErr, agentUrl, task }, 'GCP KMS signing provider init failed');
+        return '**Error:** Outbound AdCP signing is misconfigured. Operator: check structured logs for KMS init failure (gcp-kms-signer module).';
+      }
 
       const agentConfig = {
         id: 'target',
@@ -688,6 +709,15 @@ export function createAdcpToolHandlers(
         ...(authInfo?.authType === 'basic'
           ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
           : authInfo ? { auth_token: authInfo.token } : {}),
+        ...(signingProvider
+          ? {
+              request_signing: {
+                kind: 'provider' as const,
+                provider: signingProvider,
+                agent_url: getBaseUrl(),
+              },
+            }
+          : {}),
       };
 
       const multiClient = new AdCPClient(
@@ -723,7 +753,7 @@ export function createAdcpToolHandlers(
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Handle AuthenticationRequiredError from @adcp/client (includes OAuth metadata)
+      // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
       if (error instanceof AuthenticationRequiredError) {
         const organizationId = memberContext?.organization?.workos_organization_id;
         if (organizationId && error.hasOAuth) {
@@ -736,7 +766,7 @@ export function createAdcpToolHandlers(
                 organization_id: organizationId,
                 agent_url: agentUrl,
                 agent_name: baseUrl.hostname,
-                agent_type: 'buying',
+                agent_type: 'unknown',
                 protocol: 'mcp',
               });
               logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');

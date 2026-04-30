@@ -4,13 +4,29 @@
   "title": "List Creatives Request",
   "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
   "type": "object",
-  "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
     },
+    {
+      "if": {
+        "properties": {
+          "include_pricing": {
+            "const": true
+          }
+        },
+        "required": [
+          "include_pricing"
+        ]
+      },
+      "then": {
+        "required": [
+          "account"
+        ]
+      }
+    }
+  ],
+  "properties": {
     "filters": {
       "$ref": "/schemas/core/creative-filters.json"
     },
@@ -94,25 +110,6 @@
     }
   },
   "additionalProperties": true,
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "include_pricing": {
-            "const": true
-          }
-        },
-        "required": [
-          "include_pricing"
-        ]
-      },
-      "then": {
-        "required": [
-          "account"
-        ]
-      }
-    }
-  ],
   "examples": [
     {
       "description": "List all approved creatives",
@@ -174,7 +171,9 @@
         },
         "include_pricing": true,
         "filters": {
-          "statuses": ["approved"]
+          "statuses": [
+            "approved"
+          ]
         }
       }
     }

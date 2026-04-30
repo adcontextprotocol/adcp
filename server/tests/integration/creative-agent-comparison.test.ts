@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { CreativeAgentClient, callMCPTool, STANDARD_CREATIVE_AGENTS } from '@adcp/client';
+import { CreativeAgentClient, callMCPTool, STANDARD_CREATIVE_AGENTS } from '@adcp/sdk';
 import { buildReferenceFormats, handleListCreativeFormats, handlePreviewCreative } from '../../src/creative-agent/task-handlers.js';
 
 const SKIP = !process.env.COMPARE_LIVE;

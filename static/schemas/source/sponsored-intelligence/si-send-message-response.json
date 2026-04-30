@@ -3,8 +3,13 @@
   "$id": "/schemas/sponsored-intelligence/si-send-message-response.json",
   "title": "SI Send Message Response",
   "description": "Brand agent's response to a user message",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "session_id": {
       "type": "string",

@@ -1,7 +1,7 @@
 /**
  * Idempotency wiring for the training agent.
  *
- * Thin facade over `@adcp/client/server`'s `createIdempotencyStore`, which
+ * Thin facade over `@adcp/sdk/server`'s `createIdempotencyStore`, which
  * implements the spec behaviour (RFC 8785 JCS payload hash, atomic
  * putIfAbsent claim, ±60s clock-skew TTL, exclusion list for
  * `idempotency_key`, `context`, `governance_context`, and
@@ -29,7 +29,7 @@ import {
   hashPayload,
   type IdempotencyStore,
   type IdempotencyCheckResult,
-} from '@adcp/client/server';
+} from '@adcp/sdk/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 
 export const REPLAY_TTL_SECONDS = 86400;

@@ -8,6 +8,7 @@ import { MemberDatabase } from "../db/member-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { query } from "../db/client.js";
+import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
 
@@ -427,18 +428,19 @@ async function syncIndividualMemberProfile(
   invalidateMemberContextCache?: () => void,
 ): Promise<void> {
   // Look up user's org
-  const userRow = await query<{ primary_organization_id: string | null; first_name: string; last_name: string }>(
-    'SELECT primary_organization_id, first_name, last_name FROM users WHERE workos_user_id = $1',
+  const orgId = await resolvePrimaryOrganization(userId);
+  if (!orgId) return;
+
+  // Only sync for personal/individual orgs
+  const org = await orgDb.getOrganization(orgId);
+  if (!org?.is_personal) return;
+
+  const userRow = await query<{ first_name: string; last_name: string }>(
+    'SELECT first_name, last_name FROM users WHERE workos_user_id = $1',
     [userId]
   );
   const user = userRow.rows[0];
-  if (!user?.primary_organization_id) return;
-
-  // Only sync for personal/individual orgs
-  const org = await orgDb.getOrganization(user.primary_organization_id);
-  if (!org?.is_personal) return;
-
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Member';
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Member';
 
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
@@ -452,14 +454,14 @@ async function syncIndividualMemberProfile(
   if (memberFields.contact_website !== undefined) memberUpdates.contact_website = memberFields.contact_website;
   if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
 
-  const existingProfile = await memberDb.getProfileByOrgId(user.primary_organization_id);
+  const existingProfile = await memberDb.getProfileByOrgId(orgId);
 
   // Sync is_public: turning off always syncs; turning on requires active subscription.
   // Only check subscription when actually toggling on to avoid unnecessary DB call.
   if (communityProfile.is_public === false) {
     memberUpdates.is_public = false;
   } else if (communityProfile.is_public === true && (!existingProfile || !existingProfile.is_public)) {
-    const hasSubscription = await orgDb.hasActiveSubscription(user.primary_organization_id);
+    const hasSubscription = await orgDb.hasActiveSubscription(orgId);
     if (hasSubscription) {
       memberUpdates.is_public = true;
     }
@@ -490,13 +492,13 @@ async function syncIndividualMemberProfile(
       memberUpdates.offerings = [...preserved, ...memberFields.offerings];
     }
 
-    await memberDb.updateProfileByOrgId(user.primary_organization_id, memberUpdates);
+    await memberDb.updateProfileByOrgId(orgId, memberUpdates);
   } else {
     // Auto-create member profile for personal accounts on first save
     const slug = communityProfile.slug || displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const memberIsPublic = memberUpdates.is_public === true;
     await memberDb.createProfile({
-      workos_organization_id: user.primary_organization_id,
+      workos_organization_id: orgId,
       display_name: displayName,
       slug,
       tagline: communityProfile.headline || undefined,

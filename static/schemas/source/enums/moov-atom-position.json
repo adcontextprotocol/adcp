@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/moov-atom-position.json",
+  "title": "Moov Atom Position",
+  "description": "Position of the moov atom in an MP4 container. 'start' enables progressive download without buffering the entire file; required for streaming ad delivery.",
+  "type": "string",
+  "enum": ["start", "end"],
+  "enumDescriptions": {
+    "start": "moov atom at beginning of file — enables progressive download and streaming delivery",
+    "end": "moov atom at end of file — requires full download before playback can begin"
+  }
+}

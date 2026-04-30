@@ -401,6 +401,23 @@ export async function proposeContentForUser(
     return { success: false, error: 'title is required' };
   }
 
+  // Field length validation — mirror DB column limits so callers get a
+  // friendly 400 instead of the Postgres "value too long" → HTTP 500
+  // path we were hitting (see #2734). The DB schema is authoritative;
+  // these constants just surface the limit before we hit the insert.
+  if (title.length > 500) {
+    return { success: false, error: `title is too long (max 500 characters; got ${title.length})` };
+  }
+  if (subtitle && subtitle.length > 1000) {
+    return { success: false, error: `subtitle is too long (max 1000 characters; got ${subtitle.length})` };
+  }
+  if (requestAuthorTitle && requestAuthorTitle.length > 255) {
+    return { success: false, error: `author_title is too long (max 255 characters; got ${requestAuthorTitle.length})` };
+  }
+  if (external_site_name && external_site_name.length > 255) {
+    return { success: false, error: `external_site_name is too long (max 255 characters; got ${external_site_name.length})` };
+  }
+
   // Support both old format (collection.type + committee_slug) and new format (just committee_slug)
   const committeeSlug = collection?.committee_slug || collection?.slug;
   if (!committeeSlug) {
@@ -1783,6 +1800,18 @@ export function createMyContentRouter(): Router {
         return res.status(403).json({
           error: 'Permission denied',
           message: 'You do not have permission to add authors to this content',
+        });
+      }
+
+      // Verify the target user exists — prevents FK violation from surfacing as 500
+      const userCheck = await pool.query(
+        `SELECT 1 FROM users WHERE workos_user_id = $1`,
+        [user_id]
+      );
+      if (userCheck.rows.length === 0) {
+        return res.status(400).json({
+          error: 'User not found',
+          message: `No account found for user_id: ${user_id}. Only people with a public AAO profile can be added as co-authors.`,
         });
       }
 

@@ -4,6 +4,11 @@
   "title": "Sync Accounts Response",
   "description": "Response from account sync operation. Returns per-account results with status and billing, or operation-level errors on complete failure.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "SyncAccountsSuccess",
@@ -60,12 +65,7 @@
                 "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
               },
               "billing": {
-                "type": "string",
-                "enum": [
-                  "operator",
-                  "agent",
-                  "advertiser"
-                ],
+                "$ref": "/schemas/enums/billing-party.json",
                 "description": "Who is invoiced on this account. Matches the requested billing model."
               },
               "billing_entity": {
@@ -73,9 +73,7 @@
                 "description": "Business entity details for the party responsible for payment, echoed from the request. Sellers MAY add fields the agent omitted (e.g., filling in registration_number from a credit check), but MUST NOT return data from a different entity. Bank details are omitted (write-only)."
               },
               "account_scope": {
-                "type": "string",
-                "enum": ["operator", "brand", "operator_brand", "agent"],
-                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to this operator+brand pair. agent: the agent's default account."
+                "$ref": "/schemas/enums/account-scope.json"
               },
               "setup": {
                 "type": "object",
@@ -143,6 +141,10 @@
               "sandbox": {
                 "type": "boolean",
                 "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
+              },
+              "authorization": {
+                "$ref": "/schemas/core/account-authorization.json",
+                "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope — callers MUST NOT infer access from absence."
               }
             },
             "required": [
@@ -218,7 +220,10 @@
         "accounts": [
           {
             "account_id": "acc_spark_001",
-            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
             "action": "created",
@@ -228,7 +233,10 @@
           },
           {
             "account_id": "acc_glow_pending",
-            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
             "operator": "pinnacle-media.com",
             "name": "Glow",
             "action": "created",
@@ -249,7 +257,10 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com", "brand_id": "clearance" },
+            "brand": {
+              "domain": "acme-corp.com",
+              "brand_id": "clearance"
+            },
             "operator": "acme-corp.com",
             "action": "created",
             "status": "rejected",
@@ -265,7 +276,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "action": "failed",
             "status": "rejected",
@@ -285,7 +298,9 @@
         "accounts": [
           {
             "account_id": "acc_acme_direct_bill",
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "pinnacle-media.com",
             "name": "Acme Corp (billed direct)",
             "action": "created",
@@ -320,7 +335,9 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "action": "failed",
             "status": "rejected",
@@ -334,5 +351,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

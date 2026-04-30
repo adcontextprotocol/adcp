@@ -49,7 +49,7 @@
     "expected_delay_minutes": 240,
     "timezone": "America/Los_Angeles",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "completed_views", "spend", "completion_rate", "viewability", "video_completions", "quartile_data"],
+    "available_metrics": ["impressions", "completed_views", "spend", "completion_rate", "viewability", "quartile_data"],
     "date_range_support": "date_range"
   }
 }
