@@ -10,7 +10,9 @@
  * deploy. It will silently no-op once those historical items clear.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('brand-logo-digest');
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { getAdminChannel } from '../../db/system-settings-db.js';
 import { sendChannelMessage } from '../../slack/client.js';

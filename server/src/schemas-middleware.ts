@@ -137,6 +137,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
         checksum: string;
         signature?: string;
         certificate?: string;
+        published_version?: string;
         adcp_version?: string;
         generated_at?: string;
         note: string;
@@ -156,7 +157,8 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           checksum: "/protocol/latest.tgz.sha256",
           ...(latestSidecars.signature && { signature: latestSidecars.signature }),
           ...(latestSidecars.certificate && { certificate: latestSidecars.certificate }),
-          adcp_version: versioned[0]?.replace(/\.tgz$/, ""),
+          published_version: versioned[0]?.replace(/\.tgz$/, ""),
+          adcp_version: versioned[0]?.replace(/\.tgz$/, ""), // legacy alias through 3.x
           generated_at: generatedAt,
           note: "Development bundle — changes with every merge. Pin a version for production.",
         };

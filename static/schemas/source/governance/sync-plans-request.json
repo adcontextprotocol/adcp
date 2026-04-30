@@ -3,16 +3,15 @@
   "$id": "/schemas/governance/sync-plans-request.json",
   "title": "Sync Plans Request",
   "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "x-status": "experimental",
   "x-mutates-state": true,
-  "type": "object",
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
@@ -96,13 +95,29 @@
             ],
             "oneOf": [
               {
-                "required": ["reallocation_threshold"],
-                "not": { "required": ["reallocation_unlimited"] }
+                "required": [
+                  "reallocation_threshold"
+                ],
+                "not": {
+                  "required": [
+                    "reallocation_unlimited"
+                  ]
+                }
               },
               {
-                "required": ["reallocation_unlimited"],
-                "properties": { "reallocation_unlimited": { "const": true } },
-                "not": { "required": ["reallocation_threshold"] }
+                "required": [
+                  "reallocation_unlimited"
+                ],
+                "properties": {
+                  "reallocation_unlimited": {
+                    "const": true
+                  }
+                },
+                "not": {
+                  "required": [
+                    "reallocation_threshold"
+                  ]
+                }
               }
             ],
             "additionalProperties": false
@@ -191,7 +206,7 @@
           },
           "policy_categories": {
             "type": "array",
-            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum \u2014 new categories are added as regulations evolve).",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
             "items": {
               "type": "string"
             },
@@ -365,17 +380,28 @@
                 "policy_categories": {
                   "type": "array",
                   "contains": {
-                    "enum": ["fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising"]
+                    "enum": [
+                      "fair_housing",
+                      "fair_lending",
+                      "fair_employment",
+                      "pharmaceutical_advertising"
+                    ]
                   }
                 }
               },
-              "required": ["policy_categories"]
+              "required": [
+                "policy_categories"
+              ]
             },
             "then": {
               "properties": {
-                "human_review_required": { "const": true }
+                "human_review_required": {
+                  "const": true
+                }
               },
-              "required": ["human_review_required"]
+              "required": [
+                "human_review_required"
+              ]
             }
           },
           {
@@ -383,16 +409,24 @@
               "properties": {
                 "policy_ids": {
                   "type": "array",
-                  "contains": { "const": "eu_ai_act_annex_iii" }
+                  "contains": {
+                    "const": "eu_ai_act_annex_iii"
+                  }
                 }
               },
-              "required": ["policy_ids"]
+              "required": [
+                "policy_ids"
+              ]
             },
             "then": {
               "properties": {
-                "human_review_required": { "const": true }
+                "human_review_required": {
+                  "const": true
+                }
               },
-              "required": ["human_review_required"]
+              "required": [
+                "human_review_required"
+              ]
             }
           }
         ],
@@ -410,5 +444,5 @@
     "idempotency_key",
     "plans"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -1530,6 +1530,28 @@
       // the developer knows what window they're waiting for.
       const nextCheckCopy = `within ${checkIntervalHours} hours`;
 
+      // Tier-aware copy: when the viewer owns the agent, the API populates
+      // their tier and whether it's API-access. We surface a deterministic
+      // answer ("Your tier: X — eligible") instead of the generic guess
+      // ("check that your AAO membership is on an API-access tier").
+      // Cross-org viewers and anonymous users see the generic copy because
+      // the API returns null tier values for them.
+      //
+      // Tier label fallback: the server maps known enums to human strings
+      // ("Builder", "Member"). For unknown future tiers it returns the raw
+      // enum — we ignore that here (rendering "company_galactic" in <strong>
+      // looks like a bug to a user) and fall through to generic copy.
+      const KNOWN_TIER_LABELS = new Set(['Explorer', 'Professional', 'Builder', 'Member', 'Leader']);
+      const rawTierLabel = (cs && typeof cs.membership_tier_label === 'string') ? cs.membership_tier_label : null;
+      const tierLabel = rawTierLabel && KNOWN_TIER_LABELS.has(rawTierLabel) ? rawTierLabel : null;
+      const tierEligible = cs?.is_api_access_tier === true;
+      const tierEligibleSentence = tierLabel && tierEligible
+        ? `Your tier (<strong>${escapeHtml(tierLabel)}</strong>) is eligible`
+        : null;
+      const tierNotEligibleSentence = tierLabel && !tierEligible
+        ? `Your tier (<strong>${escapeHtml(tierLabel)}</strong>) is not eligible — <a href="/membership" target="_blank" rel="noopener">upgrade to earn badges</a>`
+        : null;
+
       // No badges yet — show diagnostic hint scoped to the actual situation.
       // The branch order here mirrors pickVerificationHint() in
       // server/src/services/verification-hint.ts (tested decision matrix).
@@ -1538,13 +1560,28 @@
         const status = cs?.status;
         let hint;
         if (!hasAuth) {
-          hint = `Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you'll earn AAO Verified (Spec) automatically.`;
+          // Three flavors: eligible reassurance, not-eligible upfront, generic.
+          // Earlier draft conflated not-eligible with eligible by appending
+          // "so once storyboards pass…" — promising a badge they can't earn.
+          if (tierEligibleSentence) {
+            hint = `Authorize your agent (above) so AAO can run compliance checks. ${tierEligibleSentence} — once storyboards pass, AAO Verified (Spec) issues automatically.`;
+          } else if (tierNotEligibleSentence) {
+            hint = `Authorize your agent (above) so AAO can run compliance checks. ${tierNotEligibleSentence} — fix that first, then storyboards.`;
+          } else {
+            hint = `Authorize your agent (above) so AAO can run compliance checks. Once storyboards pass and your AAO membership is on an API-access tier, you'll earn AAO Verified (Spec) automatically.`;
+          }
         } else if (status === 'opted_out') {
           hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
         } else if (status === 'passing' && declaredSpecialisms.length === 0) {
           hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
         } else if (status === 'passing') {
-          hint = `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
+          if (tierEligibleSentence) {
+            hint = `Storyboards are passing. ${tierEligibleSentence}. Your badge should issue ${nextCheckCopy}.`;
+          } else if (tierNotEligibleSentence) {
+            hint = `Storyboards are passing, but your tier is not eligible — <a href="/membership" target="_blank" rel="noopener">upgrade to earn badges</a>.`;
+          } else {
+            hint = `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
+          }
         } else if (status === 'failing' || status === 'degraded') {
           hint = declaredSpecialisms.length === 0
             ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
@@ -1585,24 +1622,82 @@
       const encoded = encodeURIComponent(agentUrl);
       const registryUrl = `${baseUrl}/registry/agents/${encoded}`;
 
+      // Per-version badge rendering (#3524 stage 4): one row per
+      // (role, adcp_version). Each row's embed snippets point at the
+      // version-pinned SVG URL so a buyer who copies them gets the
+      // exact version's badge — newer versions land in their own rows
+      // with their own embed snippets. The legacy /badge/{role}.svg
+      // URL still works for callers that want the auto-upgrading
+      // highest-version badge.
+      //
+      // Same shape as VALID_ADCP_VERSION_RE in registry-api.ts and
+      // ADCP_VERSION_RE in badge-svg.ts — kept inline because
+      // dashboard-agents.html has no module imports. Update all three
+      // call sites together if the constraint ever changes.
+      const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
+
+      const distinctRoleCount = new Set(badges.map(b => b.role)).size;
+
       const rowsHtml = badges.map((badge, idx) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
-        const badgeSvgUrl = `${baseUrl}${badge.badge_url}`;
-        const altText = `AAO Verified ${protocol} Agent (${qualifier})`;
+        // Defensive: the DB CHECK constraint and JWT signer regex
+        // prevent malformed adcp_version values from reaching here
+        // in production. Belt-and-suspenders for hand-edited rows
+        // and forward-compat against schema relaxation.
+        const adcpVersion = typeof badge.adcp_version === 'string' && ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)
+          ? badge.adcp_version
+          : null;
+        if (badge.adcp_version && !adcpVersion) {
+          // Loud-warn: a row arrived with a non-shape-conformant
+          // adcp_version. Falls back to the legacy URL (which serves
+          // highest-version) so the row still renders, but the label
+          // is marked unversioned so it isn't visually identical to
+          // a normal pre-3.0 row.
+          console.warn(
+            'Verification panel: badge has malformed adcp_version, falling back to legacy URL',
+            { agentUrl, role: badge.role, adcp_version: badge.adcp_version },
+          );
+        }
+        // Server constructs badge.badge_url as
+        // `/api/registry/agents/{encodedUrl}/badge/{role}.svg`, but we
+        // validate the prefix anyway so a future federated-mirror that
+        // populates this field externally can't redirect the embedded
+        // <img src> to an arbitrary URL.
+        const safeLegacyBadgeUrl = (typeof badge.badge_url === 'string' && badge.badge_url.startsWith('/api/registry/agents/'))
+          ? badge.badge_url
+          : `/api/registry/agents/${encoded}/badge/${badge.role}.svg`;
+        const versionedBadgeUrl = adcpVersion
+          ? `/api/registry/agents/${encoded}/badge/${badge.role}/${adcpVersion}.svg`
+          : safeLegacyBadgeUrl;
+        const badgeSvgUrl = `${baseUrl}${versionedBadgeUrl}`;
+        // Label/alt segment: the version when shape-validated, an
+        // explicit "(unversioned)" tag when a malformed value forced
+        // the legacy fallback, or empty for true legacy rows where
+        // the API never set adcp_version at all.
+        const versionSegment = adcpVersion
+          ? ` ${adcpVersion}`
+          : (badge.adcp_version ? ' (unversioned)' : '');
+        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
+        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 
-        const drawerId = `verification-embed-${idx}-${Math.random().toString(36).slice(2, 8)}`;
+        // Stable drawer id keyed on role+version so re-renders after
+        // an issue/revoke don't randomize the open/closed state of
+        // an already-expanded drawer. 'unv' for malformed-version
+        // rows so two malformed badges don't collide on 'any'.
+        const versionForId = adcpVersion ?? (badge.adcp_version ? 'unv' : 'any');
+        const drawerId = `verification-embed-${badge.role}-${versionForId}-${idx}`;
 
         return `
           <div class="verification-badge-row">
             <div class="verification-badge-row-top">
-              <span class="verification-badge-svg"><img src="${escapeHtml(badge.badge_url)}" alt="${escapeHtml(altText)}" /></span>
+              <span class="verification-badge-svg"><img src="${escapeHtml(versionedBadgeUrl)}" alt="${escapeHtml(altText)}" /></span>
               <span class="verification-badge-meta">
-                <strong>${escapeHtml(protocol)} Agent (${escapeHtml(qualifier)})</strong>
+                <strong>${escapeHtml(labelStrong)}</strong>
                 ${verifiedAt ? ' · ' + escapeHtml(verifiedAt) : ''}
                 ${specialisms.length ? '<br>' + specialisms.map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') : ''}
               </span>
@@ -1640,11 +1735,21 @@
         ? ''
         : '<div class="verification-eligibility-hint">Want <strong>(Live)</strong> too? Once AAO\'s canonical-campaign runner ships in 3.1, agents that flow real production traffic will earn the <strong>(Live)</strong> qualifier on the same badge — same URL, no embed swap. <a href="/docs/building/aao-verified#verified-live" target="_blank" rel="noopener">Learn more</a>.</div>';
 
+      // Header count: "1 badge" / "N badges" / "N badges across M roles"
+      // The "across M roles" suffix only appears when at least one role
+      // has parallel-version badges (i.e. distinctRoleCount < badges.length).
+      // Today with SUPPORTED_BADGE_VERSIONS = ['3.0'] every agent has at
+      // most one badge per role, so this only kicks in once parallel
+      // versions ship.
+      const badgeCountSummary = badges.length === 1
+        ? '1 badge'
+        : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
+
       return `
         <div class="agent-verification-panel">
           <div class="agent-verification-header">
             <span>AAO Verified</span>
-            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badges.length} badge${badges.length === 1 ? '' : 's'}</span>
+            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
           ${rowsHtml}
           ${liveHint}

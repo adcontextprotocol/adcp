@@ -3,8 +3,13 @@
   "$id": "/schemas/governance/get-plan-audit-logs-response.json",
   "title": "Get Plan Audit Logs Response",
   "description": "Governance state and audit trail for one or more plans.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "plans": {
       "type": "array",

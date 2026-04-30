@@ -4,6 +4,11 @@
   "title": "Sync Event Sources Response",
   "description": "Response from event source sync operation. Returns either per-source results OR operation-level errors.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "SyncEventSourcesSuccess",
@@ -42,7 +47,10 @@
               },
               "managed_by": {
                 "type": "string",
-                "enum": ["buyer", "seller"],
+                "enum": [
+                  "buyer",
+                  "seller"
+                ],
                 "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {
@@ -55,7 +63,12 @@
                   },
                   "snippet_type": {
                     "type": "string",
-                    "enum": ["javascript", "html", "pixel_url", "server_only"],
+                    "enum": [
+                      "javascript",
+                      "html",
+                      "pixel_url",
+                      "server_only"
+                    ],
                     "description": "Type of implementation. 'server_only' means no client-side tag is needed."
                   },
                   "instructions": {
@@ -67,7 +80,13 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["created", "updated", "unchanged", "deleted", "failed"],
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "deleted",
+                  "failed"
+                ],
                 "description": "Action taken for this event source"
               },
               "health": {
@@ -82,7 +101,10 @@
                 }
               }
             },
-            "required": ["event_source_id", "action"],
+            "required": [
+              "event_source_id",
+              "action"
+            ],
             "additionalProperties": true
           }
         },
@@ -97,10 +119,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["event_sources"],
+      "required": [
+        "event_sources"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -123,14 +149,25 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["event_sources"] },
-          { "required": ["sandbox"] }
+          {
+            "required": [
+              "event_sources"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

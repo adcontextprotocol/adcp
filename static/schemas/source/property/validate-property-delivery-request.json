@@ -4,13 +4,12 @@
   "title": "Validate Property Delivery Request",
   "description": "Request payload for validate_property_delivery task. Validates delivery records against a property list to determine compliance.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "list_id": {
       "type": "string",
       "description": "ID of the property list to validate against",
@@ -45,5 +44,5 @@
     "list_id",
     "records"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

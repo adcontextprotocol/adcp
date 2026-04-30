@@ -11,7 +11,9 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-external-repos');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

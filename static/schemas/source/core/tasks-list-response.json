@@ -4,6 +4,11 @@
   "title": "Tasks List Response",
   "description": "Response from task listing query with filtered results and state reconciliation data across all AdCP domains",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "query_summary": {
       "type": "object",

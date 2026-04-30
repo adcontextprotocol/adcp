@@ -8,7 +8,9 @@
  * - Tasks due tomorrow (optional heads-up)
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('task-reminder');
 import { query } from '../../db/client.js';
 import { getThreadService } from '../thread-service.js';
 

@@ -17,7 +17,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-router');
 import { ModelConfig } from '../config/models.js';
 import type { MemberContext } from './member-context.js';
 import type { AddieTool } from './types.js';

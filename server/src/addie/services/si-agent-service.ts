@@ -7,7 +7,9 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { siDb, type SiSession, type SiRelationshipMemory, type SiSkill } from "../../db/si-db.js";
-import { logger } from "../../logger.js";
+import { createLogger } from "../../logger.js";
+
+const logger = createLogger('si-agent-service');
 import { query } from "../../db/client.js";
 import { ModelConfig } from "../../config/models.js";
 

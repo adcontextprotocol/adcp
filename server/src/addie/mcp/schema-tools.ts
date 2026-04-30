@@ -12,7 +12,9 @@
 
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-schema-tools');
 import type { AddieTool } from '../types.js';
 import { ToolError } from '../tool-error.js';
 

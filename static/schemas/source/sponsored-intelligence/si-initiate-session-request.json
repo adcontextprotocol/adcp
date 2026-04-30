@@ -3,16 +3,15 @@
   "$id": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
   "title": "SI Initiate Session Request",
   "description": "Host initiates a session with a brand agent",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "x-status": "experimental",
   "x-mutates-state": true,
-  "type": "object",
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "intent": {
       "type": "string",
       "description": "Natural language description of user intent — the conversation handoff from the host describing what the user needs from the brand agent"
