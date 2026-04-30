@@ -71,7 +71,7 @@ import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
-import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../services/pipes.js';
+import { getGitHubAccessToken } from '../../services/pipes.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -5074,26 +5074,19 @@ export function createMemberToolHandlers(
     }
 
     if (tokenResult.status !== 'ok') {
-      const returnTo = `${baseUrl}/member-hub?connected=github`;
-      let authorizeUrl: string;
-      try {
-        authorizeUrl = await getGitHubAuthorizeUrl(workosUserId, returnTo);
-      } catch (error) {
-        logger.error({ err: error }, 'create_github_issue: Failed to build Pipes authorize URL');
-        return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
-      }
+      const connectUrl = `${baseUrl}/connect/github?return_to=${encodeURIComponent('/member-hub?connected=github')}`;
 
       if (tokenResult.status === 'needs_reauthorization') {
         return [
           `Your GitHub connection needs a quick re-authorization (the scopes we need changed).`,
           '',
-          `**[Reconnect GitHub](${authorizeUrl})** — takes under a minute. Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link to submit yourself.`,
+          `**[Reconnect GitHub](${connectUrl})** — takes under a minute. Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link to submit yourself.`,
           '',
           `Manage connections any time at ${manageConnectionsUrl}.`,
         ].join('\n');
       }
       return [
-        `**[Connect GitHub](${authorizeUrl})** — one click and I'll file this under your GitHub account.`,
+        `**[Connect GitHub](${connectUrl})** — one click and I'll file this under your GitHub account.`,
         '',
         `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
       ].join('\n');

@@ -2091,7 +2091,10 @@
               <strong>GitHub</strong>
               <div style="${copyStyle}">Connected${github.login ? ` as <code>@${escapeHtml(github.login)}</code>` : ''}. Addie can file issues as you on <code>adcontextprotocol/adcp</code>.</div>
             </div>
-            <span style="${statusStyle}">✓ Connected</span>
+            <div style="display:flex; align-items:center; gap:var(--space-3);">
+              <span style="${statusStyle}">✓ Connected</span>
+              <button type="button" class="btn btn-secondary" onclick="disconnectGitHub(this)">Disconnect</button>
+            </div>
           </div>`;
       } else if (github.unavailable) {
         githubRow = `
@@ -2133,6 +2136,26 @@
         btn.disabled = false;
         btn.textContent = original;
         alert('Could not start GitHub connection. Please try again in a moment.');
+      }
+    }
+
+    async function disconnectGitHub(btn) {
+      if (!confirm('Disconnect GitHub? Addie will no longer be able to file issues on your behalf until you reconnect.')) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Disconnecting...';
+      try {
+        const res = await fetch('/api/me/connected-accounts/github', {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to disconnect GitHub');
+        window.location.href = '/member-hub';
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Could not disconnect GitHub. Please try again in a moment.');
       }
     }
 
