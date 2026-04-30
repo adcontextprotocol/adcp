@@ -1508,6 +1508,12 @@
     // pointing at the docs.
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
       const badges = Array.isArray(cs && cs.verified_badges) ? cs.verified_badges : [];
+      // Audit-comment from #3603: values MUST NOT end in "Agent" or
+      // any equivalent suffix that would collide when appended below
+      // (e.g. "${protocol} Agent" → "Media Buy Agent Agent" if a label
+      // ever became "Media Buy Agent"). Current values are noun
+      // phrases ending in the AdCP-protocol noun. If you add a new
+      // protocol, keep this invariant.
       const PROTOCOL_LABELS = {
         'media-buy': 'Media Buy', 'creative': 'Creative',
         'signals': 'Signals', 'governance': 'Governance',

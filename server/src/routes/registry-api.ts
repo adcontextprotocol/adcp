@@ -31,6 +31,7 @@ import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
+import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -2728,42 +2729,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
   /**
-   * Shape contract for the `aao_verification` block this enrichment
-   * appends to brand.json agent entries. Public buyer-facing surface;
-   * documented here so future contributors don't drift the wire format.
-   *
-   *   `verified`         — boolean: any active badge exists
-   *   `verified_at`      — ISO timestamp of the most-recent state change
-   *                        across any badge
-   *   `badges[]`         — canonical per-(role, version) detail. Order is
-   *                        preserved from the underlying API's
-   *                        `adcp_version DESC, role` sort. Adding future
-   *                        axes won't change the array shape (#3524 Q6).
-   *   `roles[]`          — DEPRECATED alias: distinct roles, highest
-   *                        badge per role. Removal target: AdCP 4.0.
-   *   `modes_by_role`    — DEPRECATED alias: highest-version modes per
-   *                        role. Removal target: AdCP 4.0.
-   *   `deprecation_notice` — Travels with the data so long-tail crawlers
-   *                          see the warning even without release notes.
-   */
-  interface AaoVerificationBlock {
-    verified: true;
-    verified_at: string;
-    badges: Array<{
-      role: string;
-      adcp_version: string | null;
-      verification_modes: string[];
-      verified_at: string;
-    }>;
-    roles: string[];
-    modes_by_role: Record<string, string[]>;
-    deprecation_notice: string;
-  }
-
-  /**
    * Enrich brand.json agent entries with AAO verification status.
-   * Scans data for agent URLs and appends `aao_verification` (shape
-   * documented above as `AaoVerificationBlock`) where badges exist.
+   * Scans data for agent URLs and appends an `aao_verification`
+   * block where badges exist. The block's shape is the contract
+   * documented at {@link buildAaoVerificationBlock} in
+   * services/aao-verification-enrichment.ts — the route handler
+   * is the I/O layer; the builder is the unit-testable shaping
+   * logic.
    */
   async function enrichBrandDataWithVerification(data: unknown): Promise<unknown> {
     if (!data || typeof data !== 'object') return data;
@@ -2803,53 +2775,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const rec = obj as Record<string, unknown>;
       if (typeof rec.url === 'string' && typeof rec.type === 'string') {
         const badges = badgeMap.get(rec.url as string);
-        if (badges && badges.length > 0) {
-          // bulkGetActiveBadges orders by `agent_url, adcp_version DESC,
-          // role`, so for any given agent the first occurrence of each
-          // role in the iteration is the highest-version badge for that
-          // role. Roles can interleave (e.g. media-buy 3.1, creative
-          // 3.1, media-buy 3.0) — `if (!byRole.has)` picks correctly.
-          const byRole = new Map<typeof badges[number]['role'], typeof badges[number]>();
-          for (const badge of badges) {
-            if (!byRole.has(badge.role)) byRole.set(badge.role, badge);
-          }
-          const dedupedBadges = Array.from(byRole.values());
-          // Per-version badges array — the canonical shape going forward.
-          // One entry per (role, adcp_version), preserving the API's
-          // version-DESC ordering. Defense-in-depth: gate adcp_version
-          // through the same shape regex used by /compliance and
-          // /verification — brand.json is the public buyer-facing
-          // surface, so any future code path that bypasses the DB CHECK
-          // (raw SQL backfill, restored snapshot) MUST NOT leak through.
-          const badgesArray = badges.map(b => ({
-            role: b.role,
-            adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
-            verification_modes: b.verification_modes,
-            verified_at: b.verified_at.toISOString(),
-          }));
-          const aaoVerification: AaoVerificationBlock = {
-            verified: true,
-            // Newest verification across any (role, version) — the most
-            // recent state change for the agent.
-            verified_at: dedupedBadges[0].verified_at.toISOString(),
-            // Canonical: full per-(role, version) detail. Per Q6 of
-            // #3524's resolved decisions, this is the forward-compat
-            // shape — adding future axes won't change the array.
-            badges: badgesArray,
-            // Deprecated aliases kept for one release. Highest-version
-            // badge per role; reflects "the current best mark." A
-            // buyer pinned to AdCP 3.0 reading `modes_by_role: { x:
-            // ['spec', 'live'] }` could wrongly conclude their 3.0
-            // traffic gets Live when in fact only 3.1 has Live. The
-            // deprecation_notice ships alongside the data so a long-
-            // tail crawler that doesn't track release notes still sees
-            // the warning. Removal target: AdCP 4.0 (≥6 months from
-            // this PR's merge per the cadence policy in #2359).
-            roles: dedupedBadges.map(b => b.role),
-            modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
-            deprecation_notice: 'roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0.',
-          };
-          rec.aao_verification = aaoVerification;
+        const block = badges ? buildAaoVerificationBlock(badges) : null;
+        if (block) {
+          rec.aao_verification = block;
         }
       }
       if (rec.agents && Array.isArray(rec.agents)) rec.agents.forEach(enrichAgentEntries);
