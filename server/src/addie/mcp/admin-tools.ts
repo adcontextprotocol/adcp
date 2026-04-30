@@ -592,6 +592,35 @@ Actions:
       required: ['token', 'org_id'],
     },
   },
+  {
+    name: 'add_member_to_org',
+    description:
+      'Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Email of the colleague to add or promote',
+        },
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…) to add them to',
+        },
+        role: {
+          type: 'string',
+          enum: ['member', 'admin', 'owner'],
+          description: 'Role to assign. Default: member. Note: owner can only be assigned by another owner or AAO super-admin; new invites always go out as member regardless and must be promoted after acceptance.',
+        },
+        seat_type: {
+          type: 'string',
+          enum: ['contributor', 'community_only'],
+          description: 'Seat type. Default: community_only. Contributors get Slack/working-groups/councils; community-only get Addie/certification/training.',
+        },
+      },
+      required: ['email', 'org_id'],
+    },
+  },
 
   // ============================================
   // INDUSTRY FEED MANAGEMENT TOOLS
@@ -8389,6 +8418,21 @@ Use add_committee_leader to assign a leader.`;
   // MEMBERSHIP INVITE HANDLERS
   // ============================================
 
+  function actionToHeader(action: string): string {
+    switch (action) {
+      case 'invited':
+        return 'Invitation sent';
+      case 'member_added':
+        return 'Added to org';
+      case 'role_updated':
+        return 'Role updated';
+      case 'no_change':
+        return 'No change';
+      default:
+        return 'Done';
+    }
+  }
+
   function formatRelativeDays(d: Date): string {
     const diffMs = d.getTime() - Date.now();
     const days = Math.round(diffMs / 86400000);
@@ -8619,6 +8663,113 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, orgId, token: token.slice(0, 8) }, 'Error revoking invite');
       return `❌ Failed to revoke: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('add_member_to_org', async (input) => {
+    const email = ((input.email as string) || '').trim().toLowerCase();
+    const orgId = input.org_id as string;
+    const role = (input.role as string) ?? 'member';
+    const seatType = (input.seat_type as string) ?? 'community_only';
+
+    if (!email || !email.includes('@')) {
+      return '❌ email is required (a valid email address).';
+    }
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+    if (!['member', 'admin', 'owner'].includes(role)) {
+      return `❌ role must be one of: member, admin, owner (got: ${role}).`;
+    }
+    if (!['contributor', 'community_only'].includes(seatType)) {
+      return `❌ seat_type must be one of: contributor, community_only (got: ${seatType}).`;
+    }
+
+    const adminUser = memberContext?.workos_user;
+    if (!adminUser) {
+      return '❌ Cannot add member — no signed-in admin context.';
+    }
+
+    const apiKey = process.env.ADMIN_API_KEY;
+    if (!apiKey) {
+      return '❌ ADMIN_API_KEY is not configured on the server.';
+    }
+    // Match the base-URL precedence used by member-tools.ts:getBaseUrl —
+    // BASE_URL (production) wins; otherwise PORT/CONDUCTOR_PORT for local.
+    const baseUrl =
+      process.env.BASE_URL ||
+      `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+    const endpoint = `${baseUrl}/api/organizations/${encodeURIComponent(orgId)}/members/by-email`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ email, role, seat_type: seatType }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!response.ok) {
+        const errorMsg = (data.message as string) || (data.error as string) || `HTTP ${response.status}`;
+        logger.warn(
+          { status: response.status, orgId, email, error: errorMsg },
+          'add_member_to_org route returned non-OK'
+        );
+        return `❌ Failed to add ${email} to ${orgId}: ${errorMsg}`;
+      }
+
+      const action = data.action as string;
+      logger.info(
+        {
+          orgId,
+          email,
+          action,
+          role,
+          seatType,
+          adminUserId: adminUser.workos_user_id,
+        },
+        'Addie called add_member_to_org'
+      );
+
+      // Mirror the route's response shape rather than reflecting the input —
+      // e.g. the route may keep an existing seat_type when adding to an org
+      // the user already has a seat in.
+      const responseSeatType = (data.seat_type as string | undefined) ?? seatType;
+
+      let md = `## ${actionToHeader(action)}\n\n`;
+      md += `**Email:** ${email}\n`;
+      md += `**Org:** ${orgId}\n`;
+
+      if (action === 'invited') {
+        const invitation = data.invitation as Record<string, unknown> | undefined;
+        const expiresAt = invitation?.expires_at as string | undefined;
+        md += `**Invited as:** member (must be promoted after acceptance for higher roles)\n`;
+        md += `**Requested role:** ${role}\n`;
+        md += `**Seat type:** ${responseSeatType}\n`;
+        if (expiresAt) md += `**Invite expires:** ${expiresAt.slice(0, 10)}\n`;
+        if (invitation?.accept_invitation_url) {
+          md += `\nThey'll receive an email with a sign-up link.\n`;
+        }
+      } else if (action === 'member_added') {
+        md += `**Role:** ${role}\n`;
+        md += `**Seat type:** ${responseSeatType}\n`;
+        md += `\nThey already had a WorkOS account; added directly to the org.\n`;
+      } else if (action === 'role_updated') {
+        const previousRole = data.previous_role as string | null | undefined;
+        md += `**New role:** ${role}\n`;
+        md += `**Previous role:** ${previousRole ?? '(none)'}\n`;
+      } else if (action === 'no_change') {
+        md += `\nNo change — they already have role ${role}.\n`;
+      } else {
+        md += `**Action:** ${action ?? 'unknown'}\n`;
+      }
+      return md;
+    } catch (error) {
+      logger.error({ error, orgId, email }, 'Error calling members/by-email');
+      return `❌ Failed to add member: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

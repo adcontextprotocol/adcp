@@ -330,6 +330,50 @@ describe('admin invite tools', () => {
     });
   });
 
+  describe('add_member_to_org arg validation', () => {
+    let addMemberToOrg: (input: Record<string, unknown>) => Promise<string>;
+    beforeAll(() => {
+      const handlers = createAdminToolHandlers({
+        is_mapped: true,
+        is_member: true,
+        workos_user: {
+          workos_user_id: ADMIN_ID,
+          email: ADMIN_EMAIL,
+          first_name: 'Admin',
+          last_name: 'User',
+        },
+      });
+      addMemberToOrg = handlers.get('add_member_to_org')!;
+    });
+
+    it('rejects missing email', async () => {
+      expect(await addMemberToOrg({ org_id: ORG_PUBX })).toMatch(/email is required/);
+    });
+
+    it('rejects missing or malformed org_id', async () => {
+      expect(await addMemberToOrg({ email: 'x@y.com' })).toMatch(/org_id is required/);
+      expect(await addMemberToOrg({ email: 'x@y.com', org_id: 'not-an-org' })).toMatch(/org_id is required/);
+    });
+
+    it('rejects invalid role enum', async () => {
+      expect(
+        await addMemberToOrg({ email: 'x@y.com', org_id: ORG_PUBX, role: 'superadmin' })
+      ).toMatch(/role must be one of/);
+    });
+
+    it('rejects invalid seat_type enum', async () => {
+      expect(
+        await addMemberToOrg({ email: 'x@y.com', org_id: ORG_PUBX, seat_type: 'corporate' })
+      ).toMatch(/seat_type must be one of/);
+    });
+
+    it('refuses without admin context', async () => {
+      const handlers = createAdminToolHandlers(null);
+      const fn = handlers.get('add_member_to_org')!;
+      expect(await fn({ email: 'x@y.com', org_id: ORG_PUBX })).toMatch(/no signed-in admin/);
+    });
+  });
+
   // resend_invite happy-path requires Stripe-backed product validation, which
   // isn't seeded in the test DB. The existing /reinvite HTTP route test in
   // invite-events.test.ts covers the underlying revoke-then-create flow via
