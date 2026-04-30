@@ -301,15 +301,15 @@ async function runTests() {
       }
     }
 
-    // product.json: assert v1 (format_ids) OR v2 (format) is required via oneOf
+    // product.json: assert v1 (format_ids) OR v2 (format_options) is required via oneOf
     const productEntry = coreSchemas.find(([p]) => path.basename(p) === 'product.json');
     if (productEntry) {
       const [, productSchema] = productEntry;
       const oneOf = productSchema.oneOf || [];
       const hasV1Branch = oneOf.some((branch) => (branch.required || []).includes('format_ids'));
-      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format'));
+      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format_options'));
       if (!hasV1Branch || !hasV2Branch) {
-        return `product.json: must have a oneOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+        return `product.json: must have a oneOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format_options"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
       }
     }
 

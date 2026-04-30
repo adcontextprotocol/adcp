@@ -4,45 +4,92 @@
   "name": "Veo — 15s Generative Vertical Video",
   "description": "Generative video synthesis from a creative_brief plus structured scenes. Buyer ships a brief (≤500 chars) and a scenes plan (3 scenes summing to 15s); Veo synthesizes the video. Genuinely nondeterministic — synthesis from in-spec inputs may produce out-of-spec frames; the platform's post-synthesis QA loop validates and reseeds up to N attempts before surfacing output. If the QA loop exhausts, build_creative returns task_failed with synthesis_failed reason. provenance_required: true means every produced asset carries a C2PA provenance manifest attributing synthesis to Veo (not the seller).",
   "publisher_properties": [
-    { "publisher_domain": "veo.example", "selection_type": "all" }
-  ],
-  "channels": ["social", "olv"],
-  "format": {
-    "format_kind": "video_hosted",
-    "params": {
-      "orientation": "vertical",
-      "aspect_ratio": "9:16",
-      "duration_ms_exact": 15000,
-      "min_width": 1080,
-      "min_height": 1920,
-      "video_codecs": ["h264"],
-      "containers": ["mp4"],
-      "frame_rates": [24, 30],
-      "audio_source": "agent_synthesized",
-      "buyer_audio_acceptance": "rejected",
-      "captions": "recommended",
-      "composition_model": "deterministic",
-      "synthesis_nondeterministic": true,
-      "provenance_required": true,
-      "production_window_business_days": 0,
-      "slots": [
-        { "asset_group_id": "creative_brief", "asset_type": "brief", "required": true, "max_chars": 500 },
-        { "asset_group_id": "scenes", "asset_type": "object", "required": true, "min": 1, "max": 5 },
-        { "asset_group_id": "style_reference", "asset_type": "image", "required": false },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
-      ]
+    {
+      "publisher_domain": "veo.example",
+      "selection_type": "all"
     }
-  },
+  ],
+  "channels": [
+    "social",
+    "olv"
+  ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
-    { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "floor_price": 18.00 }
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 18
+    }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["daily"],
+    "available_reporting_frequencies": [
+      "daily"
+    ],
     "expected_delay_minutes": 240,
     "timezone": "UTC",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "clicks", "spend", "completion_rate", "viewability"],
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "completion_rate",
+      "viewability"
+    ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "video_hosted",
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_exact": 15000,
+        "min_width": 1080,
+        "min_height": 1920,
+        "video_codecs": [
+          "h264"
+        ],
+        "containers": [
+          "mp4"
+        ],
+        "frame_rates": [
+          24,
+          30
+        ],
+        "audio_source": "agent_synthesized",
+        "buyer_audio_acceptance": "rejected",
+        "captions": "recommended",
+        "composition_model": "deterministic",
+        "synthesis_nondeterministic": true,
+        "provenance_required": true,
+        "production_window_business_days": 0,
+        "slots": [
+          {
+            "asset_group_id": "creative_brief",
+            "asset_type": "brief",
+            "required": true,
+            "max_chars": 500
+          },
+          {
+            "asset_group_id": "scenes",
+            "asset_type": "object",
+            "required": true,
+            "min": 1,
+            "max": 5
+          },
+          {
+            "asset_group_id": "style_reference",
+            "asset_type": "image",
+            "required": false
+          },
+          {
+            "asset_group_id": "landing_page_url",
+            "asset_type": "url",
+            "required": false
+          }
+        ]
+      }
+    }
+  ]
 }

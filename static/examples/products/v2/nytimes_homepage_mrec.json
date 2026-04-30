@@ -15,32 +15,6 @@
   "channels": [
     "display"
   ],
-  "format": {
-    "format_kind": "image",
-    "params": {
-      "width": 300,
-      "height": 250,
-      "max_file_size_kb": 200,
-      "image_formats": [
-        "jpg",
-        "png",
-        "gif"
-      ],
-      "ssl_required": true,
-      "cta_values": [
-        "LEARN_MORE",
-        "SHOP_NOW",
-        "GET_OFFER"
-      ],
-      "composition_model": "deterministic",
-      "platform_extensions": [
-        {
-          "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
-          "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
-        }
-      ]
-    }
-  },
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
@@ -65,5 +39,33 @@
       "viewability"
     ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "image",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "image_formats": [
+          "jpg",
+          "png",
+          "gif"
+        ],
+        "ssl_required": true,
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "GET_OFFER"
+        ],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          {
+            "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+            "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
+          }
+        ]
+      }
+    }
+  ]
 }

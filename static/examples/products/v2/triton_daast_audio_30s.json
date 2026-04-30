@@ -4,35 +4,64 @@
   "name": "Triton Audio DAAST (30s)",
   "description": "DAAST 1.1 audio tag on Triton-managed streaming radio inventory. Buyer ships a DAAST tag (URL or inline XML); the streaming server fires DAAST events (impression / quartiles / click / complete / error) inherent to the spec. Audio analog of VAST.",
   "publisher_properties": [
-    { "publisher_domain": "triton.example", "selection_type": "all" }
-  ],
-  "channels": ["streaming_audio", "radio"],
-  "format": {
-    "format_kind": "audio_daast",
-    "params": {
-      "daast_version": "1.1",
-      "duration_ms_exact": 30000,
-      "linear_required": true,
-      "max_wrapper_depth": 3,
-      "ssl_required": true,
-      "companion_image_required": false,
-      "composition_model": "deterministic",
-      "slots": [
-        { "asset_group_id": "daast_tag", "asset_type": "daast", "required": true },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
-      ]
+    {
+      "publisher_domain": "triton.example",
+      "selection_type": "all"
     }
-  },
+  ],
+  "channels": [
+    "streaming_audio",
+    "radio"
+  ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
-    { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "floor_price": 12.00 }
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 12
+    }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["daily"],
+    "available_reporting_frequencies": [
+      "daily"
+    ],
     "expected_delay_minutes": 1440,
     "timezone": "UTC",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "spend", "completion_rate", "completed_views", "quartile_data"],
+    "available_metrics": [
+      "impressions",
+      "spend",
+      "completion_rate",
+      "completed_views",
+      "quartile_data"
+    ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "audio_daast",
+      "params": {
+        "daast_version": "1.1",
+        "duration_ms_exact": 30000,
+        "linear_required": true,
+        "max_wrapper_depth": 3,
+        "ssl_required": true,
+        "companion_image_required": false,
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "daast_tag",
+            "asset_type": "daast",
+            "required": true
+          },
+          {
+            "asset_group_id": "landing_page_url",
+            "asset_type": "url",
+            "required": false
+          }
+        ]
+      }
+    }
+  ]
 }

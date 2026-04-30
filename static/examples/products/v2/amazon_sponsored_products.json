@@ -12,27 +12,6 @@
   "channels": [
     "retail_media"
   ],
-  "format": {
-    "format_kind": "sponsored_placement",
-    "params": {
-      "supported_catalog_types": [
-        "product"
-      ],
-      "min_items": 1,
-      "max_items": 50,
-      "fanout_mode": "per_item",
-      "required_catalog_fields": [
-        "title",
-        "image_url",
-        "price"
-      ],
-      "supported_id_types": [
-        "asin"
-      ],
-      "hero_asset_supported": false,
-      "composition_model": "deterministic"
-    }
-  },
   "delivery_type": "non_guaranteed",
   "pricing_options": [
     {
@@ -61,5 +40,28 @@
       "new_to_brand_rate"
     ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "sponsored_placement",
+      "params": {
+        "supported_catalog_types": [
+          "product"
+        ],
+        "min_items": 1,
+        "max_items": 50,
+        "fanout_mode": "per_item",
+        "required_catalog_fields": [
+          "title",
+          "image_url",
+          "price"
+        ],
+        "supported_id_types": [
+          "asin"
+        ],
+        "hero_asset_supported": false,
+        "composition_model": "deterministic"
+      }
+    }
+  ]
 }

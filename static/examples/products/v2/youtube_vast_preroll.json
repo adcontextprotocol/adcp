@@ -4,34 +4,15 @@
   "name": "YouTube VAST Pre-roll (15s skippable, In-Stream)",
   "description": "VAST tag pre-roll on YouTube In-Stream inventory, 16:9 horizontal, 5-second skippable threshold. Buyer ships a VAST 4.x tag (URL or inline XML); YouTube fires VAST events (impression / quartiles / click / complete / error / skip) inherent to the spec. VPAID 2.0 supported but discouraged — Google deprecates VPAID in 2026.",
   "publisher_properties": [
-    { "publisher_domain": "youtube.com", "selection_type": "all" }
-  ],
-  "channels": ["olv", "ctv"],
-  "format": {
-    "format_kind": "video_vast",
-    "params": {
-      "orientation": "horizontal",
-      "aspect_ratio": "16:9",
-      "vast_version": "4.2",
-      "vpaid_enabled": false,
-      "simid_supported": false,
-      "duration_ms_range": [6000, 30000],
-      "min_width": 1280,
-      "min_height": 720,
-      "linear_required": true,
-      "skippable_after_ms": 5000,
-      "max_wrapper_depth": 5,
-      "ssl_required": true,
-      "composition_model": "deterministic",
-      "slots": [
-        { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
-      ],
-      "platform_extensions": [
-        { "uri": "https://google.adcp/extensions/google_universal_ad_id", "digest": "sha256:b3c5e7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5" }
-      ]
+    {
+      "publisher_domain": "youtube.com",
+      "selection_type": "all"
     }
-  },
+  ],
+  "channels": [
+    "olv",
+    "ctv"
+  ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
     {
@@ -40,16 +21,68 @@
       "currency": "USD",
       "floor_price": 0.05,
       "parameters": {
-        "view_threshold": { "duration_seconds": 30 }
+        "view_threshold": {
+          "duration_seconds": 30
+        }
       }
     }
   ],
   "reporting_capabilities": {
-    "available_reporting_frequencies": ["daily"],
+    "available_reporting_frequencies": [
+      "daily"
+    ],
     "expected_delay_minutes": 240,
     "timezone": "America/Los_Angeles",
     "supports_webhooks": false,
-    "available_metrics": ["impressions", "completed_views", "spend", "completion_rate", "viewability", "quartile_data"],
+    "available_metrics": [
+      "impressions",
+      "completed_views",
+      "spend",
+      "completion_rate",
+      "viewability",
+      "quartile_data"
+    ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "video_vast",
+      "params": {
+        "orientation": "horizontal",
+        "aspect_ratio": "16:9",
+        "vast_version": "4.2",
+        "vpaid_enabled": false,
+        "simid_supported": false,
+        "duration_ms_range": [
+          6000,
+          30000
+        ],
+        "min_width": 1280,
+        "min_height": 720,
+        "linear_required": true,
+        "skippable_after_ms": 5000,
+        "max_wrapper_depth": 5,
+        "ssl_required": true,
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "vast_tag",
+            "asset_type": "vast",
+            "required": true
+          },
+          {
+            "asset_group_id": "landing_page_url",
+            "asset_type": "url",
+            "required": false
+          }
+        ],
+        "platform_extensions": [
+          {
+            "uri": "https://google.adcp/extensions/google_universal_ad_id",
+            "digest": "sha256:b3c5e7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5"
+          }
+        ]
+      }
+    }
+  ]
 }

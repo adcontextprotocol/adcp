@@ -12,43 +12,6 @@
   "channels": [
     "podcast"
   ],
-  "format": {
-    "format_kind": "audio_hosted",
-    "params": {
-      "duration_ms_exact": 30000,
-      "audio_codecs": [
-        "mp3",
-        "aac"
-      ],
-      "audio_sample_rates": [
-        44100,
-        48000
-      ],
-      "audio_channels": [
-        "stereo"
-      ],
-      "loudness_lufs": -16,
-      "audio_source": "publisher_host_recorded",
-      "buyer_audio_acceptance": "rejected",
-      "composition_model": "deterministic",
-      "slots": [
-        {
-          "asset_group_id": "script",
-          "required": true,
-          "asset_type": "text",
-          "max_chars": 800,
-          "description": "Verbatim script the host reads — exact wording; no improvisation; legal pre-cleared."
-        },
-        {
-          "asset_group_id": "offering_ref",
-          "required": false,
-          "asset_type": "text",
-          "description": "Optional offering identifier from the buyer's catalog to focus the host-read."
-        }
-      ],
-      "production_window_business_days": 7
-    }
-  },
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
@@ -72,5 +35,44 @@
       "completed_views"
     ],
     "date_range_support": "date_range"
-  }
+  },
+  "format_options": [
+    {
+      "format_kind": "audio_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "audio_codecs": [
+          "mp3",
+          "aac"
+        ],
+        "audio_sample_rates": [
+          44100,
+          48000
+        ],
+        "audio_channels": [
+          "stereo"
+        ],
+        "loudness_lufs": -16,
+        "audio_source": "publisher_host_recorded",
+        "buyer_audio_acceptance": "rejected",
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "script",
+            "required": true,
+            "asset_type": "text",
+            "max_chars": 800,
+            "description": "Verbatim script the host reads — exact wording; no improvisation; legal pre-cleared."
+          },
+          {
+            "asset_group_id": "offering_ref",
+            "required": false,
+            "asset_type": "text",
+            "description": "Optional offering identifier from the buyer's catalog to focus the host-read."
+          }
+        ],
+        "production_window_business_days": 7
+      }
+    }
+  ]
 }

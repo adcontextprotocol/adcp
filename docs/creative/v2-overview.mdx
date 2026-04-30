@@ -26,19 +26,21 @@ v2 collapses today's separate format registry into product-bound declarations. A
 
 Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 11 instead of, say, 5).
 
-| Canonical | What it is | Tracking |
-|---|---|---|
-| `image` | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
-| `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
-| `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
-| `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
-| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
-| `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
-| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
-| `audio_daast` | DAAST tag | Inherent DAAST events |
-| `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
-| `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
-| `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
+| Canonical | Status | What it is | Tracking |
+|---|---|---|---|
+| `image` | stable | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
+| `html5` | stable | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
+| `display_tag` | stable | Third-party JS/iframe tag URL | Opaque to seller |
+| `image_carousel` | stable | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
+| `video_hosted` | stable | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_vast` | stable | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
+| `audio_hosted` | stable | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_daast` | stable | DAAST tag | Inherent DAAST events |
+| `sponsored_placement` | stable | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
+| `responsive_creative` | **preview** | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
+| `agent_placement` | **preview** | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
+
+The two `preview` canonicals (`responsive_creative`, `agent_placement`) carry surfaces whose composition models are still settling — Google PMax / Meta Advantage+ for responsive; ChatGPT / Perplexity / voice assistants for agent_placement. Their parameter shape and tracking model MAY break in 3.2 once 2-3 adopters have built against them. Buyers SHOULD plan for migration; sellers SHOULD treat preview-canonical narrowing as experimental contract surface, not a long-term commitment. The other 9 canonicals are anchored in stable IAB / platform standards (IAB display dimensions, IAB VAST 4.2, IAB DAAST 1.1, retail-media catalog conventions) and are committed.
 
 ## Worked example — Meta Reels
 
@@ -52,34 +54,36 @@ Meta Reels narrows `video_hosted` (vertical orientation) with Meta-specific para
     { "publisher_domain": "meta.com", "selection_type": "all" }
   ],
   "channels": ["social"],
-  "format": {
-    "format_kind": "video_hosted",
-    "params": {
-      "orientation": "vertical",
-      "aspect_ratio": "9:16",
-      "duration_ms_range": [3000, 90000],
-      "min_width": 1080,
-      "min_height": 1920,
-      "max_file_size_mb": 200,
-      "video_codecs": ["h264"],
-      "audio_codecs": ["aac"],
-      "headline_max_chars": 25,
-      "primary_text_max_chars": 72,
-      "captions": "recommended",
-      "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
-      "composition_model": "deterministic",
-      "platform_extensions": [
-        {
-          "uri": "https://meta.adcp/extensions/meta_pixel",
-          "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
-        },
-        {
-          "uri": "https://meta.adcp/extensions/meta_placements_reels",
-          "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
-        }
-      ]
+  "format_options": [
+    {
+      "format_kind": "video_hosted",
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [3000, 90000],
+        "min_width": 1080,
+        "min_height": 1920,
+        "max_file_size_mb": 200,
+        "video_codecs": ["h264"],
+        "audio_codecs": ["aac"],
+        "headline_max_chars": 25,
+        "primary_text_max_chars": 72,
+        "captions": "recommended",
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          {
+            "uri": "https://meta.adcp/extensions/meta_pixel",
+            "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+          },
+          {
+            "uri": "https://meta.adcp/extensions/meta_placements_reels",
+            "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
+          }
+        ]
+      }
     }
-  },
+  ],
   "pricing_options": [
     { "pricing_option_id": "cpm_floor", "pricing_model": "cpm", "currency": "USD", "fixed_price": 5.50 }
   ]
@@ -100,24 +104,26 @@ The canonical-as-contract value is clearest for IAB-standard formats. NYTimes an
     { "publisher_domain": "nytimes.com", "selection_type": "all" }
   ],
   "channels": ["display"],
-  "format": {
-    "format_kind": "image",
-    "params": {
-      "width": 300,
-      "height": 250,
-      "max_file_size_kb": 200,
-      "image_formats": ["jpg", "png", "gif"],
-      "ssl_required": true,
-      "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"],
-      "composition_model": "deterministic",
-      "platform_extensions": [
-        {
-          "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
-          "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
-        }
-      ]
+  "format_options": [
+    {
+      "format_kind": "image",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "image_formats": ["jpg", "png", "gif"],
+        "ssl_required": true,
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          {
+            "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+            "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
+          }
+        ]
+      }
     }
-  },
+  ],
   "pricing_options": [
     { "pricing_option_id": "cpm_homepage", "pricing_model": "cpm", "currency": "USD", "fixed_price": 22.00 }
   ]
@@ -134,24 +140,26 @@ For HTML5 banners on the same placement, NYTimes publishes a *separate* product 
     { "publisher_domain": "nytimes.com", "selection_type": "all" }
   ],
   "channels": ["display"],
-  "format": {
-    "format_kind": "html5",
-    "params": {
-      "width": 300,
-      "height": 250,
-      "max_initial_load_kb": 200,
-      "max_polite_load_kb": 500,
-      "host_initiated_subload": true,
-      "max_animation_duration_ms": 30000,
-      "max_cpu_load_percent": 30,
-      "om_sdk_required": true,
-      "clicktag_macro": "clickTag",
-      "backup_image_required": true,
-      "backup_image_max_size_kb": 50,
-      "ssl_required": true,
-      "composition_model": "deterministic"
+  "format_options": [
+    {
+      "format_kind": "html5",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_initial_load_kb": 200,
+        "max_polite_load_kb": 500,
+        "host_initiated_subload": true,
+        "max_animation_duration_ms": 30000,
+        "max_cpu_load_percent": 30,
+        "om_sdk_required": true,
+        "clicktag_macro": "clickTag",
+        "backup_image_required": true,
+        "backup_image_max_size_kb": 50,
+        "ssl_required": true,
+        "composition_model": "deterministic"
+      }
     }
-  },
+  ],
   "pricing_options": [
     { "pricing_option_id": "cpm_homepage_html5", "pricing_model": "cpm", "currency": "USD", "fixed_price": 28.00 }
   ]
@@ -172,34 +180,36 @@ Host-reads are the host-recorded-from-buyer-script pattern. The product declares
     { "publisher_domain": "thedailypod.example", "selection_type": "all" }
   ],
   "channels": ["podcast"],
-  "format": {
-    "format_kind": "audio_hosted",
-    "params": {
-      "duration_ms_exact": 30000,
-      "audio_codecs": ["mp3", "aac"],
-      "audio_sample_rates": [44100, 48000],
-      "audio_channels": ["stereo"],
-      "loudness_lufs": -16,
-      "audio_source": "publisher_host_recorded",
-      "buyer_audio_acceptance": "rejected",
-      "composition_model": "deterministic",
-      "slots": [
-        {
-          "asset_group_id": "script",
-          "required": true,
-          "asset_type": "text",
-          "max_chars": 800,
-          "description": "Verbatim script the host reads."
-        },
-        {
-          "asset_group_id": "offering_ref",
-          "required": false,
-          "asset_type": "text"
-        }
-      ],
-      "production_window_business_days": 7
+  "format_options": [
+    {
+      "format_kind": "audio_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "audio_codecs": ["mp3", "aac"],
+        "audio_sample_rates": [44100, 48000],
+        "audio_channels": ["stereo"],
+        "loudness_lufs": -16,
+        "audio_source": "publisher_host_recorded",
+        "buyer_audio_acceptance": "rejected",
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "script",
+            "required": true,
+            "asset_type": "text",
+            "max_chars": 800,
+            "description": "Verbatim script the host reads."
+          },
+          {
+            "asset_group_id": "offering_ref",
+            "required": false,
+            "asset_type": "text"
+          }
+        ],
+        "production_window_business_days": 7
+      }
     }
-  },
+  ],
   "pricing_options": [
     { "pricing_option_id": "cpm_host_read", "pricing_model": "cpm", "currency": "USD", "fixed_price": 35.00 }
   ]
@@ -229,6 +239,110 @@ The buyer submits assets directly to the seller; the seller produces internally 
 The format's `audio_source: "publisher_host_recorded"` + `buyer_audio_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
 
 For brief-driven (talking-points-style) host-reads, the same shape applies with a `creative_brief` slot (asset_type `brief`) in place of the `script` slot. Same target format (`audio_hosted`); different slot declaration.
+
+## Worked example — third-party creative agent (Flashtalking + NYTimes display)
+
+The host-read example above is single-actor by necessity: the publisher's host has to be the producer. The opposite case is the multi-actor display path, where the buyer chooses a third-party creative agent that the seller has declared in its capabilities. The seller does **not** compose creatives — it just accepts canonical-conformant manifests.
+
+Three actors:
+
+- **Buyer** (Acme DSP) — discovers products, picks a creative agent, submits manifests
+- **Sales agent** (NYTimes) — sells the placement, validates manifests against canonical, doesn't compose creatives
+- **Creative agent** (Flashtalking) — produces creatives via `build_creative`, declares its capabilities via `creative.supported_formats` on `get_adcp_capabilities`
+
+### 1. Buyer reads NYTimes capabilities
+
+Buyer calls `get_adcp_capabilities` on NYTimes. NYTimes declares which creative agents it accepts under `creative.creative_agents` and surfaces the union of their producible formats under `creative.supported_formats`:
+
+```json test=false
+{
+  "creative": {
+    "supports_transformation": false,
+    "creative_agents": [
+      { "agent_url": "https://flashtalking.adcp" },
+      { "agent_url": "https://creative.nytimes.adcp" }
+    ],
+    "supported_formats": [
+      {
+        "capability_id": "flashtalking_image_300x250",
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250, "max_file_size_kb": 200, "ssl_required": true }
+        }
+      },
+      {
+        "capability_id": "flashtalking_video_vast",
+        "format": {
+          "format_kind": "video_vast",
+          "params": { "vast_version": "4.2", "duration_ms_range": [6000, 30000], "linear_required": true }
+        }
+      }
+    ]
+  }
+}
+```
+
+`supported_formats` is the buyer-facing flat catalog; `creative_agents` is the source-of-truth list. Buyers SHOULD treat `supported_formats` as authoritative for "what can I ship?" — the SDK derives it by fetching each `creative_agents[].agent_url` and unioning. (Sellers MAY override the auto-projection to narrow what they accept, e.g., "I trust Flashtalking but only for hosted html5, not VAST"; that override happens server-side and the catalog reflects the narrowed view.)
+
+### 2. Buyer reads NYTimes products
+
+Buyer calls `get_products` on NYTimes. The MREC product narrows canonical `image`:
+
+```json test=false
+{
+  "product_id": "nytimes_homepage_mrec",
+  "format_options": [
+    {
+      "format_kind": "image",
+      "params": { "width": 300, "height": 250, "max_file_size_kb": 200, "ssl_required": true }
+    }
+  ]
+}
+```
+
+The product narrows the canonical; the canonical is what NYTimes commits to validating against. NYTimes does NOT validate against Flashtalking's narrowing — buyers don't need to know which creative agent produced the manifest, and Flashtalking-specific parameters (e.g., a Flashtalking placement ID) live in Flashtalking's platform extensions if at all.
+
+### 3. Buyer calls Flashtalking's `build_creative`
+
+```json test=false
+// POST https://flashtalking.adcp/build_creative
+{
+  "format": {
+    "format_kind": "image",
+    "params": { "width": 300, "height": 250 }
+  },
+  "brand": { "domain": "acme.example" },
+  "assets": {
+    "creative_brief": { "asset_type": "brief", "content": "Spring sale, 50% off, blue background, urgent CTA." },
+    "landing_page_url": { "asset_type": "url", "url": "https://acme.example/spring" }
+  }
+}
+```
+
+Flashtalking renders an MREC PNG, returns a manifest with the produced asset:
+
+```json test=false
+{
+  "creative_id": "ft_mrec_88299",
+  "manifest": {
+    "format_id": { "agent_url": "https://flashtalking.adcp", "id": "image_300x250" },
+    "assets": {
+      "image": { "asset_type": "image", "url": "https://cdn.flashtalking.com/ft_mrec_88299.png", "width": 300, "height": 250 }
+    }
+  }
+}
+```
+
+### 4. Buyer ships to NYTimes
+
+Buyer calls `sync_creatives` on NYTimes with the manifest from Flashtalking. NYTimes:
+
+1. Validates the manifest against canonical `image` (300×250, ≤200KB, SSL).
+2. Validates against the product's narrowing (matches — same params).
+3. Does NOT validate against Flashtalking's narrowing — that's the creative agent's contract with the buyer, not the seller's contract.
+4. If valid → creative registered. If not → returns canonical violations (`width` mismatch, `max_file_size_kb` exceeded).
+
+The seller's validation contract is the canonical, not the creative agent. This is what makes the third-party path additive rather than coupled: the buyer can swap creative agents without changing the seller-facing flow.
 
 ## Validation flow — `validate_input`
 
@@ -324,6 +438,8 @@ https://nytimes.adcp/extensions/nytimes_om_strict
 ```
 
 Each extension's response carries the schema, the canonical pattern or slot it extends, a version, and a content digest.
+
+**Hosting expectation.** The publisher whose subdomain owns the URI hosts the canonical artifact. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — sellers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; an extension at a given digest never changes content, so a cache hit is always correct. If the canonical URI returns 404 or fails to resolve, buyers MUST degrade gracefully — treat the extension as unavailable and skip platform-specific narrowing rather than fail the buy. Sellers that don't want to operate an artifact CDN MAY rely on the AAO mirror as a fallback host (best-effort, not normative); the mirror does not relieve the publisher of the primary hosting role.
 
 **Distribution path: bundled in `get_products`.** The sales agent's response includes definitions for every extension referenced by any product in the response, keyed by `uri@digest`:
 

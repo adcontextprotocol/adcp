@@ -5,6 +5,12 @@
   "description": "Shared parameter fields that apply across canonical formats. Each canonical format extends this base with format-specific parameters (dimensions, durations, codecs, slot constraints).",
   "type": "object",
   "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["stable", "preview", "deprecated"],
+      "default": "stable",
+      "description": "Stability tier for this canonical format. `stable` (default): the schema and tracking model are committed and any breaking changes go through normal major-version deprecation. `preview`: shipped for early adoption but the parameter shape and tracking model MAY break in a subsequent minor release once 2-3 adopters have built against it; buyers should treat preview canonicals as experimental and plan for migration. `deprecated`: replacement is available; existing adopters supported through the deprecation cycle but new adoption is discouraged. Producers SHOULD include this field on `preview` and `deprecated` canonicals; absence is interpreted as `stable`."
+    },
     "composition_model": {
       "type": "string",
       "enum": ["deterministic", "algorithmic"],

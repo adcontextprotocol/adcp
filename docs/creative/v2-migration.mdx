@@ -64,36 +64,38 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 }
 ```
 
-### v2 — inline format declaration on the product
+### v2 — inline format declarations on the product
 
 ```json test=false
 {
   "product_id": "meta_reels_us",
   "name": "Meta Reels — United States",
-  "format": {
-    "format_kind": "video_hosted",
-    "params": {
-      "orientation": "vertical",
-      "aspect_ratio": "9:16",
-      "duration_ms_range": [3000, 90000],
-      "min_width": 1080,
-      "min_height": 1920,
-      "video_codecs": ["h264"],
-      "containers": ["mp4"],
-      "headline_max_chars": 25,
-      "primary_text_max_chars": 72,
-      "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
-      "composition_model": "deterministic",
-      "platform_extensions": [
-        { "uri": "https://meta.adcp/extensions/meta_pixel", "digest": "sha256:..." }
-      ]
+  "format_options": [
+    {
+      "format_kind": "video_hosted",
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [3000, 90000],
+        "min_width": 1080,
+        "min_height": 1920,
+        "video_codecs": ["h264"],
+        "containers": ["mp4"],
+        "headline_max_chars": 25,
+        "primary_text_max_chars": 72,
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          { "uri": "https://meta.adcp/extensions/meta_pixel", "digest": "sha256:..." }
+        ]
+      }
     }
-  },
+  ],
   // ... pricing, targeting, etc.
 }
 ```
 
-The v2 `format` is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format`) — not both. The product schema's `oneOf` enforces this.
+`format_options` is an array. The 90% case is one element — one canonical narrowed for the product. Multi-element arrays declare that the product accepts any of the listed format options, picked by the buyer at `sync_creatives` time. Common multi-element use cases: a placement that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted upload (`video_hosted`) OR a tag (`video_vast`). Each entry is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format_options`) — not both. The product schema's `oneOf` enforces this.
 
 For 12 fully-validated worked examples spanning all 11 canonical formats (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention, Meta Carousel, YouTube VAST pre-roll, Triton DAAST audio, Veo generative video, GAM 3P display tag), see `static/examples/products/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
 
@@ -275,6 +277,10 @@ Three concrete hooks v2 introduces that existing seller implementations don't ha
 | Walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest) | High, low motivation | 4.0-5.0 if at all (gated on AAO providing a translator from existing format docs) |
 | Creative agents (AudioStack-shaped) | Low, high motivation | 3.1-3.2 |
 | Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
+
+### When does v1 `format_ids` get removed?
+
+The `oneOf(format_ids, format_options)` shape on `Product` persists through 4.x — every validator, codegen, and adopter has to handle both shapes. The 5.0 cut is **adoption-driven, not date-driven**. AAO computes the ratio of registered sales agents declaring `format_options` (or `format_ids`) from cached `get_products` capabilities responses. When `format_options` adoption crosses 80% and stays there for 30 consecutive days, the 5.0 cut sequence opens (deprecation warnings escalate; the next major drops `format_ids`). Until that signal trips, both shapes remain valid and supported. This protects adopters whose org reality (legacy ad-server integrations, walled-garden translation gaps) makes immediate migration impractical, while giving the spec a measurable signal that the migration is broadly complete.
 
 ## `product_card` and `product_card_detailed` are typed inline
 
