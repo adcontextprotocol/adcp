@@ -4548,6 +4548,8 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
     this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
+    this.app.get('/admin/relationships/:personId', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-relationship-detail.html'));
     this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
     this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
