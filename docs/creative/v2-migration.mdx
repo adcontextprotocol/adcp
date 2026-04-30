@@ -236,10 +236,11 @@ Override fields take precedence over `brand.json` for that creative.
 
 1. **Inventory**: enumerate your existing v1 named formats. Confirm each maps to one of the 11 v2 canonicals.
 2. **Translate**: for each named format, write a v2 `ProductFormatDeclaration` narrowing the canonical with your platform's parameters.
-3. **Test**: validate translated declarations against `/schemas/core/product.json` (use the `npm run test:v2-fixtures` pattern).
-4. **Publish dual**: keep your v1 named formats and `list_creative_formats` working through 4.x. Add the v2 `format` field on products that have it.
-5. **Flatten wrapper**: implement a server-side wrapper that derives the v1 `list_creative_formats` shape from v2 product declarations. Lets v1-era dashboards and tooling keep working.
-6. **Deprecate timing**: at 5.0, remove v1 `format_ids` references on your products. Until then, both paths coexist.
+3. **Be honest about runtime readiness**: set `runtime_status` on each declaration. `stable` (default) means your runtime fully honors the declared format and production source. `preview` means the basic path works but advanced axes (per-item fan-out under `item_production_model`, brief-driven overrides, advanced `platform_extensions`) may be partial. `declared_only` means the catalog declaration is forward-looking and your runtime does NOT yet implement the path — common during migration when you port v1 catalog declarations forward but haven't wired the new production-source axis yet. Buyers can filter on this; compliance storyboards skip-gate `declared_only` entries gracefully. Upgrade the value as your runtime catches up.
+4. **Test**: validate translated declarations against `/schemas/core/product.json` (use the `npm run test:v2-fixtures` pattern).
+5. **Publish dual**: keep your v1 named formats and `list_creative_formats` working through 4.x. Add the v2 `format_options` field on products that have it.
+6. **Flatten wrapper**: implement a server-side wrapper that derives the v1 `list_creative_formats` shape from v2 product declarations. Lets v1-era dashboards and tooling keep working.
+7. **Deprecate timing**: at 5.0, remove v1 `format_ids` references on your products. Until then, both paths coexist.
 
 #### Server-side implementation considerations
 

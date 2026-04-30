@@ -18,9 +18,10 @@ v2 collapses today's separate format registry into product-bound declarations. A
 | **Canonical format** | One of 11 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | Array of `ProductFormatDeclaration`s on a v2 product. The 90% case is single-element; multi-element declares "accepts any of." |
-| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels`. |
+| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels` + optional `runtime_status`. |
 | **`capability_id`** | Stable identifier for a format declaration, used to disambiguate when `format_options` carries multiple declarations sharing the same `format_kind`. |
 | **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
+| **`runtime_status`** | Per-product-declaration adopter-runtime readiness: `stable` (default), `preview` (partial paths), `declared_only` (forward-looking — runtime not wired yet). Distinct from canonical-level `status` (which is about spec maturity). |
 | **`slots`** | Programmatic declaration on a format of which `asset_group_id` slots a manifest must (or may) populate, each paired with an `asset_type`. |
 | **`asset_group_id`** | Canonical slot-name vocabulary (e.g., `image_main`, `script`, `landing_page_url`). Replaces v1's free-text `asset_role`. |
 | **`composition_model`** | How the surface composes per-impression: `deterministic` (buyer-predictable per-slot) vs `algorithmic` (surface picks combinations from a pool). |
@@ -71,6 +72,27 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 The two `preview` canonicals (`responsive_creative`, `agent_placement`) carry surfaces whose composition models are still settling — Google PMax / Meta Advantage+ for responsive; ChatGPT / Perplexity / voice assistants for agent_placement. Their parameter shape and tracking model MAY break in 3.2 once 2-3 adopters have built against them. Buyers SHOULD plan for migration; sellers SHOULD treat preview-canonical narrowing as experimental contract surface, not a long-term commitment. The other 9 canonicals are anchored in stable IAB / platform standards (IAB display dimensions, IAB VAST 4.2, IAB DAAST 1.1, retail-media catalog conventions) and are committed.
 
 **Stabilization rubric for preview canonicals.** A preview canonical is promoted to `stable` when (a) at least 2 production adopters have built against it AND (b) 90 consecutive days have passed without a breaking change to its parameter shape. The default escalation date is the next minor release after both conditions are met — i.e., `responsive_creative` and `agent_placement` re-evaluated for stable status by 3.3 if adopters land in 3.1-3.2. To avoid the coordination problem where `preview` reads as "don't build against this" and therefore never stabilizes, sellers shipping preview canonicals SHOULD also publish a `migration_target_version` (carried on the canonical's `_base.json` `migration_target_version` field) so adopters know when to expect either stabilization or a breaking revision.
+
+### Two stability axes: canonical `status` vs declaration `runtime_status`
+
+Stability splits across two independent axes — the spec-maturity axis on the canonical, and the adopter-runtime axis on each product-format declaration:
+
+| Axis | Field location | Question it answers |
+|---|---|---|
+| **Spec maturity** | `params.status` on the canonical (`/schemas/formats/canonical/<name>.json`) | "Has the v2 working group stabilized this format definition?" Values: `stable` / `preview` / `deprecated`. |
+| **Adopter runtime** | `runtime_status` on the `ProductFormatDeclaration` (per-product) | "Does THIS seller's runtime actually honor what they declared on THIS product?" Values: `stable` / `preview` / `declared_only`. |
+
+The two vary independently. A `stable` canonical can have `declared_only` adopters (the spec is settled but the seller hasn't wired the runtime path yet — common during v2 migration when adopters port v1 catalog declarations forward but their adapters still implement only the asset-upload path). A `preview` canonical can have `stable` adopters (a seller built a real working runtime against the preview shape and their integration honors what they declared).
+
+Why both exist: without `runtime_status`, sellers in mid-migration silently lie about what they support. They declare the shiny new production-source axis (`item_production_model: seller_pre_rendered_from_brief`) on a forward-looking product, but the actual `sync_creatives` runtime is still a buyer-uploaded-bytes loop. Buyers discover the mismatch only at submission time — exactly what v2's canonical-as-contract is supposed to prevent.
+
+The rule of thumb:
+
+- Default `stable` (or omit the field). The runtime honors what's declared.
+- `preview` — the basic path works; advanced axes (per-item fan-out, brief-driven overrides, advanced `platform_extensions`) may be partial. Buyers should `validate_input` before committing.
+- `declared_only` — forward-looking declaration. Runtime not wired yet. Buyers MUST treat as informational; compliance storyboards skip-gate gracefully rather than fail; budget should not flow until upgraded to `preview` or `stable`.
+
+Sellers MUST upgrade the value as the runtime catches up. Buyers cache it like any other capability field; subsequent `get_products` responses surface the new value naturally.
 
 ## Two axes: composition (per-impression) vs production (who renders)
 

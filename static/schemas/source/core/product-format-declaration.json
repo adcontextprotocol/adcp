@@ -16,6 +16,12 @@
       "items": { "$ref": "/schemas/enums/channels.json" },
       "uniqueItems": true,
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
+    },
+    "runtime_status": {
+      "type": "string",
+      "enum": ["stable", "preview", "declared_only"],
+      "default": "stable",
+      "description": "Adopter-runtime readiness for this product-format declaration. **Distinct from the canonical's `status` field** (which describes whether the v2 working group has stabilized the format definition itself). `runtime_status` describes whether THIS seller's runtime actually honors what they declared on THIS product.\n\n- `stable` (default) — adopter's runtime fully honors the declared format + production source. Buyers can rely on the declaration as a serving contract.\n- `preview` — runtime supports the basic path; some axes (e.g., per-item fan-out under `item_production_model`, brief-driven overrides, advanced `platform_extensions`) may be partial. Buyers SHOULD validate via `validate_input` or sandbox before committing budget.\n- `declared_only` — catalog declaration is forward-looking; runtime does NOT yet implement this path. Buyers MUST treat as informational and confirm via `validate_input` or a sandbox storyboard before purchase. Compliance storyboards SHOULD skip-gate `declared_only` entries gracefully rather than failing.\n\nThe two axes vary independently: a `stable` canonical can have `declared_only` adopters (canonical is settled in spec but adopter hasn't wired runtime yet), and a `preview` canonical can have `stable` adopters (adopter built against the preview shape and their runtime fully honors it). Producers SHOULD set this when their product declaration is aspirational; absence is interpreted as `stable`. Sellers MUST upgrade the value as the runtime catches up; buyers cache it like any other capability field."
     }
   },
   "oneOf": [
