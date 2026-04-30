@@ -2751,25 +2751,41 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (typeof rec.url === 'string' && typeof rec.type === 'string') {
         const badges = badgeMap.get(rec.url as string);
         if (badges && badges.length > 0) {
-          // Once an agent holds parallel-version badges (Stage 2+),
-          // bulkGetActiveBadges returns multiple rows per role. Dedupe
-          // here by role, keeping the highest-version badge — that's
-          // what the Q3 decision says the public mark should reflect.
           // bulkGetActiveBadges already orders by adcp_version DESC
-          // numerically, so the first row per role is the highest.
+          // numerically (Stage 1), so iterating in order gives us the
+          // newest version per role first.
           const byRole = new Map<typeof badges[number]['role'], typeof badges[number]>();
           for (const badge of badges) {
             if (!byRole.has(badge.role)) byRole.set(badge.role, badge);
           }
           const dedupedBadges = Array.from(byRole.values());
+          // Per-version badges array — the canonical shape going forward.
+          // One entry per (role, adcp_version), preserving the API's
+          // version-DESC ordering. Buyers consuming brand.json see the
+          // full version history; clients that only care about the
+          // current state read modes_by_role.
+          const badgesArray = badges.map(b => ({
+            role: b.role,
+            adcp_version: b.adcp_version,
+            verification_modes: b.verification_modes,
+            verified_at: b.verified_at.toISOString(),
+          }));
           rec.aao_verification = {
             verified: true,
-            roles: dedupedBadges.map(b => b.role),
-            // Per-role verification axes. ['spec'] today; will include
-            // 'live' when canonical campaigns are healthy. Stage 5
-            // adds a richer `badges[]` array with per-version detail.
-            modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
+            // Newest verification across any (role, version) — the most
+            // recent state change for the agent.
             verified_at: dedupedBadges[0].verified_at.toISOString(),
+            // Canonical: full per-(role, version) detail. Per Q6 of
+            // #3524's resolved decisions, this is the forward-compat
+            // shape — adding future axes won't change the array.
+            badges: badgesArray,
+            // Deprecated alias kept for one release. Highest-version
+            // badge per role; reflects "the current best mark." Clients
+            // reading modes_by_role today keep working when parallel-
+            // version badges ship; clients reading badges get the full
+            // picture. Removal target: AdCP 4.0.
+            roles: dedupedBadges.map(b => b.role),
+            modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
           };
         }
       }
@@ -4057,6 +4073,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         verified: badges.length > 0,
         badges: badges.map(b => ({
           role: b.role,
+          adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
