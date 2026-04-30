@@ -228,6 +228,13 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{version}.tgz` — one release cuts all three.
 
+<Note>
+**Writing docs that link to schemas?** Markdown links in `.mdx` files must use
+absolute `https://adcontextprotocol.org/schemas/v3/...` URLs — bare paths like
+`/schemas/enums/foo.json` fail the Mintlify link checker. See
+[Schema links in documentation](/docs/contributing/schema-links).
+</Note>
+
 ### Production (Recommended)
 
 Pin to an exact version for stability:

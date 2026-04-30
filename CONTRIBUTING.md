@@ -17,6 +17,8 @@ Before contributing please see:
 ## Schema conventions
 Before adding or modifying schemas, read the [Specification Guidelines](https://github.com/adcontextprotocol/adcp/blob/main/docs/spec-guidelines.md). In particular, normative (non-`ext`) schema fields must not reference specific platforms or vendors by name — platform-specific fields belong in the `ext.{vendor}` namespace. Reviewers will flag violations.
 
+When **linking to a schema from an MDX doc**, use an absolute `https://adcontextprotocol.org/schemas/v3/...` URL — bare paths like `/schemas/enums/foo.json` fail the Mintlify link checker. See [Schema links in documentation](https://github.com/adcontextprotocol/adcp/blob/main/docs/contributing/schema-links.md) for the full convention and the two CI checks that enforce it.
+
 ## Examples and sample data
 Docs, storyboards, and test vectors use **fictional brands and entities only** — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names in `static/compliance/source/test-kits/`. Real brand, agency, publisher, or vendor names do not appear in normative examples. See the editorial rule in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and the universal fictional-entity registry at `static/compliance/source/universal/fictional-entities.yaml`. Reviewers will flag real-brand usage in examples the same way they flag vendor leakage in schemas.
 
