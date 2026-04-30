@@ -75,7 +75,7 @@
     "check:images": "bash scripts/check-image-quality.sh"
   },
   "dependencies": {
-    "@adcp/sdk": "5.25.0",
+    "@adcp/sdk": "5.25.1",
     "@anthropic-ai/sdk": "^0.91.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",

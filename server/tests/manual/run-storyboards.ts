@@ -124,16 +124,7 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
  * upstream issue and skipping the whole storyboard would lose passing
  * coverage. Track every entry with a linked issue.
  */
-const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
-  // `ProtocolClient.callTool` (5.24+) spreads the SDK's version envelope after
-  // caller args, overriding `adcp_major_version` from the storyboard's
-  // sample_request. The storyboard sends 99 to probe the seller's version
-  // validation, but the buyer-side SDK rewrites it to the SDK's pinned major
-  // before the request hits the wire — the seller never sees 99 and can't
-  // reject it. Pre-existing on main (overlay was landing in `*.previous` so
-  // the storyboard never ran); the SDK 5.25 cache layout exposes it.
-  ['error_compliance/unsupported_major_version', 'adcp-client buyer-side SDK overrides adcp_major_version on the wire — storyboard cannot probe seller-side version validation through the SDK transport'],
-]);
+const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([]);
 
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
