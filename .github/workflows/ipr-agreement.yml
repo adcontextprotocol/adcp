@@ -32,11 +32,27 @@ jobs:
        github.event.issue.pull_request != null &&
        contains(github.event.comment.body, 'I have read the IPR Policy'))
     steps:
+      # The default GITHUB_TOKEN authenticates as github-actions[bot], which
+      # is not in the IPR-signatures ruleset bypass list — pushes to main get
+      # rejected by branch protection (GH013). The aao-ipr-bot App is in the
+      # bypass list, so we mint an installation token from it and use that
+      # for both the checkout's persisted credentials (git push) and the
+      # script's API calls. Same pattern as ipr-check-callable.yml.
+      - name: Mint AAO IPR Bot installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.IPR_APP_ID }}
+          private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
       - name: Checkout default branch
         uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 1
+          token: ${{ steps.app-token.outputs.token }}
           persist-credentials: true
 
       - name: Setup Node
@@ -46,5 +62,5 @@ jobs:
 
       - name: Check and record IPR signature
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node scripts/ipr/check-and-record.mjs
