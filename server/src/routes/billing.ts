@@ -27,6 +27,7 @@ import {
 } from "../billing/stripe-client.js";
 import { OrganizationDatabase, buildSubscriptionUpdate } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
+import { pickMembershipSub } from "../billing/membership-prices.js";
 
 const logger = createLogger("billing-routes");
 
@@ -722,8 +723,15 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
           if (!('deleted' in customer && customer.deleted)) {
             const subscriptions = (customer as Stripe.Customer).subscriptions;
-            if (subscriptions && subscriptions.data.length > 0) {
-              const subscription = subscriptions.data[0];
+            // Filter to membership subs before picking. A customer with a
+            // non-membership sub stacked alongside a real membership would
+            // otherwise have its row overwritten with the wrong sub's state
+            // — Stripe doesn't guarantee `subscriptions.data` order. Same
+            // hardening as POST /api/admin/accounts/:orgId/sync (#3646).
+            const subscription = subscriptions
+              ? pickMembershipSub(subscriptions.data)
+              : null;
+            if (subscription) {
               const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal ?? false);
 
               await pool.query(
@@ -817,8 +825,30 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       const org = linkedOrg.rows[0];
 
-      // Unlink the customer
-      await pool.query("UPDATE organizations SET stripe_customer_id = NULL WHERE stripe_customer_id = $1", [customerId]);
+      // Unlink the customer AND clear the org's subscription state. Without
+      // this, the org row keeps `subscription_status='active'` etc. after
+      // the Stripe link has been severed — meaning the org continues to
+      // appear as a paying member with no Stripe customer attached. The
+      // entitlement gate would silently grant access on stale state until
+      // the next webhook (which never fires, since the customer is gone).
+      await pool.query(
+        `UPDATE organizations SET
+            stripe_customer_id = NULL,
+            stripe_subscription_id = NULL,
+            subscription_status = NULL,
+            subscription_amount = NULL,
+            subscription_interval = NULL,
+            subscription_current_period_end = NULL,
+            subscription_canceled_at = NULL,
+            subscription_product_id = NULL,
+            subscription_product_name = NULL,
+            subscription_price_id = NULL,
+            subscription_price_lookup_key = NULL,
+            updated_at = NOW()
+         WHERE stripe_customer_id = $1`,
+        [customerId],
+      );
+      invalidateMembershipCache(org.workos_organization_id);
 
       logger.info(
         { customerId, orgId: org.workos_organization_id, orgName: org.name, adminEmail: req.user?.email },
