@@ -720,9 +720,9 @@ async function runTests() {
   );
 
   // Measurement capability block — locks the discovery shape down
-  // (#3612). Two metrics, two categories, one with full accreditations[]
-  // and methodology_version, one with the minimum required fields. Buyer-side
-  // implementers can reference this as the canonical response shape.
+  // (#3612). Two metrics: one with full accreditations[] and
+  // methodology_version, one with the minimum required field (metric_id).
+  // Buyer-side implementers can reference this as the canonical response shape.
   await validateExample(
     {
       "adcp": {
@@ -738,7 +738,6 @@ async function runTests() {
         "metrics": [
           {
             "metric_id": "attention_units",
-            "category": "attention",
             "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
             "accreditations": [
               {
@@ -755,7 +754,6 @@ async function runTests() {
           },
           {
             "metric_id": "gco2e_per_impression",
-            "category": "emissions",
             "standard_reference": "https://garmadvertising.com/sustainability-framework",
             "unit": "gCO2e",
             "description": "Carbon emissions per impression, computed via supply-path analysis."
@@ -782,8 +780,8 @@ async function runTests() {
       },
       "measurement": {
         "metrics": [
-          { "metric_id": "attention_units", "category": "attention" },
-          { "metric_id": "attention_units", "category": "attention" }
+          { "metric_id": "attention_units" },
+          { "metric_id": "attention_units" }
         ]
       }
     },

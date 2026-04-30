@@ -24,37 +24,42 @@ follows the same pattern with a new `measurement` block whose
 `governance.property_features[]` (typed feature objects in an array)
 including the `methodology_url` and `methodology_version` fields.
 
-**No coarse filter on brand.json.** An earlier draft mirrored the
-rights-agent precedent (`available_uses[]` / `right_types[]`) by
-putting `metric_categories[]` on the brand.json measurement-agent
-entry. WG review pushed back: rights types meaningfully partition who
-you'd ever call (a podcast buyer never wants CTV rights), but
-measurement categories are correlative — buyers typically want a
-basket (viewability + IVT + brand_safety travel together), so a
-coarse-filter on brand.json doesn't reliably narrow the agent set.
-Capability blocks are queryable and cacheable; AAO crawls them on a
-TTL anyway. Discovery happens against the canonical per-metric
-catalog, not a brand.json shortcut.
+**Scope.** An agent claiming `measurement` computes one or more
+quantitative metrics about ad delivery, exposure, or effect
+(impression verification, viewability, IVT, attention, brand lift,
+incrementality, outcomes, emissions — vendors define the surface in
+`metrics[]`). Returns metric definitions (this block), not pricing
+or coverage (negotiated per buy via `measurement_terms`) and not
+live values (returned per buy via `vendor_metric_values`). Same
+mechanical model as `compliance_testing` and `webhook_signing`.
+
+**No closed category enum.** An earlier draft included a closed 12-value
+`measurement-category.json` enum and a required `category` field on
+each metric. WG review pushed back on two grounds: (1) categories
+overlap (e.g., `brand_safety` measurement vs. governance's
+`content_standards`), making the boundary fuzzy; (2) without a
+buyer-side discovery primitive consuming the field, the enum was
+adding schema surface and drift risk without earning its keep.
+Dropped: `category` field, `measurement-category.json` enum file,
+`metric_categories[]` on brand.json (already removed in this PR's
+prior commit). AAO and buyer agents normalize across catalogs from
+`metric_id`, `description`, `standard_reference`, and
+`accreditations[]` — all already structured. If a category facet
+proves useful once #3613's discovery primitive lands, it can be
+added back as an open vendor-asserted string with real query
+patterns shaping the taxonomy.
 
 **Schema additions.**
 
-- `enums/measurement-category.json`: closed 12-value enum
-  (`attention`, `viewability`, `invalid_traffic`, `brand_safety`,
-  `brand_lift`, `incrementality`, `audience`, `reach`,
-  `creative_quality`, `emissions`, `outcomes`, `other`). Includes
-  the three categories surfaced as gaps in expert review:
-  `viewability` (MRC Viewable Impression Measurement Guidelines —
-  IAS, DV, MOAT), `invalid_traffic` (TAG/MRC IVT — HUMAN, DV, IAS),
-  and `brand_safety` (GARM Brand Safety Floor + Suitability
-  Framework). Used on each metric's `category` field.
 - `protocol/get-adcp-capabilities-response.json`: new `measurement`
-  block with `metrics[]`. Each metric carries `metric_id` and
-  `category` (required), plus optional `standard_reference`,
-  `accreditations[]` (third-party certification list, distinct from
-  `standard_reference` — accrediting body, optional cert ID, validity
-  date, evidence URL), `unit`, `description`, `methodology_url`, and
-  `methodology_version`. `additionalProperties: false` with explicit
-  `ext` slot, matching the governance pattern.
+  block with `metrics[]`. Each metric carries `metric_id` (required),
+  plus optional `standard_reference`, `accreditations[]` (third-party
+  certification list, distinct from `standard_reference` — accrediting
+  body, optional cert ID, validity date, evidence URL), `unit`,
+  `description`, `methodology_url`, and `methodology_version`.
+  `additionalProperties: false` with explicit `ext` slot, matching
+  the governance pattern. `uniqueItems: true` on `metrics[]` — duplicate
+  `metric_id` within one agent's catalog is a conformance bug.
 
 **Why `accreditations[]` is separate from `standard_reference`.**
 A metric can implement a published standard (URL points at the spec)
@@ -68,14 +73,18 @@ the distinction at the schema layer.
 
 - `docs/protocol/get_adcp_capabilities.mdx`: new `measurement` section
   with field table, response example showing `accreditations[]` and
-  `methodology_version`, the discovery-vs-settlement framing, and an
-  explicit "this is a discovery surface, not a rate card" callout
+  `methodology_version`, the discovery-vs-settlement framing, an
+  explicit Scope subsection ("what does claiming `measurement` mean?"),
+  and an explicit "this is a discovery surface, not a rate card" callout
   (pricing/SLAs/coverage are negotiated per buy via
   `measurement_terms`).
 - `docs/registry/index.mdx`: refines the measurement-vendor discovery
   section to reference the now-defined `measurement` capability block
   and forward-references the AAO index endpoint (#3613) and the
   buyer-agent direct-call docs (#3614).
+- `core/reporting-capabilities.json`: updated `vendor_metrics[]` prose
+  to point at `get_adcp_capabilities.measurement.metrics[]` as the
+  canonical metric-definition source (was previously brand.json).
 
 **Backwards compatibility.** All additions are optional and additive.
 Sellers without measurement capability are unchanged; sellers with
@@ -85,9 +94,9 @@ measurement capability gain a structured catalog surface.
 capability declaration. Three independent expert reviews plus WG
 pushback shaped this version: kept `measurement` in
 `supported_protocols` per the protocol-in-development framing, added
-missing categories, added `methodology_version`, added structured
-`accreditations[]` to separate "implements a standard" from
-"third-party certified," and dropped the brand.json coarse-filter
-field after partition-quality critique.
+`methodology_version`, added structured `accreditations[]` to separate
+"implements a standard" from "third-party certified," dropped the
+brand.json coarse-filter field, and dropped the closed category enum
+in favor of letting real catalogs shape the taxonomy.
 
 Closes #3612.

@@ -439,7 +439,9 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 Measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`. The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
 
-Measurement agents publish a per-metric catalog so buyers know which metrics each vendor offers (attention scores, emissions, panel-based demographics, brand suitability, viewability, etc.). This is the canonical source of truth — AAO crawls it to populate the federated [measurement-vendor index](/docs/registry/index#measurement-vendor-discovery).
+**Scope.** An agent claiming `measurement` computes one or more quantitative metrics about ad delivery, exposure, or effect (impression verification, viewability, IVT, attention, brand lift, incrementality, outcomes, emissions — vendors define the surface in `metrics[]`). Returns metric definitions (this block), not pricing or coverage (negotiated per buy via `measurement_terms`) and not live values (returned per buy via `vendor_metric_values`). Same mechanical model as `compliance_testing` and `webhook_signing`: presence asserts the capability; the block carries the structured payload.
+
+Measurement agents publish a per-metric catalog so buyers know which metrics each vendor offers. This is the canonical source of truth — AAO crawls it to populate the federated [measurement-vendor index](/docs/registry/index#measurement-vendor-discovery).
 
 #### metrics
 
@@ -448,11 +450,10 @@ Array of metrics this measurement agent computes.
 | Field | Type | Description |
 |-------|------|-------------|
 | `metric_id` | string | **Required.** Vendor-scoped identifier (`attention_units`, `gco2e_per_impression`, etc.) — matches the `metric_id` populated in `vendor_metric_values` on delivery. The full identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each `metric_id` MUST be unique within a single agent's catalog. |
-| `category` | enum | **Required.** Coarse classification: `attention`, `viewability`, `invalid_traffic`, `brand_safety`, `brand_lift`, `incrementality`, `audience`, `reach`, `creative_quality`, `emissions`, `outcomes`, `other`. Used by AAO and buyer agents for cross-vendor discovery. |
 | `standard_reference` | string (URI) | Optional URI pointing at the published standard this metric **implements** (IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Distinct from `accreditations` below — `standard_reference` is what the metric is built against; `accreditations` is third-party certification of conformance. |
 | `accreditations` | object[] | Optional list of third-party accreditations this metric holds (MRC, ARF, JIC bodies, ABC, BARB, AGOF, etc.). Each entry: `accrediting_body` (required), optional `certification_id`, `valid_until`, `evidence_url`. Buyers asking "is this MRC-accredited?" SHOULD check this array — implementing a standard is not the same as being independently accredited. |
 | `unit` | string | Unit of the value when reported in `vendor_metric_values.value` (`score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`, etc.). Sellers populating `vendor_metric_values.unit` MUST match this declaration. |
-| `description` | string | Human-readable description of what the metric measures and any methodology notes. |
+| `description` | string | Human-readable description of what the metric measures and any methodology notes. AAO and buyer agents normalize across catalogs from this field plus the structured fields above; classification facets are not declared at the metric level. |
 | `methodology_url` | string (URI) | URL to vendor's full methodology documentation. Mirrors `governance.property_features[].methodology_url`. |
 | `methodology_version` | string | Optional version identifier (semver, ISO date, or vendor-defined string) for the methodology. When present, buyer agents can pin a contracted version so silent methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked. |
 | `ext` | object | Vendor extensions per the AdCP `ext` convention. |
@@ -463,7 +464,6 @@ Array of metrics this measurement agent computes.
     "metrics": [
       {
         "metric_id": "attention_units",
-        "category": "attention",
         "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
         "accreditations": [
           { "accrediting_body": "MRC", "certification_id": "MRC-ATT-2026-001", "valid_until": "2027-12-31", "evidence_url": "https://mediaratingcouncil.org/accreditations/attentionvendor" }
@@ -475,7 +475,6 @@ Array of metrics this measurement agent computes.
       },
       {
         "metric_id": "engagement_seconds",
-        "category": "attention",
         "unit": "seconds",
         "description": "Active dwell time in seconds, measured via in-content telemetry."
       }
@@ -484,7 +483,7 @@ Array of metrics this measurement agent computes.
 }
 ```
 
-**Discovery vs. settlement.** Buyers MAY hit a measurement agent's `get_adcp_capabilities` directly to see its current catalog (live, canonical, no staleness), or query AAO's federated index for cross-vendor discovery (`/api/registry/measurement-vendors?category=attention`) for cheap aggregation. The index trades a TTL refresh window for cross-vendor speed; live calls trade speed for currency. Both are valid — typically planning queries hit the index, settlement/audit queries hit the agent.
+**Discovery vs. settlement.** Buyers MAY hit a measurement agent's `get_adcp_capabilities` directly to see its current catalog (live, canonical, no staleness), or query AAO's federated index for cross-vendor aggregation. The index trades a TTL refresh window for cross-vendor speed; live calls trade speed for currency. Both are valid — typically planning queries hit the index, settlement/audit queries hit the agent.
 
 **This is a discovery surface, not a rate card.** The catalog tells buyers *what* a vendor measures and *what standards/accreditations* back it. Pricing per impression, minimum measurable inventory, attribution windows, geographic coverage, and data-freshness SLAs are negotiated per buy through the seller's `measurement_terms` on `create_media_buy` — not through this catalog.
 

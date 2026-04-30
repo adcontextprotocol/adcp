@@ -1069,21 +1069,17 @@
     },
     "measurement": {
       "type": "object",
-      "description": "Measurement capability block. Presence indicates this agent supports measurement-vendor discovery; absence means it does not. Modeled as a capability block (like `compliance_testing` and `webhook_signing`) rather than a `supported_protocols` value because measurement agents have one surface — this catalog — not a tool-set with mandatory tasks. AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
+      "description": "Measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). Modeled as a capability block (like `compliance_testing` and `webhook_signing`) rather than a `supported_protocols` value because measurement agents have one surface — this catalog — not a tool-set with mandatory tasks. AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
       "properties": {
         "metrics": {
           "type": "array",
-          "description": "Metrics this agent computes. Each entry is identified by `metric_id` within the vendor's vocabulary; the canonical reference everywhere a measurement value appears (`committed_metrics`, `vendor_metric_values`, `missing_metrics`) is the tuple `(vendor.domain, vendor.brand_id, metric_id)`. Buyers querying AAO for category-based cross-vendor discovery (`/api/registry/measurement-vendors?category=attention`) hit this list aggregated across vendors.",
+          "description": "Metrics this agent computes. Each entry is identified by `metric_id` within the vendor's vocabulary; the canonical reference everywhere a measurement value appears (`committed_metrics`, `vendor_metric_values`, `missing_metrics`) is the tuple `(vendor.domain, vendor.brand_id, metric_id)`.",
           "items": {
             "type": "object",
             "properties": {
               "metric_id": {
                 "$ref": "/schemas/core/vendor-metric-id.json",
                 "description": "Identifier for the metric within the vendor's vocabulary. Combined with the agent's BrandRef, forms the canonical tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each metric_id MUST be unique within a single agent's catalog."
-              },
-              "category": {
-                "$ref": "/schemas/enums/measurement-category.json",
-                "description": "Coarse classification — used by AAO and buyer agents for cross-vendor discovery."
               },
               "standard_reference": {
                 "type": "string",
@@ -1144,7 +1140,7 @@
                 "$ref": "/schemas/core/ext.json"
               }
             },
-            "required": ["metric_id", "category"],
+            "required": ["metric_id"],
             "additionalProperties": false
           },
           "minItems": 1,
