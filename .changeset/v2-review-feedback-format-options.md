@@ -25,4 +25,18 @@ Addresses external review feedback on RFC #3305 / PR #3307 before the 3.1.0 beta
 
 **Why minor:** structural rename of `product.format` → `product.format_options` is technically breaking for anyone who built against the v2 path during the preview window, but the v2 path was only landed in this PR (#3307) and is not yet released — no published 3.x version carries `format`. The shipping shape is `format_options`. Anyone building against the preview branch should re-pull. The other changes are additive.
 
+**Production-source taxonomy (universalads / generative-DSP gap):**
+
+The audio_hosted canonical handles "who renders" via `audio_source` (`buyer_uploaded` / `publisher_host_recorded` / `agent_synthesized`) plus `buyer_audio_acceptance`. The image and video_hosted canonicals had no analogous parameter, which forced generative-DSP-shaped adopters (universalads, Pencil, AdCreative.ai-shaped tools, GenStudio-shaped tools) to either fudge `composition_model` or invent platform extensions to express what's actually a common pattern.
+
+This change adds:
+
+- `image_source` on `image` — `buyer_uploaded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized` (default `buyer_uploaded`). Plus `buyer_image_acceptance: accepted | rejected`.
+- `video_source` on `video_hosted` — same enum and pattern as `image_source`. Plus `buyer_video_acceptance: accepted | rejected`.
+- `item_production_model` on `sponsored_placement` — same enum, applied per catalog item. Captures the multi-output generative pattern (1 brief × N catalog items → N rendered creatives) under the existing `sponsored_placement` canonical without requiring a 12th canonical.
+
+These are informational fields, not the binding contract — the format's `slots` declaration is the contract. The `*_source` fields let buyers pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative).
+
+The v2-overview.mdx narrative now explicitly differentiates the two orthogonal axes — `composition_model` (how the surface composes per-impression: deterministic vs algorithmic) and per-canonical production source (who renders, and when). Conflating them was the gap that left generative DSPs without a clean expression in v2.
+
 Tracks #3305 (v2 RFC) and #3307 (preview branch).

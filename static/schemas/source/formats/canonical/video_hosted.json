@@ -72,6 +72,18 @@
     "companion_banner_heights": {
       "type": "array",
       "items": { "type": "integer", "minimum": 1 }
+    },
+    "video_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered video comes from. Parallels `audio_source` on `audio_hosted`. `buyer_uploaded` (default): buyer ships a pre-rendered video asset; product narrows codec / dimensions / duration. `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy; seller renders ONE video at sync_creatives or build_creative time and serves it like any deterministic creative (generative-DSP pattern). `seller_human_designed`: seller's editorial / design team renders manually from a brief. `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` for Veo / Sora / Runway-class flows where output dimensions or duration vary per run. The `slots` declaration is the binding contract for what the buyer ships; `video_source` is informational and lets buyers understand the production model when picking products."
+    },
+    "buyer_video_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded video. When `rejected`, the buyer cannot ship a video asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the video."
     }
   },
   "additionalProperties": true

@@ -46,6 +46,18 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
+    },
+    "image_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered image comes from. Parallels `audio_source` on `audio_hosted`. `buyer_uploaded` (default): buyer ships a pre-rendered image asset; product narrows file format / dimensions / size. `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy (headline, landing_page_url); seller renders ONE image at sync_creatives or build_creative time and serves it like any deterministic creative (generative-DSP pattern: universalads, Pencil, AdCreative.ai). `seller_human_designed`: seller's design team renders manually from a brief (human-in-the-loop services). `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output (Veo/Sora/Imagen-class). The `slots` declaration is the binding contract for what the buyer ships; `image_source` is informational and lets buyers understand the production model when picking products."
+    },
+    "buyer_image_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded images. When `rejected`, the buyer cannot ship an image asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the image. Combined with `image_source`, lets a product declare 'I produce images from briefs and refuse buyer uploads' (image_source=`seller_pre_rendered_from_brief`, buyer_image_acceptance=`rejected`)."
     }
   },
   "additionalProperties": true

@@ -42,6 +42,24 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 
 The two `preview` canonicals (`responsive_creative`, `agent_placement`) carry surfaces whose composition models are still settling — Google PMax / Meta Advantage+ for responsive; ChatGPT / Perplexity / voice assistants for agent_placement. Their parameter shape and tracking model MAY break in 3.2 once 2-3 adopters have built against them. Buyers SHOULD plan for migration; sellers SHOULD treat preview-canonical narrowing as experimental contract surface, not a long-term commitment. The other 9 canonicals are anchored in stable IAB / platform standards (IAB display dimensions, IAB VAST 4.2, IAB DAAST 1.1, retail-media catalog conventions) and are committed.
 
+## Two axes: composition (per-impression) vs production (who renders)
+
+Two orthogonal patterns govern how a creative is produced and how it serves. Conflating them is the most common authoring mistake.
+
+**Composition model** — `composition_model: deterministic | algorithmic` on the format declaration. Describes how the **surface composes per-impression**:
+- `deterministic` — buyer can predict per-slot rendering. The surface serves what it received. (`image`, `video_hosted`, `audio_hosted`, `video_vast`, `audio_daast`, `sponsored_placement`.)
+- `algorithmic` — surface picks combinations from a buyer-supplied asset pool per-impression. The buyer ships a pool; the surface composes. (`responsive_creative` for Google PMax / Meta Advantage+; `agent_placement` for AI-surface composition.)
+
+**Production source** — per-canonical `*_source` parameters. Describes **who renders the rendered asset, and when**:
+- `audio_source` on `audio_hosted` — `buyer_uploaded | publisher_host_recorded | agent_synthesized`
+- `image_source` on `image` — `buyer_uploaded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`
+- `video_source` on `video_hosted` — same enum as `image_source`
+- `item_production_model` on `sponsored_placement` — same enum, applied per catalog item (the multi-output generative case: 1 brief × N catalog items → N rendered creatives)
+
+The two axes don't collapse. A generative DSP that produces ONE rendered image from a brief is `composition_model: deterministic` (the surface serves what it received) + `image_source: seller_pre_rendered_from_brief` (seller produced it from inputs at sync_creatives time). A retail-media surface that runs an AI synthesis pipeline per catalog item is `composition_model: deterministic` + `item_production_model: agent_synthesized`. Google PMax is `composition_model: algorithmic` + (production-source unspecified — buyer ships a pool of pre-rendered assets so the production-source question doesn't apply at the format level).
+
+The production-source enums are informational, not the binding contract. The format's `slots` declaration is the contract — what the buyer ships, in what shape. The `*_source` field tells the buyer "here's how this product produces the rendered creative" so they can pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative).
+
 ## Worked example — Meta Reels
 
 Meta Reels narrows `video_hosted` (vertical orientation) with Meta-specific parameters and platform extensions:
