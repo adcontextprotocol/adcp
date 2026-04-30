@@ -21,14 +21,7 @@
  */
 import type Stripe from 'stripe';
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
-
-/**
- * Subscriptions whose price `lookup_key` starts with one of these prefixes
- * are membership subs that drive entitlement. Anything else (one-off
- * invoice line items, test products, future non-membership subs) is out of
- * scope — we don't want to flag drift on a non-membership sub.
- */
-const MEMBERSHIP_LOOKUP_KEY_PREFIXES = ['aao_membership_', 'aao_invoice_'] as const;
+import { isMembershipLookupKey } from '../../../billing/membership-prices.js';
 
 /**
  * Stripe statuses that grant entitlement at AAO. Mirrors the gate logic
@@ -36,11 +29,6 @@ const MEMBERSHIP_LOOKUP_KEY_PREFIXES = ['aao_membership_', 'aao_invoice_'] as co
  * customer hasn't lost access just because a payment retry is pending.
  */
 const ENTITLED_STATUSES = new Set<Stripe.Subscription.Status>(['active', 'trialing', 'past_due']);
-
-function isMembershipPrice(lookupKey: string | null | undefined): boolean {
-  if (!lookupKey) return false;
-  return MEMBERSHIP_LOOKUP_KEY_PREFIXES.some((p) => lookupKey.startsWith(p));
-}
 
 function customerIdOf(sub: Stripe.Subscription): string {
   return typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
@@ -81,7 +69,7 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
     for (const status of ['active', 'trialing'] as const) {
       for await (const sub of stripe.subscriptions.list({ status, limit: 100 })) {
         const { lookup_key } = priceFieldsOf(sub);
-        if (!isMembershipPrice(lookup_key)) continue;
+        if (!isMembershipLookupKey(lookup_key)) continue;
         memberSubs.push(sub);
       }
     }

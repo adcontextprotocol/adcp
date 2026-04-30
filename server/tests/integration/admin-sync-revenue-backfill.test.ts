@@ -71,6 +71,11 @@ const mocks = vi.hoisted(() => {
                 unit_amount: 250000,
                 currency: 'usd',
                 recurring: { interval: 'year' },
+                // /sync filters to membership subs by lookup_key prefix
+                // (`aao_membership_*` / `aao_invoice_*`) so a non-membership
+                // sub doesn't overwrite a paying member's row. Real Stripe
+                // membership prices always carry a lookup_key.
+                lookup_key: 'aao_membership_professional_250',
               },
             }],
           },
