@@ -8690,6 +8690,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }).catch(err => logger.warn({ err }, 'Failed to start auto-provision digest'));
         }
 
+        // Hourly sweep: write invite_expired events for newly-expired invites.
+        import('./scheduled/invite-expired-sweep.js').then(({ startInviteExpiredSweep }) => {
+          startInviteExpiredSweep();
+        }).catch(err => logger.warn({ err }, 'Failed to start invite-expired sweep'));
+
         // Start Luma calendar sync (catches events missed by webhooks)
         import('./luma/sync.js').then(({ startLumaSync }) => {
           startLumaSync();
@@ -8744,6 +8749,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
       import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
         stopAutoProvisionDigest();
+      }).catch(() => {});
+
+      import('./scheduled/invite-expired-sweep.js').then(({ stopInviteExpiredSweep }) => {
+        stopInviteExpiredSweep();
       }).catch(() => {});
 
       import('./luma/sync.js').then(({ stopLumaSync }) => {

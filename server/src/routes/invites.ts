@@ -31,6 +31,8 @@ import {
 } from '../billing/active-subscription-guard.js';
 import { withOrgIntakeLock } from '../billing/org-intake-lock.js';
 import * as referralDb from '../db/referral-codes-db.js';
+import { resolvePersonId } from '../db/relationship-db.js';
+import { recordEvent } from '../db/person-events-db.js';
 
 const logger = createLogger('invites-routes');
 const orgDb = new OrganizationDatabase();
@@ -345,6 +347,22 @@ export function createInvitesRouter(): Router {
         },
         'Membership invite accepted'
       );
+
+      // Record invite_accepted on the accepting user's timeline. Use only
+      // workos_user_id so we don't force-merge the invite contact_email with
+      // the authenticated account (those may be different addresses).
+      resolvePersonId({ workos_user_id: user.id })
+        .then((personId) =>
+          recordEvent(personId, 'invite_accepted', {
+            data: {
+              token_prefix: token.slice(0, 8) + '...',
+              accepted_by_user_id: user.id,
+              invoice_id: invoiceResult.invoiceId,
+              org_id: org.workos_organization_id,
+            },
+          })
+        )
+        .catch((err) => logger.warn({ err }, 'Failed to record invite_accepted person event'));
 
       res.json({
         success: true,

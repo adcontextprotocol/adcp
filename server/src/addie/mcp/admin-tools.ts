@@ -80,6 +80,8 @@ import {
 } from '../../billing/stripe-client.js';
 import { createMembershipInvite } from '../../db/membership-invites-db.js';
 import { sendMembershipInviteEmail } from '../../notifications/email.js';
+import { resolvePersonId } from '../../db/relationship-db.js';
+import { recordEvent } from '../../db/person-events-db.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
@@ -3290,6 +3292,21 @@ export function createAdminToolHandlers(
           },
           'Addie sent membership invite (admin tool)',
         );
+
+        resolvePersonId({ email: normalizedEmail })
+          .then((personId) =>
+            recordEvent(personId, 'invite_sent', {
+              data: {
+                token_prefix: invite.token.slice(0, 8) + '...',
+                lookup_key: invite.lookup_key,
+                expires_at: invite.expires_at,
+                invited_by_user_id: adminUserId,
+                org_id: org.workos_organization_id,
+              },
+              occurredAt: invite.created_at,
+            })
+          )
+          .catch((err) => logger.warn({ err }, 'Failed to record invite_sent person event'));
 
         return response;
       } catch (err) {

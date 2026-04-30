@@ -33,7 +33,14 @@ export type PersonEventType =
   | 'email_bounced'
   | 'slack_dm_delivered'
   | 'preference_changed'
-  | 'admin_nudge_requested';
+  | 'admin_nudge_requested'
+  // Membership invitation lifecycle — written to the recipient's timeline.
+  // token_prefix is the first 8 chars of the invite token (correlation handle).
+  // lookup_key is the membership-tier identifier (e.g. "founding_member").
+  | 'invite_sent'
+  | 'invite_accepted'
+  | 'invite_expired'
+  | 'invite_revoked';
 
 export interface PersonEvent {
   id: number;

@@ -27,6 +27,8 @@ import {
   revokeMembershipInvite,
 } from "../../db/membership-invites-db.js";
 import { sendMembershipInviteEmail } from "../../notifications/email.js";
+import { resolvePersonId } from "../../db/relationship-db.js";
+import { recordEvent } from "../../db/person-events-db.js";
 import { createProspect, updateProspect } from "../../services/prospect.js";
 import {
   loadDraftAndState,
@@ -2844,6 +2846,24 @@ export function setupAccountRoutes(
           "Admin sent membership invitation"
         );
 
+        // Record invite_sent on the recipient's person timeline.
+        // resolvePersonId creates a website-only relationship if the prospect
+        // hasn't yet signed in — consistent with the "everyone is an account" invariant.
+        resolvePersonId({ email: normalizedEmail })
+          .then((personId) =>
+            recordEvent(personId, 'invite_sent', {
+              data: {
+                token_prefix: invite.token.slice(0, 8) + '...',
+                lookup_key: invite.lookup_key,
+                expires_at: invite.expires_at,
+                invited_by_user_id: invite.invited_by_user_id,
+                org_id: orgId,
+              },
+              occurredAt: invite.created_at,
+            })
+          )
+          .catch((err) => logger.warn({ err }, 'Failed to record invite_sent person event'));
+
         res.json({
           success: true,
           invite: {
@@ -2914,6 +2934,20 @@ export function setupAccountRoutes(
             message: "Invite is already accepted, revoked, or does not exist.",
           });
         }
+
+        resolvePersonId({ email: revoked.contact_email })
+          .then((personId) =>
+            recordEvent(personId, 'invite_revoked', {
+              data: {
+                token_prefix: revoked.token.slice(0, 8) + '...',
+                revoked_by_user_id: req.user!.id,
+                org_id: revoked.workos_organization_id,
+              },
+              occurredAt: revoked.revoked_at ?? new Date(),
+            })
+          )
+          .catch((err) => logger.warn({ err }, 'Failed to record invite_revoked person event'));
+
         res.json({ success: true, token: revoked.token });
       } catch (error) {
         logger.error({ err: error }, "Error revoking invitation");
