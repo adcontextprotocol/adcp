@@ -65,8 +65,9 @@ import { createBrandFeedsRouter } from '../../src/routes/brand-feeds.js';
 // in parallel with any other integration test that touches organizations,
 // users, or brands tables. The suite's beforeEach DELETEs are scoped to
 // these specific keys, so a sibling worker running concurrently can't be
-// trampled.
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// trampled. Hyphen separator: keeps `TEST_DOMAIN` valid per RFC 1035 in
+// case any future code path validates the test domain against a regex.
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const TEST_DOMAIN = `parse-test-${SUFFIX}.example.com`;
 const OWNER_ORG = `org_parse_owner_${SUFFIX}`;
 const OUTSIDER_ORG = `org_parse_outsider_${SUFFIX}`;

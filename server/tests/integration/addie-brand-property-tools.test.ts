@@ -48,7 +48,9 @@ import { createBrandPropertyToolHandlers } from '../../src/addie/mcp/brand-prope
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 // PID + timestamp suffix prevents FK collisions when suites run in parallel.
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// Hyphen separator: keeps `TEST_DOMAIN` valid per RFC 1035 in case any future
+// code path validates the test domain against a regex.
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const TEST_DOMAIN = `addie-prop-${SUFFIX}.example.com`;
 const OWNER_ORG = `org_addie_owner_${SUFFIX}`;
 const OUTSIDER_ORG = `org_addie_outsider_${SUFFIX}`;

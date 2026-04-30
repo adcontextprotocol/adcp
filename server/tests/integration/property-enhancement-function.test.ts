@@ -56,7 +56,10 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { enhanceProperty } from '../../src/services/property-enhancement.js';
 
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// Hyphen separator: keeps `TEST_DOMAIN` valid per RFC 1035 in case any future
+// code path validates the test domain against a regex (matches the convention
+// used by brand-classifier-route, brand-enrichment-route, and prospect-triage).
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const TEST_DOMAIN = `prop-enhance-${SUFFIX}.example.com`;
 
 function analyzePropertyResponse(input: unknown) {
