@@ -90,6 +90,7 @@ export async function processAgentBadges(
           role: roleResult.role,
           verified_specialisms: roleResult.specialisms,
           verification_modes: modes,
+          adcp_version: adcpVersion,
         });
         if (signed) {
           token = signed.token;

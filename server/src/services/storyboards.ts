@@ -128,6 +128,51 @@ export function getAllStoryboards(): Storyboard[] {
   return listAllComplianceStoryboards();
 }
 
+/**
+ * Compare two AdCP version strings (`MAJOR.MINOR`) numerically.
+ * Returns -1 / 0 / 1 like a sort comparator. `'3.10'` is correctly
+ * greater than `'3.2'`. Treats malformed values as `0.0` (sort first).
+ */
+export function compareAdcpVersions(a: string, b: string): number {
+  const parse = (s: string): [number, number] => {
+    const m = s.match(/^(\d+)\.(\d+)$/);
+    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : [0, 0];
+  };
+  const [aMajor, aMinor] = parse(a);
+  const [bMajor, bMinor] = parse(b);
+  if (aMajor !== bMajor) return aMajor - bMajor;
+  return aMinor - bMinor;
+}
+
+/**
+ * Storyboards applicable for a given AdCP target version.
+ *
+ * A storyboard's `introduced_in` (e.g. `"3.1"`) means it was added in
+ * that release. Storyboards without `introduced_in` are treated as
+ * "always applied" — they exist in every supported version. The filter
+ * keeps only storyboards whose `introduced_in` is at or below the
+ * target.
+ *
+ * Used by the compliance heartbeat to fan out per supported version:
+ * for each entry in `SUPPORTED_BADGE_VERSIONS`, call `comply()` with
+ * the IDs returned here as the storyboard scope, then issue badges at
+ * that version.
+ */
+export function getStoryboardsForVersion(adcpVersion: string): Storyboard[] {
+  return listAllComplianceStoryboards().filter((sb) => {
+    if (!sb.introduced_in) return true;
+    return compareAdcpVersions(sb.introduced_in, adcpVersion) <= 0;
+  });
+}
+
+/**
+ * Storyboard IDs applicable for a target AdCP version. Convenience
+ * wrapper for callers that pass IDs to `comply({ storyboards: [...] })`.
+ */
+export function getStoryboardIdsForVersion(adcpVersion: string): string[] {
+  return getStoryboardsForVersion(adcpVersion).map((sb) => sb.id);
+}
+
 export function getTestKit(id: string): TestKit | undefined {
   return testKits.get(id);
 }

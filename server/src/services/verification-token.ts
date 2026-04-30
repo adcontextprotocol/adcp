@@ -22,6 +22,18 @@ export interface VerificationTokenPayload {
    * (see adcp-taxonomy.ts) — unknown values are filtered before signing.
    */
   verification_modes: VerificationMode[];
+  /**
+   * AdCP release the badge was issued against, MAJOR.MINOR (e.g. '3.0',
+   * '3.1'). Load-bearing for badge identity — pairs with the (agent_url,
+   * role, adcp_version) primary key in agent_verification_badges. Validated
+   * at sign time and at verify time against `^\d+\.\d+$`.
+   */
+  adcp_version?: string;
+  /**
+   * Full semver of the spec build that issued this token (e.g. '3.0.0').
+   * Informational metadata for support and audits — `adcp_version` is the
+   * load-bearing field for badge model decisions.
+   */
   protocol_version?: string;
 }
 
@@ -93,11 +105,21 @@ export async function signVerificationToken(
     return null;
   }
 
+  // Validate adcp_version shape before signing — same regex as the DB
+  // CHECK constraint. A poisoned DB row that smuggled a non-MAJOR.MINOR
+  // value can't ride into a signed token. Drop the claim entirely if
+  // it's malformed rather than fail the badge — the badge is still valid,
+  // just without the version claim, until the next heartbeat fixes the row.
+  const safeAdcpVersion = payload.adcp_version && /^[1-9][0-9]*\.[0-9]+$/.test(payload.adcp_version)
+    ? payload.adcp_version
+    : undefined;
+
   const token = await new jose.SignJWT({
     agent_url: payload.agent_url,
     role: payload.role,
     verified_specialisms: payload.verified_specialisms,
     verification_modes: safeModes,
+    ...(safeAdcpVersion && { adcp_version: safeAdcpVersion }),
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })

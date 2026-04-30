@@ -97,6 +97,74 @@ describe('verification-token', () => {
       expect(claims!.verification_modes).toEqual(['spec', 'live']);
     });
 
+    it('round-trips a token with adcp_version claim', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBe('3.0');
+    });
+
+    it('omits adcp_version from the token when caller did not pass it', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+    });
+
+    it('drops a malformed adcp_version rather than smuggling it into a signed token', async () => {
+      // Defense in depth: a poisoned DB row that smuggled a non-MAJOR.MINOR
+      // value must NOT ride into a signed AAO claim. The token still issues
+      // (badge is otherwise valid), just without the version claim.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.0; DROP TABLE',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+    });
+
+    it('drops an adcp_version with a leading-zero major', async () => {
+      // Matches the DB CHECK constraint: ^[1-9][0-9]*\.[0-9]+$.
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '0.5',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBeUndefined();
+    });
+
+    it('signs adcp_version with double-digit minor without truncation', async () => {
+      const signed = await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        adcp_version: '3.10',
+      });
+
+      const claims = await verifyVerificationToken(signed!.token);
+      expect((claims as unknown as { adcp_version?: string }).adcp_version).toBe('3.10');
+    });
+
     it('refuses to sign when no known modes remain after filtering', async () => {
       const result = await signVerificationToken({
         agent_url: 'https://example.com/mcp',
