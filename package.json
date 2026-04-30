@@ -72,7 +72,11 @@
     "check:x-entity-gaps": "node scripts/check-x-entity-gaps.cjs",
     "check:seo": "node scripts/check-seo-metadata.cjs",
     "check:owned-links": "node scripts/check-owned-links.js",
-    "check:images": "bash scripts/check-image-quality.sh"
+    "check:images": "bash scripts/check-image-quality.sh",
+    "lint:schema-links": "node scripts/lint-schema-links.mjs --check",
+    "fix:schema-links": "node scripts/lint-schema-links.mjs",
+    "test:schema-links": "node scripts/remark-schema-links/test.mjs",
+    "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
     "@adcp/sdk": "5.23.0",

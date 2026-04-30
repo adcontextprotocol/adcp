@@ -38,6 +38,9 @@ jobs:
       - name: Repo unit tests
         run: npm run test:unit
 
+      - name: Schema link plugin tests
+        run: npm run test:schema-links
+
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
 
