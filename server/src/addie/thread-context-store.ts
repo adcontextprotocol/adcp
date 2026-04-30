@@ -15,7 +15,9 @@ import type {
   AssistantThreadContext,
 } from '@slack/bolt/dist/AssistantThreadContextStore';
 import type { AllAssistantMiddlewareArgs } from '@slack/bolt/dist/Assistant';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-thread-context-store');
 import { AddieDatabase } from '../db/addie-db.js';
 
 /**

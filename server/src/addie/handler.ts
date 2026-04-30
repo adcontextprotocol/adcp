@@ -4,7 +4,9 @@
  * Handles Slack Assistant events and @mentions
  */
 
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-handler');
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { buildSlackCostScope } from './claude-cost-tracker.js';

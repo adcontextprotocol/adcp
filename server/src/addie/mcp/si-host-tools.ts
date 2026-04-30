@@ -10,7 +10,9 @@ import type { AddieTool } from "../types.js";
 import type { MemberContext } from "../member-context.js";
 import { siDb } from "../../db/si-db.js";
 import { siAgentService } from "../services/si-agent-service.js";
-import { logger } from "../../logger.js";
+import { createLogger } from "../../logger.js";
+
+const logger = createLogger('addie-si-host-tools');
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
