@@ -682,7 +682,9 @@ describe('community_profile formatting', () => {
     expect(result).toContain('Community profile: Not yet public');
     expect(result).toContain('Encourage them to visit');
     expect(result).toContain('GitHub: Not linked');
-    expect(result).toContain('suggest linking their GitHub username');
+    // Both surfaces must be named with exact URLs so Addie has nothing to paraphrase.
+    expect(result).toContain('https://agenticadvertising.org/account');
+    expect(result).toContain('https://agenticadvertising.org/connect/github');
   });
 
   it('should show GitHub nudge when username is missing on public profile', () => {
@@ -706,7 +708,8 @@ describe('community_profile formatting', () => {
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('Community profile: Public');
     expect(result).toContain('GitHub: Not linked');
-    expect(result).toContain('/account');
+    expect(result).toContain('https://agenticadvertising.org/account');
+    expect(result).toContain('https://agenticadvertising.org/connect/github');
   });
 
   describe('coverage of CTA-producing context blocks', () => {
