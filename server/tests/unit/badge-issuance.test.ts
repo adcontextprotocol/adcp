@@ -12,12 +12,12 @@ function makeBadge(
   status: AgentVerificationBadge['status'] = 'active',
   updatedAgo = 0,
   modes: string[] = ['spec'],
-  majorVersion = '3.0',
+  adcpVersion = '3.0',
 ): AgentVerificationBadge {
   return {
     agent_url: 'https://example.com/mcp',
     role,
-    major_version: majorVersion,
+    adcp_version: adcpVersion,
     verified_at: new Date(Date.now() - 86_400_000),
     verified_protocol_version: null,
     verified_specialisms: ['sales-broadcast-tv'],
@@ -181,10 +181,10 @@ describe('processAgentBadges — membership gating', () => {
   });
 });
 
-describe('processAgentBadges — per-major-version isolation (#3524 stage 1)', () => {
+describe('processAgentBadges — per-AdCP-version isolation (#3524 stage 1)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('only touches badges at the major version under test', async () => {
+  it('only touches badges at the AdCP version under test', async () => {
     // Agent holds badges at both 3.0 and 3.1. A 3.0 run with a failing
     // specialism must NOT touch the 3.1 badge.
     const existing = [
@@ -211,7 +211,7 @@ describe('processAgentBadges — per-major-version isolation (#3524 stage 1)', (
     expect(degradeCalls[0][2]).toBe('3.0');
   });
 
-  it('passes the major version to upsertBadge on issuance', async () => {
+  it('passes the AdCP version to upsertBadge on issuance', async () => {
     const db = makeMockDb([]);
 
     await processAgentBadges(
@@ -226,10 +226,10 @@ describe('processAgentBadges — per-major-version isolation (#3524 stage 1)', (
 
     const upsertCalls = (db.upsertBadge as unknown as { mock: { calls: Array<[Record<string, unknown>]> } }).mock.calls;
     expect(upsertCalls).toHaveLength(1);
-    expect(upsertCalls[0][0]).toMatchObject({ major_version: '3.1' });
+    expect(upsertCalls[0][0]).toMatchObject({ adcp_version: '3.1' });
   });
 
-  it('defaults to DEFAULT_BADGE_MAJOR_VERSION when not passed (Stage 1 backward compat)', async () => {
+  it('defaults to DEFAULT_BADGE_ADCP_VERSION when not passed (Stage 1 backward compat)', async () => {
     const db = makeMockDb([]);
 
     await processAgentBadges(
@@ -239,11 +239,11 @@ describe('processAgentBadges — per-major-version isolation (#3524 stage 1)', (
       [makeStatus('sales_broadcast_tv', 'passing')],
       true,
       'org_test',
-      // majorVersion omitted — defaults to '3.0'
+      // adcpVersion omitted — defaults to '3.0'
     );
 
     const upsertCalls = (db.upsertBadge as unknown as { mock: { calls: Array<[Record<string, unknown>]> } }).mock.calls;
-    expect(upsertCalls[0][0]).toMatchObject({ major_version: '3.0' });
+    expect(upsertCalls[0][0]).toMatchObject({ adcp_version: '3.0' });
   });
 
   it('membership lapse only revokes badges at the version under test', async () => {

@@ -131,13 +131,13 @@ export type BadgeStatus = 'active' | 'degraded' | 'revoked';
 export interface AgentVerificationBadge {
   agent_url: string;
   role: BadgeRole;
-  // AdCP minor version this badge was earned against (e.g. '3.0', '3.1').
-  // Part of the composite PK alongside agent_url and role — an agent can
-  // hold parallel badges per major.minor version. See migration 457.
-  major_version: string;
+  // AdCP release this badge was earned against (MAJOR.MINOR, e.g. '3.0',
+  // '3.1'). Part of the composite PK alongside agent_url and role — an
+  // agent can hold parallel badges per release. See migration 457.
+  adcp_version: string;
   verified_at: Date;
   // Full semver ('3.0.0') for support/audit. Informational; the load-bearing
-  // field for badge identity is major_version.
+  // field for badge identity is adcp_version.
   verified_protocol_version: string | null;
   verified_specialisms: string[];
   // Verification axes earned: ['spec'] (storyboards pass), ['spec', 'live']
@@ -155,11 +155,11 @@ export interface AgentVerificationBadge {
 }
 
 /**
- * Default AdCP version Stage 1 hardcodes everywhere a major_version is
+ * Default AdCP version Stage 1 hardcodes everywhere an adcp_version is
  * needed. Replaced by per-call version targeting in Stage 2 once the
- * heartbeat fans out per supported major version.
+ * heartbeat fans out per supported AdCP release.
  */
-export const DEFAULT_BADGE_MAJOR_VERSION = '3.0';
+export const DEFAULT_BADGE_ADCP_VERSION = '3.0';
 
 export interface StoryboardStatusEntry {
   storyboard_id: string;
@@ -793,7 +793,7 @@ export class ComplianceDatabase {
   async upsertBadge(badge: {
     agent_url: string;
     role: BadgeRole;
-    major_version: string;
+    adcp_version: string;
     verified_specialisms: string[];
     verification_modes?: string[];
     verified_protocol_version?: string;
@@ -804,11 +804,11 @@ export class ComplianceDatabase {
     const modes = badge.verification_modes ?? ['spec'];
     const result = await query(
       `INSERT INTO agent_verification_badges (
-        agent_url, role, major_version, verified_specialisms, verification_modes, verified_protocol_version,
+        agent_url, role, adcp_version, verified_specialisms, verification_modes, verified_protocol_version,
         verification_token, token_expires_at, membership_org_id,
         status, verified_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW())
-      ON CONFLICT (agent_url, role, major_version) DO UPDATE SET
+      ON CONFLICT (agent_url, role, adcp_version) DO UPDATE SET
         verified_specialisms = $4,
         verification_modes = $5,
         verified_protocol_version = COALESCE($6, agent_verification_badges.verified_protocol_version),
@@ -824,7 +824,7 @@ export class ComplianceDatabase {
       [
         badge.agent_url,
         badge.role,
-        badge.major_version,
+        badge.adcp_version,
         badge.verified_specialisms,
         modes,
         badge.verified_protocol_version ?? null,
@@ -840,27 +840,27 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = $1 AND status IN ('active', 'degraded')
-       ORDER BY major_version DESC, role`,
+       ORDER BY adcp_version DESC, role`,
       [agentUrl],
     );
     return result.rows as AgentVerificationBadge[];
   }
 
   /**
-   * Returns the active badge for an agent+role at a specific major version.
+   * Returns the active badge for an agent+role at a specific AdCP version.
    * Stage 2 will use this when the heartbeat fans out per version. Stage 1
-   * callers pass DEFAULT_BADGE_MAJOR_VERSION.
+   * callers pass DEFAULT_BADGE_ADCP_VERSION.
    */
   async getActiveBadge(
     agentUrl: string,
     role: BadgeRole,
-    majorVersion: string,
+    adcpVersion: string,
   ): Promise<AgentVerificationBadge | null> {
     const result = await query(
       `SELECT * FROM agent_verification_badges
-       WHERE agent_url = $1 AND role = $2 AND major_version = $3
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
          AND status IN ('active', 'degraded')`,
-      [agentUrl, role, majorVersion],
+      [agentUrl, role, adcpVersion],
     );
     return (result.rows[0] as AgentVerificationBadge) ?? null;
   }
@@ -880,7 +880,7 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = $1 AND role = $2 AND status IN ('active', 'degraded')
-       ORDER BY major_version DESC
+       ORDER BY adcp_version DESC
        LIMIT 1`,
       [agentUrl, role],
     );
@@ -890,27 +890,27 @@ export class ComplianceDatabase {
   async revokeBadge(
     agentUrl: string,
     role: BadgeRole,
-    majorVersion: string,
+    adcpVersion: string,
     reason: string,
   ): Promise<void> {
     await query(
       `UPDATE agent_verification_badges
        SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
-       WHERE agent_url = $1 AND role = $2 AND major_version = $3 AND status IN ('active', 'degraded')`,
-      [agentUrl, role, majorVersion, reason],
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status IN ('active', 'degraded')`,
+      [agentUrl, role, adcpVersion, reason],
     );
   }
 
   async degradeBadge(
     agentUrl: string,
     role: BadgeRole,
-    majorVersion: string,
+    adcpVersion: string,
   ): Promise<void> {
     await query(
       `UPDATE agent_verification_badges
        SET status = 'degraded', updated_at = NOW()
-       WHERE agent_url = $1 AND role = $2 AND major_version = $3 AND status = 'active'`,
-      [agentUrl, role, majorVersion],
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status = 'active'`,
+      [agentUrl, role, adcpVersion],
     );
   }
 
@@ -919,7 +919,7 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE agent_url = ANY($1) AND status IN ('active', 'degraded')
-       ORDER BY agent_url, major_version DESC, role`,
+       ORDER BY agent_url, adcp_version DESC, role`,
       [agentUrls],
     );
     const map = new Map<string, AgentVerificationBadge[]>();
@@ -935,7 +935,7 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT * FROM agent_verification_badges
        WHERE role = $1 AND status IN ('active', 'degraded')
-       ORDER BY major_version DESC, verified_at DESC`,
+       ORDER BY adcp_version DESC, verified_at DESC`,
       [role],
     );
     return result.rows as AgentVerificationBadge[];
