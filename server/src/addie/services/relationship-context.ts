@@ -528,6 +528,19 @@ async function loadJourneyContext(workosUserId: string): Promise<JourneyContext 
 // =====================================================
 
 /**
+ * Render a date as a short human-readable relative phrase ("in 5 days",
+ * "3 days ago", "today"). Used in prompt sections so Addie reads dates
+ * the way a human would, not as ISO timestamps.
+ */
+function formatRelativeDate(d: Date): string {
+  const diffMs = d.getTime() - Date.now();
+  const days = Math.round(diffMs / 86400000);
+  if (days === 0) return 'today';
+  if (days > 0) return `in ${days} day${days === 1 ? '' : 's'}`;
+  return `${-days} day${-days === 1 ? '' : 's'} ago`;
+}
+
+/**
  * Format relationship context as markdown for injection into Addie's system prompt.
  * Used by both the engagement planner and the conversation handler.
  */
@@ -555,9 +568,48 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
     lines.push(`**Member**: ${profile.company.is_member ? 'Yes' : 'No'}`);
   }
 
+  lines.push(`**Account linked**: ${ctx.identity.account_linked ? 'Yes' : 'No'}`);
   lines.push(`**Interactions**: ${r.interaction_count} messages across ${channelList}`);
   lines.push(`**Sentiment**: ${r.sentiment_trend}`);
   lines.push(`**Last contact**: Addie ${lastAddieContact}, them ${lastPersonContact}`);
+
+  // Preferences — render when any signal is non-default. opted_out is
+  // load-bearing (Addie must not message them); contact_preference and
+  // marketing_opt_in shape channel/timing decisions.
+  const prefs = ctx.preferences;
+  const showPrefs =
+    prefs.opted_out ||
+    prefs.contact_preference !== null ||
+    prefs.marketing_opt_in !== null;
+  if (showPrefs) {
+    lines.push('');
+    lines.push('### Preferences');
+    if (prefs.opted_out) {
+      lines.push('- ⚠️ **Opted out** — do not contact');
+    }
+    if (prefs.contact_preference) {
+      lines.push(`- Preferred channel: ${prefs.contact_preference}`);
+    }
+    if (prefs.marketing_opt_in === true) {
+      lines.push('- Marketing opt-in: yes');
+    } else if (prefs.marketing_opt_in === false) {
+      lines.push('- Marketing opt-in: no');
+    }
+  }
+
+  // Open invites — pending or expired membership invites for this email.
+  // High-value signal: Pubx-shaped "they have an invite waiting" cases.
+  if (ctx.invites.length > 0) {
+    lines.push('');
+    lines.push('### Open membership invites');
+    for (const inv of ctx.invites) {
+      const expRel = formatRelativeDate(inv.expires_at);
+      const orgLabel = inv.org_name ?? inv.org_id;
+      lines.push(
+        `- [${inv.status}] ${inv.lookup_key} at ${orgLabel} — expires ${expRel}`
+      );
+    }
+  }
 
   // Capabilities
   const capLines = formatCapabilitiesForPrompt(profile.capabilities);
@@ -582,6 +634,24 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
         ? msg.content.slice(0, 200) + '...'
         : msg.content;
       lines.push(`**${msg.channel} ${date}** ${msg.role}: ${truncated}`);
+    }
+  }
+
+  // Recent threads — index of past threads with this person across surfaces.
+  // Different from "Recent conversation" above (which shows raw messages);
+  // this surfaces older threads Addie can reference without flooding the
+  // prompt. Placed after capabilities + conversation since this is a soft
+  // index, not a decision-shaping signal.
+  if (ctx.recentThreads.length > 0) {
+    lines.push('');
+    lines.push('### Recent threads');
+    for (const t of ctx.recentThreads) {
+      const lastRel = formatRelativeDate(t.last_message_at);
+      const msgPlural = t.message_count === 1 ? 'message' : 'messages';
+      const titlePart = t.title ? ` "${t.title}"` : '';
+      lines.push(
+        `- [${t.channel}]${titlePart} — ${t.message_count} ${msgPlural}, last ${lastRel}`
+      );
     }
   }
 
@@ -627,9 +697,8 @@ export function formatCapabilitiesForPrompt(caps: MemberCapabilities | null): st
 
   const lines: string[] = [];
 
-  lines.push(caps.account_linked
-    ? '- \u2713 Account linked'
-    : '- \u2717 Account not linked');
+  // Note: account_linked is rendered inline in the header (formatContextForPrompt),
+  // sourced from ctx.identity. Don't duplicate it here.
 
   lines.push(caps.profile_complete
     ? '- \u2713 Profile complete'
