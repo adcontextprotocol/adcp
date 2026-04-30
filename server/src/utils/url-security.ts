@@ -1,5 +1,7 @@
 import dns from 'dns/promises';
-import { isIP } from 'net';
+import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'dns';
+import { isIP, type LookupFunction } from 'net';
+import { Agent, type Dispatcher } from 'undici';
 
 /**
  * Check if a hostname or IP address points to a private/internal network.
@@ -166,9 +168,75 @@ export function validateExternalUrl(raw: string): string | null {
 }
 
 /**
+ * DNS lookup callback that rejects resolutions to private/internal IPs.
+ *
+ * Used as `Agent({ connect: { lookup } })`. The lookup runs at TCP connect
+ * time — the same DNS resolution used to dial the socket — closing the
+ * TOCTOU window between hostname validation and the actual fetch.
+ *
+ * SNI/cert verification is unaffected: undici keeps `servername = hostname`,
+ * so TLS still authenticates the original hostname against its public cert.
+ */
+export const ssrfSafeLookup: LookupFunction = (
+  hostname,
+  options,
+  callback,
+) => {
+  // Reject private hostname strings before resolving (covers IP literals
+  // and hostnames the OS resolver would route to localhost).
+  if (isPrivateHostname(hostname)) {
+    callback(new Error('Connection to private or internal address is blocked'), '', 0);
+    return;
+  }
+
+  // The OS resolver returns the address that will actually be dialed.
+  // Inspect it, reject if private, otherwise pass through. Always-array form
+  // (`all: true`) lets us filter without losing alternates the resolver returned.
+  const lookupOpts: LookupOptions = { ...(options as LookupOptions), all: true };
+  dnsLookup(hostname, lookupOpts, (err, addresses) => {
+    if (err) {
+      callback(err, '', 0);
+      return;
+    }
+    const list = (addresses as unknown as LookupAddress[]) ?? [];
+    const safe = list.filter((a) => !isPrivateHostname(a.address));
+    if (safe.length === 0) {
+      callback(new Error('Hostname resolved to a private or internal IP address'), '', 0);
+      return;
+    }
+    // If the caller requested `all`, hand back the filtered list. Otherwise
+    // give the first safe address — undici's connector resolves singleton form.
+    if ((options as LookupOptions).all) {
+      callback(null, safe);
+      return;
+    }
+    callback(null, safe[0].address, safe[0].family);
+  });
+};
+
+/**
+ * Build a one-shot undici Agent whose TCP connect step rejects private IPs.
+ *
+ * Encapsulating the dispatcher per `safeFetch` call avoids cross-request
+ * connection reuse and keeps the lookup hook scoped to the single request.
+ */
+function buildSsrfSafeDispatcher(): Dispatcher {
+  return new Agent({
+    connect: {
+      lookup: ssrfSafeLookup,
+    },
+  });
+}
+
+/**
  * SSRF-safe fetch: validates the URL and all redirect hops against private IP ranges,
- * then returns the response. Encapsulates the full validation + fetch cycle so that
- * callers receive a Response with no tainted URL flowing to fetch().
+ * AND pins the TCP connect step to a lookup callback that rejects private IPs at
+ * dial time. The pre-flight `validateFetchUrl` cannot prevent DNS rebind attacks
+ * on its own — a hostile authoritative server can return a public IP at validation
+ * and a private IP at fetch time. The dispatcher closes that TOCTOU window.
+ *
+ * SNI/cert verification continue to use the original hostname, so TLS still
+ * authenticates the public cert.
  */
 export async function safeFetch(
   url: string,
@@ -181,16 +249,35 @@ export async function safeFetch(
   const maxRedirects = options?.maxRedirects ?? 5;
   const method = options?.method ?? 'GET';
   const signal = options?.signal;
+  const dispatcher = buildSsrfSafeDispatcher();
 
-  // URL is validated above by validateFetchUrl (rejects private IPs, link-local, etc).
-  let response = await fetch(sanitizeUrl(parsedUrl), { method, headers, redirect: 'manual', signal });
+  // The dispatcher's `lookup` re-checks the resolved IP at TCP connect time —
+  // a hostile DNS server cannot rebind to a private IP between validation and dial.
+  // Note: we deliberately don't close the dispatcher in a `finally`. The returned
+  // Response body is a stream the caller consumes after this function returns;
+  // closing here would tear down the underlying socket mid-stream. Connections
+  // are reaped by undici's idle timeout (the same lifecycle as the global agent).
+  let response = await fetch(sanitizeUrl(parsedUrl), {
+    method,
+    headers,
+    redirect: 'manual',
+    signal,
+    // Node fetch accepts undici dispatcher; types aren't on the standard RequestInit.
+    dispatcher,
+  } as RequestInit & { dispatcher: Dispatcher });
 
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
-    // validateRedirectTarget re-validates the resolved hop against the same private-IP rules.
+    // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), { method, headers, redirect: 'manual', signal });
+    response = await fetch(sanitizeUrl(redirectUrl), {
+      method,
+      headers,
+      redirect: 'manual',
+      signal,
+      dispatcher,
+    } as RequestInit & { dispatcher: Dispatcher });
   }
 
   return response;
