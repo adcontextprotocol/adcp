@@ -57,6 +57,10 @@ export interface Escalation {
   github_issue_url: string | null;
   github_issue_number: number | null;
   github_issue_repo: string | null;
+  /** Optional collapse key for operational escalations — repeat occurrences
+   *  with the same key are folded into the existing open escalation rather
+   *  than creating a new one. See `createEscalation` and migration 459. */
+  dedup_key: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -76,6 +80,10 @@ export interface EscalationInput {
   addie_context?: string;
   perspective_id?: string;
   perspective_slug?: string;
+  /** Collapse key for operational escalations. If an open / acknowledged /
+   *  in-progress escalation already exists with the same key, the insert
+   *  is a no-op and `createEscalation` returns the existing row. */
+  dedup_key?: string;
 }
 
 export interface EscalationFilters {
@@ -88,35 +96,67 @@ export interface EscalationFilters {
 // ============== Escalation Operations ==============
 
 /**
- * Create a new escalation
+ * Create a new escalation. If `dedup_key` is set and an open, acknowledged,
+ * or in-progress escalation already exists with the same key, returns that
+ * existing row instead of creating a new one. Migration 459 backs this with
+ * a partial unique index, so concurrent inserts from a race are caught at
+ * the DB layer too.
  */
 export async function createEscalation(input: EscalationInput): Promise<Escalation> {
+  if (input.dedup_key) {
+    const existing = await readOpenEscalationByDedupKey(input.dedup_key);
+    if (existing) return existing;
+  }
+
+  try {
+    const result = await query<Escalation>(
+      `INSERT INTO addie_escalations (
+        thread_id, message_id, slack_user_id, workos_user_id, user_display_name,
+        user_email, user_slack_handle,
+        category, priority, summary, original_request, addie_context,
+        perspective_id, perspective_slug, dedup_key
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *`,
+      [
+        input.thread_id || null,
+        input.message_id || null,
+        input.slack_user_id || null,
+        input.workos_user_id || null,
+        input.user_display_name || null,
+        input.user_email || null,
+        input.user_slack_handle || null,
+        input.category,
+        input.priority || 'normal',
+        input.summary,
+        input.original_request || null,
+        input.addie_context || null,
+        input.perspective_id || null,
+        input.perspective_slug || null,
+        input.dedup_key || null,
+      ]
+    );
+    return result.rows[0];
+  } catch (err) {
+    // Race: another caller inserted the same dedup_key between our SELECT
+    // and INSERT. The partial unique index from migration 459 raised 23505;
+    // re-read and return the row that won.
+    if (input.dedup_key && (err as { code?: string })?.code === '23505') {
+      const existing = await readOpenEscalationByDedupKey(input.dedup_key);
+      if (existing) return existing;
+    }
+    throw err;
+  }
+}
+
+async function readOpenEscalationByDedupKey(dedupKey: string): Promise<Escalation | null> {
   const result = await query<Escalation>(
-    `INSERT INTO addie_escalations (
-      thread_id, message_id, slack_user_id, workos_user_id, user_display_name,
-      user_email, user_slack_handle,
-      category, priority, summary, original_request, addie_context,
-      perspective_id, perspective_slug
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    RETURNING *`,
-    [
-      input.thread_id || null,
-      input.message_id || null,
-      input.slack_user_id || null,
-      input.workos_user_id || null,
-      input.user_display_name || null,
-      input.user_email || null,
-      input.user_slack_handle || null,
-      input.category,
-      input.priority || 'normal',
-      input.summary,
-      input.original_request || null,
-      input.addie_context || null,
-      input.perspective_id || null,
-      input.perspective_slug || null,
-    ]
+    `SELECT * FROM addie_escalations
+     WHERE dedup_key = $1
+       AND status IN ('open', 'acknowledged', 'in_progress')
+     LIMIT 1`,
+    [dedupKey],
   );
-  return result.rows[0];
+  return result.rows[0] ?? null;
 }
 
 /**
