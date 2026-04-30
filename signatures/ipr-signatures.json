@@ -261,6 +261,24 @@
       "repo": "adcontextprotocol/adcp-client",
       "pullRequestNo": 647,
       "comment_id": 4280739898
+    },
+    {
+      "name": "erik-sv",
+      "id": 39309912,
+      "created_at": "2026-04-28T18:29:20Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 3468,
+      "comment_id": 4338051086
+    },
+    {
+      "name": "katiecooperco",
+      "id": 86127745,
+      "created_at": "2026-04-28T20:42:56Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 3484,
+      "comment_id": 4338909329
     }
   ]
 }
