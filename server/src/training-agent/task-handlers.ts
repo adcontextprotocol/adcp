@@ -1037,6 +1037,19 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
+    const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
+    if (requiredVendorMetrics?.length) {
+      products = products.filter(p => {
+        const declared = (p.reporting_capabilities as { vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> } | undefined)?.vendor_metrics;
+        if (!declared?.length) return false;
+        return requiredVendorMetrics.every(req =>
+          declared.some(d =>
+            (!req.vendor?.domain || d.vendor?.domain === req.vendor.domain)
+            && (!req.metric_id || d.metric_id === req.metric_id),
+          ),
+        );
+      });
+    }
   }
 
   // Brief mode: channel-aware keyword matching

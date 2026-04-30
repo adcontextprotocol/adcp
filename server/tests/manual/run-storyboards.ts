@@ -115,6 +115,17 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
 ]);
 
+/**
+ * Per-step skip list. Entries are `{storyboard_id}/{step_id}` keys mapped to a
+ * reason. The runner mutates the matched step result to `skipped: true` after
+ * `runStoryboard` returns, so the rest of the storyboard's steps still pass.
+ *
+ * Use this when one step in an otherwise-green storyboard is blocked by an
+ * upstream issue and skipping the whole storyboard would lose passing
+ * coverage. Track every entry with a linked issue.
+ */
+const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([]);
+
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
   if (KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
@@ -169,6 +180,29 @@ function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOpt
       probe_task: auth.probe_task,
     },
   };
+}
+
+/**
+ * Mutate a `StoryboardResult` in place so any step listed in
+ * `KNOWN_FAILING_STEPS` is recorded as `skipped` rather than failed. Lets one
+ * blocked step in an otherwise-green storyboard reach the success column
+ * without losing the surrounding passing steps.
+ */
+function applyStepSkipList(storyboardId: string, result: StoryboardResult): void {
+  for (const phase of result.phases ?? []) {
+    for (const step of (phase.steps ?? []) as Array<Record<string, unknown>>) {
+      const stepId = (step.id ?? step.step_id) as string | undefined;
+      if (!stepId) continue;
+      const reason = KNOWN_FAILING_STEPS.get(`${storyboardId}/${stepId}`);
+      if (!reason) continue;
+      step.passed = true;
+      step.skipped = true;
+      step.skip_reason = 'known_failing';
+      step.skip = { reason: 'known_failing', detail: reason };
+      step.validations = [];
+      delete step.error;
+    }
+  }
 }
 
 function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
@@ -251,6 +285,16 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log('');
   }
+  if (KNOWN_FAILING_STEPS.size > 0) {
+    // eslint-disable-next-line no-console
+    console.log('Skipping individual steps on the known-failing list:');
+    for (const [key, reason] of KNOWN_FAILING_STEPS) {
+      // eslint-disable-next-line no-console
+      console.log(`  - ${key}: ${reason}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log('');
+  }
   const results: Summary[] = [];
 
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
@@ -320,6 +364,7 @@ async function main() {
         ...(brand && { brand }),
         ...(testKit && { test_kit: testKit }),
       });
+      applyStepSkipList(sb.id, result);
       const summary = summarize(sb, result);
       results.push(summary);
       const pill = summary.failed === 0
