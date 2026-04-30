@@ -214,6 +214,107 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
   }
 }
 
+// ── Vendor metric semantic uniqueness lint ────────────────────────────────
+//
+// The reporting-capabilities.json `vendor_metrics` array and the
+// delivery-metrics.json `vendor_metric_values` array both carry a semantic
+// uniqueness key `(vendor.domain, vendor.brand_id, metric_id)`. JSON Schema
+// `uniqueItems` was deliberately omitted because BrandRef carries optional
+// fields whose absence/presence defeats deep-equal (e.g., `{domain:"x"}` and
+// `{domain:"x",brand_id:"y"}` are structurally different objects even if they
+// describe the same brand). This lint enforces the MUST constraint by
+// normalizing the semantic tuple and checking for duplicates.
+//
+// Key normalization: use `|`-delimited string `domain|brand_id|metric_id`.
+// The `|` separator is safe because domain (`[a-z0-9.-]`), brand_id
+// (`[a-z0-9_]`), and metric_id (`[a-z][a-z0-9_]*`) cannot contain `|`. Absent
+// brand_id normalizes to "" (empty string) — the empty string is distinct from
+// any valid brand_id so `{domain:"x"}` and `{domain:"x",brand_id:""}` cannot
+// collide with each other. This normalization is documented so the storyboard
+// runner's future `field_unique_by_keys` implementation must match it.
+//
+// Scan surfaces:
+//   1. `examples` arrays inside JSON schema files (at any depth).
+//   2. TypeScript training-agent fixtures (`server/src/training-agent/**/*.ts`)
+//      are explicitly called out in issue #3502 but currently contain no vendor
+//      metric data. TS scanning would require a parser — deferred until a
+//      fixture adds vendor metrics, at which point build failures will surface
+//      the gap. See #3502 item 1 for the tracking comment.
+
+/**
+ * Recursively collect all `examples` values that contain vendor metric arrays.
+ * Returns an array of { schemaPath, arrayField, tuples[] } objects.
+ */
+function collectVendorMetricExamples(obj, schemaPath, out = []) {
+  if (!obj || typeof obj !== 'object') return out;
+  if (Array.isArray(obj)) {
+    for (const item of obj) collectVendorMetricExamples(item, schemaPath, out);
+    return out;
+  }
+  // If this object has vendor_metric_values or vendor_metrics, scan them.
+  for (const field of ['vendor_metric_values', 'vendor_metrics']) {
+    const arr = obj[field];
+    if (!Array.isArray(arr) || arr.length < 2) continue;
+    const tuples = [];
+    for (const entry of arr) {
+      if (!entry || typeof entry !== 'object' || !entry.vendor) continue;
+      const domain = typeof entry.vendor.domain === 'string' ? entry.vendor.domain : '';
+      const brandId = typeof entry.vendor.brand_id === 'string' ? entry.vendor.brand_id : '';
+      const metricId = typeof entry.metric_id === 'string' ? entry.metric_id : '';
+      tuples.push(`${domain}|${brandId}|${metricId}`);
+    }
+    if (tuples.length > 0) out.push({ schemaPath, arrayField: field, tuples });
+  }
+  // Recurse into all object values (handles nested examples inside `examples` arrays, etc.).
+  for (const val of Object.values(obj)) collectVendorMetricExamples(val, schemaPath, out);
+  return out;
+}
+
+function lintVendorMetricSemanticUniqueness(sourceDir) {
+  const violations = [];
+
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'extensions' || entry.name === 'bundled') continue;
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('.json')) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      // Collect from top-level `examples` array and from any nested examples.
+      const exampleValues = collectVendorMetricExamples(schema, path.relative(sourceDir, p));
+      for (const { schemaPath, arrayField, tuples } of exampleValues) {
+        const seen = new Set();
+        for (const tuple of tuples) {
+          if (seen.has(tuple)) {
+            violations.push({ schemaPath, arrayField, tuple });
+          }
+          seen.add(tuple);
+        }
+      }
+    }
+  }
+
+  walk(sourceDir);
+
+  if (violations.length > 0) {
+    const lines = violations.map(v =>
+      `  ${v.schemaPath} — ${v.arrayField}: duplicate tuple "${v.tuple}" (key: domain|brand_id|metric_id)`
+    );
+    throw new Error(
+      `Vendor metric uniqueness lint: ${violations.length} duplicate tuple(s) found in schema examples.\n\n` +
+      lines.join('\n') +
+      `\n\nFix: each (vendor.domain, vendor.brand_id, metric_id) tuple MUST appear at most once per array.\n` +
+      `See static/schemas/source/core/reporting-capabilities.json and delivery-metrics.json for the\n` +
+      `normative uniqueness constraint. Issue: adcontextprotocol/adcp#3502.`
+    );
+  }
+}
+
 /**
  * Compare two minor versions (e.g., "2.5" vs "2.6")
  * Returns: negative if a < b, 0 if equal, positive if a > b
@@ -470,6 +571,12 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       // Update baseUrl and metadata in registry
       if (entry.name === 'index.json') {
         const schema = JSON.parse(content);
+        // published_version: full semver of the bundle at this URL.
+        // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility;
+        // semantically the same as published_version on this meta-object.
+        // DISTINCT from the per-request/response wire `adcp_version` field defined
+        // in core/version-envelope.json, which uses release-precision.
+        schema.published_version = version;
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
@@ -488,7 +595,8 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
 function updateSourceRegistry(version) {
   const registryPath = path.join(SOURCE_DIR, 'index.json');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  registry.adcp_version = version;
+  registry.published_version = version;
+  registry.adcp_version = version; // legacy alias through 3.x; sunset at 4.0
   fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   console.log(`✏️  Updated source registry: ${registryPath}`);
 }
@@ -967,6 +1075,14 @@ async function main() {
   // that's supposed to be mutating but forgets idempotency_key is a
   // latent spec bug that silently bypasses the storyboard-level lint.
   lintMutatingRequestsRequireIdempotencyKey(SOURCE_DIR);
+
+  // Lint vendor metric uniqueness: enforce the semantic uniqueness key
+  // (vendor.domain, vendor.brand_id, metric_id) documented in
+  // reporting-capabilities.json and delivery-metrics.json. JSON Schema
+  // uniqueItems was deliberately omitted because BrandRef's optional
+  // fields defeat deep-equal; this build-time check enforces the MUST
+  // constraint on example payloads embedded in schema files. Issue #3502.
+  lintVendorMetricSemanticUniqueness(SOURCE_DIR);
 
   // Update source registry version
   updateSourceRegistry(version);

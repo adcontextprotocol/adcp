@@ -4,6 +4,11 @@
   "title": "Validate Content Delivery Response",
   "description": "Response payload with per-record verdicts and optional feature breakdown",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -13,11 +18,21 @@
           "type": "object",
           "description": "Summary counts across all records",
           "properties": {
-            "total_records": { "type": "integer" },
-            "passed_records": { "type": "integer" },
-            "failed_records": { "type": "integer" }
+            "total_records": {
+              "type": "integer"
+            },
+            "passed_records": {
+              "type": "integer"
+            },
+            "failed_records": {
+              "type": "integer"
+            }
           },
-          "required": ["total_records", "passed_records", "failed_records"]
+          "required": [
+            "total_records",
+            "passed_records",
+            "failed_records"
+          ]
         },
         "results": {
           "type": "array",
@@ -61,11 +76,17 @@
                       "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
                     }
                   },
-                  "required": ["feature_id", "status"]
+                  "required": [
+                    "feature_id",
+                    "status"
+                  ]
                 }
               }
             },
-            "required": ["record_id", "verdict"]
+            "required": [
+              "record_id",
+              "verdict"
+            ]
           }
         },
         "context": {
@@ -75,7 +96,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["summary", "results"]
+      "required": [
+        "summary",
+        "results"
+      ]
     },
     {
       "type": "object",
@@ -83,7 +107,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -92,7 +118,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

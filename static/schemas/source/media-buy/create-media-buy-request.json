@@ -3,15 +3,14 @@
   "$id": "/schemas/media-buy/create-media-buy-request.json",
   "title": "Create Media Buy Request",
   "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
-  "x-mutates-state": true,
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",

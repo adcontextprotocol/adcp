@@ -4,6 +4,11 @@
   "title": "Get Products Response",
   "description": "Response payload for get_products task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "products": {
       "type": "array",
@@ -39,7 +44,9 @@
       "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
       "items": {
         "type": "object",
-        "discriminator": { "propertyName": "scope" },
+        "discriminator": {
+          "propertyName": "scope"
+        },
         "oneOf": [
           {
             "properties": {
@@ -50,7 +57,11 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["applied", "partial", "unable"],
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -58,7 +69,10 @@
                 "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
               }
             },
-            "required": ["scope", "status"],
+            "required": [
+              "scope",
+              "status"
+            ],
             "additionalProperties": false
           },
           {
@@ -74,7 +88,11 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["applied", "partial", "unable"],
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -82,7 +100,11 @@
                 "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
               }
             },
-            "required": ["scope", "product_id", "status"],
+            "required": [
+              "scope",
+              "product_id",
+              "status"
+            ],
             "additionalProperties": false
           },
           {
@@ -98,7 +120,11 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["applied", "partial", "unable"],
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -106,7 +132,11 @@
                 "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
               }
             },
-            "required": ["scope", "proposal_id", "status"],
+            "required": [
+              "scope",
+              "proposal_id",
+              "status"
+            ],
             "additionalProperties": false
           }
         ]
@@ -121,7 +151,12 @@
         "properties": {
           "scope": {
             "type": "string",
-            "enum": ["products", "pricing", "forecast", "proposals"],
+            "enum": [
+              "products",
+              "pricing",
+              "forecast",
+              "proposals"
+            ],
             "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete."
           },
           "description": {
@@ -129,11 +164,18 @@
             "description": "Human-readable explanation of what is missing and why."
           },
           "estimated_wait": {
-            "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+            "allOf": [
+              {
+                "$ref": "/schemas/core/duration.json"
+              }
+            ],
             "description": "How much additional time would resolve this scope. Allows the buyer to decide whether to retry with a larger time_budget."
           }
         },
-        "required": ["scope", "description"],
+        "required": [
+          "scope",
+          "description"
+        ],
         "additionalProperties": false
       }
     },

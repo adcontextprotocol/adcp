@@ -3,6 +3,11 @@
   "$id": "/schemas/content-standards/update-content-standards-response.json",
   "title": "Update Content Standards Response",
   "description": "Response from updating a content standards configuration",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "UpdateContentStandardsSuccess",
@@ -24,7 +29,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["success", "standards_id"],
+      "required": [
+        "success",
+        "standards_id"
+      ],
       "additionalProperties": true
     },
     {
@@ -38,7 +46,9 @@
         },
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "description": "Errors that occurred during the update",
           "minItems": 1
         },
@@ -53,8 +63,12 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["success", "errors"],
+      "required": [
+        "success",
+        "errors"
+      ],
       "additionalProperties": true
     }
-  ]
+  ],
+  "properties": {}
 }

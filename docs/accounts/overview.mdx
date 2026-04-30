@@ -100,7 +100,7 @@ Account status acts as a gate on which tasks are permitted. Read-only operations
 Not every caller with access to an account has the same grant. A vendor agent may issue one calling agent a full scope and another agent a narrow read-plus-update scope. Authentication confirms the caller is who they claim to be; authorization answers "what is this caller allowed to do on this account?"
 
 <Note>
-**Applies to every vendor protocol.** The authorization mechanism described here is part of the shared Accounts Protocol — it applies to every agent that implements `sync_accounts` / `list_accounts`: media-buy sales agents, signals agents, governance agents, creative agents, brand agents. Signals agents scope activation vs. catalog access; governance agents scope audit read vs. plan management; creative agents scope library read vs. upload. Only the standard named scope `attestation_verifier` is Media Buy Protocol-specific (it binds to the AAO Verified mark); the rest of the machinery — `allowed_tasks`, `field_scopes`, `read_only`, `custom:`-prefixed scopes — is protocol-neutral.
+**Applies to every vendor protocol.** The authorization mechanism described here is part of the shared Accounts Protocol — it applies to every agent that implements `sync_accounts` / `list_accounts`: media-buy sales agents, signals agents, governance agents, creative agents, brand agents. Signals agents scope activation vs. catalog access; governance agents scope audit read vs. plan management; creative agents scope library read vs. upload. Only the standard named scope `attestation_verifier` is Media Buy Protocol-specific (it binds to the **AAO Verified (Live)** qualifier); the rest of the machinery — `allowed_tasks`, `field_scopes`, `read_only`, `custom:`-prefixed scopes — is protocol-neutral.
 </Note>
 
 **Schema**: [`/schemas/v3/core/account-authorization.json`](https://adcontextprotocol.org/schemas/v3/core/account-authorization.json)
@@ -137,7 +137,7 @@ Vendor agents that support scope introspection attach an `authorization` object 
 |-------|-------------|
 | `allowed_tasks` | Canonical snake_case task names the caller may invoke against this account. Absence of a task MUST be read as "not permitted" — invoking an absent task returns `SCOPE_INSUFFICIENT`. |
 | `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields — typed entity references (`account`, `media_buy_id`, `package_id`, `creative_id`, `signal_id`, `format_id`, `proposal_id`, `plan_id`, `session_id`), concurrency/idempotency (`revision`, `idempotency_key`), buyer-side correlation (`buyer_ref`, `po_number`), mode flags (`dry_run`), pagination (`pagination`, `cursor`, `max_results`), and envelope fields (`context`, `ext`, `adcp_major_version`, `push_notification_config`) — are always permitted and do not need to appear in the allowlist. The list is non-exhaustive: any other typed entity-id parameter or query-shaping field on a read task SHOULD be treated as framing. |
-| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the AAO Verified mark); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
+| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the **AAO Verified (Live)** qualifier); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
 | `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
 
 ### Semantics of presence and absence
@@ -147,7 +147,7 @@ Vendor agents that support scope introspection attach an `authorization` object 
 - **Absent on all accounts**: the vendor agent does not implement scope introspection. Callers MUST NOT infer access from absence — the vendor agent may still enforce scope locally and return `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED` on any task call.
 - **`authorization` is optional for 3.x**. Vendor agents that want to avoid a breaking change can defer populating it. Populating is strictly additive — it lets callers preempt errors they would otherwise discover by trying.
 
-Vendor agents claiming the `attestation_verifier` standard scope (Media Buy Protocol-specific) **MUST** populate `authorization` — the AAO Verified attestation flow depends on verifying the advertised scope matches enforcement.
+Vendor agents claiming the `attestation_verifier` standard scope (Media Buy Protocol-specific) **MUST** populate `authorization` — the **AAO Verified (Live)** attestation flow depends on verifying the advertised scope matches enforcement.
 
 ### Identity binding, refresh cadence, and consistency
 
@@ -158,7 +158,7 @@ The `authorization` object is **implicitly scoped to the `(caller identity, acco
 - Callers SHOULD re-read `authorization` at least every **300 seconds** of active use against an account, via `sync_accounts` or `list_accounts` (filtered by the held `account`).
 - Vendor agents MUST reflect operator-initiated scope changes in `sync_accounts` / `list_accounts` responses **within 300 seconds** of the change being made. A compliant caller polling every 300s sees operator changes within at most one refresh cycle.
 - Vendor agents MAY cache the `authorization` object briefly but MUST NOT cache past 300 seconds without revalidation.
-- The 300s figure is a floor, not a target — vendor agents whose scope changes more frequently SHOULD surface them faster, and callers running AAO Verified attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
+- The 300s figure is a floor, not a target — vendor agents whose scope changes more frequently SHOULD surface them faster, and callers running **AAO Verified (Live)** attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
 
 **Consistency.**
 
@@ -168,7 +168,7 @@ This is the concrete form of the "systematically-divergent is non-conformant" gu
 
 ### Standard named scope: `attestation_verifier`
 
-Media-buy sales agents advertising AAO Verified readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
+Media-buy sales agents advertising **AAO Verified (Live)** readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
 
 - `allowed_tasks` (at minimum — vendor agents MAY include additional read-only tasks):
   - `get_adcp_capabilities`
@@ -182,9 +182,13 @@ Media-buy sales agents advertising AAO Verified readiness (tracked in [#2965](ht
 
 The scope deliberately omits `create_media_buy`, `sync_creatives`, and all spend-committing or targeting-modifying fields on `update_media_buy`. It is narrowly designed for continuous-observability verification — the compliance engine can discover live campaigns, read inventory and creative state, attach a verification reporting webhook, and read delivery, but cannot book inventory, modify budgets, change flight dates, upload creatives, or cancel anything.
 
-`get_products` and `list_creatives` are included because AAO Verified observability requires sanity-reading the seller's declared inventory and the creative pipeline state on active buys.
+`get_products` and `list_creatives` are included because **AAO Verified (Live)** observability requires sanity-reading the seller's declared inventory and the creative pipeline state on active buys.
 
-`attestation_verifier` is Media Buy Protocol-specific — it binds to the AAO Verified mark, which is a media-buy flow. Equivalent observability marks for signals, governance, creative, or brand agents are not yet standardized; until they are, those agents use `custom:` scopes.
+`attestation_verifier` is Media Buy Protocol-specific — it binds to the **AAO Verified (Live)** qualifier, which is a media-buy flow (live observation requires real ad delivery). Equivalent observability scopes for signals, governance, creative, or brand agents are not yet standardized; until they are, those agents use `custom:` scopes.
+
+<Note>
+**Reporting only — lifecycle-running is a future scope.** `attestation_verifier` is the *reporting* half of (Live): the engine observes campaigns the seller has trafficked, reads delivery, and attaches a verification webhook. It deliberately cannot create campaigns, attach creatives, or modify budgets. The complementary *lifecycle-running* role — for the AAO-operated canonical-campaign runner contemplated in [#3046](https://github.com/adcontextprotocol/adcp/issues/3046), where the engine traffics canonical PSAs end-to-end through a seller's live agent — needs a broader write scope (`attestation_runner`, tracked in [#3561](https://github.com/adcontextprotocol/adcp/issues/3561)). Today's brownfield enrollment (Path B) requires only `attestation_verifier`; the runner-side scope lights up alongside the canonical-campaign runner itself.
+</Note>
 
 ### Custom scopes for other vendor protocols
 

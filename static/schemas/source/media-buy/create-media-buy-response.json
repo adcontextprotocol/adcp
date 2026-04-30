@@ -4,6 +4,11 @@
   "title": "Create Media Buy Response",
   "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active); (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id, the media buy is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "CreateMediaBuySuccess",
@@ -190,5 +195,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

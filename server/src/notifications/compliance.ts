@@ -198,8 +198,18 @@ export async function notifyComplianceChange(input: ComplianceChangeInput): Prom
 
 interface VerificationChangeInput {
   agentUrl: string;
-  issued: Array<{ role: string; specialisms: string[] }>;
-  revoked: Array<{ role: string; reason: string }>;
+  // adcp_version is optional for backward compat: callers from before
+  // #3524 stage 2 (or any caller that genuinely doesn't know the
+  // version) can omit it. When present, the notification text and the
+  // change-feed payload include the version so two simultaneous
+  // earnings at different versions don't render as duplicate identical
+  // messages.
+  issued: Array<{ role: string; specialisms: string[]; adcp_version?: string }>;
+  revoked: Array<{ role: string; reason: string; adcp_version?: string }>;
+}
+
+function badgeQualifier(adcpVersion: string | undefined): string {
+  return adcpVersion ? ` (AdCP ${adcpVersion})` : '';
 }
 
 /**
@@ -214,14 +224,15 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
   if (CHANNEL_ID && isSlackConfigured()) {
     try {
       for (const badge of issued) {
+        const versionTag = badgeQualifier(badge.adcp_version);
         const message: SlackBlockMessage = {
-          text: `AAO Verified: ${name} earned ${badge.role} badge`,
+          text: `AAO Verified: ${name} earned ${badge.role}${versionTag} badge`,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `*AAO Verified:* \`${name}\` is now a verified ${badge.role} agent. Specialisms: ${badge.specialisms.join(', ')}`,
+                text: `*AAO Verified:* \`${name}\` is now a verified ${badge.role} agent${versionTag}. Specialisms: ${badge.specialisms.join(', ')}`,
               },
             },
           ],
@@ -229,14 +240,15 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
         await sendChannelMessage(CHANNEL_ID, message);
       }
       for (const badge of revoked) {
+        const versionTag = badgeQualifier(badge.adcp_version);
         const message: SlackBlockMessage = {
-          text: `AAO Verified revoked: ${name} lost ${badge.role} badge`,
+          text: `AAO Verified revoked: ${name} lost ${badge.role}${versionTag} badge`,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `*AAO Verified revoked:* \`${name}\` lost its ${badge.role} badge. ${badge.reason}`,
+                text: `*AAO Verified revoked:* \`${name}\` lost its ${badge.role}${versionTag} badge. ${badge.reason}`,
               },
             },
           ],
@@ -255,22 +267,24 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
   for (const userId of userIds) {
     try {
       for (const badge of issued) {
+        const versionTag = badgeQualifier(badge.adcp_version);
         await notifyUser({
           recipientUserId: userId,
           type: 'verification_earned',
           referenceId: agentUrl,
           referenceType: 'agent',
-          title: `Your agent ${name} is now an AAO Verified ${badge.role} agent.`,
+          title: `Your agent ${name} is now an AAO Verified ${badge.role} agent${versionTag}.`,
           url: agentPageUrl,
         });
       }
       for (const badge of revoked) {
+        const versionTag = badgeQualifier(badge.adcp_version);
         await notifyUser({
           recipientUserId: userId,
           type: 'verification_lost',
           referenceId: agentUrl,
           referenceType: 'agent',
-          title: `Your agent ${name} lost its AAO Verified ${badge.role} badge. ${badge.reason}`,
+          title: `Your agent ${name} lost its AAO Verified ${badge.role}${versionTag} badge. ${badge.reason}`,
           url: agentPageUrl,
         });
       }
@@ -290,6 +304,7 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
           agent_url: agentUrl,
           role: badge.role,
           verified_specialisms: badge.specialisms,
+          ...(badge.adcp_version && { adcp_version: badge.adcp_version }),
         },
         actor: 'pipeline:compliance-heartbeat',
       });
@@ -303,6 +318,7 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
           agent_url: agentUrl,
           role: badge.role,
           reason: badge.reason,
+          ...(badge.adcp_version && { adcp_version: badge.adcp_version }),
         },
         actor: 'pipeline:compliance-heartbeat',
       });

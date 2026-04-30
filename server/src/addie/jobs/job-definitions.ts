@@ -42,6 +42,7 @@ import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { runEscalationTriageJob } from './escalation-triage.js';
+import { runInviteExpirySweep } from './invite-expiry-sweep.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
@@ -150,6 +151,19 @@ export function registerAllJobs(): void {
     runner: runSummaryGeneratorJob,
     options: { batchSize: 10 },
     shouldLogResult: (r) => r.summariesGenerated > 0,
+  });
+
+  // Invite expiry sweep (#3588) — emits invite_expired person_events for
+  // membership invites whose expires_at has passed without accept/revoke.
+  // Runs hourly; idempotent via partial unique index on person_events.
+  jobScheduler.register({
+    name: 'invite-expiry-sweep',
+    description: 'Invite expiry sweep',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    runner: runInviteExpirySweep,
+    shouldLogResult: (r) =>
+      r.emitted > 0 || r.resolveFailures > 0 || r.recordFailures > 0,
   });
 
   // Channel privacy audit (#2849) — daily backstop for the send-time

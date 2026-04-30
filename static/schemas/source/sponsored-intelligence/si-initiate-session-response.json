@@ -3,8 +3,13 @@
   "$id": "/schemas/sponsored-intelligence/si-initiate-session-response.json",
   "title": "SI Initiate Session Response",
   "description": "Brand agent's response to session initiation",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "session_id": {
       "type": "string",

@@ -4,6 +4,11 @@
   "title": "Sync Catalogs Response",
   "description": "Response from catalog sync operation. Exactly one of three shapes: (1) synchronous success — per-catalog results in the catalogs array (best-effort processing, may include per-catalog failures); (2) terminal failure — errors array with no catalogs processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (e.g., batch catalog ingestion and deduplication). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one. Platforms may approve, reject, or flag individual items within each catalog (similar to Google Merchant Center product review).",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "SyncCatalogsSuccess",
@@ -75,7 +80,10 @@
                       }
                     }
                   },
-                  "required": ["item_id", "status"],
+                  "required": [
+                    "item_id",
+                    "status"
+                  ],
                   "additionalProperties": true
                 }
               },
@@ -261,5 +269,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

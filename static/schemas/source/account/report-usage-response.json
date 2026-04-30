@@ -4,6 +4,11 @@
   "title": "Report Usage Response",
   "description": "Response from report_usage. Partial acceptance is valid — records that pass validation are stored even when others fail.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "accepted": {
       "type": "integer",
@@ -28,7 +33,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["accepted"],
+  "required": [
+    "accepted"
+  ],
   "additionalProperties": true,
   "examples": [
     {

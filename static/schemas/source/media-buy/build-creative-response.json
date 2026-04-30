@@ -4,6 +4,11 @@
   "title": "Build Creative Response",
   "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) terminal failure — an errors array; (4) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
@@ -367,5 +372,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

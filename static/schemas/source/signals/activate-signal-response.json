@@ -4,6 +4,11 @@
   "title": "Activate Signal Response",
   "description": "Response payload for activate_signal task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - the signal is either fully activated or not activated at all.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "ActivateSignalSuccess",
@@ -77,5 +82,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }
