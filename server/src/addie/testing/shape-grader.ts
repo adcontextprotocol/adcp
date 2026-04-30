@@ -23,6 +23,16 @@ export interface QuestionShape {
   /** Question contains 'and', 'plus', 'also', or two question marks. */
   isMultiPart: boolean;
   /**
+   * True when the question is an explainer ("what is X?", "how is X
+   * different from Y?", "walk me through Z", architectural / why
+   * questions). These get a wider cap because identity.md's Voice rule
+   * explicitly allows long answers when the caller's understanding
+   * requires depth. Detection requires BOTH an explainer prefix AND no
+   * transactional noun ("cost", "tier", "billing", etc.) — so
+   * "what is the cost?" stays single-part transactional.
+   */
+  isExplainer: boolean;
+  /**
    * Calibrated word-count ceiling for a response of this shape, drawn from
    * response-style.md's word-count table:
    *   ≤15 words → 120
@@ -31,6 +41,9 @@ export interface QuestionShape {
    * Multi-part is a question-shape signal but does not by itself grant
    * extra word budget — response-style.md says each part still gets the
    * treatment its shape deserves, not that the budget compounds.
+   * Explainer questions get a floor of 500 (the strict-cap path is kept
+   * for non-explainer questions; explainers can run long without firing
+   * length_cap, matching the Voice rule's explicit carve-out).
    */
   expectedMaxWords: number;
 }
@@ -117,6 +130,55 @@ const SIGNIN_OPENER_PATTERNS: readonly string[] = [
 
 const OPENER_WINDOW_CHARS = 200;
 
+/**
+ * Explainer-question detection. Mirrors the carve-out identity.md's Voice
+ * rule encodes for the model: explainers ("what is X?", "how is X
+ * different from Y?", "walk me through Z") deserve verbosity when the
+ * caller's understanding requires it. Conservative implementation — must
+ * match BOTH an explainer prefix AND have no transactional noun. Better
+ * to occasionally miss a real explainer (the strict cap fires, reviewer
+ * dismisses) than silently allow essays on transactional questions phrased
+ * like explainers ("what is the cost?", "how is Builder different from
+ * Professional for billing?").
+ *
+ * The transactional noun list mirrors the counter-example list in the
+ * Voice section so the grader's carve-out matches the rule's carve-out.
+ */
+// "Strong" prefixes signal the caller is explicitly asking for depth.
+// "Walk me through X" or "explain X" presupposes a non-trivial answer
+// even when the noun is transactional ("walk me through registration"
+// is still an explainer — the caller wants the steps).
+const STRONG_EXPLAINER_PREFIX_RE = /^\s*(walk\s+me\s+through|explain)\b/i;
+
+// "Soft" prefixes can be either explainer or transactional depending on
+// the noun. "What is AdCP?" is explainer; "what is the cost?" is
+// transactional. The transactional-noun stoplist below disambiguates.
+// "what's" is the contracted form. "what is the difference between X
+// and Y" / "what's the difference between X and Y" is the same
+// explainer shape as "how is X different from Y".
+const SOFT_EXPLAINER_PREFIX_RE =
+  /^\s*(what\s+is|what's|what\s+are|how\s+does|how\s+do|how\s+is\s+[\w\s']+different|what(?:\s+is|'s|s)\s+the\s+difference|why\s+does|why\s+do)\b/i;
+
+// Transactional nouns and verbs whose presence means a soft-prefix
+// question is asking about an account/billing/membership/payment
+// mechanic rather than a concept. The list is intentionally broad —
+// false negatives (a real explainer slips past) just keep the strict
+// cap, which a reviewer can dismiss; false positives (transactional
+// question gets the wider cap) silently hide essay-shape on a question
+// that should have been short. Mirrors the counter-example list in
+// identity.md Voice section.
+const TRANSACTIONAL_NOUN_RE =
+  /\b(cost|costs|price|prices|fee|fees|tier|tiers|plan|plans|level|levels|deadline|deadlines|invoice|invoices|billing|payment|payments|pay|paid|paying|refund|refunds|profile|profiles|account|accounts|email|emails|password|passwords|login|seat|seats|quota|quotas|limit|limits|status|state|due|register|registered|registering|registers|registration|member|members|membership|subscribe|subscribes|subscribed|subscription|signup|sign-up|join|joining)\b/i;
+
+export function isExplainerQuestion(question: string): boolean {
+  if (STRONG_EXPLAINER_PREFIX_RE.test(question)) return true;
+  if (!SOFT_EXPLAINER_PREFIX_RE.test(question)) return false;
+  if (TRANSACTIONAL_NOUN_RE.test(question)) return false;
+  return true;
+}
+
+const EXPLAINER_CAP_FLOOR = 500;
+
 function countWords(s: string): number {
   if (!s) return 0;
   return s.trim().split(/\s+/).filter(Boolean).length;
@@ -150,12 +212,19 @@ export function classifyQuestion(question: string): QuestionShape {
   );
   const isMultiPart = questionMarks >= 2 || conjJoinsClauses;
 
-  let expectedMaxWords: number;
-  if (wordCount <= 15) expectedMaxWords = 120;
-  else if (wordCount <= 30) expectedMaxWords = 200;
-  else expectedMaxWords = Math.min(400, wordCount * 8);
+  const isExplainer = isExplainerQuestion(question);
 
-  return { wordCount, isMultiPart, expectedMaxWords };
+  let baseCap: number;
+  if (wordCount <= 15) baseCap = 120;
+  else if (wordCount <= 30) baseCap = 200;
+  else baseCap = Math.min(400, wordCount * 8);
+
+  // Explainers get a floor of 500 — the strict cap path stays for non-
+  // explainer questions, so the grader still flags essay-shape on sharp
+  // questions while letting genuine explainers run long without firing.
+  const expectedMaxWords = isExplainer ? Math.max(baseCap, EXPLAINER_CAP_FLOOR) : baseCap;
+
+  return { wordCount, isMultiPart, isExplainer, expectedMaxWords };
 }
 
 export function analyzeResponseShape(response: string): ResponseShape {
