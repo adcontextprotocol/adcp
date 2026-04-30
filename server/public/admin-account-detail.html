@@ -72,8 +72,8 @@
       align-items: center;
       gap: var(--space-4);
       padding: var(--space-3) 0;
-      border-top: var(--border-1) solid var(--color-gray-100);
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-top: var(--border-1) solid var(--color-border);
+      border-bottom: var(--border-1) solid var(--color-border);
       margin-bottom: var(--space-4);
       flex-wrap: wrap;
     }
@@ -104,23 +104,23 @@
     }
     .member-badge.member {
       background: var(--color-success-600);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .member-badge.trial {
       background: var(--color-warning-500);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .member-badge.lapsed {
       background: var(--color-info-500);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .member-badge.prospect {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .member-badge.disqualified {
       background: var(--color-gray-400);
-      color: white;
+      color: var(--color-text-on-dark);
     }
 
     /* Invitation status badges + list */
@@ -136,18 +136,18 @@
     }
     .invite-status.pending {
       background: var(--color-info-500);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .invite-status.accepted {
       background: var(--color-success-600);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .invite-status.expired {
       background: var(--color-warning-500);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .invite-status.revoked {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
       color: var(--color-text-heading);
     }
     .invitations-list {
@@ -160,7 +160,7 @@
       align-items: flex-start;
       gap: var(--space-3);
       padding: var(--space-3) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-border);
     }
     .invitation-row:last-child {
       border-bottom: none;
@@ -198,11 +198,11 @@
     .interest-badge:hover {
       filter: brightness(0.95);
     }
-    .interest-low { background: var(--color-gray-200); color: var(--color-text-secondary); }
+    .interest-low { background: var(--color-bg-button-secondary); color: var(--color-text-secondary); }
     .interest-medium { background: var(--color-warning-100); color: var(--color-warning-700); }
     .interest-high { background: var(--color-success-100); color: var(--color-success-700); }
     .interest-very_high { background: var(--color-success-200); color: var(--color-success-800); }
-    .interest-none { background: var(--color-gray-100); color: var(--color-text-muted); border: 1px dashed var(--color-gray-300); }
+    .interest-none { background: var(--color-bg-subtle); color: var(--color-text-muted); border: 1px dashed var(--color-border-strong); }
 
     /* Grid layout */
     .grid-2 {
@@ -231,7 +231,7 @@
     .info-row {
       display: flex;
       padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-border);
     }
     .info-row:last-child {
       border-bottom: none;
@@ -253,7 +253,7 @@
       display: flex;
       justify-content: space-between;
       padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-border);
       font-size: var(--text-sm);
     }
     .signal-item:last-child {
@@ -274,7 +274,7 @@
 
     /* Pending invoice highlight */
     .invoice-highlight {
-      background: var(--color-warning-50);
+      background: var(--color-warning-bg);
       border-left: 3px solid var(--color-warning-500);
       padding: var(--space-3);
       border-radius: var(--radius-sm);
@@ -283,19 +283,19 @@
     .invoice-highlight .amount {
       font-size: var(--text-lg);
       font-weight: var(--font-bold);
-      color: var(--color-warning-700);
+      color: var(--color-warning-fg);
     }
 
     /* Next steps */
     .next-step-item {
       padding: var(--space-3);
-      background: var(--color-warning-50);
+      background: var(--color-warning-bg);
       border-left: 3px solid var(--color-warning-500);
       border-radius: var(--radius-sm);
       margin-bottom: var(--space-3);
     }
     .next-step-item.overdue {
-      background: var(--color-error-50);
+      background: var(--color-error-bg);
       border-left-color: var(--color-error-500);
     }
     .next-step-due {
@@ -330,7 +330,7 @@
       top: 0;
       bottom: 0;
       width: 2px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
     .timeline-item {
       position: relative;
@@ -382,7 +382,7 @@
     }
     .members-list li {
       padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-border);
       font-size: var(--text-sm);
     }
     .members-list li:last-child {
@@ -428,17 +428,17 @@
     }
     .btn-primary {
       background: var(--color-brand);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .btn-primary:hover {
       background: var(--color-primary-700);
     }
     .btn-secondary {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
     .btn-sm {
       padding: var(--space-1) var(--space-2);
@@ -446,14 +446,14 @@
     }
     .btn-success {
       background: var(--color-success-600);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .btn-success:hover {
       background: var(--color-success-700);
     }
     .btn-danger {
       background: var(--color-error-600);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .btn-danger:hover {
       background: var(--color-error-700);
@@ -482,7 +482,7 @@
       transition: var(--transition-all);
     }
     .owner-name:hover {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .owner-dropdown {
       display: none;
@@ -500,7 +500,7 @@
       transition: var(--transition-all);
     }
     .watch-btn:hover {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .watch-btn.watching {
       color: var(--color-warning-500);
@@ -554,7 +554,7 @@
       gap: var(--space-2);
       margin-top: var(--space-3);
       padding-top: var(--space-3);
-      border-top: var(--border-1) solid var(--color-gray-100);
+      border-top: var(--border-1) solid var(--color-border);
     }
     .quick-followup-input {
       flex: 1;
@@ -670,7 +670,7 @@
       align-items: center;
       justify-content: space-between;
       padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-border);
     }
     .domain-item:last-child {
       border-bottom: none;
@@ -683,7 +683,7 @@
       font-size: var(--text-xs);
       padding: var(--space-0) var(--space-1);
       border-radius: var(--radius-sm);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-text-secondary);
     }
     .domain-badge.primary {
@@ -698,20 +698,20 @@
     /* Registry activity table */
     .registry-activity-table { width: 100%; border-collapse: collapse; }
     .registry-activity-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3);
       text-align: left;
       font-weight: var(--font-semibold);
       color: var(--color-text-heading);
-      border-bottom: var(--border-2) solid var(--color-gray-200);
+      border-bottom: var(--border-2) solid var(--color-border);
       font-size: var(--text-sm);
     }
     .registry-activity-table td {
       padding: var(--space-3);
-      border-bottom: var(--border-1) solid var(--color-gray-200);
+      border-bottom: var(--border-1) solid var(--color-border);
       font-size: var(--text-sm);
     }
-    .registry-activity-table tr:hover { background: var(--color-gray-50); }
+    .registry-activity-table tr:hover { background: var(--color-bg-row-hover); }
   </style>
 </head>
 <body>
@@ -735,8 +735,8 @@
             <h1>
               <span id="accountName">Loading...</span>
               <span id="memberBadge" class="member-badge prospect">Prospect</span>
-              <span id="membershipTierBadge" class="member-badge" style="display: none; background: var(--color-gray-200); color: var(--color-text-heading);"></span>
-              <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
+              <span id="membershipTierBadge" class="member-badge" style="display: none; background: var(--color-bg-button-secondary); color: var(--color-text-heading);"></span>
+              <span id="accountTypeBadge" class="member-badge" style="background: var(--color-bg-button-secondary); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
             </h1>
             <div id="inheritedMembershipNotice" style="display: none; margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-brand); font-weight: 500;"></div>
             <div id="headerSubtitle" class="header-subtitle"></div>
@@ -874,7 +874,7 @@
                 <span class="signal-value" id="pricingPromoCode">-</span>
               </div>
             </div>
-            <div id="discountDetails" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm); display: none;">
+            <div id="discountDetails" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-success-bg); border-radius: var(--radius-sm); display: none;">
               <div style="font-size: var(--text-sm);">
                 <strong>Reason:</strong>
                 <span id="discountReasonText"></span>
@@ -972,7 +972,7 @@
               <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
             </div>
             <div class="collapsible-content" id="membersContent" style="margin-top: var(--space-4);">
-              <div id="paidStatusSummary" style="display: none; padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary);"></div>
+              <div id="paidStatusSummary" style="display: none; padding: var(--space-2) var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary);"></div>
               <!-- Website Members -->
               <div id="membersSectionWrapper">
                 <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Website Members</h3>
@@ -981,7 +981,7 @@
                 </ul>
               </div>
               <!-- Slack-only Users -->
-              <div id="pendingSlackCard" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-200);">
+              <div id="pendingSlackCard" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-border);">
                 <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">
                   Slack Only <span id="pendingSlackCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
                 </h3>
@@ -1230,7 +1230,7 @@
           <input type="text" id="editContactTitle" placeholder="e.g., VP Engineering">
         </div>
 
-        <div id="disqualifySection" style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-200);">
+        <div id="disqualifySection" style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-border);">
           <div class="form-group">
             <label>
               <input type="checkbox" id="editDisqualified" onchange="toggleDisqualifyReason()">
@@ -1287,9 +1287,9 @@
         <button class="modal-close" onclick="closeModal('migrateMembersModal')">&times;</button>
       </div>
       <form id="migrateMembersForm" onsubmit="migrateMembers(event)">
-        <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
-          <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
-          <div style="font-size: var(--text-sm); color: var(--color-warning-700);">
+        <div style="background: var(--color-warning-bg); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <div style="font-weight: var(--font-semibold); color: var(--color-warning-fg);">Warning</div>
+          <div style="font-size: var(--text-sm); color: var(--color-warning-fg);">
             This will move members from this account to another account. The members will be removed from this account and added to the target account.
           </div>
         </div>
@@ -1352,7 +1352,7 @@
         <div id="invoiceBillingSection" style="display: none;">
           <div class="form-group">
             <label>Selected Tier</label>
-            <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
+            <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
           </div>
 
           <div class="form-row">
@@ -1368,8 +1368,8 @@
         </div>
 
         <div id="invoiceResult" style="display: none;">
-          <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
-            <strong style="color: var(--color-success-700);">Invitation sent!</strong>
+          <div style="background: var(--color-success-bg); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-success-fg);">Invitation sent!</strong>
             <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
               The prospect has 30 days to accept. Share the link directly if helpful:
             </p>
@@ -1436,8 +1436,8 @@
           </label>
           <div class="form-hint">Generates a unique promo code the prospect can use at checkout</div>
         </div>
-        <div id="currentDiscountInfo" style="display: none; margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border-radius: var(--radius-sm);">
-          <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-warning-700);">Current Discount</div>
+        <div id="currentDiscountInfo" style="display: none; margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-bg); border-radius: var(--radius-sm);">
+          <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-warning-fg);">Current Discount</div>
           <div style="font-size: var(--text-sm); margin-top: var(--space-1);" id="currentDiscountText"></div>
           <button type="button" class="btn btn-sm btn-danger" style="margin-top: var(--space-2);" onclick="removeDiscount()">Remove Discount</button>
         </div>
@@ -1496,16 +1496,16 @@
         <button class="modal-close" onclick="closeModal('deleteWorkspaceModal')">&times;</button>
       </div>
       <div style="padding: var(--space-4);">
-        <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
-          <strong style="color: var(--color-warning-800);">This action cannot be undone.</strong>
-          <div style="color: var(--color-warning-700); font-size: var(--text-sm); margin-top: var(--space-1);">
+        <div style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <strong style="color: var(--color-warning-fg);">This action cannot be undone.</strong>
+          <div style="color: var(--color-warning-fg); font-size: var(--text-sm); margin-top: var(--space-1);">
             Deleting this workspace will remove all associated data including member profiles, join requests, and audit logs.
             Workspaces with payment history or an active subscription cannot be deleted.
           </div>
         </div>
-        <div id="deleteWorkspaceError" style="display: none; background: var(--color-error-50); border: 1px solid var(--color-error-200); color: var(--color-error-700); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);"></div>
+        <div id="deleteWorkspaceError" style="display: none; background: var(--color-error-bg); border: 1px solid var(--color-error-200); color: var(--color-error-fg); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);"></div>
         <p>To confirm, type the workspace name:</p>
-        <p><code id="deleteWorkspaceName" style="background: var(--color-gray-100); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);"></code></p>
+        <p><code id="deleteWorkspaceName" style="background: var(--color-bg-subtle); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); color: var(--color-text);"></code></p>
         <input type="text" id="deleteWorkspaceInput" placeholder="Type workspace name to confirm"
           style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin: var(--space-3) 0;"
           oninput="updateDeleteWorkspaceButton()">
@@ -1763,14 +1763,14 @@
 
         // Show warning if no owner
         if (!hasOwner) {
-          membersHtml += `<li class="no-owner-warning" role="alert" style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);">
-            <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-warning-700);">
+          membersHtml += `<li class="no-owner-warning" role="alert" style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);">
+            <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-warning-fg);">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
               </svg>
               <strong>No owner assigned</strong>
             </div>
-            <p style="margin: var(--space-2) 0 0 0; font-size: var(--text-sm); color: var(--color-warning-600);">
+            <p style="margin: var(--space-2) 0 0 0; font-size: var(--text-sm); color: var(--color-warning-fg);">
               This organization has no owner. Use the dropdown below to assign one.
             </p>
           </li>`;
@@ -1924,7 +1924,7 @@
       // 409 `refused` reason without the modal stealing focus.
       const colors = kind === 'error'
         ? { bg: 'var(--color-red-50, #fef2f2)', fg: 'var(--color-red-700, #b91c1c)' }
-        : { bg: 'var(--color-gray-100)', fg: 'var(--color-text-secondary)' };
+        : { bg: 'var(--color-bg-subtle)', fg: 'var(--color-text-secondary)' };
       box.style.background = colors.bg;
       box.style.color = colors.fg;
       box.style.display = '';
@@ -2011,7 +2011,7 @@
 
       if (!domain) {
         badge.textContent = 'No domain';
-        badge.style.background = 'var(--color-gray-100)';
+        badge.style.background = 'var(--color-bg-subtle)';
         badge.style.color = 'var(--color-text-muted)';
         content.innerHTML = `
           <p style="color: var(--color-text-muted); font-size: var(--text-sm);">
@@ -2107,7 +2107,7 @@
         } else {
           const content = document.getElementById('brandRegistryContent');
           content.innerHTML += `
-            <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+            <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); font-size: var(--text-sm);">
               <strong>Research complete</strong> — no brand data found for this domain.
               <a href="/admin/brands" target="_blank">Create manually in brand registry</a>.
             </div>
@@ -2144,7 +2144,7 @@
 
       if (hasParent) {
         html += `
-          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
             <span style="color: var(--color-text-muted); font-size: var(--text-sm);">Subsidiary of</span>
             <a href="/admin/accounts/${encodeURIComponent(a.parent_org_id)}" style="font-weight: var(--font-semibold);">${escapeHtml(a.parent_name)}</a>
             ${a.parent_domain ? `<span style="color: var(--color-text-muted); font-size: var(--text-xs);">(${escapeHtml(a.parent_domain)})</span>` : ''}
@@ -2160,7 +2160,7 @@
           </div>
           <ul style="list-style: none; padding: 0; margin: 0;">
             ${a.subsidiaries.map(sub => `
-              <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+              <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-border);">
                 <span>
                   <a href="/admin/accounts/${encodeURIComponent(sub.id)}" style="font-weight: 500;">${escapeHtml(sub.name)}</a>
                   ${sub.domain ? `<span style="color: var(--color-text-muted); font-size: var(--text-xs); margin-left: var(--space-2);">${escapeHtml(sub.domain)}</span>` : ''}
@@ -2239,8 +2239,8 @@
         }
 
         resultsEl.innerHTML = candidates.slice(0, 10).map(o => `
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); border-bottom: var(--border-1) solid var(--color-gray-100); cursor: pointer;"
-               onmouseover="this.style.background='var(--color-gray-50)'" onmouseout="this.style.background=''">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); border-bottom: var(--border-1) solid var(--color-border); cursor: pointer;"
+               onmouseover="this.style.background='var(--color-bg-row-hover)'" onmouseout="this.style.background=''">
             <div>
               <div style="font-weight: 500;">${escapeHtml(o.name)}</div>
               <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
@@ -2290,8 +2290,8 @@
         const preview = await response.json();
 
         const warningsHtml = preview.warnings.length > 0 ? `
-          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
-            <strong style="color: var(--color-warning-700);">Warnings:</strong>
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-warning-fg);">Warnings:</strong>
             <ul style="margin: var(--space-2) 0 0 var(--space-4);">
               ${preview.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
             </ul>
@@ -2300,8 +2300,8 @@
 
         const stripeConflict = preview.stripe_customer_conflict || {};
         const stripeConflictHtml = stripeConflict.has_conflict ? `
-          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
-            <strong style="color: var(--color-error-700);">Stripe Customer Conflict</strong>
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-bg); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-error-fg);">Stripe Customer Conflict</strong>
             <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
             <div style="margin-top: var(--space-3);">
               <label style="display: block; margin-bottom: var(--space-2);">
@@ -2351,8 +2351,8 @@
               </div>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
-                <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
-                  <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
+                <div style="padding: var(--space-4); background: var(--color-success-bg); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-success-fg); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
                   <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
                     <div><strong>Members:</strong> ${preview.primary_org.member_count || 0}</div>
@@ -2360,8 +2360,8 @@
                   </div>
                 </div>
 
-                <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
-                  <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
+                <div style="padding: var(--space-4); background: var(--color-error-bg); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-error-fg); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
                   <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
                     <div><strong>Members:</strong> ${preview.secondary_org.member_count || 0}</div>
@@ -2374,9 +2374,9 @@
               ${warningsHtml}
               ${changesHtml}
 
-              <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
-                <strong style="color: var(--color-warning-700);">Warning:</strong>
-                <span style="color: var(--color-warning-800);">Merging cannot be undone. All data from the secondary organization will be moved to the primary.</span>
+              <div style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+                <strong style="color: var(--color-warning-fg);">Warning:</strong>
+                <span style="color: var(--color-warning-fg);">Merging cannot be undone. All data from the secondary organization will be moved to the primary.</span>
               </div>
 
               <div style="display: flex; justify-content: space-between;">
@@ -2535,7 +2535,7 @@
             </p>
             <ul style="list-style: none; padding: 0; margin: 0 0 var(--space-3) 0;">
               ${inPersonal.slice(0, 5).map(u => `
-                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-border);">
                   <span>
                     <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
                     <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
@@ -2560,7 +2560,7 @@
             </p>
             <ul style="list-style: none; padding: 0; margin: 0;">
               ${inOtherOrgs.slice(0, 5).map(u => `
-                <li style="padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                <li style="padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-border);">
                   <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
                   <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
                   <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/admin/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
@@ -2584,7 +2584,7 @@
             </h3>
             <ul style="list-style: none; padding: 0; margin: 0;">
               ${similar_orgs.map(o => `
-                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-border);">
                   <span>
                     <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
                     <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
@@ -2951,7 +2951,7 @@
           const sign = isRefund ? '-' : '';
 
           return `
-            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${borderColor}; background: var(--color-gray-50); border-radius: var(--radius-sm);">
+            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${borderColor}; background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="font-weight: 600;">${label}</div>
@@ -3014,7 +3014,7 @@
           const d = e.details || {};
           const kind = d.kind || 'unknown';
           const label = kindLabels[kind] || kind;
-          const color = kindColors[kind] || 'var(--color-gray-300)';
+          const color = kindColors[kind] || 'var(--color-border-strong)';
           const date = new Date(e.created_at).toLocaleString();
           const facts = d.canceled_facts || {};
           const amountStr = typeof facts.amountCents === 'number'
@@ -3046,7 +3046,7 @@
           }
 
           return `
-            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${color}; background: var(--color-gray-50); border-radius: var(--radius-sm);">
+            <div style="padding: var(--space-3); margin-bottom: var(--space-2); border-left: 3px solid ${color}; background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
                 <div style="font-weight: 600;">${escapeHtml(label)}</div>
                 <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">${escapeHtml(date)}</div>
@@ -3383,7 +3383,7 @@
           badges.push(`<span class="domain-badge ${escapeHtml(d.source || 'manual')}">${d.source === 'workos' ? 'WorkOS' : 'Manual'}</span>`);
 
           return `
-            <li class="domain-item" data-domain="${escapedDomain}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-gray-100);">
+            <li class="domain-item" data-domain="${escapedDomain}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border);">
               <div class="domain-info">
                 <span class="domain-name" style="font-weight: var(--font-medium);">${escapedDomain}</span>
                 <span style="margin-left: var(--space-2);">${badges.join(' ')}</span>
@@ -3565,7 +3565,7 @@
         container.innerHTML = data.interactions.map(interaction => {
           const date = new Date(interaction.created_at);
           return `
-            <div class="research-item" style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+            <div class="research-item" style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border);">
               <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">
                 ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                 ${interaction.user_name ? ` • Conversation with ${escapeHtml(interaction.user_name)}` : ''}
@@ -4201,7 +4201,7 @@
         right: 20px;
         padding: 12px 20px;
         border-radius: 8px;
-        color: white;
+        color: var(--color-text-on-dark);
         font-weight: 500;
         z-index: 10000;
         animation: slideIn 0.3s ease;
@@ -4385,7 +4385,7 @@
       let html = '';
       for (const invoice of invoices) {
         html += `
-          <div class="invoice-item" data-invoice-id="${invoice.id}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: var(--color-warning-50); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+          <div class="invoice-item" data-invoice-id="${invoice.id}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: var(--color-warning-bg); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
             <div>
               <div style="font-weight: var(--font-semibold);">${formatCurrency(invoice.amount_due)}</div>
               <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
@@ -4505,7 +4505,7 @@
 
       // Addie's Goal Section
       if (context.addie_goal) {
-        html += `<div style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+        html += `<div style="background: var(--color-brand-bg); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
           <h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Addie's Goal</h3>
           <div style="font-weight: var(--font-medium); color: var(--color-text-heading);">${escapeHtml(context.addie_goal.goal_name || context.addie_goal.goal_key)}</div>
           ${context.addie_goal.reasoning ? `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(context.addie_goal.reasoning)}</p>` : ''}
@@ -4543,7 +4543,7 @@
     }
 
     function renderContextItem(label, value) {
-      return `<div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md);">
+      return `<div style="background: var(--color-bg-subtle); padding: var(--space-3); border-radius: var(--radius-md);">
         <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">${label}</div>
         <div style="font-weight: var(--font-medium);">${escapeHtml(String(value))}</div>
       </div>`;
@@ -4587,9 +4587,9 @@
         title.textContent = 'Convert to Personal Account';
         if (memberCount > 1) {
           content.innerHTML = `
-            <div style="background: var(--color-error-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
-              <div style="font-weight: var(--font-semibold); color: var(--color-error-700);">Cannot Convert</div>
-              <p style="color: var(--color-error-700); margin-top: var(--space-1);">
+            <div style="background: var(--color-error-bg); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-error-fg);">Cannot Convert</div>
+              <p style="color: var(--color-error-fg); margin-top: var(--space-1);">
                 This account has ${memberCount} team members. You must migrate or remove team members before converting to a personal account.
               </p>
             </div>
@@ -4600,9 +4600,9 @@
           `;
         } else {
           content.innerHTML = `
-            <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
-              <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
-              <p style="color: var(--color-warning-700); margin-top: var(--space-1);">
+            <div style="background: var(--color-warning-bg); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-warning-fg);">Warning</div>
+              <p style="color: var(--color-warning-fg); margin-top: var(--space-1);">
                 Converting to a personal account will restrict this account from inviting team members and claiming domains.
               </p>
             </div>

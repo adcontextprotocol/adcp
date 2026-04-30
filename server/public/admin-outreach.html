@@ -48,7 +48,7 @@
       font-weight: 600;
       text-transform: uppercase;
     }
-    .mode-disabled { background: var(--color-gray-200); color: var(--color-text-secondary); }
+    .mode-disabled { background: var(--color-bg-button-secondary); color: var(--color-text-secondary); }
     .mode-test { background: var(--color-warning-light); color: var(--color-warning-dark); }
     .mode-dry_run { background: var(--color-info-light); color: var(--color-info); }
     .mode-live { background: var(--color-success-light); color: var(--color-success); }
@@ -120,11 +120,11 @@
       background: var(--color-brand-hover);
     }
     .btn-secondary {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
     .btn-small {
       padding: 6px 12px;
@@ -193,7 +193,7 @@
       align-items: center;
       gap: 8px;
       padding: 6px 12px;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: 6px;
       font-size: 13px;
     }
@@ -400,22 +400,22 @@
       <div class="card" style="margin-bottom: 24px;">
         <h3 style="margin-bottom: 16px; color: var(--color-text-heading);">Performance Over Time</h3>
         <div class="stats-row" style="margin-bottom: 0;">
-          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+          <div class="stat-card" style="box-shadow: none; background: var(--color-bg-subtle);">
             <div class="label">Today</div>
             <div class="value" id="time-stat-today-sent">—</div>
             <div class="subtext"><span id="time-stat-today-responded">0</span> responded</div>
           </div>
-          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+          <div class="stat-card" style="box-shadow: none; background: var(--color-bg-subtle);">
             <div class="label">This Week</div>
             <div class="value" id="time-stat-week-sent">—</div>
             <div class="subtext"><span id="time-stat-week-responded">0</span> responded</div>
           </div>
-          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+          <div class="stat-card" style="box-shadow: none; background: var(--color-bg-subtle);">
             <div class="label">This Month</div>
             <div class="value" id="time-stat-month-sent">—</div>
             <div class="subtext"><span id="time-stat-month-responded">0</span> responded</div>
           </div>
-          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+          <div class="stat-card" style="box-shadow: none; background: var(--color-bg-subtle);">
             <div class="label">All Time</div>
             <div class="value" id="time-stat-total-sent">—</div>
             <div class="subtext"><span id="time-stat-total-rate">0</span>% response rate</div>
@@ -785,7 +785,7 @@
               </div>
               <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 4px;">
                 ${goal.positive_responses > 0 ? `<span style="color: var(--color-success);">${goal.positive_responses} +</span> ` : ''}
-                ${goal.neutral_responses > 0 ? `<span style="color: var(--color-gray-600);">${goal.neutral_responses} ~</span> ` : ''}
+                ${goal.neutral_responses > 0 ? `<span style="color: var(--color-text-secondary);">${goal.neutral_responses} ~</span> ` : ''}
                 ${goal.negative_responses > 0 ? `<span style="color: var(--color-warning);">${goal.negative_responses} -</span> ` : ''}
                 ${goal.refusal_responses > 0 ? `<span style="color: var(--color-danger);">${goal.refusal_responses} x</span>` : ''}
               </div>

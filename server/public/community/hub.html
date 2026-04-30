@@ -112,7 +112,7 @@
       margin-bottom: var(--space-1);
     }
 
-    .tier-name--explorer { color: var(--color-gray-500); }
+    .tier-name--explorer { color: var(--color-text-secondary); }
     .tier-name--connector { color: var(--color-brand); }
     .tier-name--champion { color: var(--color-warning-600); }
     .tier-name--pioneer { color: #7c3aed; }
@@ -185,7 +185,7 @@
     .tier-progress-track {
       width: 100%;
       height: 6px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       border-radius: var(--radius-full);
       margin-bottom: var(--space-2);
       overflow: hidden;
@@ -219,7 +219,7 @@
       width: 36px;
       height: 36px;
       border-radius: var(--radius-lg);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -241,12 +241,12 @@
     }
 
     .suggestions-scroll::-webkit-scrollbar-track {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-full);
     }
 
     .suggestions-scroll::-webkit-scrollbar-thumb {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
       border-radius: var(--radius-full);
     }
 
@@ -327,7 +327,7 @@
     .group-count {
       font-size: var(--text-xs);
       color: var(--color-text-muted);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: var(--space-1) var(--space-3);
       border-radius: var(--radius-full);
     }
@@ -388,17 +388,17 @@
     .level-step--current .level-step-dot { background: var(--color-brand); border-color: var(--color-brand); color: white; box-shadow: 0 0 0 4px var(--color-primary-100); }
     .level-step-label { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2); text-align: center; }
     .level-step--completed .level-step-label, .level-step--current .level-step-label { color: var(--color-text-heading); font-weight: var(--font-medium); }
-    .level-step:not(:last-child)::after { content: ''; position: absolute; top: 16px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: var(--color-gray-200); z-index: 0; }
+    .level-step:not(:last-child)::after { content: ''; position: absolute; top: 16px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: var(--color-bg-button-secondary); z-index: 0; }
     .level-step--completed:not(:last-child)::after { background: var(--color-brand); }
 
     /* Achievements grid */
     .achievements-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
     .achievement { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); }
-    .achievement--earned { background: var(--color-success-50); border: var(--border-1) solid var(--color-success-200); }
+    .achievement--earned { background: var(--color-success-bg); border: var(--border-1) solid var(--color-success-200); }
     .achievement--locked { background: var(--color-bg-subtle); border: var(--border-1) dashed var(--color-border); }
     .achievement-icon { width: 36px; height: 36px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: var(--text-lg); flex-shrink: 0; }
-    .achievement--earned .achievement-icon { background: var(--color-success-100); }
-    .achievement--locked .achievement-icon { background: var(--color-gray-100); filter: grayscale(1); opacity: 0.5; }
+    .achievement--earned .achievement-icon { background: var(--color-success-bg); }
+    .achievement--locked .achievement-icon { background: var(--color-bg-subtle); filter: grayscale(1); opacity: 0.5; }
     .achievement-body { flex: 1; min-width: 0; }
     .achievement-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: 2px; }
     .achievement--locked .achievement-name { color: var(--color-text-secondary); }
@@ -422,7 +422,7 @@
     .group-rec-info { flex: 1; min-width: 0; }
     .group-rec-name { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-0_5); }
     .group-rec-reason { font-size: var(--text-xs); color: var(--color-text-muted); }
-    .group-rec-badge { display: inline-flex; padding: var(--space-0_5) var(--space-2); border-radius: var(--badge-radius); font-size: 10px; font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: var(--tracking-wide); background: var(--color-gray-100); color: var(--color-gray-600); flex-shrink: 0; }
+    .group-rec-badge { display: inline-flex; padding: var(--space-0_5) var(--space-2); border-radius: var(--badge-radius); font-size: 10px; font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: var(--tracking-wide); background: var(--color-bg-subtle); color: var(--color-text-secondary); flex-shrink: 0; }
     .group-rec-link { font-size: var(--text-xs); color: var(--color-brand); text-decoration: none; font-weight: var(--font-medium); white-space: nowrap; flex-shrink: 0; }
     .group-rec-link:hover { text-decoration: underline; }
 
@@ -503,7 +503,7 @@
       height: 94px;
       border-radius: var(--radius-full);
       object-fit: cover;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .face-img--placeholder {
       width: 94px;

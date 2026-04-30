@@ -285,7 +285,7 @@
       left: calc(50% + 16px);
       right: calc(-50% + 16px);
       height: 2px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       z-index: 0;
     }
 
@@ -333,7 +333,7 @@
     }
 
     .achievement--locked .achievement-icon {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       filter: grayscale(1);
       opacity: 0.5;
     }
@@ -446,7 +446,7 @@
     .persona-cta-icon {
       width: 56px; height: 56px;
       border-radius: var(--radius-xl);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       display: flex; align-items: center; justify-content: center;
       font-size: var(--text-2xl);
       margin: 0 auto var(--space-4);
@@ -476,7 +476,7 @@
       border-radius: var(--badge-radius);
       font-size: 10px; font-weight: var(--font-semibold);
       text-transform: uppercase; letter-spacing: var(--tracking-wide);
-      background: var(--color-gray-100); color: var(--color-gray-600);
+      background: var(--color-bg-subtle); color: var(--color-text-secondary);
       flex-shrink: 0;
     }
 
@@ -499,7 +499,7 @@
     .profile-completeness-bar {
       height: 6px;
       border-radius: var(--radius-full);
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       overflow: hidden;
     }
 
@@ -550,7 +550,7 @@
 
     .profile-logo-placeholder {
       width: 48px; height: 28px;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
       display: flex; align-items: center; justify-content: center;
       font-size: var(--text-xs); color: var(--color-text-muted);
@@ -580,7 +580,7 @@
       background: var(--color-bg-subtle);
     }
 
-    .activity-metric:nth-child(1) { background: var(--color-primary-50); }
+    .activity-metric:nth-child(1) { background: var(--color-brand-bg); }
     .activity-metric:nth-child(2) { background: var(--color-success-50); }
     .activity-metric:nth-child(3) { background: var(--color-warning-50); }
     .activity-metric:nth-child(4) { background: var(--color-info-50); }
@@ -592,7 +592,7 @@
        Timeline
        ========================================================================= */
     .timeline { position: relative; padding-left: var(--space-6); }
-    .timeline::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: var(--color-gray-200); }
+    .timeline::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: var(--color-bg-button-secondary); }
 
     .timeline-entry { position: relative; padding-bottom: var(--space-5); }
     .timeline-entry:last-child { padding-bottom: 0; }
@@ -643,7 +643,7 @@
     }
     .status-badge--published { background: var(--color-success-100); color: var(--color-success-700); }
     .status-badge--pending_review { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .status-badge--draft { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .status-badge--draft { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
 
     /* =========================================================================
        Loading / empty
@@ -666,7 +666,7 @@
 
     /* Welcome banner for new orgs */
     .welcome-banner {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       border: var(--border-1) solid var(--color-border);
       border-radius: var(--card-radius);
       padding: var(--space-8);
@@ -702,7 +702,7 @@
     /* Upgrade teaser card */
     .upgrade-teaser {
       border-left: 3px solid var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       border-radius: var(--card-radius);
       padding: var(--space-6);
       height: 100%;
@@ -1167,7 +1167,7 @@
         </div>
       ` : `
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
-          <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
+          <div style="padding: var(--space-4); background: var(--color-brand-bg); border-radius: var(--radius-lg);">
             <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
             <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
             <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>

@@ -143,7 +143,7 @@
     .agent-track-detail {
       margin-top: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       font-size: var(--text-xs);
     }
@@ -171,7 +171,7 @@
       margin-top: var(--space-3);
       padding: var(--space-3);
       font-size: var(--text-xs);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
     }
@@ -185,7 +185,7 @@
       border-radius: var(--radius-md);
     }
     .agent-verification-panel-empty {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-color: var(--color-border);
     }
     .agent-verification-header {
@@ -228,7 +228,7 @@
     }
     .verification-badge-meta strong { color: var(--color-text-primary); font-weight: var(--font-semibold); }
     .verification-badge-meta code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 1px 4px;
       border-radius: 3px;
       font-size: var(--text-xs);
@@ -265,7 +265,7 @@
     }
     .verification-embed-field code {
       flex: 1 1 auto;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       padding: 6px 8px;
@@ -277,7 +277,7 @@
     }
     .verification-copy-btn {
       flex: 0 0 auto;
-      background: white;
+      background: var(--color-bg-card);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       padding: 4px 10px;
@@ -286,7 +286,7 @@
       color: var(--color-text-primary);
       min-width: 60px;
     }
-    .verification-copy-btn:hover { background: var(--color-gray-100); }
+    .verification-copy-btn:hover { background: var(--color-bg-subtle); }
     .verification-copy-btn.is-copied {
       background: var(--color-success-100, #d1fae5);
       border-color: var(--color-success-500, #10b981);
@@ -370,13 +370,13 @@
       cursor: pointer;
     }
     .history-run:last-child { border-bottom: none; }
-    .history-run:hover { background: var(--color-gray-50); }
+    .history-run:hover { background: var(--color-bg-subtle); }
     .history-run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .history-run-detail { display: none; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
     .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
     .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
     .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .agent-track--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .agent-track--skip { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
 
     .agent-sparkline {
       display: flex;
@@ -609,7 +609,7 @@
       border-bottom: 1px solid var(--color-border);
     }
     .storyboard-map-tools code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 1px 4px;
       border-radius: 3px;
       font-size: var(--text-xs);
@@ -725,8 +725,8 @@
     .step-run-btn { background: var(--color-primary-600); color: white; }
     .step-run-btn:hover { background: var(--color-primary-700); }
     .step-run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .step-next-btn { background: var(--color-gray-200); color: var(--color-text-primary); }
-    .step-next-btn:hover { background: var(--color-gray-300); }
+    .step-next-btn { background: var(--color-bg-button-secondary); color: var(--color-text-primary); }
+    .step-next-btn:hover { background: var(--color-bg-button-secondary-hover); }
 
     .storyboard-phase {
       margin-bottom: var(--space-4);
@@ -817,7 +817,7 @@
       font-size: var(--text-sm);
       cursor: pointer;
     }
-    .storyboard-compare-btn:hover { background: var(--color-primary-50); }
+    .storyboard-compare-btn:hover { background: var(--color-brand-bg); }
     .storyboard-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .storyboard-progress {
