@@ -2,11 +2,10 @@
 "adcontextprotocol": minor
 ---
 
-Add `measurement` capability block to `get_adcp_capabilities` and
-optional `metric_categories[]` to `brand.json` measurement-agent
-entries. Closes #3612 (the protocol surface piece of the per-metric
-catalog discovery design from #3586). Unblocks #3613 (AAO crawler +
-index implementation).
+Add `measurement` capability block to `get_adcp_capabilities`. Closes
+#3612 (the protocol surface piece of the per-metric catalog discovery
+design from #3586). Unblocks #3613 (AAO crawler + index
+implementation).
 
 **Adds `measurement` to `supported_protocols` and `enums/adcp-protocol.json`.**
 Measurement is a protocol-in-development. The capability block ships
@@ -25,12 +24,17 @@ follows the same pattern with a new `measurement` block whose
 `governance.property_features[]` (typed feature objects in an array)
 including the `methodology_url` and `methodology_version` fields.
 
-**Optional `metric_categories[]` on brand.json** parallels rights
-agents' `available_uses[]` / `right_types[]` — the one precedent in
-AdCP for putting *coarse-filter* metadata on `brand.json` for cheap
-directory queries. AAO can pre-filter measurement agents by category
-without crawling each one. The full catalog stays at the agent
-(canonical); brand.json carries only the category list.
+**No coarse filter on brand.json.** An earlier draft mirrored the
+rights-agent precedent (`available_uses[]` / `right_types[]`) by
+putting `metric_categories[]` on the brand.json measurement-agent
+entry. WG review pushed back: rights types meaningfully partition who
+you'd ever call (a podcast buyer never wants CTV rights), but
+measurement categories are correlative — buyers typically want a
+basket (viewability + IVT + brand_safety travel together), so a
+coarse-filter on brand.json doesn't reliably narrow the agent set.
+Capability blocks are queryable and cacheable; AAO crawls them on a
+TTL anyway. Discovery happens against the canonical per-metric
+catalog, not a brand.json shortcut.
 
 **Schema additions.**
 
@@ -42,7 +46,7 @@ without crawling each one. The full catalog stays at the agent
   `viewability` (MRC Viewable Impression Measurement Guidelines —
   IAS, DV, MOAT), `invalid_traffic` (TAG/MRC IVT — HUMAN, DV, IAS),
   and `brand_safety` (GARM Brand Safety Floor + Suitability
-  Framework).
+  Framework). Used on each metric's `category` field.
 - `protocol/get-adcp-capabilities-response.json`: new `measurement`
   block with `metrics[]`. Each metric carries `metric_id` and
   `category` (required), plus optional `standard_reference`,
@@ -51,8 +55,6 @@ without crawling each one. The full catalog stays at the agent
   date, evidence URL), `unit`, `description`, `methodology_url`, and
   `methodology_version`. `additionalProperties: false` with explicit
   `ext` slot, matching the governance pattern.
-- `brand.json` `brand_agent_entry`: optional `metric_categories[]`
-  array referencing the new enum.
 
 **Why `accreditations[]` is separate from `standard_reference`.**
 A metric can implement a published standard (URL points at the spec)
@@ -80,12 +82,12 @@ Sellers without measurement capability are unchanged; sellers with
 measurement capability gain a structured catalog surface.
 
 **WG review.** This is the protocol surface for measurement-vendor
-capability declaration. Hybrid design (live capability response +
-optional brand.json coarse filter) reached via #3586 / #3612
-discussion. Three independent expert reviews shaped this version:
-moved measurement out of `supported_protocols` (capability-block
-pattern), added missing categories, added `methodology_version`, and
-added structured `accreditations[]` to separate "implements a
-standard" from "third-party certified."
+capability declaration. Three independent expert reviews plus WG
+pushback shaped this version: kept `measurement` in
+`supported_protocols` per the protocol-in-development framing, added
+missing categories, added `methodology_version`, added structured
+`accreditations[]` to separate "implements a standard" from
+"third-party certified," and dropped the brand.json coarse-filter
+field after partition-quality critique.
 
 Closes #3612.

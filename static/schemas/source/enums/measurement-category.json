@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/measurement-category.json",
   "title": "Measurement Category",
-  "description": "Coarse classification for vendor-defined measurement metrics. Used at two levels: (a) for AAO-side cross-vendor discovery — buyers querying 'which vendors offer attention measurement?' filter against `brand.json` measurement-agent `metric_categories[]` for cheap pre-call filtering, and (b) on each metric in the measurement agent's `get_adcp_capabilities.measurement.metrics[]` for semantic categorization. Closed enum chosen for stability — buyers can write category-based queries that don't break when a new vendor enters the market with a slightly different category label.",
+  "description": "Coarse classification for vendor-defined measurement metrics. Carried on each metric in the agent's `get_adcp_capabilities.measurement.metrics[]` for semantic categorization, and used by AAO and buyer agents to aggregate or filter the per-vendor catalogs after they're crawled. Closed enum chosen for stability — buyers can write category-based queries that don't break when a new vendor enters the market with a slightly different category label.",
   "type": "string",
   "enum": [
     "attention",
