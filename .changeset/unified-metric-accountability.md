@@ -63,6 +63,26 @@ and vendor scoping.
   IAB Open Measurement §4.3 precedent for accountability boundaries
   when measurement starts mid-flight.
 
+**Measurement-standard qualifier on standard entries.** Standard-scope
+entries on `committed_metrics` and `missing_metrics` MAY carry an
+optional `qualifier` object disambiguating metrics whose definition
+varies by measurement standard. v1 defines a single qualifier key —
+`viewability_standard` (`mrc` | `groupm`) — required when the seller
+commits to a specific viewability standard for any of
+`viewable_impressions`, `viewable_rate`, `measurable_impressions`.
+Without it the contract is ambiguous (MRC and GroupM are materially
+different thresholds and not comparable, see
+`viewability-standard.json`) and reconciliation falls back to whatever
+`viewability.standard` the delivery report happens to carry. Symmetric
+on `missing_metrics`: a buyer expecting MRC viewability flags a
+GroupM-only delivery report as missing the MRC commitment. The
+qualifier object is closed (`additionalProperties: false`) so future
+qualifiers — completion threshold, reach unit — get added explicitly
+in subsequent minors rather than via free-form keys. Emerged from a
+field discussion where a partner proposed an `ext`-level viewability
+rollup at root `aggregated_totals`; the right place to handle
+standard-disambiguation is the contract entry, not the aggregate.
+
 **Vendor metric accountability scope.** PR #3492 deliberately scoped
 vendor metrics as advisory in v1 ("buyers verify out-of-band via
 `measurable_impressions` coverage"). With this PR, the
@@ -96,9 +116,11 @@ out-of-band verification.
 - `enums/metric-scope.json`: new shared discriminator.
 - `docs/media-buy/task-reference/create_media_buy.mdx`: rewrite the
   "Reporting contract on confirmed packages" section with a worked
-  example showing day-1 + mid-flight entries.
+  example showing day-1 + mid-flight entries and the
+  `qualifier.viewability_standard` on viewability metrics.
 - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: update
-  `missing_metrics` bullet with the discriminated-shape example.
+  `missing_metrics` bullet with the discriminated-shape example
+  and the qualifier-symmetric reconciliation note.
 - `docs/media-buy/media-buys/optimization-reporting.mdx`: update the
   Vendor-Defined Metrics section to reflect that the
   advisory-vs-accountable distinction now lives at the contract layer

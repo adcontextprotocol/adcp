@@ -313,6 +313,16 @@
                               },
                               "metric_id": {
                                 "$ref": "/schemas/enums/available-metric.json"
+                              },
+                              "qualifier": {
+                                "type": "object",
+                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing even when GroupM viewability was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
+                                "properties": {
+                                  "viewability_standard": {
+                                    "$ref": "/schemas/enums/viewability-standard.json"
+                                  }
+                                },
+                                "additionalProperties": false
                               }
                             },
                             "required": ["scope", "metric_id"],

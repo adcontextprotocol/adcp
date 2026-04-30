@@ -91,6 +91,17 @@
                 "$ref": "/schemas/enums/available-metric.json",
                 "description": "Identifier for the standard metric."
               },
+              "qualifier": {
+                "type": "object",
+                "description": "Measurement-standard qualifier for metrics whose definition varies by standard. Required when `metric_id` is one of `viewable_impressions`, `viewable_rate`, or `measurable_impressions` and the seller commits to a specific viewability standard — without this, the contract is ambiguous (MRC and GroupM viewability are materially different thresholds and not comparable, see `viewability-standard.json`). Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment. Reserved for additive standard qualifiers in future minors (e.g., reach unit, completion threshold) — schema is closed (`additionalProperties: false`).",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/enums/viewability-standard.json",
+                    "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+                  }
+                },
+                "additionalProperties": false
+              },
               "committed_at": {
                 "type": "string",
                 "format": "date-time",
@@ -133,7 +144,7 @@
           { "scope": "standard", "metric_id": "spend",           "committed_at": "2026-04-29T10:53:00Z" },
           { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
           { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
-          { "scope": "standard", "metric_id": "viewable_rate",   "committed_at": "2026-05-30T14:22:00Z" }
+          { "scope": "standard", "metric_id": "viewable_rate",   "qualifier": { "viewability_standard": "mrc" }, "committed_at": "2026-05-30T14:22:00Z" }
         ]
       ]
     },
