@@ -7,7 +7,7 @@ backend(verification): brand.json + /verification carry per-version badge detail
 
 `aao_verification` blocks served via brand.json enrichment now include a `badges[]` array — one entry per `(role, adcp_version)` with full per-version detail:
 
-\`\`\`jsonc
+```jsonc
 "aao_verification": {
   "verified": true,
   "verified_at": "2026-04-30T...",
@@ -18,7 +18,7 @@ backend(verification): brand.json + /verification carry per-version badge detail
   "roles": ["media-buy"],
   "modes_by_role": { "media-buy": ["spec", "live"] }
 }
-\`\`\`
+```
 
 `badges[]` is the canonical forward-compat shape (Q6 of [#3524's resolved decisions](https://github.com/adcontextprotocol/adcp/issues/3524#issuecomment-4348265184)). One entry per parallel-version badge; preserved order matches the API's version-DESC sort. Adding future axes to a badge (e.g. a third verification mode) doesn't change the array shape.
 
