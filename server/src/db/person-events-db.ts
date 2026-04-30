@@ -54,6 +54,55 @@ export interface PersonEvent {
 // ---------------------------------------------------------------------------
 
 /**
+ * Cap stored message text at 64KB (UTF-8 byte count). Slack messages are
+ * theoretically capped at 40KB by the platform; web chat has no upstream
+ * limit. Matching the limit here keeps a single 50KB paste from inflating
+ * timeline reads. Returns the (possibly truncated) text and a flag.
+ *
+ * `original_length` is the JS `string.length` of the input — UTF-16 code
+ * units, not bytes or codepoints. This matches the `text_length` convention
+ * already in use across `message_sent` and prior `message_received` writes;
+ * it does NOT match the cap units (the cap is in bytes, length is in code
+ * units). For an emoji-heavy payload, length will exceed byte count / 4.
+ */
+const MAX_EVENT_TEXT_BYTES = 64 * 1024;
+
+export function capEventText(text: string): {
+  text: string;
+  truncated: boolean;
+  original_length: number;
+} {
+  const original_length = text.length;
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.byteLength <= MAX_EVENT_TEXT_BYTES) {
+    return { text, truncated: false, original_length };
+  }
+  // Truncate on a UTF-8 boundary
+  const trimmed = buf.subarray(0, MAX_EVENT_TEXT_BYTES).toString('utf8');
+  return { text: trimmed, truncated: true, original_length };
+}
+
+/**
+ * Build the `data` payload for a `message_received` event from a sanitized
+ * inbound text plus the source label (e.g. 'dm', 'web_chat'). Centralizes the
+ * cap + text + text_length + truncated shape so the four write sites
+ * (Slack handler, Slack bolt-app DM/assistant-thread, two web chat handlers)
+ * stay in lockstep.
+ */
+export function buildMessageReceivedData(
+  text: string,
+  source: string
+): Record<string, unknown> {
+  const capped = capEventText(text);
+  return {
+    source,
+    text: capped.text,
+    text_length: capped.original_length,
+    ...(capped.truncated ? { truncated: true } : {}),
+  };
+}
+
+/**
  * Record a person event. Append-only — never updates or deletes.
  */
 export async function recordEvent(
