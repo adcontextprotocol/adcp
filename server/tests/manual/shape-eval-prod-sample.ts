@@ -131,8 +131,18 @@ interface Aggregate {
   responseWordsHist: { p10: number; p50: number; p90: number; min: number; max: number };
   ratioHist: { p10: number; p50: number; p90: number; min: number; max: number };
   multiPartCount: number;
+  explainerCount: number;
+  /** length_cap fires that occurred on non-explainer questions — the
+   *  metric to track for actual verbosity regressions. */
+  nonExplainerLengthCap: number;
+  /** length_cap fires that occurred on explainer questions — these are
+   *  policy-allowed (Voice rule) but still surfaced for visibility. */
+  explainerLengthCap: number;
   violationCounts: Record<string, number>;
   pairsWithAnyViolation: number;
+  /** Pairs with any violation that was NOT a policy-allowed explainer
+   *  length_cap. The actionable AnyViol rate. */
+  pairsWithActionableViolation: number;
 }
 
 function pct(part: number, whole: number): string {
@@ -155,8 +165,12 @@ function aggregate(pairs: SampledPair[]): Aggregate {
     responseWordsHist: { p10: 0, p50: 0, p90: 0, min: 0, max: 0 },
     ratioHist: { p10: 0, p50: 0, p90: 0, min: 0, max: 0 },
     multiPartCount: 0,
+    explainerCount: 0,
+    nonExplainerLengthCap: 0,
+    explainerLengthCap: 0,
     violationCounts: {},
     pairsWithAnyViolation: 0,
+    pairsWithActionableViolation: 0,
   };
   const qWords: number[] = [];
   const rWords: number[] = [];
@@ -167,7 +181,24 @@ function aggregate(pairs: SampledPair[]): Aggregate {
     rWords.push(p.response_words);
     ratios.push(p.shape.violations.ratioToExpected);
     if (p.shape.question.isMultiPart) out.multiPartCount++;
-    if (p.shape.violationLabels.length > 0) out.pairsWithAnyViolation++;
+    if (p.shape.question.isExplainer) out.explainerCount++;
+    if (p.shape.violations.exceededLengthCap) {
+      if (p.shape.question.isExplainer) {
+        out.explainerLengthCap++;
+      } else {
+        out.nonExplainerLengthCap++;
+      }
+    }
+    if (p.shape.violationLabels.length > 0) {
+      out.pairsWithAnyViolation++;
+      // Actionable = at least one violation that ISN'T a policy-allowed
+      // explainer length_cap. If the only violation is length_cap on an
+      // explainer, the Voice rule explicitly allows it; not actionable.
+      const onlyExplainerLength =
+        p.shape.question.isExplainer &&
+        p.shape.violationLabels.every((v) => v.startsWith('length_cap'));
+      if (!onlyExplainerLength) out.pairsWithActionableViolation++;
+    }
     for (const v of p.shape.violationLabels) {
       const bucket = v.includes('(') ? v.slice(0, v.indexOf('(')) : v.split(':')[0];
       out.violationCounts[bucket] = (out.violationCounts[bucket] || 0) + 1;
@@ -313,8 +344,14 @@ async function main() {
   console.log(`Response words   p10/p50/p90/max: ${agg.responseWordsHist.p10}/${agg.responseWordsHist.p50}/${agg.responseWordsHist.p90}/${agg.responseWordsHist.max}`);
   console.log(`Ratio to cap     p10/p50/p90/max: ${agg.ratioHist.p10.toFixed(2)}/${agg.ratioHist.p50.toFixed(2)}/${agg.ratioHist.p90.toFixed(2)}/${agg.ratioHist.max.toFixed(2)}`);
   console.log(`Multi-part questions: ${agg.multiPartCount} of ${agg.sampled} (${pct(agg.multiPartCount, agg.sampled)})`);
+  console.log(`Explainer questions:  ${agg.explainerCount} of ${agg.sampled} (${pct(agg.explainerCount, agg.sampled)}) — these get the wider 500-word cap`);
   console.log('');
   console.log(`Pairs with ANY shape violation: ${agg.pairsWithAnyViolation} of ${agg.sampled} (${pct(agg.pairsWithAnyViolation, agg.sampled)})`);
+  console.log(`Pairs with ACTIONABLE violation: ${agg.pairsWithActionableViolation} of ${agg.sampled} (${pct(agg.pairsWithActionableViolation, agg.sampled)}) — excludes policy-allowed explainer length_cap`);
+  console.log(`Length cap on non-explainer questions: ${agg.nonExplainerLengthCap} (${pct(agg.nonExplainerLengthCap, agg.sampled - agg.explainerCount)} of non-explainers)`);
+  if (agg.explainerLengthCap > 0) {
+    console.log(`Length cap on explainer questions: ${agg.explainerLengthCap} (${pct(agg.explainerLengthCap, agg.explainerCount)} of explainers — these are policy-allowed but flagged for visibility)`);
+  }
   if (Object.keys(agg.violationCounts).length > 0) {
     console.log('Violation bucket counts:');
     const sorted = Object.entries(agg.violationCounts).sort((a, b) => b[1] - a[1]);

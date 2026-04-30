@@ -84,11 +84,91 @@ describe('classifyQuestion', () => {
 
   it('scales the cap with question length above 30 words, capped at 400', () => {
     const longQuestion =
-      'I want to walk through the full process of registering my seller agent for compliance monitoring including how to declare specialisms what storyboards run by default and what happens during the certification stage of the process please explain end to end?';
+      'I want to push through the full process of registering my seller agent for compliance monitoring including how to declare specialisms what storyboards run by default and what happens during the certification stage of the process please explain end to end?';
     const q = classifyQuestion(longQuestion);
     expect(q.wordCount).toBeGreaterThan(30);
     expect(q.expectedMaxWords).toBeGreaterThan(200);
     expect(q.expectedMaxWords).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('classifyQuestion — explainer detection', () => {
+  it('flags "what is X?" as explainer with cap floor 500', () => {
+    const q = classifyQuestion('What is AdCP?');
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it('flags "how is X different from Y?" as explainer', () => {
+    const q = classifyQuestion('How is agentic advertising different from programmatic?');
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it('flags "walk me through X" as explainer', () => {
+    const q = classifyQuestion('Walk me through the brand.json registration flow.');
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it('flags "explain X" as explainer', () => {
+    const q = classifyQuestion('Explain the trust model in AdCP.');
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it('flags "why does X" as explainer', () => {
+    const q = classifyQuestion('Why does the registry use adagents.json?');
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it('does NOT flag transactional questions phrased like explainers', () => {
+    // "what is the cost" → cost is transactional → strict cap stays
+    expect(classifyQuestion('What is the AAO membership cost?').isExplainer).toBe(false);
+    expect(classifyQuestion('What is the deadline for the working group?').isExplainer).toBe(false);
+    expect(classifyQuestion('How is Builder different from Professional for billing?').isExplainer).toBe(false);
+    expect(classifyQuestion('What is my account status?').isExplainer).toBe(false);
+    expect(classifyQuestion('What is the refund policy?').isExplainer).toBe(false);
+  });
+
+  it('keeps the strict cap on transactional-explainer-shaped questions', () => {
+    const q = classifyQuestion('What is the AAO membership cost?');
+    expect(q.expectedMaxWords).toBe(120); // ≤15 words → strict cap
+  });
+
+  it('does NOT flag sharp-question-shaped questions as explainer', () => {
+    expect(classifyQuestion('Is AdCP just surveillance capitalism at AI speed?').isExplainer).toBe(false);
+    expect(classifyQuestion('Can I link my email?').isExplainer).toBe(false);
+    expect(classifyQuestion('Did Scope3 seed AAO?').isExplainer).toBe(false);
+  });
+
+  it('keeps Katie multi-part question as not-explainer (mostly transactional)', () => {
+    const katie =
+      'How does an agent get registered on the AAO registry? Do you have to pay and do you have to be an AAO member?';
+    const q = classifyQuestion(katie);
+    // The first sub-question doesn't match explainer prefix; the whole thing
+    // is transactional in spirit. Must NOT be flagged explainer.
+    expect(q.isExplainer).toBe(false);
+  });
+
+  it('a long explainer question stays an explainer', () => {
+    const q = classifyQuestion(
+      "What is AdCP and how does it work in the context of buyer agents, seller agents, and the registry, and what does it mean for an existing programmatic infrastructure to migrate?",
+    );
+    expect(q.isExplainer).toBe(true);
+    expect(q.expectedMaxWords).toBe(500);
+  });
+
+  it("flags \"what's the difference between X and Y\" as explainer", () => {
+    expect(classifyQuestion("what's the difference between AdCP and ARTF").isExplainer).toBe(true);
+    expect(classifyQuestion("What is the difference between buyer and seller agents?").isExplainer).toBe(true);
+  });
+
+  it('still rejects transactional phrasings of "what is the difference"', () => {
+    expect(
+      classifyQuestion('What is the difference between Builder and Professional billing?').isExplainer,
+    ).toBe(false);
   });
 });
 

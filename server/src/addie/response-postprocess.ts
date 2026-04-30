@@ -43,6 +43,7 @@ const BANNED_RITUAL_LITERALS: readonly string[] = [
   "that's a fair question",
   "fair question",
   "great question",
+  "good question",
   "sharp question",
   "this is a sharp point",
   "to be clear",
