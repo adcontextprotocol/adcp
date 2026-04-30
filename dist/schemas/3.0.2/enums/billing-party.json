@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/enums/billing-party.json",
+  "title": "Billing Party",
+  "description": "Which party the seller invoices for an account. Determines the billing entity and invoicing flow.",
+  "type": "string",
+  "enum": ["operator", "agent", "advertiser"],
+  "enumDescriptions": {
+    "operator": "Seller invoices the operator — agency or brand buying direct",
+    "agent": "Agent consolidates billing across brands and is invoiced by the seller",
+    "advertiser": "Seller invoices the advertiser directly, even when a different operator places orders on their behalf"
+  }
+}
