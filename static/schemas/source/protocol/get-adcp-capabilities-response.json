@@ -123,7 +123,8 @@
           "governance",
           "sponsored_intelligence",
           "creative",
-          "brand"
+          "brand",
+          "measurement"
         ]
       },
       "minItems": 1
@@ -1131,6 +1132,53 @@
       "items": {
         "$ref": "/schemas/core/error.json"
       }
+    },
+    "measurement": {
+      "type": "object",
+      "description": "Measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`. Measurement agents publish a per-metric catalog so buyers can discover which metrics each vendor offers (Adelaide attention, Scope3 emissions, Nielsen DAR demographics, etc.) — the canonical source of truth that AAO crawls into the federated index for cross-vendor queries. Same architectural pattern as `governance.property_features[]`: agents self-describe; the registry aggregates.",
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "description": "The measurement metrics this agent computes. Each entry identifies a metric the agent can produce when integrated into a media buy. The `(metric_id)` is the agent's identifier — when populated by sellers in `vendor_metric_values` on delivery, the seller pairs the agent's BrandRef with this `metric_id`. Buyers querying AAO for category-based cross-vendor discovery (`/api/registry/measurement-vendors?category=attention`) hit this list aggregated across vendors.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. The `(vendor.domain, vendor.brand_id, metric_id)` tuple is the canonical reference everywhere this metric appears (committed_metrics, vendor_metric_values, missing_metrics)."
+              },
+              "category": {
+                "$ref": "/schemas/enums/measurement-category.json",
+                "description": "Coarse classification — used by AAO and buyer agents for cross-vendor discovery."
+              },
+              "standard_reference": {
+                "type": "string",
+                "format": "uri",
+                "description": "Optional URI pointing at the published standard this metric implements (e.g., IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). When present, anchors buyer trust in the methodology and supports cross-vendor comparability for metrics implementing the same standard."
+              },
+              "unit": {
+                "type": "string",
+                "description": "Unit of the metric value when reported via `vendor_metric_values.value` (e.g., `score`, `seconds`, `persons`, `gCO2e`, `lift_percent`). Buyers SHOULD render the unit alongside the value rather than computing units locally; sellers populating `vendor_metric_values.unit` MUST match this declaration when present.",
+                "examples": ["score", "seconds", "persons", "gCO2e", "lift_percent", "index"]
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this metric measures and any relevant methodology notes. Surfaced in buyer-agent UX when explaining the metric to humans.",
+                "maxLength": 1000
+              },
+              "documentation_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the vendor's full methodology documentation for this metric. Buyers SHOULD link or fetch this when human review of the methodology is in scope (compliance, RFP review, MRC audit)."
+              }
+            },
+            "required": ["metric_id", "category"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["metrics"]
     },
     "context": {
       "$ref": "/schemas/core/context.json"

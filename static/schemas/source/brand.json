@@ -642,6 +642,13 @@
           "items": { "$ref": "/schemas/enums/right-type.json" },
           "minItems": 1
         },
+        "metric_categories": {
+          "type": "array",
+          "description": "For measurement agents: coarse classification of metrics this agent computes. Optional, parallels rights agents' `available_uses[]` — declared on `brand.json` for cheap pre-call filtering by AAO and buyer agents (e.g., 'list every measurement vendor offering attention'). The full per-metric catalog (with metric_id, standard_reference, unit, description) lives at the agent's `get_adcp_capabilities.measurement.metrics[]`; AAO crawls that on a TTL to populate the federated index. Coarse categories on `brand.json` give buyers a fast directory query without fanning out to every measurement agent live; the full catalog at the agent is the canonical source.",
+          "items": { "$ref": "/schemas/enums/measurement-category.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "countries": {
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global scope.",
