@@ -117,7 +117,7 @@
           "verify_url": {
             "type": "string",
             "format": "uri",
-            "description": "Verification endpoint. Governance agents send content to this URL to verify embedded provenance presence and integrity."
+            "description": "Verification endpoint. Governance agents send content to this URL to verify embedded provenance presence and integrity. SHOULD be present for methods where the receiver cannot self-verify (e.g., provenance_markers). The verification protocol is opaque in this version; the wire contract will be defined by the should-verify RFC."
           },
           "embedded_at": {
             "type": "string",
@@ -125,7 +125,7 @@
             "description": "When the provenance data was embedded (ISO 8601)"
           }
         },
-        "required": ["method", "provider", "verify_url"],
+        "required": ["method", "provider"],
         "additionalProperties": true
       }
     },
@@ -147,12 +147,11 @@
           "verify_url": {
             "type": "string",
             "format": "uri",
-            "description": "Verification endpoint for watermark detection"
+            "description": "Verification endpoint for watermark detection. The verification protocol is opaque in this version; the wire contract will be defined by the should-verify RFC."
           },
           "c2pa_action": {
-            "type": "string",
-            "enum": ["c2pa.watermarked.bound", "c2pa.watermarked.unbound"],
-            "description": "C2PA action classification. 'bound' means the watermark is linked to a C2PA manifest for this asset. 'unbound' means the watermark exists independently (e.g., applied by the AI generator before any provenance signing event)."
+            "$ref": "/schemas/enums/c2pa-watermark-action.json",
+            "description": "C2PA action classification for this watermark"
           },
           "embedded_at": {
             "type": "string",
