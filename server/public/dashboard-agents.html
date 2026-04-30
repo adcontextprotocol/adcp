@@ -1636,6 +1636,8 @@
       // call sites together if the constraint ever changes.
       const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
 
+      const distinctRoleCount = new Set(badges.map(b => b.role)).size;
+
       const rowsHtml = badges.map((badge, idx) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
@@ -1733,11 +1735,21 @@
         ? ''
         : '<div class="verification-eligibility-hint">Want <strong>(Live)</strong> too? Once AAO\'s canonical-campaign runner ships in 3.1, agents that flow real production traffic will earn the <strong>(Live)</strong> qualifier on the same badge — same URL, no embed swap. <a href="/docs/building/aao-verified#verified-live" target="_blank" rel="noopener">Learn more</a>.</div>';
 
+      // Header count: "1 badge" / "N badges" / "N badges across M roles"
+      // The "across M roles" suffix only appears when at least one role
+      // has parallel-version badges (i.e. distinctRoleCount < badges.length).
+      // Today with SUPPORTED_BADGE_VERSIONS = ['3.0'] every agent has at
+      // most one badge per role, so this only kicks in once parallel
+      // versions ship.
+      const badgeCountSummary = badges.length === 1
+        ? '1 badge'
+        : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
+
       return `
         <div class="agent-verification-panel">
           <div class="agent-verification-header">
             <span>AAO Verified</span>
-            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badges.length} badge${badges.length === 1 ? '' : 's'}</span>
+            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
           ${rowsHtml}
           ${liveHint}
