@@ -271,12 +271,16 @@ function resolveSpeakerDisplayName(mc: MemberContext | null | undefined): string
 /**
  * Record a person's inbound message in the relationship system.
  * Resets unreplied_outreach_count, derives sentiment, and logs the event.
+ *
+ * The text passed here should already be sanitized by `sanitizeInput()` so we
+ * inherit the prompt-injection / flagging pipeline rather than persisting the
+ * raw payload. Capped at 64KB by capEventText.
  */
 async function recordPersonInboundMessage(
   slackUserId: string,
   channel: 'slack' | 'email' | 'web',
   source: string,
-  textLength: number
+  text: string
 ): Promise<void> {
   try {
     const personId = await relationshipDb.resolvePersonId({ slack_user_id: slackUserId });
@@ -284,7 +288,7 @@ async function recordPersonInboundMessage(
     await relationshipDb.deriveSentiment(personId);
     await personEvents.recordEvent(personId, 'message_received', {
       channel,
-      data: { source, text_length: textLength },
+      data: personEvents.buildMessageReceivedData(text, source),
     });
   } catch (error) {
     // Not all Slack users have person_relationships records yet — that's OK
@@ -1445,7 +1449,7 @@ async function handleUserMessage({
   const inputValidation = sanitizeInput(messageText || '');
 
   // Record inbound message in the relationship system (resets unreplied count, derives sentiment)
-  recordPersonInboundMessage(userId, 'slack', 'assistant_thread', (messageText || '').length);
+  recordPersonInboundMessage(userId, 'slack', 'assistant_thread', inputValidation.sanitized);
 
   // Set status with rotating loading messages
   try {
@@ -3109,7 +3113,7 @@ async function handleDirectMessage(
   logger.info({ userId, channelId }, 'Addie Bolt: Processing direct message');
 
   // Record inbound message in the relationship system (resets unreplied count, derives sentiment)
-  recordPersonInboundMessage(userId, 'slack', 'dm', messageText.length);
+  recordPersonInboundMessage(userId, 'slack', 'dm', inputValidation.sanitized);
 
   // Get member context
   let memberContext: MemberContext | null = null;

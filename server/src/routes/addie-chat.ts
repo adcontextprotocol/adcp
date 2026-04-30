@@ -829,7 +829,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           await relationshipDb.deriveSentiment(personId);
           await personEvents.recordEvent(personId, 'message_received', {
             channel: 'web',
-            data: { source: 'web_chat', text_length: message.length },
+            data: personEvents.buildMessageReceivedData(inputValidation.sanitized, 'web_chat'),
           });
         } catch {
           // Not all web users have person_relationships records — that's OK
@@ -1117,7 +1117,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           await relationshipDb.deriveSentiment(personId);
           await personEvents.recordEvent(personId, 'message_received', {
             channel: 'web',
-            data: { source: 'web_chat_stream', text_length: message.length },
+            data: personEvents.buildMessageReceivedData(
+              inputValidation.sanitized,
+              'web_chat_stream'
+            ),
           });
         } catch {
           // Not all web users have person_relationships records
