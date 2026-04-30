@@ -5,6 +5,8 @@ description: "Generative creative in AdCP uses AI to produce ad assets from a br
 "og:image": /images/walkthrough/diagram-generative-tiers.png
 ---
 
+> **v2 preview**: in v2, the "generative" category dissolves at the protocol level — production mechanism (generative AI, host recording, transcoding, asset rendering) is invisible to the buyer. Production source is declared per-canonical via `*_source` enums (`audio_source`, `image_source`, `video_source`, `item_production_model`); `synthesis_nondeterministic: true` flags Veo / Sora / Runway-class flows that need post-synthesis QA-loop semantics. See [v2-overview](/docs/creative/v2-overview) §"Two axes" for the v2 model.
+
 The Creative Protocol enables AI-powered creative generation and asset management for advertising campaigns. This guide will help you create your first creative in 5 minutes.
 
 <img src="/images/walkthrough/diagram-generative-tiers.png" alt="Three tiers of generative creative: Tier 1 static (one creative, one variant), Tier 2 optimized (asset group combinations), Tier 3 generated (AI creates for each context)" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />

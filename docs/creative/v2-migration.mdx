@@ -97,7 +97,7 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 
 `format_options` is an array. The 90% case is one element — one canonical narrowed for the product. Multi-element arrays declare that the product accepts any of the listed format options, picked by the buyer at `sync_creatives` time. Common multi-element use cases: a placement that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted upload (`video_hosted`) OR a tag (`video_vast`). Each entry is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format_options`) — not both. The product schema's `oneOf` enforces this.
 
-For 12 fully-validated worked examples spanning all 11 canonical formats (Meta Reels, IAB MREC, NYTimes HTML5, podcast host-read, Amazon Sponsored Products, Google PMax, ChatGPT brand mention, Meta Carousel, YouTube VAST pre-roll, Triton DAAST audio, Veo generative video, GAM 3P display tag), see `static/examples/products/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
+For 12 fully-validated reference Product fixtures spanning all 11 canonical formats — Meta Reels (`video_hosted` vertical), IAB MREC (`image` 300×250), NYTimes HTML5 (`html5`), GAM 3P display tag (`display_tag`), Meta Carousel (`image_carousel`), YouTube VAST pre-roll (`video_vast`), podcast 30s host-read (`audio_hosted`), Triton DAAST audio (`audio_daast`), Amazon Sponsored Products (`sponsored_placement`), Google PMax (`responsive_creative`), ChatGPT brand mention (`agent_placement`), Veo 15s generative video (`video_hosted` with `synthesis_nondeterministic` + `provenance_required`) — plus 1 `get_products` response fixture exercising bundled extensions, see `static/examples/products/v2/` and `static/examples/get_products_responses/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
 
 ## Slot name mapping (v1 → canonical)
 
@@ -280,7 +280,17 @@ Three concrete hooks v2 introduces that existing seller implementations don't ha
 
 ### When does v1 `format_ids` get removed?
 
-The `oneOf(format_ids, format_options)` shape on `Product` persists through 4.x — every validator, codegen, and adopter has to handle both shapes. The 5.0 cut is **adoption-driven, not date-driven**. AAO computes the ratio of registered sales agents declaring `format_options` (or `format_ids`) from cached `get_products` capabilities responses. When `format_options` adoption crosses 80% and stays there for 30 consecutive days, the 5.0 cut sequence opens (deprecation warnings escalate; the next major drops `format_ids`). Until that signal trips, both shapes remain valid and supported. This protects adopters whose org reality (legacy ad-server integrations, walled-garden translation gaps) makes immediate migration impractical, while giving the spec a measurable signal that the migration is broadly complete.
+The `oneOf(format_ids, format_options)` shape on `Product` persists through 4.x — every validator, codegen, and adopter has to handle both shapes. The 5.0 cut is **adoption-driven, with calendar floor and ceiling**:
+
+- **Floor (minimum end-of-life)**: v1 `format_ids` is supported through at least **2027-Q4** regardless of adoption signal. Adopters whose org reality (legacy ad-server integrations, walled-garden translation gaps, slow procurement cycles) prevents immediate migration get an unconditional 18-month runway from 3.1 GA.
+- **Ceiling (maximum end-of-life)**: v1 `format_ids` is removed no later than **2029-Q1** regardless of adoption signal. Caps the long-tail liability for SDK authors and validator maintainers; matches the v2-sunset-policy pattern from 3.0.
+- **Adoption trigger (within the floor / ceiling window)**: AAO computes the ratio of registered sales agents declaring `format_options` (vs `format_ids`) from cached `get_products` capabilities responses. The trigger is denominator = sales agents declaring `creative` in `supported_protocols`; numerator = those whose latest `get_products` response carries `format_options` on every product. When the ratio crosses **80% and stays there for 30 consecutive days** within the floor/ceiling window, the 5.0 cut sequence opens (deprecation warnings escalate; the next major drops `format_ids`). Until that signal trips, both shapes remain valid.
+
+The trigger metric, denominator, refresh cadence, and certification path are published at `https://adcontextprotocol.org/registry/format-options-adoption.json` (concrete shape and refresh cadence to be committed in a follow-up issue before 3.1 GA). Adopters who want to influence the timing should migrate early and watch the public ratio. Walled gardens that don't migrate are absorbed by the ceiling.
+
+### `creative_id` stability across v1 ↔ v2
+
+A creative registered against v1 `format_id` retains the same `creative_id` when later viewed via the v2 flatten path. `sync_creatives` request and response shapes are unchanged; the manifest envelope is unchanged. Migration is read-side: existing creatives keep working and resolve identically through both paths. SDK authors building flatten wrappers MUST honor this invariant.
 
 ## `product_card` and `product_card_detailed` are typed inline
 
@@ -310,6 +320,17 @@ The `product_card` and `product_card_detailed` fields on the `Product` object ar
 ```
 
 Migration from v1 (where `product_card` was `{ format_id, manifest }` referencing a `product_card_standard` format file): drop the format reference; populate the typed fields directly. The image, title, and description flatten out of what was previously a manifest. v2-only adopters who don't render product cards can ignore both fields entirely.
+
+## What v2 gives you that OpenRTB doesn't
+
+Adopters with existing OpenRTB Native / Display / Audio pipelines reasonably ask "why migrate to v2 when I already have a working creative-spec model?" The differential value:
+
+- **Buyer validates against the canonical, not the seller's narrowing.** OpenRTB has no canonical layer. Each SSP authors its own native asset spec (Native 1.2 left placement-specific assets to "see the impl"); each video player authors its own VAST extensions; each retail-media network publishes its own catalog field shape. Buyers must discover and validate against per-seller specs at runtime. v2's canonical-as-contract decouples buyer validation from per-seller schema discovery — the buyer ships a manifest that satisfies canonical `image` and knows it's structurally valid against any seller speaking that canonical, BEFORE knowing which seller wins the auction.
+- **Discovery is operational, not implicit.** OpenRTB Display 1.x and Native 1.2 expect adopters to read the spec, write per-version handlers, and pre-bake support for what each seller might require. v2 carries the format declaration inline on the product (`format_options[i]` on `get_products`) and on the creative agent (`creative.supported_formats` on `get_adcp_capabilities`). Buyers fetch what's accepted at runtime; SDK codegen produces typed handlers for the canonicals; new sellers don't require buyer-side code changes.
+- **Production source is first-class.** OpenRTB has no notion of "buyer ships a brief; seller renders." The closest expression is OpenRTB Native's `nobid_reason` after submission. v2 makes production source a declared parameter (`*_source` enums), so generative DSPs and host-read products are visible at discovery time, not only after rejection.
+- **Tracking model is canonical-defined.** OpenRTB tracking (impression NURL, click NURL, third-party trackers) is consistent for VAST but fragmented for native and display. v2 bakes the tracking model into each canonical (impression pixel for image, MRAID + OM-SDK for html5, VAST events for video_vast, per-card pixels for image_carousel) — buyers know what tracking shape applies from the canonical alone.
+
+v2 doesn't replace OpenRTB at the auction layer (where OpenRTB Display, Video, Audio specs continue to drive the bid request / response shape). v2 is the creative-payload layer above the auction, and it adds what OpenRTB intentionally left implementation-specific.
 
 ## Validating your migration
 

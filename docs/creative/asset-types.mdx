@@ -4,10 +4,38 @@ description: "AdCP asset types define standardized properties for images, video,
 "og:title": "AdCP — Asset Types"
 ---
 
+> **v2 readers**: this page describes asset types and their payload shapes — the same in v1 and v2. For how assets map to v2 format slots via `asset_group_id` (canonical vocabulary), see [v2-overview](/docs/creative/v2-overview) and [v2-migration](/docs/creative/v2-migration). v1 uses `asset_id` + `asset_role`; v2 uses `asset_group_id` referencing the canonical vocabulary registry. Both paths use the same asset payload schemas — only the slot-key vocabulary differs.
 
 Creative formats in AdCP use standardized asset types with well-defined properties. Assets are the discrete, typed building blocks used by formats to define requirements and by manifests to supply concrete values.
 
 Standardizing asset types ensures consistency across formats and makes requirements easier for buyers and systems to understand.
+
+## Asset types in v2
+
+The full set of asset types valid in a v2 format `slots` declaration's `asset_type` field:
+
+| asset_type | What it carries | Where defined |
+|---|---|---|
+| `image` | Image file (jpg/png/gif/webp/svg) | `/schemas/core/assets/image-asset.json` |
+| `video` | Video file (mp4/webm/mov) | `/schemas/core/assets/video-asset.json` |
+| `audio` | Audio file (mp3/aac/wav) | `/schemas/core/assets/audio-asset.json` |
+| `text` | Plain text (headline, body, script) | `/schemas/core/assets/text-asset.json` |
+| `markdown` | Markdown text | `/schemas/core/assets/markdown-asset.json` |
+| `url` | URL with `url_type` discriminator (clickthrough, tracker_pixel, third-party tag) | `/schemas/core/assets/url-asset.json` |
+| `html` | Inline HTML | `/schemas/core/assets/html-asset.json` |
+| `css` | CSS rules | `/schemas/core/assets/css-asset.json` |
+| `javascript` | JavaScript | `/schemas/core/assets/javascript-asset.json` |
+| `vast` | VAST tag (URL or inline XML), VAST 2.x-4.x | `/schemas/core/assets/vast-asset.json` |
+| `daast` | DAAST tag (URL or inline XML), 1.0-1.1 | `/schemas/core/assets/daast-asset.json` |
+| `webhook` | Webhook URL for async creative production | `/schemas/core/assets/webhook-asset.json` |
+| `brief` | Free-text creative brief (input to generative production) | `/schemas/core/assets/brief-asset.json` |
+| `catalog` | Reference to a synced catalog (sponsored_placement) | `/schemas/core/assets/catalog-asset.json` |
+| `zip` | Zip archive (HTML5 banner bundle) | `/schemas/core/assets/zip-asset.json` |
+| `vast_tracker` | Single VAST `Tracking` event URL (decomposed) | `/schemas/core/assets/vast-tracker-asset.json` |
+| `daast_tracker` | Single DAAST `Tracking` event URL (decomposed) | `/schemas/core/assets/daast-tracker-asset.json` |
+| `object` | Structured object (image_carousel `cards`, scenes for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
+
+In a v2 manifest's `assets` map, the **slot key** is the canonical's `asset_group_id` (e.g., `image_main`, `video_main`, `script`, `cards`, `landing_page_url`) and the **value** carries the matching asset payload with its `asset_type` discriminator. The format declaration's `slots[].asset_type` tells the validator which payload schema applies.
 
 ## Important: Payload vs Requirements
 

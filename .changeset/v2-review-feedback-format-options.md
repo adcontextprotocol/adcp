@@ -25,9 +25,51 @@ Addresses external review feedback on RFC #3305 / PR #3307 before the 3.1.0 beta
 
 **Why minor:** structural rename of `product.format` → `product.format_options` is technically breaking for anyone who built against the v2 path during the preview window, but the v2 path was only landed in this PR (#3307) and is not yet released — no published 3.x version carries `format`. The shipping shape is `format_options`. Anyone building against the preview branch should re-pull. The other changes are additive.
 
+**Red-team round (must-fix + should-fix + nits)** — substantive cleanup against three parallel red teams (protocol-expert, adtech-product-expert, docs-expert):
+
+Schema fixes:
+- Manifest v2 path. `creative-manifest.json` and `creative-asset.json` now carry `oneOf(format_id v1 path | format_kind v2 path)` with explicit `not` on each branch. New `/schemas/core/canonical-format-kind.json` enum backs the v2 path. Optional `capability_id` field disambiguates when a product's `format_options` carries multiple declarations sharing the same `format_kind`. Without this, v2 products had no v2 manifest counterpart.
+- `ProductFormatDeclaration` grows `capability_id` (stable identifier for routing) and `applies_to_channels` (subset of the product's channels this declaration applies to — lets a multi-channel product carry channel-specific format_options).
+- `audio_source` enum widened to match `image_source` / `video_source` (now 5-value: `buyer_uploaded | publisher_host_recorded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`). TTS-from-brief and studio-produced audio now expressible.
+- `product.json` oneOf branches got explicit `not: required: [other]` to truly exclude both `format_ids` AND `format_options` being present.
+- Stale "inputs" references in `get-adcp-capabilities-response.json supported_formats` descriptions replaced (the concept was dropped in r4 — collapsed into slots).
+- `image_carousel` got a default slots declaration (`cards` slot, asset_type: object) plus a normative `card_shape` parameter documenting the per-card object structure (media + headline + landing_page_url). `assets.cards` is now the unambiguous array-under-one-key contract; per-card key conventions (card_0_headline, cards.0.headline) are forbidden.
+- Slots inline default added to all 11 canonicals (previously only on 3). SDK codegen now produces typed slot lists for every canonical.
+- `synthesis_nondeterministic` × `*_source` compatibility documented in `_base.json` (incompatible with `buyer_uploaded` and `publisher_host_recorded`).
+- `platform-extension-ref` digest collision behavior documented (within a single response, divergent digests for the same uri MUST fail closed; across responses, divergence is normal).
+- `status: preview` deprecation pathway: `since_version` + `migration_target_version` siblings on canonical `_base.json`, plus a stabilization rubric ("preview → stable when 2 adopters ship + 90 days no breaking change").
+- Veo fixture used `audio_source` / `buyer_audio_acceptance` on a `video_hosted` format. Renamed to `video_source` / `buyer_video_acceptance`.
+
+Doc additions:
+- v2-overview.mdx glossary covering ~25 v2 terms.
+- Asset group vocabulary table (was previously only in the JSON schema).
+- "Two axes" section refined to show the unified 5-value source enum.
+- Tracker assembly under seller-rendered sources documented (macro-substituted vs sync-creatives tracker block).
+- "Channels not yet canonicalized" section (native, linear/addressable TV, OOH/DOOH, audio DAI, in-game, live streaming).
+- Worked examples added for: generative DSP (universalads-class, `image_source: seller_pre_rendered_from_brief`), multi-format product (Flashtalking html5 OR internal display_tag), `sponsored_placement` with `item_production_model` (1 brief × N items → N creatives).
+- Hosting reframed as two paths: open-ecosystem (publisher-hosted) vs closed-platform (AAO-mirror-translated, normative for walled gardens).
+- `validate_input` "when to use" decision rule + comparison table with `build_creative` and `sync_creatives`.
+- Discovery + validation scaling guidance (client-side filter + multi-target validate_input).
+- Generative-DSP narrative weight tuned (demoted to forward-looking subsection — universalads/Pencil/AdCreative.ai are real but small share of 2026 spend).
+- Creative-agent business-model paragraph clarifying that v2 disaggregation is conceptual; creative agents continue to host their produced creatives' bytes and instrument tracking via platform extensions.
+- Preview canonicals stabilization rubric (`responsive_creative` and `agent_placement` re-evaluated for stable status by 3.3 if adopters land in 3.1-3.2).
+- Phase 4 SDK codegen blocker callout in the status banner.
+- Phase 3 fixture count reconciled (12 product fixtures + 1 response fixture).
+
+Migration doc additions:
+- v1 deprecation calendar floor + ceiling (2027-Q4 floor, 2029-Q1 ceiling) bounding the adoption-driven trigger.
+- Adoption-trigger metric definition (denominator + numerator + AAO publishing surface).
+- `creative_id` stability invariant across v1 ↔ v2.
+- "What v2 gives you that OpenRTB doesn't" subsection (canonical-as-contract decoupling, runtime discovery, declared production source, canonical tracking model).
+
+Cross-doc references:
+- v2 preview banners on `formats.mdx`, `key-concepts.mdx`, `generative-creative.mdx`, `specification.mdx`, `implementing-creative-agents.mdx`, `asset-types.mdx` so readers landing from search have a signpost.
+
+`asset-types.mdx` updated for v2 with `asset_group_id` framing, full v2 asset_type table including `brief` / `catalog` / `zip` / `markdown` / `webhook` / `object`.
+
 **Production-source taxonomy (universalads / generative-DSP gap):**
 
-The audio_hosted canonical handles "who renders" via `audio_source` (`buyer_uploaded` / `publisher_host_recorded` / `agent_synthesized`) plus `buyer_audio_acceptance`. The image and video_hosted canonicals had no analogous parameter, which forced generative-DSP-shaped adopters (universalads, Pencil, AdCreative.ai-shaped tools, GenStudio-shaped tools) to either fudge `composition_model` or invent platform extensions to express what's actually a common pattern.
+The audio_hosted canonical previously handled "who renders" via `audio_source` but with a narrower 3-value enum than image/video. The asymmetry forced generative-DSP-shaped adopters to either fudge `composition_model` or invent platform extensions to express what's actually a common pattern.
 
 This change adds:
 

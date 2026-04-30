@@ -7,9 +7,37 @@ testable: true
 
 # Creative Formats v2 (preview)
 
-> **Status:** Preview track. The v2 surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307). v1 named formats (`format_id` as `{ agent_url, id }`) remain a first-class path through 4.x with a 5.0 sunset; v2 is opt-in and additive.
+> **Status:** Preview track. The v2 surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307). v1 named formats (`format_id` as `{ agent_url, id }`) remain a first-class path through 4.x with a 5.0 sunset; v2 is opt-in and additive at the schema layer. **The typed-tagged-union ergonomics v2's design earns require SDK codegen to deliver — Phase 4 (TypeScript and Python codegen) is the gating dependency for adopter consumption. Until Phase 4 ships, adopters can build against the schemas directly, but the buyer-side mental simplification v2 promises lands fully only with codegen.**
 
-v2 collapses today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration` that narrows exactly one canonical with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — v2 doesn't create a new vocabulary layer for those.
+v2 collapses today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration`s that narrow canonicals with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — v2 doesn't create a new vocabulary layer for those.
+
+## Glossary
+
+| Term | One-line definition |
+|---|---|
+| **Canonical format** | One of 11 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`). The buyer's stable validation target. |
+| **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
+| **`format_options`** | Array of `ProductFormatDeclaration`s on a v2 product. The 90% case is single-element; multi-element declares "accepts any of." |
+| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels`. |
+| **`capability_id`** | Stable identifier for a format declaration, used to disambiguate when `format_options` carries multiple declarations sharing the same `format_kind`. |
+| **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
+| **`slots`** | Programmatic declaration on a format of which `asset_group_id` slots a manifest must (or may) populate, each paired with an `asset_type`. |
+| **`asset_group_id`** | Canonical slot-name vocabulary (e.g., `image_main`, `script`, `landing_page_url`). Replaces v1's free-text `asset_role`. |
+| **`composition_model`** | How the surface composes per-impression: `deterministic` (buyer-predictable per-slot) vs `algorithmic` (surface picks combinations from a pool). |
+| **`*_source`** | Per-canonical production-source declaration: `audio_source`, `image_source`, `video_source`, `item_production_model`. Describes who renders the asset and when. |
+| **`synthesis_nondeterministic`** | When true, the production pipeline cannot guarantee in-spec output (Veo/Sora-class). Implies QA-loop + retry semantics. |
+| **`provenance_required`** | When true, the product rejects unsigned synthesized assets. Builders attach C2PA-compatible provenance manifests. |
+| **`platform_extensions`** | URI+digest references to platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies). |
+| **`tracking_extensions`** | Subset of `platform_extensions` specifically scoped to tracking concerns (pixel IDs, viewability vendors, OM-SDK partners). |
+| **`status: preview`** | Canonical is shipped for early adoption but parameter shape MAY break in 3.2 once 2-3 adopters land. |
+| **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
+| **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
+| **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, scenes, brand). Sales agents do NOT expose `build_creative`. |
+| **`creative.supported_formats`** | Capabilities-response field on creative agents declaring which canonicals they can produce via `build_creative`. |
+| **`BrandRef`** | `{domain, brand_id?}` reference. Resolves brand context (logos, colors, voice) from `brand.json` automatically. |
+| **`brand_kit_override`** | Per-creative override for the case where `brand.json` is missing, stale, or inappropriate. |
+| **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
+| **`item_production_model`** | On `sponsored_placement`: how each per-item creative is produced. Captures multi-output generative (1 brief × N items → N creatives). |
 
 ## Architectural shift
 
@@ -42,6 +70,8 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 
 The two `preview` canonicals (`responsive_creative`, `agent_placement`) carry surfaces whose composition models are still settling — Google PMax / Meta Advantage+ for responsive; ChatGPT / Perplexity / voice assistants for agent_placement. Their parameter shape and tracking model MAY break in 3.2 once 2-3 adopters have built against them. Buyers SHOULD plan for migration; sellers SHOULD treat preview-canonical narrowing as experimental contract surface, not a long-term commitment. The other 9 canonicals are anchored in stable IAB / platform standards (IAB display dimensions, IAB VAST 4.2, IAB DAAST 1.1, retail-media catalog conventions) and are committed.
 
+**Stabilization rubric for preview canonicals.** A preview canonical is promoted to `stable` when (a) at least 2 production adopters have built against it AND (b) 90 consecutive days have passed without a breaking change to its parameter shape. The default escalation date is the next minor release after both conditions are met — i.e., `responsive_creative` and `agent_placement` re-evaluated for stable status by 3.3 if adopters land in 3.1-3.2. To avoid the coordination problem where `preview` reads as "don't build against this" and therefore never stabilizes, sellers shipping preview canonicals SHOULD also publish a `migration_target_version` (carried on the canonical's `_base.json` `migration_target_version` field) so adopters know when to expect either stabilization or a breaking revision.
+
 ## Two axes: composition (per-impression) vs production (who renders)
 
 Two orthogonal patterns govern how a creative is produced and how it serves. Conflating them is the most common authoring mistake.
@@ -50,15 +80,66 @@ Two orthogonal patterns govern how a creative is produced and how it serves. Con
 - `deterministic` — buyer can predict per-slot rendering. The surface serves what it received. (`image`, `video_hosted`, `audio_hosted`, `video_vast`, `audio_daast`, `sponsored_placement`.)
 - `algorithmic` — surface picks combinations from a buyer-supplied asset pool per-impression. The buyer ships a pool; the surface composes. (`responsive_creative` for Google PMax / Meta Advantage+; `agent_placement` for AI-surface composition.)
 
-**Production source** — per-canonical `*_source` parameters. Describes **who renders the rendered asset, and when**:
-- `audio_source` on `audio_hosted` — `buyer_uploaded | publisher_host_recorded | agent_synthesized`
-- `image_source` on `image` — `buyer_uploaded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`
-- `video_source` on `video_hosted` — same enum as `image_source`
+**Production source** — per-canonical `*_source` parameters, all sharing a single 5-value enum: `buyer_uploaded | publisher_host_recorded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`. Describes **who renders the rendered asset, and when**:
+- `audio_source` on `audio_hosted`
+- `image_source` on `image`
+- `video_source` on `video_hosted`
 - `item_production_model` on `sponsored_placement` — same enum, applied per catalog item (the multi-output generative case: 1 brief × N catalog items → N rendered creatives)
 
 The two axes don't collapse. A generative DSP that produces ONE rendered image from a brief is `composition_model: deterministic` (the surface serves what it received) + `image_source: seller_pre_rendered_from_brief` (seller produced it from inputs at sync_creatives time). A retail-media surface that runs an AI synthesis pipeline per catalog item is `composition_model: deterministic` + `item_production_model: agent_synthesized`. Google PMax is `composition_model: algorithmic` + (production-source unspecified — buyer ships a pool of pre-rendered assets so the production-source question doesn't apply at the format level).
 
 The production-source enums are informational, not the binding contract. The format's `slots` declaration is the contract — what the buyer ships, in what shape. The `*_source` field tells the buyer "here's how this product produces the rendered creative" so they can pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative).
+
+### Tracker assembly under seller-rendered sources
+
+When `*_source` is `buyer_uploaded`, the buyer ships rendered assets and any tracker URLs attached to those assets are buyer-controlled (universal_macros for impression/click; `vast_tracker` / `daast_tracker` assets for decomposed VAST/DAAST trackers). When `*_source` is any of the seller-rendered values (`seller_pre_rendered_from_brief`, `seller_human_designed`, `agent_synthesized`) or `publisher_host_recorded`, the buyer never sees the rendered artifact directly. Two normative paths apply:
+
+- **Macro-substituted tracking (default).** The seller honors AdCP universal_macros at impression time — `{IMPRESSION_TRACKER}`, `{CLICK_TRACKER}`, etc. — and substitutes buyer-supplied tracker URLs (declared on the manifest's optional `landing_page_url` and the buyer's measurement-vendor pixels declared via `tracking_extensions` on the format) into the rendered creative's serving template. The buyer registers their measurement pixels client-side; the seller calls them at serve time. This is the dominant path for image / video / audio production where serving and tracking are decoupled.
+- **Sync-creatives tracker block.** For products where the seller produces a serving artifact that embeds tracker URLs directly (e.g., a generated VAST tag or a stitched companion banner), the seller's `sync_creatives` response SHOULD include a `tracker_block` field listing the impression URL pattern and click URL pattern. Buyers register those with their measurement vendor at sync time. This path covers the generative-DSP pattern where the serving artifact and the tracking shape are produced together.
+
+`vast_tracker` and `daast_tracker` decomposed tracker assets work for both `buyer_uploaded` and seller-rendered sources — when the seller renders, those tracker assets are inputs to the rendered tag, attached to the appropriate VAST/DAAST `<TrackingEvents>` block at production time. When the buyer ships a complete `vast` or `daast` tag, the trackers travel inside the tag.
+
+## Asset group vocabulary
+
+Format `slots` reference canonical `asset_group_id` values from the [vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json). The current canonical entries:
+
+| asset_group_id | asset_type | Common aliases (v1 → v2) |
+|---|---|---|
+| `headlines` | text | headline, title, tagline, headline_text |
+| `long_headlines` | text | long_headline_pool, extended_headlines |
+| `descriptions` | text | description, body, body_text, text, content |
+| `images_landscape` | image | image, hero_image, landscape_image, banner_image |
+| `images_vertical` | image | vertical_image, story_image, portrait_image |
+| `images_square` | image | square_image, feed_image |
+| `image_main` | image | (per-canonical default for `image`) |
+| `logo` | image | brand_logo, logo_image |
+| `video` | video | video_file, hero_video, video_asset, video_main |
+| `video_main` | video | (per-canonical default for `video_hosted`) |
+| `video_vertical` / `video_horizontal` | video | — |
+| `audio` / `audio_main` | audio | audio_file, hero_audio, audio_asset |
+| `companion_image` / `companion_banner` | image | — |
+| `brand_name` / `body_text` | text | — |
+| `cards` | object | carousel_cards, slides, carousel_items, carousel_slides |
+| `cta` | text | cta_text, call_to_action, action_text, button_text |
+| `price` / `phone_number` / `promo_code` / `disclaimer` | text | (various) |
+| `subtitle_file` | url | caption_file, captions, subtitles |
+| `landing_page_url` | url | click_url, link, final_url, link_url, click_through_url |
+| `privacy_policy_url` | url | — |
+| `source_catalog` | catalog | (sponsored_placement) |
+| `hero_asset` | image | hero_banner, collection_hero |
+| `script` | text | script_text, host_script, voiceover_script |
+| `creative_brief` | brief | brief, creative_direction, talking_points |
+| `scenes` | object | storyboard |
+| `voice_id` / `offering_ref` / `youtube_video_id` / `pin_id` | text | — |
+| `style_reference` | image | reference_image, style_image, inspiration_image |
+| `starter_assets` | object | — |
+| `vast_tag` | vast | (video_vast default) |
+| `daast_tag` | daast | (audio_daast default) |
+| `tag_url` | url | (display_tag default) |
+| `html5_bundle` | zip | (html5 default) |
+| `backup_image` | image | (html5 / display_tag default) |
+
+Non-canonical `asset_group_id` values remain valid for platform-specific extensions; validators MAY emit soft warnings on non-canonical IDs to encourage convergence. Aliases are recognized one-way (v1 alias → v2 canonical) when migrating; new manifests SHOULD use the canonical IDs.
 
 ## Worked example — Meta Reels
 
@@ -330,6 +411,116 @@ Buyer calls `sync_creatives` on NYTimes with the manifest from Flashtalking. NYT
 
 The seller's validation contract is the canonical, not the creative agent. This is what makes the third-party path additive rather than coupled: the buyer can swap creative agents without changing the seller-facing flow.
 
+## Worked example — generative DSP (universalads-class, image_source: seller_pre_rendered_from_brief)
+
+A generative DSP (universalads, Pencil, AdCreative.ai-shaped tools) is a sales agent that ALSO renders creatives inline at `sync_creatives` time — it is NOT a creative agent the buyer calls separately. The buyer ships a brief plus structured copy; the seller renders ONE image and serves it like any deterministic creative.
+
+```json test=false
+{
+  "product_id": "universalads_brief_driven_display_300x250",
+  "name": "Universal Ads — Brief-Driven Display (300×250)",
+  "publisher_properties": [
+    { "publisher_domain": "universalads.example", "selection_type": "all" }
+  ],
+  "channels": ["display"],
+  "format_options": [
+    {
+      "format_kind": "image",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "image_formats": ["jpg", "png"],
+        "ssl_required": true,
+        "composition_model": "deterministic",
+        "image_source": "seller_pre_rendered_from_brief",
+        "buyer_image_acceptance": "rejected",
+        "production_window_business_days": 0,
+        "slots": [
+          { "asset_group_id": "creative_brief", "asset_type": "brief", "required": true, "max_chars": 500 },
+          { "asset_group_id": "headline", "asset_type": "text", "required": true, "max_chars": 30 },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+        ]
+      }
+    }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "cpm_brief", "pricing_model": "cpm", "currency": "USD", "floor_price": 8.00 }
+  ]
+}
+```
+
+Buyer's manifest carries the brief, headline, and clickthrough URL — no rendered image asset. Seller's `sync_creatives` produces the rendered MREC PNG and registers it. Two axes: `composition_model: deterministic` (the surface serves what it received), `image_source: seller_pre_rendered_from_brief` (the seller renders from inputs at sync time). `buyer_image_acceptance: "rejected"` makes it explicit that the buyer cannot ship a pre-rendered image directly — the production model is brief-driven only.
+
+## Worked example — multi-format product (Flashtalking html5 OR internal display_tag)
+
+A placement that accepts EITHER a third-party-hosted creative OR an internal tag — buyer picks at sync_creatives time by aligning their manifest's `format_kind` (and `capability_id` if needed) to the matching declaration:
+
+```json test=false
+{
+  "product_id": "regional_news_homepage_300x250",
+  "channels": ["display"],
+  "format_options": [
+    {
+      "capability_id": "html5_flashtalking_hosted",
+      "format_kind": "html5",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "max_initial_load_kb": 200,
+        "ssl_required": true,
+        "composition_model": "deterministic"
+      }
+    },
+    {
+      "capability_id": "display_tag_internal",
+      "format_kind": "display_tag",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "ssl_required": true,
+        "composition_model": "deterministic"
+      }
+    }
+  ]
+}
+```
+
+Buyer's manifest: `{ "format_kind": "html5", "capability_id": "html5_flashtalking_hosted", "assets": { "html5_bundle": {...}, "backup_image": {...} } }` — `format_kind` selects the canonical's slot vocabulary; `capability_id` disambiguates because both options share `format_kind: html5`/`display_tag`-shaped slots are different anyway, but `capability_id` removes any ambiguity for the seller's router. (When `format_options` carries one element per `format_kind`, `capability_id` is optional — `format_kind` alone routes the manifest.)
+
+## Worked example — sponsored_placement with item_production_model
+
+A retail-media product that accepts a catalog reference plus a brief, and renders one creative per catalog item at sync time:
+
+```json test=false
+{
+  "product_id": "regional_retailer_generative_offerings",
+  "channels": ["display"],
+  "catalog_types": ["product"],
+  "format_options": [
+    {
+      "format_kind": "sponsored_placement",
+      "params": {
+        "supported_catalog_types": ["product"],
+        "min_items": 5,
+        "max_items": 200,
+        "fanout_mode": "per_item",
+        "supported_id_types": ["sku", "gtin"],
+        "item_production_model": "seller_pre_rendered_from_brief",
+        "composition_model": "deterministic",
+        "slots": [
+          { "asset_group_id": "source_catalog", "asset_type": "catalog", "required": true },
+          { "asset_group_id": "creative_brief", "asset_type": "brief", "required": true, "max_chars": 500 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+`item_production_model: seller_pre_rendered_from_brief` says: for each catalog item, the seller renders ONE creative using the brief plus the catalog item's structured fields (title, image, price). `fanout_mode: per_item` says each item gets its own ad in delivery. Together they capture the multi-output generative pattern (1 brief × N items → N ads) under the existing `sponsored_placement` canonical.
+
 ## Validation flow — `validate_input`
 
 Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render:
@@ -381,6 +572,42 @@ Response carries per-target results:
 
 `validate_input` is the predictable-case primitive. For genuinely nondeterministic synthesis (Veo / Sora / Runway-class), predictive validation is impossible and the platform's own post-synthesis QA loop applies — submission returns `task_failed` with a `synthesis_failed` reason if the QA loop exhausts without producing a valid artifact. There is **no protocol state for orphaned out-of-spec artifacts**.
 
+### When to use `validate_input`
+
+A decision rule, not a one-size primitive:
+
+- **Pre-flight before an expensive `build_creative` call.** If the manifest can't even narrow against canonical, the buyer saves the synthesis cost. Especially relevant for nondeterministic-synthesis products where each retry has real GPU cost.
+- **Multi-target dry-run during product selection.** A buyer comparing 10 candidate products asks `validate_input` once with all 10 product_ids; gets back per-target results. Cheaper than 10 separate `sync_creatives` round-trips.
+- **Debugging a rejected manifest.** When `sync_creatives` returns violations, calling `validate_input` against the canonical alone narrows the question to "is my manifest fundamentally broken vs is the product's narrowing the gating constraint."
+- **Preview-render gating** (formats with `composition_model: algorithmic` or `synthesis_nondeterministic: true`). The platform's preview surface is a richer follow-on; `validate_input` is the cheap pre-flight that gates whether previewing is even worth attempting.
+
+When NOT to use `validate_input`:
+
+- For a manifest you intend to submit anyway. `sync_creatives` returns the same violations and registers on success — `validate_input` adds a round-trip without reducing total work.
+- For products where the seller's narrowing is unknowable client-side without fetching extensions. `validate_input` pulls extensions same as `sync_creatives` does — there's no discovery shortcut.
+- For high-volume per-impression decisions. `validate_input` is per-target, not per-impression. Operational scale (hundreds of products × N format_options) belongs to client-side filtering against the cached `get_products` response.
+
+### `validate_input` vs `build_creative` vs `sync_creatives`
+
+| Tool | Who calls | What it does | Side effects |
+|---|---|---|---|
+| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `ok` + violations. | None (no creative registered, no synthesis triggered). |
+| `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, scenes, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
+| `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
+
+For the third-party creative-agent flow: `validate_input` first (cheap pre-flight) → `build_creative` on the creative agent → `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; `validate_input` then `sync_creatives`. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); `validate_input` then `sync_creatives` directly.
+
+See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
+
+### Discovery + validation at scale
+
+A high-product-count buyer (TTD-class with ~100s of products per get_products response) cannot pre-flight every product via `validate_input` per round — N products × M format_options × per-target round-trips becomes operationally expensive. Two patterns address this:
+
+- **Client-side filtering against the cached `get_products` response.** Buyers who know their manifest's `format_kind` and parameter bucket (canonical, dimensions, duration) filter the product list client-side before validating. The format declarations are already inline on each product — buyers don't need a separate fetch to filter. This is the dominant pattern for "validate against the products that could possibly accept my creative" and reduces the validate_input set by an order of magnitude.
+- **Multi-target `validate_input`.** When the filtered set is still wide (5-50 products), call `validate_input` once with all candidate product_ids in `targets[]`. The response carries per-target results in a single round-trip. Cheaper than per-product calls and structurally aligned with the schema (one request, many results).
+
+For genuinely high-volume scenarios (hundreds of candidate products, real-time bidding pre-flight), buyers should rely on cached `get_products` responses + client-side filtering as the primary path; `validate_input` is reserved for the narrowed candidate set or for debugging unexpected rejections. The `applies_to_channels` field on each format_options element narrows further when a product spans multiple channels.
+
 ## Preview as the universal "what does this produce" surface
 
 Buyers ship assets per the format's `slots` declaration; `preview_creative` shows what the output renders as. The seller's response to a creative submission can also include a preview URL — the buyer doesn't need a separate preview call to verify that their submission produced the intended output. Same surface, two production paths:
@@ -425,7 +652,13 @@ https://nytimes.adcp/extensions/nytimes_om_strict
 
 Each extension's response carries the schema, the canonical pattern or slot it extends, a version, and a content digest.
 
-**Hosting expectation.** The publisher whose subdomain owns the URI hosts the canonical artifact. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — sellers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; an extension at a given digest never changes content, so a cache hit is always correct. If the canonical URI returns 404 or fails to resolve, buyers MUST degrade gracefully — treat the extension as unavailable and skip platform-specific narrowing rather than fail the buy. Sellers that don't want to operate an artifact CDN MAY rely on the AAO mirror as a fallback host (best-effort, not normative); the mirror does not relieve the publisher of the primary hosting role.
+**Hosting paths — two separate flows.** v2 supports two hosting models, depending on whether the canonical URI's owner participates in the open AdCP ecosystem or operates as a closed platform that AAO translates on its behalf.
+
+*Open-ecosystem path (publisher-hosted)*. Used when the publisher owning the URI subdomain participates directly in AdCP — independent publishers, SSPs, retail-media networks running their own canonical extensions. The publisher hosts the artifact at the canonical URI on their subdomain. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — publishers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; a hit is always correct. On 404 or resolution failure, buyers MUST degrade gracefully (treat as unavailable, skip platform-specific narrowing, don't fail the buy).
+
+*Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://mirror.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://meta.adcp/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
+
+The two paths share the digest-pinned cache and graceful-degradation semantics. They differ only in the resolution authority. The mirror is normative for closed-platform extensions (not "best effort") because there is no other path; for open-ecosystem extensions, the mirror is opt-in fallback.
 
 **Distribution path: bundled in `get_products`.** The sales agent's response includes definitions for every extension referenced by any product in the response, keyed by `uri@digest`:
 
@@ -458,6 +691,27 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 - **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
 - **`build_capability`, `build_capability_ref`, and a separate `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
 
+### Channels not yet canonicalized
+
+The 11 canonicals cover display, video, audio, retail-media, AI-surface, and responsive-creative archetypes. Several channels have no canonical home yet and stay on the v1 path until 3.2 or later:
+
+- **Native** — deferred to 3.2 pending TemplateCreative + OpenRTB Native 1.2 audit. The `image_carousel` canonical covers carousel-shaped native today; richer native templates are out of scope for 3.1.
+- **Linear / addressable TV** — broadcast-shaped buys (national spot, addressable household targeting) need their own tracking + measurement model that doesn't reduce to `video_vast` or `video_hosted`. Likely a `video_linear_tv` or `video_addressable` canonical in a later release.
+- **OOH / DOOH** — out-of-home and digital-out-of-home placements have impression models tied to physical-location-keyed measurement (Geopath, COMMB) that don't map to web/CTV impression pixels. Deferred until adopter demand surfaces.
+- **Audio dynamic ad insertion (DAI)** — ad-stitched audio with mid-stream insertion has a different tracking shape than `audio_hosted` or `audio_daast`. Likely covered by a specialized canonical or by `audio_daast` extension parameters when the pattern stabilizes.
+- **In-game** — playable / in-game ads have a SDK-specific composition model. Out of scope until cross-engine standards land.
+- **Live streaming** — live linear video (Twitch / YouTube Live / sports streaming with mid-roll) needs concurrent-impression and stream-state tracking. The `video_vast` canonical handles VAST-tag-driven live insertion today; richer live patterns deferred.
+
+For these channels, sellers continue to use v1 `format_ids` and adopt v2 incrementally per canonical as each one stabilizes.
+
+### Generative-DSP and multi-output patterns are forward-looking
+
+The `*_source` enums (including `seller_pre_rendered_from_brief` and `agent_synthesized`) and `item_production_model` on `sponsored_placement` are designed for generative-DSP and AI-rendered retail-media patterns that are emerging but not yet a large share of programmatic spend in 2026. Universalads-shaped tools, Pencil, AdCreative.ai, GenStudio-shaped tools — these are real adopters, but the volume is small relative to the boring 90% (buyer ships an MREC PNG; surface serves it). Reading too much into the schema breadth is a mistake. The fields exist so generative-DSP adopters have a clean v2 home; the worked examples include them so adopters can map their adapter cleanly. They are not a signal that the v2 narrative is AI-first. The dominant flows for 3.1 are still buyer-uploaded assets going through deterministic surfaces.
+
+### Creative-agent business model
+
+The third-party-creative-agent worked example assumes Flashtalking-shaped tools serve buyers via `build_creative` and let the buyer ship the produced manifest to the seller. Operators reading this should not infer that v2 strips creative agents of their hosting / serving / tracking revenue. Production happens at `build_creative`; the produced manifest can include hosted asset URLs on the creative agent's CDN (Flashtalking-hosted asset URLs in the example), and platform extensions can attach creative-agent-specific tracking (Flashtalking pixel IDs, viewability vendor configurations) that the seller honors at serve time. The v2 disaggregation is conceptual (the spec separates production from serving from tracking) — the operational integration path lets creative agents continue to host and instrument their produced creatives. v2 doesn't dictate where the asset bytes live or whose tracking JS runs; it only formalizes the production-vs-serving boundary that already exists implicitly.
+
 ## Migration
 
 | Adopter | Cost | Realistic timeline |
@@ -475,9 +729,9 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 | Phase | Status | What's in it |
 |---|---|---|
 | Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `scenes` schema, `zip` asset type, video/audio doc fixes |
-| Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` ⊕ `format` oneOf on Product |
-| Phase 3 | ✅ in #3307 | v1↔v2 migration guide, 7 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:v2-fixtures`) |
-| Phase 4 | TBD | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation |
+| Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` ⊕ `format_options` oneOf on Product |
+| Phase 3 | ✅ in #3307 | v1↔v2 migration guide, 12 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:v2-fixtures`) |
+| Phase 4 | ⚠️ blocking adoption | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation. Without Phase 4, adopters cannot consume v2 cleanly — the typed-tagged-union ergonomics this PR's design earns require codegen to deliver. v2 is opt-in and additive at the schema layer today; Phase 4 makes it usable. |
 | Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
 
 ## Related
