@@ -1540,6 +1540,64 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg",
+  operationId: "getAgentBadgeVersionedSvg",
+  summary: "Get version-pinned agent verification badge SVG",
+  description: "Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)" }),
+      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')" }),
+    }),
+  },
+  responses: {
+    200: { description: "SVG badge image", content: { "image/svg+xml": { schema: z.string() } } },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error" },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed",
+  operationId: "getAgentBadgeVersionedEmbed",
+  summary: "Get version-pinned embeddable badge code",
+  description: "Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.",
+  tags: ["Agent Compliance"],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      role: z.string().openapi({ description: "Badge role" }),
+      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Embed code",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            role: z.string(),
+            verified: z.boolean(),
+            adcp_version: z.string().optional(),
+            badge_svg_url: z.string(),
+            registry_url: z.string(),
+            html: z.string(),
+            markdown: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/agents/{encodedUrl}/storyboard-status",
   operationId: "getAgentStoryboardStatus",
   summary: "Get agent storyboard status",
@@ -4019,12 +4077,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     res.setHeader("ETag", etag);
   }
 
-  router.get("/registry/agents/:encodedUrl/badge/:role.svg", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/badge/:role.svg", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       if (!validateAgentUrlParam(agentUrl)) {
-        return res.status(400).send("Invalid agent URL");
+        return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
@@ -4048,7 +4106,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const svg = renderBadgeSvg(role, modes, { adcpVersion });
-      const etag = `"${role}-${adcpVersion ?? 'any'}-${modes.slice().sort().join('-') || 'nv'}"`;
+      // ETag-safe version: filter the DB value through the same shape
+      // regex renderBadgeSvg uses. A poisoned row with control characters
+      // (CR/LF, NUL) would otherwise crash the response with
+      // ERR_INVALID_CHAR when Node serializes the header. Falls back to
+      // 'nv' (matching the modes-empty sentinel) for missing/malformed.
+      const etagVersion = adcpVersion && /^[1-9][0-9]*\.[0-9]+$/.test(adcpVersion) ? adcpVersion : 'nv';
+      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}"`;
       setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
@@ -4061,13 +4125,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // AdCP release embed this instead of the legacy `/badge/:role.svg`.
   // Returns the (Spec)/(Live) qualifier earned at exactly this version,
   // or "Not Verified" if the agent never earned a badge at this version.
-  router.get("/registry/agents/:encodedUrl/badge/:role/:version.svg", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/badge/:role/:version.svg", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       const version = req.params.version;
       if (!validateAgentUrlParam(agentUrl)) {
-        return res.status(400).send("Invalid agent URL");
+        return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
@@ -4098,6 +4162,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // Escape URLs for safe interpolation into markdown (parens/brackets break link syntax)
   const escapeMdUrl = (url: string) => url.replace(/[()[\]]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  // Escape markdown alt text. Today altText is built from kebab-cased
+  // role + numeric version so it's safe — but a future caller that
+  // incorporates user-controlled text would otherwise be one
+  // unescaped `]` away from breaking the link syntax. Forward defense.
+  const escapeMdAltText = (text: string) => text.replace(/([\\\[\]])/g, '\\$1');
   // Convert kebab-case role ("media-buy") to Title Case ("Media Buy") for embed alt text.
   const roleLabelForEmbed = (role: string) =>
     role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -4114,7 +4183,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     const encodedUrl = encodeURIComponent(args.agentUrl);
     const registryUrl = `${baseUrl}/registry/agents/${encodedUrl}`;
     const html = `<a href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(args.badgeSvgUrl)}" alt="${escapeHtml(args.altText)}" loading="lazy" height="20" /></a>`;
-    const markdown = `[![${args.altText}](${escapeMdUrl(args.badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
+    const markdown = `[![${escapeMdAltText(args.altText)}](${escapeMdUrl(args.badgeSvgUrl)})](${escapeMdUrl(registryUrl)})`;
     return {
       agent_url: args.agentUrl,
       role: args.role,
@@ -4127,7 +4196,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     };
   }
 
-  router.get("/registry/agents/:encodedUrl/badge/:role/embed", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/badge/:role/embed", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
@@ -4168,7 +4237,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // version-specific SVG URL. Buyers who want to call out "verified
   // for AdCP 3.0" specifically (e.g., during a 3.1 transition) embed
   // this instead of the legacy `/badge/:role/embed`.
-  router.get("/registry/agents/:encodedUrl/badge/:role/:version/embed", async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/badge/:role/:version/embed", agentReadRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;

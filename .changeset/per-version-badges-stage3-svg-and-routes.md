@@ -16,7 +16,7 @@ New version-pinned URL: **`/api/registry/agents/{url}/badge/{role}/{version}.svg
 
 Parallel embed endpoint: **`/api/registry/agents/{url}/badge/{role}/{version}/embed`** returns HTML/Markdown snippets that point at the version-pinned SVG, with alt text including the version (`AAO Verified Media Buy Agent 3.0`).
 
-Validation: `^[1-9][0-9]{0,3}\.[0-9]{1,3}$` on the route, identical shape to the JWT signer and DB CHECK. Bounded length defends against pathological URLs filling logs. Invalid version → 400 with a clear error message.
+Validation: `^[1-9][0-9]{0,3}\.[0-9]{1,3}$` on the route boundary — shape-identical to the JWT signer and DB CHECK, but length-bounded at the public surface so pathological URLs can't fill logs. The render-path filter inside `renderBadgeSvg` is shape-only (`^[1-9][0-9]*\.[0-9]+$`) since its callers are already gated by the route or come from the DB CHECK. Invalid version → 400 with a clear error message.
 
 Defense-in-depth in `renderBadgeSvg`: a malformed `adcpVersion` drops from the rendered label rather than failing the image. Unlike the JWT signer (which fails closed because a partial token is a downgrade vector), a missing badge image is worse for the buyer than a less-specific one — so the SVG renders verified-without-version when the value can't be trusted.
 
