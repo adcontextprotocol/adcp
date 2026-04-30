@@ -12,7 +12,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { contentProposeRateLimiter } from '../middleware/rate-limit.js';
+import { contentProposeRateLimiter, contentFetchUrlRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
@@ -1118,7 +1118,7 @@ export function createContentRouter(): Router {
   });
 
   // POST /api/content/fetch-url - Fetch URL metadata for auto-fill
-  router.post('/fetch-url', requireAuth, async (req, res) => {
+  router.post('/fetch-url', requireAuth, contentFetchUrlRateLimiter, async (req, res) => {
     try {
       const { url } = req.body;
 

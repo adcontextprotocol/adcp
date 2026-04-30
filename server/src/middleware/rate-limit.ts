@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { CachedPostgresStore } from './pg-rate-limit-store.js';
+import { CachedPostgresStore, PostgresStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -393,6 +393,39 @@ export const adminContentWriteRateLimiter = rateLimit({
     res.status(429).json({
       error: 'Too many requests',
       message: 'Admin content write rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil(15 * 60),
+    });
+  },
+});
+
+/**
+ * Rate limiter for the fetch-url endpoint (URL metadata auto-fill).
+ * Limits: 30 fetches per 15 minutes per user.
+ *
+ * Uses PostgresStore (synchronous DB write per request) rather than
+ * CachedPostgresStore because each call already allocates a new undici Agent
+ * and makes an outbound HTTP request. The extra DB round-trip is negligible,
+ * and it ensures the cap is enforced consistently across all pods without the
+ * 15-second in-memory flush window that CachedPostgresStore uses.
+ */
+export const contentFetchUrlRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('content-fetch-url:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for URL fetch');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'URL fetch rate limit exceeded. Please try again later.',
       retryAfter: Math.ceil(15 * 60),
     });
   },
