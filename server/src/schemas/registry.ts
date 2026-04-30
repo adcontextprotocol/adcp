@@ -360,9 +360,26 @@ export const FederatedAgentWithDetailsSchema = z
       })
       .optional(),
     added_date: z.string().optional(),
-    source: z.enum(["registered", "discovered"]).optional(),
-    member: MemberRefSchema.optional(),
-    discovered_from: DiscoveredFromSchema.optional(),
+    source: z
+      .enum(["registered", "discovered"])
+      .optional()
+      .openapi({
+        description:
+          "Provenance of this agent in the registry. " +
+          "`registered` = an AAO member has explicitly enrolled this agent on their member profile (canonical, attested). " +
+          "`discovered` = the crawler found this agent listed in some publisher's adagents.json file; the agent itself has not opted in to the registry. " +
+          "These are different trust levels — `registered` ≠ `discovered`. Filter by source if your use case depends on attestation.",
+      }),
+    member: MemberRefSchema.optional().openapi({
+      description:
+        "AAO member that owns this agent record, if any. Populated when `source` is `registered`. " +
+        "For `discovered` agents this is currently `null` even when the publisher_domain in `discovered_from` is owned by a member — see #3538 Problem 6.",
+    }),
+    discovered_from: DiscoveredFromSchema.optional().openapi({
+      description:
+        "Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. " +
+        "Mutually exclusive with the `member` field on the registered path.",
+    }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),
