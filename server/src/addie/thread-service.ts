@@ -10,7 +10,9 @@
  */
 
 import { query, getPool } from '../db/client.js';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-thread-service');
 
 // Postgres TEXT and JSONB both reject U+0000. Tool results occasionally
 // surface null bytes from upstream APIs, which would otherwise blow up the

@@ -27,7 +27,9 @@ import type {
   AllAssistantMiddlewareArgs,
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';

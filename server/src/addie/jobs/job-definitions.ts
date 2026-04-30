@@ -56,7 +56,9 @@ import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('job-definitions');
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
 

@@ -19,7 +19,9 @@ import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-member-context');
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';

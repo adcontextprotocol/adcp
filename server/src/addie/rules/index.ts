@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-rules');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

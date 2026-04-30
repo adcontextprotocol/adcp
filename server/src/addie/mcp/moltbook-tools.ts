@@ -5,7 +5,9 @@
  * These tools allow humans to ask Addie to search, post, or engage on Moltbook.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-moltbook-tools');
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import {
