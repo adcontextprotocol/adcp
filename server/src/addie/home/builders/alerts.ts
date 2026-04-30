@@ -7,7 +7,9 @@
 import type { AlertSection } from '../types.js';
 import type { MemberContext } from '../../member-context.js';
 import { getPendingInvoicesByEmail } from '../../../billing/stripe-client.js';
-import { logger } from '../../../logger.js';
+import { createLogger } from '../../../logger.js';
+
+const logger = createLogger('addie-home-builder-alerts');
 
 /**
  * Build alerts requiring user attention

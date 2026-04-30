@@ -4,6 +4,11 @@
   "title": "Get Creative Features Response",
   "description": "Response payload for the get_creative_features task. Returns scored feature values from the governance agent's evaluation of the submitted creative manifest.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -47,7 +52,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["results"]
+      "required": [
+        "results"
+      ]
     },
     {
       "type": "object",
@@ -55,7 +62,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -64,7 +73,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

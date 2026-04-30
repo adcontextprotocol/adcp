@@ -89,39 +89,68 @@ Given only the domain name, assess:
 2. What inventory types would it likely carry (display, video, audio, ctv, etc.)?
 3. If it appears to be a subdomain, is it likely a structural subdomain with distinct editorial identity (e.g., sports.example.com) or just a technical subdomain (e.g., cdn.example.com, api.example.com)?
 
-Respond with ONLY valid JSON (no markdown fences):
-{
-  "is_publisher": true|false,
-  "likely_inventory_types": ["display", "video", ...],
-  "structural_subdomain_note": "explanation if subdomain, null if apex domain or not structural",
-  "confidence": "high|medium|low",
-  "reasoning": "one sentence"
-}`;
+Call analyze_property with your assessment.`;
 
-async function analyzeProperty(domain: string): Promise<PropertyAiAnalysis | null> {
+const VALID_CONFIDENCE = ['high', 'medium', 'low'] as const;
+
+export async function analyzeProperty(domain: string): Promise<PropertyAiAnalysis | null> {
   if (!process.env.ANTHROPIC_API_KEY) {
     return null;
   }
 
   try {
+    // Anthropic tool_use with input_schema: the model emits typed args matching
+    // the schema rather than free-form text we'd have to parse. The runtime
+    // filter below stays as defense-in-depth.
     const response = await getClient().messages.create({
       model: ModelConfig.fast,
       max_tokens: 256,
+      tools: [
+        {
+          name: 'analyze_property',
+          description: 'Record the publisher assessment for the domain.',
+          input_schema: {
+            type: 'object',
+            properties: {
+              is_publisher: { type: 'boolean' },
+              likely_inventory_types: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'e.g. display, video, audio, ctv, native',
+              },
+              structural_subdomain_note: {
+                type: ['string', 'null'],
+                description: 'Explanation if subdomain; null if apex or not structural',
+              },
+              confidence: { type: 'string', enum: VALID_CONFIDENCE as unknown as string[] },
+              reasoning: { type: 'string', description: 'One sentence' },
+            },
+            required: ['is_publisher', 'likely_inventory_types', 'confidence', 'reasoning'],
+          },
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'analyze_property' },
       messages: [{ role: 'user', content: `${ANALYZE_PROMPT}\n\nDomain: ${domain}` }],
     });
 
-    const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
-    const cleaned = text.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
-    const parsed = JSON.parse(cleaned) as PropertyAiAnalysis;
+    const toolUse = response.content.find(
+      (block) => block.type === 'tool_use' && block.name === 'analyze_property',
+    );
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      logger.debug({ domain }, 'Property AI analysis: model did not invoke analyze_property');
+      return null;
+    }
+    const parsed = toolUse.input as Partial<PropertyAiAnalysis>;
 
-    const validConfidence = new Set<string>(['high', 'medium', 'low']);
     return {
       is_publisher: Boolean(parsed.is_publisher),
       likely_inventory_types: Array.isArray(parsed.likely_inventory_types)
         ? parsed.likely_inventory_types.filter((t): t is string => typeof t === 'string')
         : [],
       structural_subdomain_note: parsed.structural_subdomain_note || null,
-      confidence: validConfidence.has(parsed.confidence) ? parsed.confidence as 'high' | 'medium' | 'low' : 'low',
+      confidence: VALID_CONFIDENCE.includes(parsed.confidence as never)
+        ? (parsed.confidence as 'high' | 'medium' | 'low')
+        : 'low',
       reasoning: parsed.reasoning || '',
     };
   } catch (err) {

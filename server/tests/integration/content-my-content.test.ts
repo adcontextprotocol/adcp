@@ -66,7 +66,11 @@ vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../../src/billing/stripe-client.js', () => ({
+// Use importOriginal so any unmocked exports (e.g. listCustomersWithOrgIds
+// called from OrganizationDatabase.syncStripeCustomers during HTTPServer.start)
+// flow through to the real implementation instead of throwing.
+vi.mock('../../src/billing/stripe-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/billing/stripe-client.js')>()),
   stripe: null,
   getSubscriptionInfo: vi.fn().mockResolvedValue(null),
   createStripeCustomer: vi.fn().mockResolvedValue(null),

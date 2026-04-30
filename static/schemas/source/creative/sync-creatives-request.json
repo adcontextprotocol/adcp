@@ -3,15 +3,14 @@
   "$id": "/schemas/creative/sync-creatives-request.json",
   "title": "Sync Creatives Request",
   "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
-  "x-mutates-state": true,
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account that owns these creatives."

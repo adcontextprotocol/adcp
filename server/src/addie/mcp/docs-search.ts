@@ -6,7 +6,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-docs-search');
 import type { AddieTool, Document, SearchResult } from '../types.js';
 
 /**

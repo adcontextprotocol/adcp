@@ -9,7 +9,9 @@
  * - Conversions (celebrate!)
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('momentum-check');
 import { query } from '../../db/client.js';
 import {
   createActionItem,

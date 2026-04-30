@@ -15,7 +15,7 @@
     },
     "items": {
       "type": "array",
-      "description": "The assets in this group. Each item carries an `asset_type` discriminator that selects the matching asset schema. Note: the group-level `asset_type` declares the expected type; individual items must also self-tag so validators can narrow errors.",
+      "description": "The assets in this group. Each item carries an `asset_type` discriminator that selects the matching asset schema. Note: the group-level `asset_type` declares the expected type; individual items must also self-tag so validators can narrow errors. Intentionally excludes `brief-asset` and `catalog-asset` — those are campaign-input metadata types, not delivery-ready creative assets suitable for a pooled offering group. See core/assets/asset-union.json for the full asset-variant union.",
       "items": {
         "oneOf": [
           { "$ref": "/schemas/core/assets/text-asset.json" },

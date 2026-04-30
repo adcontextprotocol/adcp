@@ -4,13 +4,20 @@
   "title": "List Accounts Response",
   "description": "Response payload for list_accounts task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "accounts": {
       "type": "array",
       "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus an optional `authorization` object describing what the calling agent is permitted to do on that account.",
       "items": {
         "allOf": [
-          { "$ref": "/schemas/core/account.json" },
+          {
+            "$ref": "/schemas/core/account.json"
+          },
           {
             "type": "object",
             "properties": {
@@ -40,7 +47,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["accounts"],
+  "required": [
+    "accounts"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -52,7 +61,9 @@
             "name": "Acme c/o Pinnacle",
             "advertiser": "Acme Corp",
             "billing_proxy": "Pinnacle Media",
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "pinnacle-media.com",
             "billing": "operator",
             "account_scope": "operator_brand",
@@ -63,7 +74,10 @@
             "name": "Nova c/o Pinnacle",
             "advertiser": "Nova Brands",
             "billing_proxy": "Pinnacle Media",
-            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
             "operator": "pinnacle-media.com",
             "billing": "operator",
             "account_scope": "operator_brand",
@@ -73,7 +87,9 @@
             "account_id": "acc_pinnacle",
             "name": "Pinnacle",
             "advertiser": "Pinnacle Media",
-            "brand": { "domain": "pinnacle-media.com" },
+            "brand": {
+              "domain": "pinnacle-media.com"
+            },
             "operator": "pinnacle-media.com",
             "billing": "operator",
             "account_scope": "operator",
@@ -94,7 +110,9 @@
             "account_id": "acc_acme_direct",
             "name": "Acme",
             "advertiser": "Acme Corp",
-            "brand": { "domain": "acme-corp.com" },
+            "brand": {
+              "domain": "acme-corp.com"
+            },
             "operator": "acme-corp.com",
             "billing": "operator",
             "account_scope": "brand",

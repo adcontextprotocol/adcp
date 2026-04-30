@@ -45,12 +45,24 @@ jobs:
           fi
           echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
 
+      # Mint a GitHub App installation token so the auto-opened snapshot
+      # PR fires required CI workflows. GITHUB_TOKEN-triggered events
+      # are blocked by GitHub's recursion rule. Closes #3417.
+      - name: Mint AAO Release Bot installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
       - name: Checkout main branch
         uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Fetch release tag
         if: github.event_name != 'workflow_dispatch'
@@ -143,7 +155,7 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           commit-message: "chore: snapshot docs for v${{ steps.version.outputs.version }}"
           title: "chore: snapshot docs for v${{ steps.version.outputs.version }}"
           body: |
@@ -164,4 +176,4 @@ jobs:
         if: steps.create-pr.outputs.pull-request-number
         run: gh pr merge --auto --squash "${{ steps.create-pr.outputs.pull-request-number }}"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

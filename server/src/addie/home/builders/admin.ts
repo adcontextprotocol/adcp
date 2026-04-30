@@ -7,7 +7,9 @@
 import type { AdminPanel, GoalProgress } from '../types.js';
 import { AddieDatabase } from '../../../db/addie-db.js';
 import { getPool } from '../../../db/client.js';
-import { logger } from '../../../logger.js';
+import { createLogger } from '../../../logger.js';
+
+const logger = createLogger('addie-home-builder-admin');
 import { HOT_PROSPECT_POINTS_THRESHOLD } from '../../../services/account-lifecycle.js';
 
 const addieDb = new AddieDatabase();

@@ -3,6 +3,11 @@
   "$id": "/schemas/creative/preview-creative-response.json",
   "title": "Preview Creative Response",
   "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "PreviewCreativeSingleResponse",
@@ -303,5 +308,6 @@
       ],
       "additionalProperties": true
     }
-  ]
+  ],
+  "properties": {}
 }

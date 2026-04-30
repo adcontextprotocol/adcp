@@ -2,8 +2,6 @@
 
 Runbook for cutting beta releases while `main` is in pre mode, and for exiting pre mode when 3.1.0 stable is ready.
 
-> **Until #3417 lands:** several steps below require manual intervention because GitHub blocks workflows from firing on events triggered by `GITHUB_TOKEN`. Steps marked _§3417_ won't be needed once the App-token swap lands. Remove those steps in this runbook when #3417 closes.
-
 ## Pre mode
 
 `main` is in pre mode while `.changeset/pre.json` exists. Every Version Packages cut produces `3.1.0-beta.N` instead of `3.1.0`. This is a deliberate safety net: if a `minor` changeset slips into `main` accidentally, it ships as a beta drop, not as 3.1.0 stable.
@@ -19,14 +17,9 @@ Runbook for cutting beta releases while `main` is in pre mode, and for exiting p
 
 1. Land minor (or patch) changesets on `main` via normal PR flow.
 2. `release.yml` updates the Version Packages PR. Title shows `Version Packages` and body lists `adcontextprotocol@3.1.0-beta.N`.
-3. Required CI checks may not fire _§3417_. Push from a human identity or admin-merge.
+3. Required CI runs automatically (App-token-triggered events fire downstream workflows). Approve and merge through normal review.
 4. Merging tags `v3.1.0-beta.N`, creates the GitHub Release, publishes `/protocol/3.1.0-beta.N.tgz`.
-5. Trigger `release-docs.yml` manually _§3417_:
-   ```bash
-   VERSION=3.1.0-beta.N
-   gh api repos/adcontextprotocol/adcp/actions/workflows/release-docs.yml/dispatches \
-     -X POST -f ref=main -f "inputs[version]=$VERSION"
-   ```
+5. `release-docs.yml` fires on `release: published`, snapshots `dist/docs/3.1.0-beta.N/`, opens an auto-merging PR.
 
 `release-docs.yml`'s docs.json updater collapses prerelease versions into a single `3.1-beta` label, so the live docs site shows the latest beta at the `3.1-beta` version selector. The `dist/docs/3.1.0-beta.{N-1}/` directory accumulates in git but isn't linked — periodic cleanup is fine.
 

@@ -13,7 +13,9 @@
  * not add to a private store.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-knowledge-search');
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import {

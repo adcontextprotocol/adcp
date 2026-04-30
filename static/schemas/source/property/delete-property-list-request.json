@@ -3,15 +3,14 @@
   "$id": "/schemas/property/delete-property-list-request.json",
   "title": "Delete Property List Request",
   "description": "Request parameters for deleting a property list",
-  "x-mutates-state": true,
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
   "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
-    },
     "list_id": {
       "type": "string",
       "description": "ID of the property list to delete",
@@ -39,5 +38,5 @@
     "idempotency_key",
     "list_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
