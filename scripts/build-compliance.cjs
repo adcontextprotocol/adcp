@@ -516,6 +516,22 @@ function main() {
     process.exit(1);
   }
 
+  // Vendor metric uniqueness lint: storyboard fixture inline payloads MUST NOT
+  // contain duplicate (vendor.domain, vendor.brand_id, metric_id) tuples in
+  // vendor_metric_values or vendor_metrics arrays. Enforces the MUST constraint
+  // documented in reporting-capabilities.json and delivery-metrics.json that
+  // JSON Schema uniqueItems cannot enforce (BrandRef optional fields defeat
+  // deep-equal). Companion schema-examples lint runs in build-schemas.cjs.
+  // adcontextprotocol/adcp#3502.
+  try {
+    execSync('node scripts/lint-vendor-metric-uniqueness.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
