@@ -330,7 +330,7 @@ TMP providers cache packages from many seller agents against many publishers. Th
 
 The canonical seller identity in AdCP is the agent URL declared in the property publisher's [adagents.json](https://adcontextprotocol.org/schemas/v3/adagents.json) `authorized_agents[].url` entry. TMP reuses that URL directly rather than introducing a parallel identifier space. The `id` slot on `SellerAgentRef` is reserved for a future registry-assigned opaque identifier and is not used today.
 
-**Placement rationale.** `seller_agent` lives on the cached `AvailablePackage` (sync time) and does not appear on `context_match_request`:
+**Placement rationale.** Context Match and Identity Match are processed by different actors with different package visibility, so seller identity is on the wire for one but not the other: Context Match goes to the provider (which already has the sync-time binding), Identity Match goes to the buyer agent (which needs the seller URL to index its own registered active set). `seller_agent` lives on the cached `AvailablePackage` (sync time) and does not appear on `context_match_request`:
 
 - Sync time is when a provider first learns about a package; the binding is established once and reused for every subsequent evaluation.
 - Putting `seller_agent` on `context_match_request` would either duplicate the sync-time binding (redundant) or open a path for request-time seller filtering on the context path, which re-introduces the identity- and allocation-leakage failure modes [Package set decorrelation](#package-set-decorrelation) exists to prevent.
