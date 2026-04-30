@@ -445,10 +445,10 @@ export async function triageEmailDomain(
     companyType: enrichedCompanyType || assessment.company_type || undefined,
   };
 
-  // 6. Log the decision (including skips)
-  logTriageDecision(normalizedDomain, result, context?.source, wasEnriched).catch((err) => {
-    logger.error({ err, domain: normalizedDomain }, 'Failed to log triage decision');
-  });
+  // 6. Log the decision (including skips). Awaited so callers can rely on the
+  // log row existing when this function returns; logTriageDecision swallows its
+  // own errors, so awaiting cannot cause triage to fail.
+  await logTriageDecision(normalizedDomain, result, context?.source, wasEnriched);
 
   return result;
 }

@@ -35,11 +35,12 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // adagentsManager is instantiated at module scope in property-enhancement.ts;
-// the class mock must be in place before the module loads.
+// the class mock must be in place before the module loads. Must be a class (or
+// regular function) — arrow functions cannot be called with `new`.
 vi.mock('../../src/adagents-manager.js', () => ({
-  AdAgentsManager: vi.fn().mockImplementation(() => ({
-    validateDomain: mocks.validateDomain,
-  })),
+  AdAgentsManager: class FakeAdAgentsManager {
+    validateDomain = mocks.validateDomain;
+  },
 }));
 
 vi.mock('whoiser', () => ({

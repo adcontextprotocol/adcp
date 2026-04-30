@@ -71,7 +71,9 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { setupBrandEnrichmentRoutes } from '../../src/routes/admin/brand-enrichment.js';
 
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// Hyphen separator — underscores are invalid in domain names (RFC 1035) and
+// `enrichBrand` rejects them with `Invalid domain format`.
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const TEST_DOMAIN = `classifier-route-${SUFFIX}.example.com`;
 
 function classifyBrandResponse(input: unknown) {

@@ -73,7 +73,9 @@ import { initializeDatabase, closeDatabase, query } from '../../src/db/client.js
 import { runMigrations } from '../../src/db/migrate.js';
 import { setupBrandEnrichmentRoutes } from '../../src/routes/admin/brand-enrichment.js';
 
-const SUFFIX = `${process.pid}_${Date.now()}`;
+// Hyphen separator — underscores are invalid in domain names (RFC 1035) and
+// the seed loop in `expandHouse` rejects them with the same regex `enrichBrand` uses.
+const SUFFIX = `${process.pid}-${Date.now()}`;
 const HOUSE_DOMAIN = `house-${SUFFIX}.example.com`;
 const SUB_A = `sub-a-${SUFFIX}.example.com`;
 const SUB_B = `sub-b-${SUFFIX}.example.com`;
