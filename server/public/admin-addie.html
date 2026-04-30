@@ -3334,7 +3334,7 @@
         const shapeRow = shadowShape ? `
             <div style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--color-border-subtle, #e5e7eb);">
               <div style="display: flex; flex-direction: column; gap: var(--space-1);">
-                <div style="font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted);">ADDIE SHAPE (${shadowShape.shadow?.word_count ?? '?'} words, ratio ${(shadowShape.shadow?.ratio_to_expected ?? 0).toFixed(2)})</div>
+                <div style="font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted);">ADDIE SHAPE (${shadowShape.shadow?.word_count ?? '?'} words, ratio ${shadowShape.shadow?.ratio_to_expected != null ? shadowShape.shadow.ratio_to_expected.toFixed(2) : '?'})</div>
                 <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">
                   ${shapeBadges(shadowShape.shadow?.violations)}
                 </div>
