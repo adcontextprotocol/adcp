@@ -214,12 +214,28 @@ npx @adcp/client@latest \
 
 #### Reporting contract on confirmed packages
 
-Each package in the response MAY carry `committed_metrics` and `committed_vendor_metrics` — frozen snapshots of the product's `reporting_capabilities.available_metrics` and `vendor_metrics` at the moment the buy was created. These become the binding reporting contract for the package's lifetime, independent of subsequent product mutations:
+Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
 
-- `missing_metrics` on `get_media_buy_delivery` is computed against `committed_metrics` when present (against the product's current `available_metrics` when absent).
-- The fields MUST NOT change post-creation. Sellers MUST reject `update_media_buy` requests that attempt to modify either field with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). Renegotiating the metric contract requires a new buy.
-- Optional in v1 — sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant, but it carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat the absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
-- Empty array is rejected at the schema level (`minItems: 1`) — absence is the only "no snapshot" signal, eliminating ambiguity between "I committed to nothing" and "I didn't snapshot."
+```json
+{
+  "package_id": "pkg_001",
+  "committed_metrics": [
+    { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" },
+                           "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "viewable_rate",   "committed_at": "2026-05-30T14:22:00Z" }
+  ]
+}
+```
+
+**How the contract works:**
+
+- **Day-1 entries** share `committed_at = confirmed_at`. The seller stamps the day-1 set on the `create_media_buy` response based on what they're prepared to deliver from the product's `reporting_capabilities`.
+- **Mid-flight additions** are appended via `update_media_buy` — append-only with their own `committed_at` timestamps. This lets a seller honestly say "Adelaide attention is now part of the contract from day 30 onward" without having to cancel and reissue the buy.
+- **Existing entries are immutable.** Sellers MUST reject `update_media_buy` requests that attempt to modify or remove existing entries with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). New entries can be appended.
+- **Reconciliation:** `missing_metrics` on `get_media_buy_delivery` filters `committed_metrics` to entries where `committed_at < reporting_period.end`, then flags any that aren't populated in the report. A metric committed mid-flight is only audited from its commitment timestamp forward.
+- **Optional in v1.** Sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant but carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live `available_metrics` at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
 
 ### Error Response
 

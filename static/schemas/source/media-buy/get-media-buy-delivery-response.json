@@ -298,19 +298,52 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when the package carries `committed_metrics` (frozen snapshot stamped at create_media_buy), `missing_metrics` is computed against THAT — independent of subsequent product mutations. When `committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics`. Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
+                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
                       "items": {
-                        "$ref": "/schemas/enums/available-metric.json"
+                        "type": "object",
+                        "discriminator": {
+                          "propertyName": "scope"
+                        },
+                        "oneOf": [
+                          {
+                            "properties": {
+                              "scope": {
+                                "type": "string",
+                                "const": "standard"
+                              },
+                              "metric_id": {
+                                "$ref": "/schemas/enums/available-metric.json"
+                              }
+                            },
+                            "required": ["scope", "metric_id"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "properties": {
+                              "scope": {
+                                "type": "string",
+                                "const": "vendor"
+                              },
+                              "vendor": {
+                                "$ref": "/schemas/core/brand-ref.json"
+                              },
+                              "metric_id": {
+                                "$ref": "/schemas/core/vendor-metric-id.json"
+                              }
+                            },
+                            "required": ["scope", "vendor", "metric_id"],
+                            "additionalProperties": false
+                          }
+                        ]
                       },
-                      "uniqueItems": true,
                       "examples": [
                         [],
                         [
-                          "completed_views"
+                          { "scope": "standard", "metric_id": "completed_views" }
                         ],
                         [
-                          "completed_views",
-                          "engagements"
+                          { "scope": "standard", "metric_id": "completed_views" },
+                          { "scope": "vendor", "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units" }
                         ]
                       ]
                     },
