@@ -39,7 +39,7 @@
     "seller_agent_url": {
       "type": "string",
       "format": "uri",
-      "description": "API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. Compared using the AdCP URL canonicalization rules, not byte-equality — see docs/reference/url-canonicalization. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`."
+      "description": "API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. If `seller_agent_url` does not match any seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids` set — it MUST NOT fall back to evaluating against another seller's active set. Compared using the AdCP URL canonicalization rules, not byte-equality — see docs/reference/url-canonicalization. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`."
     },
     "identities": {
       "type": "array",
