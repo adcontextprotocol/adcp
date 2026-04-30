@@ -2773,7 +2773,7 @@ describe('update_media_buy handler', () => {
     expect((postBuy.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_start');
   });
 
-  it('clears creative_assignments when given an empty array, regressing to pending_creatives', async () => {
+  it('rejects creative_assignments: [] on a buy in pending_start', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
@@ -2815,6 +2815,144 @@ describe('update_media_buy handler', () => {
       media_buy_id: mediaBuyId,
       packages: [{ package_id: pkgId, creative_assignments: [] }],
     });
+    expect(updateResult.code).toBe('VALIDATION_ERROR');
+    expect(updateResult.message).toBe('creative_assignments cannot be cleared on a buy in "pending_start" status');
+    expect(updateResult.field).toBe(`packages[${pkgId}].creative_assignments`);
+  });
+
+  it('rejects creative_assignments: [] on a buy in active', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-clear-active.example' }, operator: 'assign-clear-active.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-clear-active.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2027-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_active_clear',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Active Clear',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_active_clear' }],
+    });
+
+    const { result: afterAdd } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((afterAdd.media_buys as Array<Record<string, unknown>>)[0].status).toBe('active');
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creative_assignments: [] }],
+    });
+    expect(updateResult.code).toBe('VALIDATION_ERROR');
+    expect(updateResult.message).toBe('creative_assignments cannot be cleared on a buy in "active" status');
+    expect(updateResult.field).toBe(`packages[${pkgId}].creative_assignments`);
+  });
+
+  it('rejects creative_assignments: [] on a buy in paused', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-clear-paused.example' }, operator: 'assign-clear-paused.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-clear-paused.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2027-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_paused_clear',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Paused Clear',
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_paused_clear' }],
+    });
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      paused: true,
+    });
+
+    const { result: afterPause } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((afterPause.media_buys as Array<Record<string, unknown>>)[0].status).toBe('paused');
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creative_assignments: [] }],
+    });
+    expect(updateResult.code).toBe('VALIDATION_ERROR');
+    expect(updateResult.message).toBe('creative_assignments cannot be cleared on a buy in "paused" status');
+    expect(updateResult.field).toBe(`packages[${pkgId}].creative_assignments`);
+  });
+
+  it('allows creative_assignments: [] on a buy still in pending_creatives (no-op)', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'assign-clear-pc.example' }, operator: 'assign-clear-pc.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'assign-clear-pc.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: pre } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((pre.media_buys as Array<Record<string, unknown>>)[0].status).toBe('pending_creatives');
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creative_assignments: [] }],
+    });
+    expect(updateResult.code).toBeUndefined();
     expect(updateResult.status).toBe('pending_creatives');
   });
 
