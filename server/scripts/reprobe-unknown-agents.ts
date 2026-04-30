@@ -14,18 +14,22 @@
  *      the existing `CapabilityDiscovery.discoverCapabilities` helper — same
  *      probe path the live crawler uses, no parallel implementation.
  *   3. Writes the new snapshot via `AgentSnapshotDatabase.upsertCapabilities`
- *      — same write path as the crawler.
- *   4. Reports a per-type tally + sample of still-unknown URLs.
+ *      — same write path as the crawler. **Crucially**, the write is skipped
+ *      on probe failure for agents that already had a snapshot row, so a
+ *      transient probe failure cannot overwrite a previously-classified row
+ *      back to NULL (the silent-corruption window).
+ *   4. After each batch, refreshes `member_profiles.agents[]` for any URLs
+ *      whose type just flipped, via `resolveAgentTypes` (#3541, now on main).
+ *   5. Reports a per-type tally + sample of still-unknown URLs + per-agent
+ *      timing summary so the operator can see the slow tail.
  *
- * Idempotent: a real run skips agents that have since become classified.
- * `--dry-run` mode probes everything but writes nothing.
- *
- * Note on member_profiles propagation: PR #3541 will export
- * `resolveAgentTypes` from `server/src/routes/member-profiles.ts` so this
- * script can refresh `member_profiles.agents[]` after each agent. As of this
- * branch, that export does not exist on `main`. The script logs a warning
- * and skips that step; once #3541 lands, the dynamic import below resolves
- * and the propagation runs automatically.
+ * Idempotency contract:
+ *   - A real run skips agents whose snapshot row got classified between
+ *     selection and probe (parallel crawler tick).
+ *   - A failed re-probe (timeout, HTTP 5xx, DNS) on an already-known agent
+ *     does NOT touch the row — the prior snapshot stands.
+ *   - A failed first-time probe (no prior snapshot) is also a no-op write
+ *     today; the next run picks the agent up from set B again.
  *
  * Usage:
  *   DATABASE_URL=... npx tsx server/scripts/reprobe-unknown-agents.ts --dry-run
@@ -34,12 +38,14 @@
 
 import { initializeDatabase, closeDatabase, query } from '../src/db/client.js';
 import { AgentSnapshotDatabase } from '../src/db/agent-snapshot-db.js';
-import { CapabilityDiscovery } from '../src/capabilities.js';
+import { CapabilityDiscovery, type AgentCapabilityProfile } from '../src/capabilities.js';
+import { resolveAgentTypes } from '../src/routes/member-profiles.js';
 import type { Agent } from '../src/types.js';
 
 const PROBE_TIMEOUT_MS = 30_000;
 const CONCURRENCY = 5;
 const STILL_UNKNOWN_SAMPLE = 10;
+const SLOW_TAIL_SAMPLE = 5;
 
 export type InferredType = 'sales' | 'creative' | 'signals' | 'unknown';
 
@@ -58,7 +64,11 @@ export interface ReprobeReport {
   probe_failed: number;
   dns_failed: number;
   skipped_already_classified: number;
+  /** Count of agents whose existing snapshot we deliberately did NOT overwrite on a probe failure. */
+  preserved_existing_classification: number;
   elapsed_ms: number;
+  /** Slowest N probes (URL + ms) so operators can see the tail. */
+  slowest: { url: string; elapsed_ms: number }[];
   dry_run: boolean;
 }
 
@@ -67,6 +77,9 @@ export interface ProbeOutcome {
   url: string;
   inferred: InferredType | null;
   classification: 'classified' | 'still_unknown' | 'probe_failed' | 'dns_failed';
+  elapsed_ms: number;
+  /** True iff the script suppressed a write to preserve an existing snapshot row. */
+  preserved_existing?: boolean;
 }
 
 /**
@@ -83,8 +96,10 @@ export function aggregateOutcomes(
   let still_unknown = 0;
   let probe_failed = 0;
   let dns_failed = 0;
+  let preserved = 0;
 
   for (const o of outcomes) {
+    if (o.preserved_existing) preserved++;
     switch (o.classification) {
       case 'classified':
         if (o.inferred === 'sales') newly_classified.sales++;
@@ -108,6 +123,11 @@ export function aggregateOutcomes(
     }
   }
 
+  const slowest = [...outcomes]
+    .sort((a, b) => b.elapsed_ms - a.elapsed_ms)
+    .slice(0, SLOW_TAIL_SAMPLE)
+    .map((o) => ({ url: o.url, elapsed_ms: o.elapsed_ms }));
+
   return {
     scanned: options.scanned,
     newly_classified,
@@ -116,7 +136,9 @@ export function aggregateOutcomes(
     probe_failed,
     dns_failed,
     skipped_already_classified: options.skipped,
+    preserved_existing_classification: preserved,
     elapsed_ms: options.elapsedMs,
+    slowest,
     dry_run: options.dryRun,
   };
 }
@@ -137,6 +159,48 @@ export function isDnsOrConnectFailure(errMsg: string | undefined | null): boolea
     m.includes('EHOSTUNREACH') ||
     m.includes('ENETUNREACH')
   );
+}
+
+/**
+ * Decide whether a probe outcome should be written to the snapshot table.
+ *
+ * The silent-corruption rule (Brian's bar): a transient probe failure must
+ * NEVER overwrite a previously-classified row back to NULL. We split the
+ * decision:
+ *
+ *   - probe classified the agent       → ALWAYS write (this is the win path).
+ *   - probe succeeded, no class        → write NULL (set A row was already
+ *                                         null; set B row is new).
+ *   - probe FAILED (timeout/HTTP/DNS)
+ *       - hadSnapshot=true             → DO NOT WRITE. Either the row was
+ *                                         null and stays null, or a parallel
+ *                                         crawler tick raced ahead and
+ *                                         classified it. We do not clobber.
+ *       - hadSnapshot=false (set B)    → DO NOT WRITE either. We have no
+ *                                         protocol/tool-list ground truth
+ *                                         to write a meaningful row, and
+ *                                         the next run will retry from set B.
+ */
+export type WriteDecision =
+  | { write: true; inferred: InferredType | null }
+  | { write: false; reason: 'preserve_existing' | 'no_ground_truth' };
+
+export function decideWrite(
+  classification: ProbeOutcome['classification'],
+  inferred: InferredType,
+  hadSnapshot: boolean,
+): WriteDecision {
+  if (classification === 'classified') {
+    return { write: true, inferred };
+  }
+  if (classification === 'still_unknown') {
+    return { write: true, inferred: null };
+  }
+  // probe_failed | dns_failed
+  if (hadSnapshot) {
+    return { write: false, reason: 'preserve_existing' };
+  }
+  return { write: false, reason: 'no_ground_truth' };
 }
 
 /**
@@ -223,13 +287,26 @@ async function selectAgentsToProbe(): Promise<AgentToProbe[]> {
  * Probe a single agent with the extended 30s timeout. Reuses the live
  * crawler's `discoverCapabilities` so the type-inference logic is identical.
  * Classifies the result for the report aggregator.
+ *
+ * Exposed for testing. The DB and discovery deps are passed in so the test
+ * can drive the probe outcome (success / probe_failed / dns_failed) without
+ * a live network or Postgres, and assert the silent-corruption rule.
  */
-async function probeOne(
+export async function probeOne(
   agent: AgentToProbe,
-  capabilityDiscovery: CapabilityDiscovery,
-  snapshotDb: AgentSnapshotDatabase,
+  deps: {
+    discoverCapabilities: (a: Agent) => Promise<AgentCapabilityProfile>;
+    inferTypeFromProfile: (p: AgentCapabilityProfile) => InferredType;
+    upsertCapabilities: (p: AgentCapabilityProfile, t: string | null) => Promise<void>;
+    timeoutMs?: number;
+    now?: () => number;
+  },
   dryRun: boolean,
 ): Promise<ProbeOutcome> {
+  const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
+  const now = deps.now ?? Date.now;
+  const startedAt = now();
+
   const probeAgent: Agent = {
     name: agent.name,
     url: agent.url,
@@ -241,46 +318,59 @@ async function probeOne(
     added_date: new Date().toISOString().split('T')[0],
   };
 
-  let profile;
+  let profile: AgentCapabilityProfile;
   try {
     profile = await Promise.race([
-      capabilityDiscovery.discoverCapabilities(probeAgent),
+      deps.discoverCapabilities(probeAgent),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS),
+        setTimeout(() => reject(new Error('Probe timeout')), timeoutMs),
       ),
     ]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const classification: ProbeOutcome['classification'] =
+      isDnsOrConnectFailure(msg) ? 'dns_failed' : 'probe_failed';
+    const decision = decideWrite(classification, 'unknown', agent.hadSnapshot);
+    // No write on failure — see decideWrite() doc for the silent-corruption rule.
     return {
       url: agent.url,
       inferred: null,
-      classification: isDnsOrConnectFailure(msg) ? 'dns_failed' : 'probe_failed',
+      classification,
+      elapsed_ms: now() - startedAt,
+      preserved_existing: !decision.write,
     };
   }
 
-  const inferred = capabilityDiscovery.inferTypeFromProfile(profile);
+  const inferred = deps.inferTypeFromProfile(profile);
 
-  if (!dryRun) {
-    await snapshotDb.upsertCapabilities(profile, inferred === 'unknown' ? null : inferred);
-  }
-
+  // Determine classification BEFORE deciding to write. The write decision
+  // must respect the silent-corruption rule above.
+  let classification: ProbeOutcome['classification'];
   if (inferred !== 'unknown') {
-    return { url: agent.url, inferred, classification: 'classified' };
+    classification = 'classified';
+  } else if (profile.discovery_error) {
+    // Probe completed but the helper recorded a discovery error (HTTP 5xx,
+    // OAuth wall, malformed tools list). Route DNS-shaped errors to
+    // dns_failed; everything else to probe_failed so we can scope retry.
+    classification = isDnsOrConnectFailure(profile.discovery_error)
+      ? 'dns_failed'
+      : 'probe_failed';
+  } else {
+    classification = 'still_unknown';
   }
 
-  // Probe completed but returned no classifiable type. If the helper recorded
-  // a discovery_error, that's a soft probe failure (HTTP 5xx, OAuth wall,
-  // malformed tools list). DNS-shaped errors stay in `dns_failed`; everything
-  // else lands in `probe_failed` so we can scope the retry strategy.
-  if (profile.discovery_error) {
-    return {
-      url: agent.url,
-      inferred: null,
-      classification: isDnsOrConnectFailure(profile.discovery_error) ? 'dns_failed' : 'probe_failed',
-    };
+  const decision = decideWrite(classification, inferred, agent.hadSnapshot);
+  if (!dryRun && decision.write) {
+    await deps.upsertCapabilities(profile, decision.inferred);
   }
 
-  return { url: agent.url, inferred: null, classification: 'still_unknown' };
+  return {
+    url: agent.url,
+    inferred: inferred === 'unknown' ? null : inferred,
+    classification,
+    elapsed_ms: now() - startedAt,
+    preserved_existing: !decision.write,
+  };
 }
 
 function formatReport(report: ReprobeReport): string {
@@ -289,6 +379,7 @@ function formatReport(report: ReprobeReport): string {
   lines.push(`Mode:                          ${report.dry_run ? 'DRY RUN (no writes)' : 'WRITE'}`);
   lines.push(`Agents scanned:                ${report.scanned}`);
   lines.push(`Skipped (already classified):  ${report.skipped_already_classified}`);
+  lines.push(`Preserved existing row:        ${report.preserved_existing_classification}`);
   lines.push(`Newly classified — sales:      ${report.newly_classified.sales}`);
   lines.push(`Newly classified — creative:   ${report.newly_classified.creative}`);
   lines.push(`Newly classified — signals:    ${report.newly_classified.signals}`);
@@ -296,7 +387,14 @@ function formatReport(report: ReprobeReport): string {
   lines.push(`Still unknown:                 ${report.still_unknown}`);
   lines.push(`Probe failed (HTTP/timeout):   ${report.probe_failed}`);
   lines.push(`DNS / connect refused:         ${report.dns_failed}`);
-  lines.push(`Elapsed:                       ${(report.elapsed_ms / 1000).toFixed(1)}s`);
+  lines.push(`Elapsed (total):               ${(report.elapsed_ms / 1000).toFixed(1)}s`);
+  if (report.slowest.length > 0) {
+    lines.push('');
+    lines.push(`Slowest probes (top ${report.slowest.length}):`);
+    for (const s of report.slowest) {
+      lines.push(`  ${(s.elapsed_ms / 1000).toFixed(1).padStart(6)}s  ${s.url}`);
+    }
+  }
   if (report.still_unknown_sample.length > 0) {
     lines.push('');
     lines.push(`Still-unknown sample (first ${report.still_unknown_sample.length}):`);
@@ -310,30 +408,20 @@ function formatReport(report: ReprobeReport): string {
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
 
-  initializeDatabase({ connectionString: process.env.DATABASE_URL || '' });
+  // Fail-loud on missing / empty DATABASE_URL — never silently connect to
+  // something other than what the operator intended.
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl || databaseUrl.trim().length === 0) {
+    console.error(
+      '[reprobe] FATAL: DATABASE_URL is not set. Refusing to run with empty connection string.',
+    );
+    process.exit(2);
+  }
+
+  initializeDatabase({ connectionString: databaseUrl });
 
   const snapshotDb = new AgentSnapshotDatabase();
   const capabilityDiscovery = new CapabilityDiscovery();
-
-  // PR #3541 (export of resolveAgentTypes) has not landed on main yet.
-  // We try the import dynamically; if it fails we skip the member_profiles
-  // propagation step. See the file header for the upgrade path.
-  let resolveAgentTypes: ((agents: unknown) => Promise<unknown>) | null = null;
-  try {
-    const mod: unknown = await import('../src/routes/member-profiles.js');
-    const candidate = (mod as { resolveAgentTypes?: unknown }).resolveAgentTypes;
-    if (typeof candidate === 'function') {
-      resolveAgentTypes = candidate as (agents: unknown) => Promise<unknown>;
-    }
-  } catch {
-    // intentional: dynamic import may be unavailable in some test envs
-  }
-  if (!resolveAgentTypes) {
-    console.warn(
-      '[warn] resolveAgentTypes not exported from member-profiles.ts — skipping ' +
-        'member_profiles.agents[] refresh. Land #3541 to enable it.',
-    );
-  }
 
   console.log(`[reprobe] timeout=${PROBE_TIMEOUT_MS}ms concurrency=${CONCURRENCY} mode=${dryRun ? 'dry-run' : 'write'}`);
 
@@ -359,7 +447,15 @@ async function main(): Promise<void> {
             return null;
           }
         }
-        return probeOne(agent, capabilityDiscovery, snapshotDb, dryRun);
+        return probeOne(
+          agent,
+          {
+            discoverCapabilities: (a) => capabilityDiscovery.discoverCapabilities(a),
+            inferTypeFromProfile: (p) => capabilityDiscovery.inferTypeFromProfile(p),
+            upsertCapabilities: (p, t) => snapshotDb.upsertCapabilities(p, t),
+          },
+          dryRun,
+        );
       }),
     );
 
@@ -374,13 +470,16 @@ async function main(): Promise<void> {
           url: agent.url,
           inferred: null,
           classification: isDnsOrConnectFailure(msg) ? 'dns_failed' : 'probe_failed',
+          elapsed_ms: 0,
+          preserved_existing: agent.hadSnapshot,
         });
       }
     }
 
-    // Optional: refresh member_profiles.agents[] for newly-classified URLs.
-    // Best-effort, keyed off the agent URLs that just changed type.
-    if (!dryRun && resolveAgentTypes) {
+    // Refresh member_profiles.agents[] for newly-classified URLs. Best-
+    // effort, keyed off the agent URLs that just changed type. #3541 has
+    // landed; resolveAgentTypes is statically imported above.
+    if (!dryRun) {
       const flipped = new Set(
         outcomes
           .slice(-batch.length)
