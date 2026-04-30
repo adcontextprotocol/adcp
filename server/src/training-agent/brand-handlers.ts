@@ -670,7 +670,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
+    return { errors: [{ code: 'BRAND_NOT_FOUND', message: `No brand with id '${brandId}'` }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -907,7 +907,7 @@ export async function handleAcquireRights(
   const campaign = req.campaign;
 
   if (!buyer) {
-    return { errors: [{ code: 'invalid_request', message: 'buyer is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'buyer is required' }] };
   }
 
   let talent: TalentEntry | undefined;
@@ -922,16 +922,16 @@ export async function handleAcquireRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'` }] };
   }
 
   const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
-    return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
   if (!campaign?.description) {
-    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'campaign.description is required' }] };
   }
 
   if (campaign.end_date) {
@@ -1134,18 +1134,18 @@ export function handleUpdateRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
   const currentEndDate = '2026-06-30';
   const currentStartDate = '2026-04-01';
   if (endDate && endDate < currentEndDate) {
-    return { errors: [{ code: 'invalid_update', message: 'New end_date must be >= current end_date' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'New end_date must be >= current end_date' }] };
   }
 
   const deliveredImpressions = 50000;
   if (impressionCap !== undefined && impressionCap < deliveredImpressions) {
-    return { errors: [{ code: 'invalid_update', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
   }
 
   const pricingOption = offering.pricing_options[0];
@@ -1226,19 +1226,19 @@ export function handleCreativeApproval(
 
   const rightsId = req.rights_id || req.rights_grant_id;
   if (!rightsId) {
-    return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'rights_id or rights_grant_id is required' }] };
   }
 
   const isKnownOffering = TALENT.some(t =>
     t.rights_offerings.some(r => r.rights_id === rightsId)
   );
   if (!isKnownOffering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
   }
 
   const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;
   if (!creativeUrl) {
-    return { errors: [{ code: 'invalid_request', message: 'creative_url or creative.assets[].url is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'creative_url or creative.assets[].url is required' }] };
   }
 
   const creativeId = req.creative_id || req.creative?.creative_id || 'sandbox_creative';

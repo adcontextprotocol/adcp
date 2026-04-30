@@ -3510,7 +3510,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
       return {
-        errors: [{ code: 'NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
+        errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
       };
     }
 
@@ -3789,7 +3789,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     if (record.creative_id) {
       const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
-        errors.push({ code: 'NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
+        errors.push({ code: 'CREATIVE_NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
         continue;
       }
 
@@ -3808,7 +3808,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     if (record.signal_agent_segment_id) {
       const activation = session.signalActivations.get(record.signal_agent_segment_id);
       if (!activation) {
-        errors.push({ code: 'NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
+        errors.push({ code: 'SIGNAL_NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
         continue;
       }
     }

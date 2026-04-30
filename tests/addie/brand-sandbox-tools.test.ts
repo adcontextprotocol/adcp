@@ -74,7 +74,7 @@ describe('brand protocol tools (training agent)', () => {
     it('returns error for unknown brand', async () => {
       const result = await call('get_brand_identity', { brand_id: 'nonexistent' });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('brand_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('BRAND_NOT_FOUND');
     });
 
     it('omits available_fields when talent lacks the requested authorized field', async () => {
@@ -340,7 +340,7 @@ describe('brand protocol tools (training agent)', () => {
         buyer: baseBuyer,
         campaign: { description: 'test', uses: ['likeness'] },
       });
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('rights_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
     });
 
     it('returns error for invalid pricing option', async () => {
@@ -350,7 +350,7 @@ describe('brand protocol tools (training agent)', () => {
         buyer: baseBuyer,
         campaign: { description: 'test', uses: ['likeness'] },
       });
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_pricing_option');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');
     });
 
     it('returns error when buyer is missing', async () => {
@@ -359,7 +359,7 @@ describe('brand protocol tools (training agent)', () => {
         pricing_option_id: 'cpm_endorsement',
         campaign: { description: 'test', uses: ['likeness'] },
       });
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_request');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');
     });
 
     it('rejects cosmetics for Yuki Tanaka', async () => {
@@ -440,7 +440,7 @@ describe('brand protocol tools (training agent)', () => {
         rights_id: 'nonexistent',
       });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('rights_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('nonexistent');
     });
 
@@ -450,7 +450,7 @@ describe('brand protocol tools (training agent)', () => {
         impression_cap: 10000,
       });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_update');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('10000');
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('50000');
     });
@@ -461,7 +461,7 @@ describe('brand protocol tools (training agent)', () => {
         end_date: '2025-01-01',
       });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_update');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('end_date');
     });
   });

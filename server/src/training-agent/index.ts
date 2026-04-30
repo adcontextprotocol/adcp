@@ -1,8 +1,16 @@
 /**
- * Training agent route setup.
+ * Training agent route setup — multi-tenant.
  *
- * Mounts the MCP endpoint at /api/training-agent/mcp with simple
- * bearer token auth, CORS, and adagents.json discovery.
+ * Mounts six per-specialism tenants under `/api/training-agent/`:
+ *   /sales, /signals, /governance, /creative, /creative-builder, /brand
+ *
+ * Each tenant exposes its own MCP endpoint (`/<tenant>/mcp`) with bearer
+ * auth + rate limiting. Health, JWKS, and adagents.json discovery live
+ * at the parent prefix.
+ *
+ * Replaces the legacy single-URL `/mcp` and `/mcp-strict` routes (the
+ * latter was a request-signing-required variant). Production agents are
+ * registered per-tenant in AAO; storyboards target the per-tenant URL.
  */
 
 import { Router } from 'express';
@@ -10,13 +18,11 @@ import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   anyOf,
   verifyApiKey,
   extractBearerToken,
   respondUnauthorized,
-  requireAuthenticatedOrSigned,
   requireSignatureWhenPresent,
   signatureErrorCodeFromCause,
   AuthError,
@@ -24,24 +30,16 @@ import {
   type AuthPrincipal,
 } from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
+import { mountTenantRoutes } from './tenants/router.js';
 import { createTrainingAgentServer } from './task-handlers.js';
-import { createFrameworkTrainingAgentServer, useFrameworkServer } from './framework-server.js';
-import { redactConflictEnvelopeInBody } from './conflict-envelope.js';
-import { startSessionCleanup } from './state.js';
+import { runWithSessionContext, flushDirtySessions, startSessionCleanup } from './state.js';
+import type { TrainingContext } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
-import {
-  buildRequestSigningAuthenticator,
-  buildStrictRequestSigningAuthenticator,
-  buildStrictRequiredRequestSigningAuthenticator,
-  buildStrictForbiddenRequestSigningAuthenticator,
-  enforceSigningWhenWebhookAuthPresent,
-  STRICT_REQUIRED_FOR,
-} from './request-signing.js';
+import { buildRequestSigningAuthenticator } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
-import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -54,34 +52,18 @@ const workos = process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID
   ? new WorkOS(process.env.WORKOS_API_KEY, { clientId: process.env.WORKOS_CLIENT_ID })
   : null;
 
-// Permissive CORS: this is a sandbox training agent meant to be
-// called from any origin (certification UI, notebooks, CLI tools, etc.)
-function setCORSHeaders(res: Response): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
-}
-
 /**
  * Security posture: the training agent is a public sandbox. Any valid AAO
  * dashboard API key authenticates — there is no org allowlist, no plan-tier
- * gate, no per-org quota check. Account-level isolation is already provided
+ * gate, no per-org quota check. Account-level isolation is provided
  * downstream via `scopedPrincipal` (idempotency is partitioned by
  * authPrincipal ⨯ account scope) and session state is keyed by
  * brand.domain / account_id. Training-agent data is non-sensitive by design.
- *
- * Do NOT reuse this authenticator for tenant-scoped surfaces. Agents that
- * need org gating should extend the `verify` callback with an allowlist
- * check (e.g., `if (!allowedOrgs.has(result.apiKey.owner.id)) return null`)
- * or layer an `anyOf` with a separate scope-aware authenticator.
  */
 // Conformance handle documented in every test-kit header
 // (static/compliance/source/test-kits/*.yaml, auth.api_key comment): agents
 // SHOULD accept any Bearer matching `demo-<kit>-v<n>` so the suffix can rotate
-// across spec versions without breaking previously-conformant agents. The
-// training agent IS the reference — so it accepts the handle directly.
-// Anchored to forbid `demo--v1` / `demo-v1` and lock alg-num segments.
+// across spec versions without breaking previously-conformant agents.
 const DEMO_TEST_KIT_KEY_PATTERN = /^demo-[a-z0-9]+(?:-[a-z0-9]+)*-v\d+$/;
 
 function buildBearerAuthenticator(): Authenticator | null {
@@ -103,7 +85,7 @@ function buildBearerAuthenticator(): Authenticator | null {
     },
   }));
   if (workos) {
-    const workosClient = workos; // narrow for closure
+    const workosClient = workos;
     authenticators.push(verifyApiKey({
       verify: async (token) => {
         if (!isWorkOSApiKeyFormat(token)) return null;
@@ -119,10 +101,9 @@ function buildBearerAuthenticator(): Authenticator | null {
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
-// Per-route lazy signing authenticators. Each route MUST own its own
-// `InMemoryReplayStore` — sharing one store lets a nonce consumed on
-// one route falsely fire `request_signature_replayed` on another (#3338).
-// Lazy so the compliance test JWKS isn't read at module import time.
+// Lazy so the signing authenticator builds on first auth call —
+// avoids reading the compliance test JWKS at module import time, which
+// would break test setups that mock the compliance cache.
 let _signingAuth: Authenticator | null = null;
 function lazySigningAuth(): Authenticator {
   return (req) => {
@@ -131,45 +112,10 @@ function lazySigningAuth(): Authenticator {
   };
 }
 
-let _strictSigningAuth: Authenticator | null = null;
-function lazyStrictSigningAuth(): Authenticator {
-  return (req) => {
-    if (!_strictSigningAuth) _strictSigningAuth = buildStrictRequestSigningAuthenticator();
-    return _strictSigningAuth(req);
-  };
-}
-
-let _strictRequiredSigningAuth: Authenticator | null = null;
-function lazyStrictRequiredSigningAuth(): Authenticator {
-  return (req) => {
-    if (!_strictRequiredSigningAuth) _strictRequiredSigningAuth = buildStrictRequiredRequestSigningAuthenticator();
-    return _strictRequiredSigningAuth(req);
-  };
-}
-
-let _strictForbiddenSigningAuth: Authenticator | null = null;
-function lazyStrictForbiddenSigningAuth(): Authenticator {
-  return (req) => {
-    if (!_strictForbiddenSigningAuth) _strictForbiddenSigningAuth = buildStrictForbiddenRequestSigningAuthenticator();
-    return _strictForbiddenSigningAuth(req);
-  };
-}
-
 /**
- * Default `/mcp` route: presence-gated signature composition. Callers with no
- * `Signature-Input` header fall through to bearer auth (sandbox backward
- * compat — unsigned AAO API keys keep working). Callers that DO present a
- * signature header MUST produce a valid one: malformed/invalid signatures
- * fail closed with the signing-layer error code instead of silently
- * downgrading to bearer. Closes signed-requests vector 011
- * (`request_signature_header_malformed`) on the sandbox endpoint.
- *
- * The webhook-auth downgrade-resistance rule (security.mdx#webhook-callbacks)
- * is enforced only on `/mcp-strict`. The sandbox `/mcp` route accepts
- * unsigned `push_notification_config.authentication` for backward compat
- * with pre-3.0 storyboards that wire legacy HMAC-SHA256 webhooks over
- * bearer-auth'd `create_media_buy`. Presence-gating is orthogonal to that
- * — it only changes behavior when a caller DOES present a signature header.
+ * Tenant-route authenticator: presence-gated signature composition.
+ * Callers with no `Signature-Input` header fall through to bearer auth.
+ * Callers that DO present a signature header MUST produce a valid one.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
@@ -177,53 +123,12 @@ function buildDefaultAuthenticator(): Authenticator | null {
   return requireSignatureWhenPresent(lazySigningAuth(), bearerAuth);
 }
 
-/**
- * Presence-gated authenticator for all `/mcp-strict*` routes. Accepts a lazy
- * signing authenticator so each route uses its own capability instance
- * (covers_content_digest varies per route and is baked at init time).
- *
- * Delegates to `requireAuthenticatedOrSigned` (5.7): bypass on valid bearer,
- * `request_signature_required` on unsigned required-op, `signatureErrorCodeFromCause`
- * surfaces RFC 9421 error codes on bad signatures.
- */
-function buildStrictModeAuthenticator(lazyAuth: () => Authenticator): Authenticator | null {
-  const bearerAuth = buildBearerAuthenticator();
-  if (!bearerAuth) return null;
-  return enforceSigningWhenWebhookAuthPresent(requireAuthenticatedOrSigned({
-    signature: lazyAuth(),
-    fallback: bearerAuth,
-    requiredFor: STRICT_REQUIRED_FOR,
-    resolveOperation: (req) => {
-      // rawBody is populated by the production http.ts `verify` callback.
-      // Fall back to req.body (already-parsed by express.json) when rawBody
-      // is absent — e.g. in test harnesses that skip the verify callback.
-      // Safe here because resolveOperation drives only the required_for
-      // routing decision, not cryptographic verification.
-      const raw = (req as { rawBody?: string }).rawBody;
-      try {
-        const body = raw
-          ? JSON.parse(raw) as { method?: string; params?: { name?: string } }
-          : (req as { body?: { method?: string; params?: { name?: string } } }).body;
-        if (body && body.method === 'tools/call' && typeof body.params?.name === 'string') {
-          return body.params.name;
-        }
-      } catch {
-        // Transport rejects malformed JSON downstream.
-      }
-      return undefined;
-    },
-  }));
-}
-
 const defaultAuthenticator = buildDefaultAuthenticator();
-const strictAuthenticator = buildStrictModeAuthenticator(lazyStrictSigningAuth);
-const strictRequiredAuthenticator = buildStrictModeAuthenticator(lazyStrictRequiredSigningAuth);
-const strictForbiddenAuthenticator = buildStrictModeAuthenticator(lazyStrictForbiddenSigningAuth);
 
 function buildRequireToken(authenticator: Authenticator | null) {
   return async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     if (!authenticator) {
-      // No tokens configured and no WorkOS = dev mode, allow all
+      // No tokens configured = dev mode, allow all
       res.locals.trainingPrincipal = 'anonymous';
       return next();
     }
@@ -232,10 +137,6 @@ function buildRequireToken(authenticator: Authenticator | null) {
       principal = await authenticator(req);
     } catch (err) {
       logger.warn({ err }, 'Training agent: authentication error');
-      // `signatureErrorCodeFromCause` (5.7) unwraps `AuthError` → cause to
-      // surface RFC 9421 error codes. `respondUnauthorized({ signatureError })`
-      // emits `WWW-Authenticate: Signature error="<code>"` — the challenge
-      // the `signed_requests` conformance grader reads the code off of.
       const signatureError = signatureErrorCodeFromCause(err);
       if (signatureError) {
         respondUnauthorized(req, res, {
@@ -244,13 +145,8 @@ function buildRequireToken(authenticator: Authenticator | null) {
         });
         return;
       }
-      const publicMessage = err instanceof AuthError
-        ? err.publicMessage
-        : 'Authentication failed';
-      respondUnauthorized(req, res, {
-        error: 'invalid_token',
-        errorDescription: publicMessage,
-      });
+      const publicMessage = err instanceof AuthError ? err.publicMessage : 'Authentication failed';
+      respondUnauthorized(req, res, { error: 'invalid_token', errorDescription: publicMessage });
       return;
     }
     if (!principal) {
@@ -269,93 +165,6 @@ function buildRequireToken(authenticator: Authenticator | null) {
 }
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
-const requireTokenStrict = buildRequireToken(strictAuthenticator);
-const requireTokenStrictRequired = buildRequireToken(strictRequiredAuthenticator);
-const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticator);
-
-/**
- * Capture the response body as it's written by the MCP transport, redact any
- * `IDEMPOTENCY_CONFLICT` envelopes (framework-dispatch's `adcpError()` emits
- * `recovery` which the storyboard invariant treats as a payload leak), and
- * flush the transformed body through the original writer. Idempotent: safe
- * to call even when no conflict envelope is present (pass-through via a
- * fast-path `includes('IDEMPOTENCY_CONFLICT')` probe inside the redactor).
- *
- * Works for the JSON-response mode (`enableJsonResponse: true`) the training
- * agent forces for every request — the transport writes a single
- * `res.write(body) ; res.end()` pair, which this wrapper buffers into one
- * string before rewriting. Streaming/SSE would break this contract, so do
- * not remove `enableJsonResponse: true` from the transport config above.
- *
- * Goes away once we bump past adcp-client#866 — @adcp/sdk 5.14+ has
- * built-in `sanitizeAdcpErrorEnvelope` in the dispatcher, which makes this
- * wire-layer redaction redundant.
- */
-function wrapResponseForConflictRedaction(res: Response): void {
-  const origWriteHead = res.writeHead.bind(res);
-  const origWrite = res.write.bind(res) as (chunk: unknown, ...rest: unknown[]) => boolean;
-  const origEnd = res.end.bind(res) as (chunk?: unknown, ...rest: unknown[]) => Response;
-  const chunks: Buffer[] = [];
-  let pendingHead: { status: number; headers: Record<string, string | number | string[]> } | null = null;
-
-  const collect = (chunk: unknown): void => {
-    if (chunk === undefined || chunk === null) return;
-    if (Buffer.isBuffer(chunk)) chunks.push(chunk);
-    else if (typeof chunk === 'string') chunks.push(Buffer.from(chunk, 'utf8'));
-    else if (chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
-    else chunks.push(Buffer.from(String(chunk), 'utf8'));
-  };
-
-  // `@hono/node-server` flushes headers via `writeHead(status, headers)`
-  // before calling `write` — with content-length already computed from the
-  // original body length. Buffering headers here defers flush until `end`
-  // runs, so the final `Content-Length` reflects the redacted body size.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (res as any).writeHead = ((
-    status: number,
-    statusMessageOrHeaders?: string | Record<string, string | number | string[]>,
-    headersArg?: Record<string, string | number | string[]>,
-  ): Response => {
-    const headers = typeof statusMessageOrHeaders === 'object' && statusMessageOrHeaders !== null
-      ? statusMessageOrHeaders
-      : headersArg ?? {};
-    pendingHead = { status, headers: { ...headers } };
-    return res;
-  }) as typeof res.writeHead;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (res as any).write = (chunk: unknown, encoding?: unknown, cb?: unknown): boolean => {
-    collect(chunk);
-    const callback = typeof encoding === 'function' ? encoding : cb;
-    if (typeof callback === 'function') (callback as () => void)();
-    return true;
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (res as any).end = (chunk?: unknown, encoding?: unknown, cb?: unknown): Response => {
-    if (chunk !== undefined && typeof chunk !== 'function') collect(chunk);
-    const callback = typeof chunk === 'function'
-      ? chunk
-      : typeof encoding === 'function'
-        ? encoding
-        : cb;
-    const body = Buffer.concat(chunks).toString('utf8');
-    const rewritten = redactConflictEnvelopeInBody(body);
-    if (pendingHead) {
-      const headers = pendingHead.headers;
-      for (const key of Object.keys(headers)) {
-        if (key.toLowerCase() === 'content-length') delete headers[key];
-      }
-      headers['content-length'] = Buffer.byteLength(rewritten, 'utf8');
-      origWriteHead(pendingHead.status, headers);
-      pendingHead = null;
-    }
-    if (rewritten.length > 0) origWrite(rewritten);
-    const args: unknown[] = [];
-    if (typeof callback === 'function') args.push(callback);
-    return origEnd(...args);
-  };
-}
 
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -364,11 +173,118 @@ function getBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
+const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] as const;
+
 export function createTrainingAgentRouter(): Router {
   const router = Router();
 
-  // Start session cleanup
   startSessionCleanup();
+
+  // Rate limiting: 1500 requests/minute per IP (in-memory, no DB dependency).
+  // The training agent is a sandbox — bulk storyboard evaluation runs 3-4 MCP
+  // calls per step across 27 storyboards (~600+ calls within a short window).
+  const mcpRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 1500,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false, ip: false },
+    handler: (_req: Request, res: Response) => {
+      res.status(429).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Rate limit exceeded. Please try again later.' },
+      });
+    },
+  });
+
+  // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
+  // auth + rate limiting. The tenant registry handles dispatch via
+  // resolveByRequest(host, pathname).
+  mountTenantRoutes(router, TENANT_IDS, {
+    rateLimit: mcpRateLimiter,
+    requireAuth: requireTokenDefault,
+  });
+
+  // Legacy single-URL `/mcp` route — preserved as a back-compat alias for
+  // existing AAO entries, Sage/Addie configs, docs, and external storyboard
+  // runners that target `test-agent.adcontextprotocol.org/mcp`. Serves the
+  // v5 monolith (`createTrainingAgentServer`) so it advertises every tool
+  // on one URL, the way it always has. Per-tenant URLs are the migration
+  // target; this mount goes away once the references are cut over.
+  function setLegacyCORS(res: Response): void {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
+  }
+
+  async function legacyMcpHandler(req: Request, res: Response): Promise<void> {
+    setLegacyCORS(res);
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Link', '</.well-known/adagents.json>; rel="successor-version"');
+    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    try {
+      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
+      const ctx: TrainingContext = { mode: 'open', principal };
+      server = createTrainingAgentServer(ctx);
+
+      // Streamable HTTP transport requires both `application/json` and
+      // `text/event-stream` in Accept; storyboard probes only send the
+      // former. Add the missing one + propagate to rawHeaders so the
+      // transport's Fetch wrapper sees it.
+      const acceptHeader = req.headers.accept;
+      const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
+      const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
+      if (hasJson && !hasSse) {
+        const rewritten = `${acceptHeader}, text/event-stream`;
+        req.headers.accept = rewritten;
+        const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
+        if (Array.isArray(raw)) {
+          for (let i = 0; i < raw.length; i += 2) {
+            if (raw[i].toLowerCase() === 'accept') raw[i + 1] = rewritten;
+          }
+        }
+      }
+
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      await server.connect(transport);
+      logger.debug({ method: req.body?.method, route: 'legacy /mcp' }, 'Training agent: legacy request');
+      await runWithSessionContext(async () => {
+        await transport.handleRequest(req, res, req.body);
+        await flushDirtySessions();
+      });
+    } catch (error) {
+      logger.error({ error, route: 'legacy /mcp' }, 'Training agent: legacy request error');
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    } finally {
+      await server?.close().catch(() => {});
+    }
+  }
+
+  router.options('/mcp', (_req: Request, res: Response) => {
+    setLegacyCORS(res);
+    res.status(204).end();
+  });
+  router.post('/mcp', mcpRateLimiter, requireTokenDefault, legacyMcpHandler);
+  router.get('/mcp', (_req: Request, res: Response) => {
+    setLegacyCORS(res);
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+    });
+  });
 
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
@@ -382,11 +298,11 @@ export function createTrainingAgentRouter(): Router {
     res.json(getPublicJwks());
   });
 
-  // adagents.json discovery
+  // adagents.json discovery — lists each per-tenant URL with the
+  // properties / signals it serves. Per-tenant entries replace the
+  // single-URL `authorized_agents[0].url` from the v5 monolith.
   router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
     const baseUrl = getBaseUrl(req);
-    // req.baseUrl is the mount path (e.g. '/api/training-agent') — empty when
-    // served via host-based routing at root
     const agentUrl = `${baseUrl}${req.baseUrl}`;
 
     res.json({
@@ -395,20 +311,28 @@ export function createTrainingAgentRouter(): Router {
         name: 'AdCP Training Agent',
         url: 'https://adcontextprotocol.org',
       },
-      authorized_agents: [{
-        url: `${agentUrl}/mcp`,
-        authorized_for: 'AdCP training, testing, and certification (sandbox)',
-        authorization_type: 'inline_properties',
-        properties: PUBLISHERS.flatMap(pub =>
-          pub.properties.map(prop => ({
-            identifier_type: prop.identifierType,
-            identifier_value: prop.identifierValue,
-            name: prop.name,
-            supported_channels: prop.channels,
-            tags: prop.tags,
-          })),
-        ),
-      }],
+      authorized_agents: [
+        {
+          url: `${agentUrl}/sales/mcp`,
+          authorized_for: 'AdCP training — sales (programmatic + guaranteed)',
+          authorization_type: 'inline_properties',
+          properties: PUBLISHERS.flatMap(pub =>
+            pub.properties.map(prop => ({
+              identifier_type: prop.identifierType,
+              identifier_value: prop.identifierValue,
+              name: prop.name,
+              supported_channels: prop.channels,
+              tags: prop.tags,
+            })),
+          ),
+        },
+        {
+          url: `${agentUrl}/signals/mcp`,
+          authorized_for: 'AdCP training — signals (marketplace + owned)',
+          authorization_type: 'inline_properties',
+          properties: [],
+        },
+      ],
       signals: SIGNAL_PROVIDERS.flatMap(provider =>
         provider.signals.map(signal => ({
           id: signal.signalAgentSegmentId,
@@ -433,318 +357,6 @@ export function createTrainingAgentRouter(): Router {
     });
   });
 
-  // CORS preflight
-  router.options('/mcp', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-
-  // Rate limiting: 1500 requests/minute per IP (in-memory, no DB dependency).
-  // The training agent is a sandbox — bulk storyboard evaluation runs 3-4 MCP
-  // calls per step across 27 storyboards (~600+ calls within a short window).
-  const mcpRateLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 1500,
-    standardHeaders: true,
-    legacyHeaders: false,
-    validate: { xForwardedForHeader: false, ip: false },
-    handler: (_req: Request, res: Response) => {
-      res.status(429).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'Rate limit exceeded. Please try again later.' },
-      });
-    },
-  });
-
-  // MCP endpoint factory. Routes share the same body:
-  //   /mcp                — sandbox. anyOf(bearers, signing). required_for=[].
-  //   /mcp-strict         — grader target. covers_content_digest='either'.
-  //   /mcp-strict-required  — grader target. covers_content_digest='required'. Fires neg/007.
-  //   /mcp-strict-forbidden — grader target. covers_content_digest='forbidden'. Fires neg/018.
-  // The `strict` + `digestMode` flags flow into TrainingContext so get_adcp_capabilities
-  // advertises the correct request_signing block per route.
-  function mcpHandler(strict: boolean, digestMode?: 'either' | 'required' | 'forbidden') {
-    return async (req: Request, res: Response) => {
-      setCORSHeaders(res);
-
-      // The framework returns `AdcpServer` (5.4+); the legacy factory returns
-      // the SDK's `Server`. Both satisfy the transport contract at runtime
-      // but have incompatible nominal types (different private fields).
-      // `any` stays until the flip-default PR deletes the legacy path.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let server: any = null;
-      try {
-        // Principal is set by requireToken; defaults to 'anonymous' in dev mode
-        // when no tokens are configured.
-        const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-        const ctx: TrainingContext = { mode: 'open', principal, strict, digestMode };
-
-        server = useFrameworkServer()
-          ? createFrameworkTrainingAgentServer(ctx)
-          : createTrainingAgentServer(ctx);
-
-        // MCP Streamable HTTP transport requires the client Accept header to
-        // list BOTH `application/json` and `text/event-stream` per the
-        // 2025-03-26 spec — or it returns 406 Not Acceptable. Storyboard
-        // conformance probes and other strict JSON consumers only send
-        // `application/json`. We satisfy both by (a) adding the missing SSE
-        // content type so the transport's check passes and (b) enabling JSON
-        // response mode so the body is single-shot JSON rather than an SSE
-        // stream the probe can't parse. `@adcp/sdk/express-mcp`'s
-        // `mcpAcceptHeaderMiddleware` does the same thing in 5.14+ but
-        // @adcp/sdk is pinned to 5.13 in this repo (storyboard runner
-        // regressed at 5.14 — adcp-client#866). Once that's resolved, swap
-        // this block for `app.use('/mcp', mcpAcceptHeaderMiddleware())`.
-        const acceptHeader = req.headers.accept;
-        const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
-        const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
-        if (hasJson && !hasSse) {
-          const rewritten = `${acceptHeader}, text/event-stream`;
-          req.headers.accept = rewritten;
-          // @hono/node-server (used internally by StreamableHTTPServerTransport)
-          // reads headers from `rawHeaders` — the alternating [name, value]
-          // array Node's HTTP parser fills in. Mutating `req.headers.accept`
-          // alone doesn't propagate to the transport's Fetch Request wrapper.
-          const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
-          if (Array.isArray(raw)) {
-            for (let i = 0; i < raw.length; i += 2) {
-              if (raw[i].toLowerCase() === 'accept') {
-                raw[i + 1] = rewritten;
-              }
-            }
-          }
-        }
-
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined, // Stateless
-          enableJsonResponse: true,
-        });
-
-        await server.connect(transport);
-
-        // Framework-dispatch IDEMPOTENCY_CONFLICT envelopes route through
-        // `@adcp/sdk/server`'s `adcpError()` builder, which in 5.13
-        // auto-injects `recovery` on every error. The universal idempotency
-        // storyboard's `conflict_no_payload_leak` invariant allows only a
-        // narrow set of envelope keys on conflict — anything else is flagged
-        // as a potential stolen-key read oracle. Intercept the response
-        // bytes before they leave the process and strip disallowed keys.
-        // Legacy dispatch builds a minimal envelope by hand, so the wrap is
-        // a no-op there in practice (it still runs but finds nothing to
-        // redact). @adcp/sdk 5.14 moves this sanitization into the
-        // dispatcher via `sanitizeAdcpErrorEnvelope` — once we bump past
-        // the 5.14 storyboard regression (adcp-client#866), drop this
-        // wrapper and delete conflict-envelope.ts.
-        wrapResponseForConflictRedaction(res);
-
-        logger.debug({ method: req.body?.method, ip: req.ip, strict }, 'Training agent: handling request');
-
-        // Both legacy and framework dispatch wrap handler execution in
-        // runWithSessionContext internally (legacy: CallToolRequestSchema,
-        // framework: adapt + customToolFor in framework-server.ts), so the
-        // transport-level handler just delegates.
-        await transport.handleRequest(req, res, req.body);
-      } catch (error) {
-        logger.error({ error, strict }, 'Training agent: request error');
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: '2.0',
-            id: null,
-            error: { code: -32603, message: 'Internal server error' },
-          });
-        }
-      } finally {
-        await server?.close().catch(() => {});
-      }
-    };
-  }
-
-  router.post('/mcp', mcpRateLimiter, requireTokenDefault, mcpHandler(false));
-
-  // Strict endpoint for `adcp grade request-signing` and the AAO Verified
-  // compliance dashboard. Enforces `required_for: ['create_media_buy']` with
-  // presence-gated auth so vector 001 (`request_signature_required`) fires
-  // instead of being swallowed by the bearer fallthrough on /mcp.
-  router.options('/mcp-strict', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-  router.post('/mcp-strict', mcpRateLimiter, requireTokenStrict, mcpHandler(true));
-  router.get('/mcp-strict', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.setHeader('Allow', 'POST, OPTIONS');
-    res.status(405).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
-    });
-  });
-
-  // Grader-only targets for covers_content_digest='required' and 'forbidden' modes.
-  // Enables grader vectors neg/007 (missing-content-digest) and neg/018
-  // (digest-covered-when-forbidden) that can't fire against /mcp-strict because
-  // that route advertises 'either' — correct for the sandbox but untestable for
-  // those specific negative paths. Buyers smoke-testing their signing implementation
-  // can use these to verify their code handles required-mode and forbidden-mode
-  // rejections.
-  function mcpStrictModeGet(_req: Request, res: Response): void {
-    setCORSHeaders(res);
-    res.setHeader('Allow', 'POST, OPTIONS');
-    res.status(405).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
-    });
-  }
-
-  router.options('/mcp-strict-required', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-  router.post('/mcp-strict-required', mcpRateLimiter, requireTokenStrictRequired, mcpHandler(true, 'required'));
-  router.get('/mcp-strict-required', mcpStrictModeGet);
-
-  router.options('/mcp-strict-forbidden', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-  router.post('/mcp-strict-forbidden', mcpRateLimiter, requireTokenStrictForbidden, mcpHandler(true, 'forbidden'));
-  router.get('/mcp-strict-forbidden', mcpStrictModeGet);
-
-  // GET/DELETE not supported in stateless mode
-  router.get('/mcp', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.setHeader('Allow', 'POST, OPTIONS');
-    res.status(405).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
-    });
-  });
-
-  // --- Legacy SSE transport ---
-  // Some MCP clients (e.g. older SDKs) only support the deprecated SSE transport.
-  // GET /sse establishes the event stream; POST /message delivers JSON-RPC messages.
-  // Rate limiter is shared with /mcp — SSE uses 2 requests per interaction (GET + POST).
-  const sseSessions = new Map<string, SSEServerTransport>();
-  const sseSessionLastSeen = new Map<string, number>();
-  const SSE_MAX_SESSIONS = 200;
-  const SSE_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-  // Sweep stale sessions that didn't trigger a close event (e.g. LB timeout)
-  const sseSweepTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [id, ts] of sseSessionLastSeen) {
-      if (now - ts > SSE_SESSION_TTL_MS) {
-        const transport = sseSessions.get(id);
-        if (transport) transport.close().catch(() => {});
-        sseSessions.delete(id);
-        sseSessionLastSeen.delete(id);
-      }
-    }
-  }, 5 * 60 * 1000);
-  if (sseSweepTimer.unref) sseSweepTimer.unref();
-
-  router.options('/sse', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-
-  router.options('/message', (_req: Request, res: Response) => {
-    setCORSHeaders(res);
-    res.status(204).end();
-  });
-
-  router.get('/sse', mcpRateLimiter, requireTokenDefault, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
-
-    if (sseSessions.size >= SSE_MAX_SESSIONS) {
-      res.status(503).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'Too many active SSE sessions. Please try again later.' },
-      });
-      return;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let server: any = null;
-    try {
-      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-      const ctx: TrainingContext = { mode: 'open', principal };
-      server = useFrameworkServer()
-        ? createFrameworkTrainingAgentServer(ctx)
-        : createTrainingAgentServer(ctx);
-
-      // The endpoint path is relative to the router mount point
-      const transport = new SSEServerTransport(`${req.baseUrl}/message`, res);
-      const sessionId = transport.sessionId;
-      sseSessions.set(sessionId, transport);
-      sseSessionLastSeen.set(sessionId, Date.now());
-
-      transport.onclose = () => {
-        sseSessions.delete(sessionId);
-        sseSessionLastSeen.delete(sessionId);
-        server?.close().catch(() => {});
-        logger.debug({ sessionId }, 'SSE session closed');
-      };
-
-      await server.connect(transport);
-
-      logger.debug({ sessionId, ip: req.ip }, 'SSE session established');
-    } catch (error) {
-      logger.error({ error }, 'Training agent: SSE connection error');
-      await server?.close().catch(() => {});
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32603, message: 'Internal server error' },
-        });
-      }
-    }
-  });
-
-  router.post('/message', mcpRateLimiter, requireTokenDefault, async (req: Request, res: Response) => {
-    setCORSHeaders(res);
-
-    const sessionId = req.query.sessionId as string;
-    if (!sessionId) {
-      res.status(400).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32600, message: 'Missing sessionId query parameter' },
-      });
-      return;
-    }
-
-    const transport = sseSessions.get(sessionId);
-    if (!transport) {
-      res.status(404).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'SSE session not found or expired' },
-      });
-      return;
-    }
-
-    sseSessionLastSeen.set(sessionId, Date.now());
-
-    try {
-      await transport.handlePostMessage(req, res, req.body);
-    } catch (error) {
-      logger.error({ error, sessionId }, 'Training agent: SSE message error');
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32603, message: 'Internal server error' },
-        });
-      }
-    }
-  });
-
-  logger.info('Training agent routes configured');
+  logger.info({ tenants: TENANT_IDS }, 'Training agent routes configured');
   return router;
 }

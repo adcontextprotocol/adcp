@@ -35,6 +35,9 @@ import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 // below.
 const AUTH_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN ?? 'storyboard-runner-test-token';
 process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
+// SDK refuses the in-memory task registry outside dev/test. The runner is a
+// local dev convenience; opt in explicitly so the SDK accepts the default.
+if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
 // Silence pino logger noise so the progress table stays readable. Set
 // LOG_STORYBOARDS=1 to get full log output for diagnosis.
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
@@ -88,8 +91,17 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
         reject(new Error('listen returned no address'));
         return;
       }
+      // TENANT_PATH selects the per-specialism tenant endpoint
+      // (/api/training-agent/<tenant>/mcp). Required — there's no
+      // single-URL fallback after the v5 monolith was retired.
+      // Common values: signals, sales, governance, creative,
+      // creative-builder, brand.
+      const tenantPath = process.env.TENANT_PATH;
+      if (!tenantPath) {
+        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand)');
+      }
       resolve({
-        url: `http://127.0.0.1:${addr.port}/api/training-agent/mcp`,
+        url: `http://127.0.0.1:${addr.port}/api/training-agent/${tenantPath}/mcp`,
         close: () => new Promise<void>(res => {
           stopSessionCleanup();
           srv.close(() => res());
@@ -213,7 +225,11 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
   }
 }
 
-function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+  if (verbose && s.skipped) {
+    // eslint-disable-next-line no-console
+    console.log(`    [skip] ${(s as { id?: string }).id ?? '?'} — ${s.skip_reason ?? '(no reason)'} :: ${s.skip?.detail ?? '(no detail)'}`);
+  }
   if (s.not_applicable) return 'not_applicable';
   if (s.skipped) return 'skipped';
   if (s.passed === false || s.error) return 'failed';
