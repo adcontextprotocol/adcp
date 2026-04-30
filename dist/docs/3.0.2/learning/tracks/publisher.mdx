@@ -1,0 +1,246 @@
+---
+title: "Publisher / seller track"
+sidebarTitle: Publisher track
+description: "AdCP publisher track (B1-B4): build and operate a sales agent. Product catalog design, creative specs, delivery reporting, and a sales agent build project."
+"og:title": "AdCP — Publisher / seller track"
+---
+
+# Publisher / seller track (B1–B4)
+
+<Info>
+**Members only** — Requires Basics credential (A1–A3). Four modules, ~105 minutes total.
+</Info>
+
+This track teaches you to build and operate the supply side of AdCP. You'll learn how sales agents represent publisher inventory, how buyer agents discover and evaluate your products, and how to expose delivery data and signals for measurement. The track culminates in a build project where you create a working sales agent.
+
+Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
+
+---
+
+## B1: Designing your product catalog
+
+**~20 min** | Prerequisite: A3
+
+How a hosted sales agent works: product discovery, catalog integration, capability advertising. Walkthrough of designing your product catalog — including collections and installments for content-centric inventory like podcasts, CTV series, and live events — and configuring what buyers can discover about you.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Product discovery" icon="magnifying-glass" href="/dist/docs/3.0.2/media-buy/product-discovery/index">
+    How buyer agents discover publisher inventory through `get_products`.
+  </Card>
+  <Card title="get_products task" icon="code" href="/dist/docs/3.0.2/media-buy/task-reference/get_products">
+    Task reference: request schema, response schema, and examples.
+  </Card>
+  <Card title="Media products" icon="cube" href="/dist/docs/3.0.2/media-buy/product-discovery/media-products">
+    How to structure products: formats, pricing, targeting, and availability.
+  </Card>
+  <Card title="Collections and installments" icon="tv" href="/dist/docs/3.0.2/media-buy/product-discovery/collections-and-installments">
+    Model content-centric inventory: podcasts, CTV series, live events, and episodic content.
+  </Card>
+  <Card title="sync_catalogs task" icon="rotate" href="/dist/docs/3.0.2/media-buy/task-reference/sync_catalogs">
+    Catalog synchronization: 13 catalog types, feed field mappings.
+  </Card>
+  <Card title="Capability discovery" icon="magnifying-glass" href="/dist/docs/3.0.2/protocol/get_adcp_capabilities">
+    How agents advertise their capabilities so other agents can discover what they offer.
+  </Card>
+  <Card title="Version negotiation" icon="code-branch" href="/dist/docs/3.0.2/reference/versioning#version-negotiation">
+    Advertise your supported `adcp.major_versions`; reject mismatched requests with `VERSION_UNSUPPORTED`.
+  </Card>
+  <Card title="Authorized properties" icon="shield-check" href="/dist/docs/3.0.2/governance/property/authorized-properties">
+    How publishers declare and authorize their properties for agentic transactions.
+  </Card>
+  <Card title="Media buy lifecycle" icon="timeline" href="/dist/docs/3.0.2/media-buy/specification#media-buy-state-transitions">
+    The state machine sellers must honor: `pending_creatives` → `pending_start` → `active` → `paused`/`completed`.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Sales agent role** — your always-on, AI-powered sales team that responds to buyer queries
+- **Product catalog design** — products, formats, pricing models, targeting options, availability, and shows/episodes for content-centric inventory
+- **Catalog integration** — `sync_catalogs` for product data, 13 catalog types, feed field mappings
+- **Capability advertising** — `get_adcp_capabilities` so buyers know what you support
+- **Object-presence capability principle** — capabilities are declared by the presence of an object, not by booleans. If you support a feature, include the object; if you don't, omit it. Buyers check for the object, not for `"feature": true`.
+- **Version advertising** — declare `adcp.major_versions` so multi-version buyers can migrate on their own schedule; validate incoming `adcp_major_version` and return `VERSION_UNSUPPORTED` when out of range
+- **Lifecycle commitments** — `create_media_buy` MAY return `pending_creatives` or `pending_start`; MUST transition `pending_start` → `active` when the flight date arrives, and notify orchestrators via webhook. Rejection is only valid from the pending states
+- **Reporting declaration** — every product MUST include `reporting_capabilities` (metrics, dimensions, cadence, measurement windows). Presence of this object declares `get_media_buy_delivery` support
+
+<Card title="Start B1 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module B1."
+</Card>
+
+---
+
+## B2: Creative specifications and format support
+
+**~20 min** | Prerequisite: B1
+
+Deep dive on `list_creative_formats` and how buyer agents discover what your inventory accepts. Guide to structuring creative specs, handling incoming creatives, and brand compliance.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Brief expectations" icon="file-lines" href="/dist/docs/3.0.2/media-buy/product-discovery/brief-expectations">
+    What buyer briefs look like and how to structure products so agents can match them.
+  </Card>
+  <Card title="Example briefs" icon="clipboard-list" href="/dist/docs/3.0.2/media-buy/product-discovery/example-briefs">
+    Real examples of product discovery queries from buyer agents.
+  </Card>
+  <Card title="list_creative_formats task" icon="palette" href="/dist/docs/3.0.2/creative/task-reference/list_creative_formats">
+    How creative format specifications work — dimensions, file types, render requirements.
+  </Card>
+  <Card title="Creative formats" icon="image" href="/dist/docs/3.0.2/creative/formats">
+    Format definitions, technical specs, and the renders structure.
+  </Card>
+  <Card title="Implementing standard formats" icon="ruler-combined" href="/dist/docs/3.0.2/media-buy/capability-discovery/implementing-standard-formats">
+    Standard format IDs and how to implement them consistently.
+  </Card>
+  <Card title="Product refinement" icon="filter" href="/dist/docs/3.0.2/media-buy/product-discovery/refinement">
+    How buyer agents refine searches and negotiate product parameters.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Format declarations** — `list_creative_formats` tells buyers what you accept
+- **Format vs manifest** — the format is what you accept, the manifest is what gets delivered
+- **Handling incoming creatives** — `sync_creatives` and `build_creative` validation and approval
+- **Brand compliance** — understanding incoming brand.json, disclosure positions
+
+<Card title="Start B2 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module B2."
+</Card>
+
+---
+
+## B3: Measurement, signals, and optimization
+
+**~20 min** | Prerequisite: B2
+
+How to expose delivery data, measurement signals, and optimization levers through your sales agent. Integration with measurement platforms, audience handling, and account management.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="get_media_buy_delivery task" icon="chart-line" href="/dist/docs/3.0.2/media-buy/task-reference/get_media_buy_delivery">
+    Delivery metrics: impressions, spend, completion rates, and performance data.
+  </Card>
+  <Card title="Optimization and reporting" icon="chart-mixed" href="/dist/docs/3.0.2/media-buy/media-buys/optimization-reporting">
+    How buyer agents use delivery data for campaign optimization.
+  </Card>
+  <Card title="Signals overview" icon="signal" href="/dist/docs/3.0.2/signals/overview">
+    The signals protocol: audience segments, contextual signals, measurement data.
+  </Card>
+  <Card title="Trusted Match Protocol" icon="microchip" href="/dist/docs/3.0.2/trusted-match">
+    How publishers support impression-time execution for buyer use cases like cross-publisher frequency capping.
+  </Card>
+  <Card title="TMP Router architecture" icon="diagram-project" href="/dist/docs/3.0.2/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration for publishers.
+  </Card>
+  <Card title="get_signals task" icon="code" href="/dist/docs/3.0.2/signals/tasks/get_signals">
+    Signal discovery: what measurement data is available and how to expose it.
+  </Card>
+  <Card title="activate_signal task" icon="toggle-on" href="/dist/docs/3.0.2/signals/tasks/activate_signal">
+    Enabling specific measurement on a campaign.
+  </Card>
+  <Card title="Accounts overview" icon="building" href="/dist/docs/3.0.2/accounts/overview">
+    The commercial layer: advertisers, operators, authentication, and billing.
+  </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/dist/docs/3.0.2/governance/campaign">
+    Seller-side governance checks: validate buyer purchases before executing them.
+  </Card>
+  <Card title="check_governance task" icon="clipboard-check" href="/dist/docs/3.0.2/governance/campaign/tasks/check_governance">
+    The governance validation task: intent checks, execution checks, statuses, and planned delivery.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Delivery reporting** — accurate, timely delivery data via `get_media_buy_delivery`
+- **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
+- **Audience handling** — `sync_audiences` for accepting buyer audience data
+- **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously
+- **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
+- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/dist/docs/3.0.2/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
+- **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
+
+### Exercise
+
+Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
+
+<Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module B3."
+</Card>
+
+---
+
+## B4: Build project — your first sales agent
+
+**~45 min** | Prerequisite: B3
+
+Create a working sales agent that responds to real buyer queries. Point your AI coding assistant (Claude Code, Cursor, Copilot) at the [`build-seller-agent`](/dist/docs/3.0.2/building/build-an-agent) skill file — it generates an agent validated against AdCP storyboards, with optional [`comply_test_controller`](/dist/docs/3.0.2/building/implementation/comply-test-controller) scaffolding for deterministic lifecycle testing in sandbox mode. The skill tested is specifying correct AdCP behavior.
+
+### What you'll build
+
+- Product catalog with at least 3 products and `sync_catalogs` support, each product declaring `reporting_capabilities`
+- `get_adcp_capabilities` that declares `adcp.major_versions` and validates `adcp_major_version` on incoming requests — including a truthful `capabilities.idempotency.replay_ttl_seconds` declaration
+- Creative format support for at least 2 formats
+- Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
+- Account setup via `sync_accounts`
+- Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable
+- Idempotency enforcement on every mutating request: reject missing or malformed `idempotency_key` with `INVALID_REQUEST` before touching business logic; cache only on success; scope per authenticated agent
+- Lifecycle transitions: seller moves media buys through `pending_creatives` → `pending_start` → `active` and notifies via webhook on each transition
+
+### How you'll validate
+
+Run the `media_buy_seller` storyboard against your running agent:
+
+```bash
+npx @adcp/client@latest storyboard run my-agent media_buy_seller
+```
+
+The storyboard exercises the complete buyer workflow — discovery, account sync, media buy, creatives, delivery — and validates every response. See [Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent) for setup and debugging.
+
+### Specialisms you can claim
+
+Declare `media_buy` in `supported_protocols` and choose the specialism that matches your inventory model. Each specialism has a compliance storyboard at `/compliance/{version}/specialisms/{id}/` that verifies your claim:
+
+- `sales-guaranteed` — guaranteed with human IO approval
+- `sales-non-guaranteed` — auction-based
+- `sales-proposal-mode` — proposal-negotiated
+- `sales-catalog-driven` — catalog-driven commerce with conversion tracking
+- `sales-broadcast-tv` — broadcast linear TV
+- `sales-social` — social platform with self-service flows
+
+See the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) for the full list.
+
+### Assessment rubric
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Specification quality | 20% | Can you specify an agent in AdCP terms? |
+| Schema compliance | 25% | Agent responses validate against AdCP schemas |
+| Error handling | 15% | Handles invalid requests with proper AdCP errors |
+| Design rationale | 20% | Can you explain and reason about design decisions? |
+| Extension ability | 20% | Can you extend the agent with new capabilities? |
+
+Passing threshold: 70%.
+
+Any AI coding assistant is welcome (Claude, Cursor, Copilot, etc.). The skill tested is: "Can you specify correct AdCP behavior?"
+
+<Card title="Start B4 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module B4."
+</Card>
+
+---
+
+## What's next
+
+After completing B1–B4, you've earned the **AdCP practitioner** credential. From here you can pursue specialist modules:
+
+- [S1: Media buy](/dist/docs/3.0.2/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [S2: Creative](/dist/docs/3.0.2/learning/specialist/creative) — asset workflows, format compliance
+- [S3: Signals](/dist/docs/3.0.2/learning/specialist/signals) — measurement, attribution, optimization
+- [S4: Governance](/dist/docs/3.0.2/learning/specialist/governance) — brand safety, campaign governance, compliance, policy registry
+- [S5: Sponsored Intelligence](/dist/docs/3.0.2/learning/specialist/sponsored-intelligence) — conversational brand experiences
