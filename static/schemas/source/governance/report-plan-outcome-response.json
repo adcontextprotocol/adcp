@@ -3,8 +3,13 @@
   "$id": "/schemas/governance/report-plan-outcome-response.json",
   "title": "Report Plan Outcome Response",
   "description": "Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that manages the plan. Sellers report delivery data via check_governance with phase 'delivery', not via this task.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "outcome_id": {
       "type": "string",

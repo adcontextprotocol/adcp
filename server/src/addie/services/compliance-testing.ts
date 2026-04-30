@@ -1,5 +1,5 @@
 /**
- * Compliance testing — thin adapter over @adcp/client's compliance module.
+ * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
  * Re-exports the client's comply(), types, platform profiles, and briefs.
  * Adds complianceResultToDbInput() for recording results in the database.
@@ -17,7 +17,7 @@ import {
   type SampleBrief,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 
 import type {
   TrackSummaryEntry,
@@ -46,7 +46,7 @@ export type {
 
 // ── Capability-resolution error classification ───────────────────
 //
-// `@adcp/client`'s `resolveStoryboardsForCapabilities` fails closed with
+// `@adcp/sdk`'s `resolveStoryboardsForCapabilities` fails closed with
 // plain `Error` instances for two distinct agent-config problems:
 //   1. Declared specialism whose parent protocol isn't in supported_protocols.
 //   2. Declared specialism whose bundle isn't in the local compliance cache.
@@ -55,10 +55,10 @@ export type {
 // not platform errors — callers should log at warn and return actionable
 // coaching, not alarm on them as system failures.
 //
-// Until @adcp/client exports typed errors (tracked upstream at
+// Until @adcp/sdk exports typed errors (tracked upstream at
 // adcontextprotocol/adcp-client#734), we classify by message regex. The
 // patterns match the exact strings thrown at
-// node_modules/@adcp/client/dist/lib/testing/storyboard/compliance.js:337
+// node_modules/@adcp/sdk/dist/lib/testing/storyboard/compliance.js:337
 // and :347. Swap to `instanceof` checks once the SDK emits coded errors.
 //
 // Security notes:
@@ -358,6 +358,51 @@ export interface VerificationResult {
   }>;
 }
 
+export type SpecialismStatus = 'passing' | 'failing' | 'untested' | 'unknown';
+
+/**
+ * Map declared specialisms to per-specialism pass/fail/untested status by
+ * looking up each specialism's storyboard in the latest run's storyboard
+ * statuses. Used by the dashboard to mark which declared specialisms are
+ * the cause of a `failing` overall status without forcing the user to
+ * cross-reference the storyboard track pills.
+ *
+ * `unknown` is returned for specialisms not in `SPECIALISM_CATALOG` (e.g.
+ * preview-status specialisms that the agent declared but the catalog
+ * doesn't recognize as stable).
+ */
+export function computeSpecialismStatus(
+  declaredSpecialisms: string[],
+  storyboardStatuses: StoryboardStatusEntry[],
+): Record<string, SpecialismStatus> {
+  const statusMap = new Map<string, StoryboardStatusEntry>();
+  for (const entry of storyboardStatuses) {
+    statusMap.set(entry.storyboard_id, entry);
+  }
+
+  const result: Record<string, SpecialismStatus> = {};
+  for (const specialism of declaredSpecialisms) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) {
+      result[specialism] = 'unknown';
+      continue;
+    }
+    const sbStatus = statusMap.get(info.storyboard_id);
+    if (!sbStatus) {
+      result[specialism] = 'untested';
+      continue;
+    }
+    if (sbStatus.status === 'passing') {
+      result[specialism] = 'passing';
+    } else if (sbStatus.status === 'failing' || sbStatus.status === 'partial') {
+      result[specialism] = 'failing';
+    } else {
+      result[specialism] = 'untested';
+    }
+  }
+  return result;
+}
+
 /**
  * Determine which badge roles an agent qualifies for based on its
  * declared specialisms and their pass/fail status.
@@ -422,7 +467,7 @@ export function deriveVerificationStatus(
 // ── DB Adapter ────────────────────────────────────────────────────
 
 /**
- * Convert a ComplianceResult from @adcp/client into the shape expected
+ * Convert a ComplianceResult from @adcp/sdk into the shape expected
  * by ComplianceDatabase.recordComplianceRun().
  */
 export function complianceResultToDbInput(

@@ -11,7 +11,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
@@ -47,7 +49,7 @@ import {
   type Storyboard,
   type StoryboardContext,
   type StoryboardStepResult,
-} from '@adcp/client/testing';
+} from '@adcp/sdk/testing';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import {
@@ -71,7 +73,7 @@ import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
 import * as relationshipDb from '../../db/relationship-db.js';
 import * as personEvents from '../../db/person-events-db.js';
-import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../services/pipes.js';
+import { getGitHubAccessToken } from '../../services/pipes.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -106,7 +108,7 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 };
 
 /**
- * Known error patterns that indicate bugs in the @adcp/client testing library
+ * Known error patterns that indicate bugs in the @adcp/sdk testing library
  * rather than in the agent being tested.
  *
  * Each pattern should be specific enough to avoid false positives where an agent
@@ -3631,7 +3633,7 @@ export function createMemberToolHandlers(
         }
         return (
           `**Unknown specialism.** The agent declares ${safeSpec}, which isn't in the local ` +
-          `compliance cache. Either the cache is stale (re-sync the \`@adcp/client\` compliance ` +
+          `compliance cache. Either the cache is stale (re-sync the \`@adcp/sdk\` compliance ` +
           `tarball) or the specialism id is a typo — cross-check against ` +
           `https://adcontextprotocol.org/compliance/latest/index.json.`
         );
@@ -3687,7 +3689,14 @@ export function createMemberToolHandlers(
     } catch (err) {
       logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
-    const docsVersion = index?.adcp_version || 'latest';
+    // Build emits both `published_version` (preferred) and `adcp_version`
+    // (legacy alias) on the compliance index. Prefer the new field; fall
+    // back to the legacy alias because `@adcp/client.ComplianceIndex` still
+    // types the legacy field at compile time.
+    const docsVersion =
+      (index as { published_version?: string } | null)?.published_version ||
+      index?.adcp_version ||
+      'latest';
     const indexUrl = `https://adcontextprotocol.org/compliance/${docsVersion}/index.json`;
 
     const knownProtocolIds = index?.protocols?.map(p => p.id.replace(/-/g, '_')) ?? [
@@ -3760,7 +3769,7 @@ export function createMemberToolHandlers(
       if (knownIds.length > 0) {
         output += `Known specialisms in this cache: ${knownIds.map(id => `\`${id}\``).join(', ')}.\n\n`;
       }
-      output += `Either the cache is stale (re-sync the \`@adcp/client\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
+      output += `Either the cache is stale (re-sync the \`@adcp/sdk\` compliance tarball) or the agent's specialism id is a typo — cross-check it against ${indexUrl}.\n`;
       return output;
     }
 
@@ -3785,7 +3794,7 @@ export function createMemberToolHandlers(
       output += `_Note: \`get_adcp_capabilities\` partially failed — agent-reported error${safeProbeErr ? ` ${safeProbeErr}` : ''}. Bundle selection below reflects what did come through._\n\n`;
     }
 
-    // Group by bundle kind. `@adcp/client@5.x` returns kind: 'domain' for protocol baselines;
+    // Group by bundle kind. `@adcp/sdk@5.x` returns kind: 'domain' for protocol baselines;
     // v6 will return 'protocol'. Accept either during transition.
     const byKind: Record<string, typeof nonEmpty> = { universal: [], domain: [], protocol: [], specialism: [] };
     for (const b of nonEmpty) {
@@ -3964,7 +3973,7 @@ export function createMemberToolHandlers(
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
-          // @adcp/client contract — render them on passing steps too so
+          // @adcp/sdk contract — render them on passing steps too so
           // catalog drift caught by a downstream tool surfaces even when
           // this step happened to pass on its own response shape.
           if (!step.skipped) {
@@ -4097,7 +4106,7 @@ export function createMemberToolHandlers(
         }
 
         // Hints are diagnostic-only and don't flip pass/fail per the
-        // @adcp/client contract — surface them whether the step passed
+        // @adcp/sdk contract — surface them whether the step passed
         // or failed, so catalog drift caught by a downstream tool isn't
         // hidden when an individual step's own validations happen to pass.
         const fixPlan = renderAllHintFixPlans(result.hints, {
@@ -4200,7 +4209,7 @@ export function createMemberToolHandlers(
     }
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
 
       const agentConfig = {
         id: 'target',
@@ -4396,7 +4405,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
@@ -4614,7 +4623,7 @@ export function createMemberToolHandlers(
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/sdk');
       const agentConfig = {
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
@@ -5074,26 +5083,19 @@ export function createMemberToolHandlers(
     }
 
     if (tokenResult.status !== 'ok') {
-      const returnTo = `${baseUrl}/member-hub?connected=github`;
-      let authorizeUrl: string;
-      try {
-        authorizeUrl = await getGitHubAuthorizeUrl(workosUserId, returnTo);
-      } catch (error) {
-        logger.error({ err: error }, 'create_github_issue: Failed to build Pipes authorize URL');
-        return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
-      }
+      const connectUrl = `${baseUrl}/connect/github?return_to=${encodeURIComponent('/member-hub?connected=github')}`;
 
       if (tokenResult.status === 'needs_reauthorization') {
         return [
           `Your GitHub connection needs a quick re-authorization (the scopes we need changed).`,
           '',
-          `**[Reconnect GitHub](${authorizeUrl})** — takes under a minute. Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link to submit yourself.`,
+          `**[Reconnect GitHub](${connectUrl})** — takes under a minute. Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link to submit yourself.`,
           '',
           `Manage connections any time at ${manageConnectionsUrl}.`,
         ].join('\n');
       }
       return [
-        `**[Connect GitHub](${authorizeUrl})** — one click and I'll file this under your GitHub account.`,
+        `**[Connect GitHub](${connectUrl})** — one click and I'll file this under your GitHub account.`,
         '',
         `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
       ].join('\n');
@@ -5119,7 +5121,10 @@ export function createMemberToolHandlers(
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error({ status: response.status, repo }, 'create_github_issue: GitHub API error');
+        logger.warn(
+          { status: response.status, repo, errorText: errorText.slice(0, 500) },
+          'create_github_issue: GitHub API error',
+        );
         if (response.status === 422 && errorText.includes('label')) {
           const retryResponse = await fetch(apiUrl, {
             method: 'POST',
@@ -5160,7 +5165,7 @@ export function createMemberToolHandlers(
         if (response.status === 404) {
           return `Issue #${issueNumber} not found in ${org}/${repo}.`;
         }
-        logger.error({ status: response.status, repo, issueNumber }, 'get_github_issue: GitHub API error');
+        logger.warn({ status: response.status, repo, issueNumber }, 'get_github_issue: GitHub API error');
         return githubErrorMessage(response, `read issue #${issueNumber}`);
       }
       const issue = await response.json() as {
@@ -5217,7 +5222,7 @@ export function createMemberToolHandlers(
             : `Comments (${comments.length})`;
           out += `\n---\n\n${wrapUntrusted(`${issue.html_url}#comments`, `### ${shownLabel}\n\n${commentBlock}`)}\n`;
         } else {
-          logger.error({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
+          logger.warn({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
         }
       }
       return out;
@@ -5260,7 +5265,7 @@ export function createMemberToolHandlers(
     try {
       const response = await fetch(apiUrl, { headers });
       if (!response.ok) {
-        logger.error({ status: response.status, repo }, 'list_github_issues: GitHub API error');
+        logger.warn({ status: response.status, repo }, 'list_github_issues: GitHub API error');
         return githubErrorMessage(response, 'list issues');
       }
       const data = await response.json() as {

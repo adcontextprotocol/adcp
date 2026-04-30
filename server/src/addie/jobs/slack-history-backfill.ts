@@ -12,7 +12,9 @@
  * - Idempotent - running multiple times won't create duplicates
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('slack-history-backfill');
 import { AddieDatabase } from '../../db/addie-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {

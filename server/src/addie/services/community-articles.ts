@@ -10,7 +10,9 @@
  * This amplifies community contributions and feeds the website.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('community-articles');
 import { query } from '../../db/client.js';
 import { getChannelBySlackId } from '../../db/notification-channels-db.js';
 

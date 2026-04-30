@@ -5,7 +5,9 @@
  * be deflected to human contacts rather than answered by AI.
  */
 
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-sensitive-topics');
 import { InsightsDatabase, type SensitiveTopicResult, type KnownMediaContact } from '../db/insights-db.js';
 
 const insightsDb = new InsightsDatabase();

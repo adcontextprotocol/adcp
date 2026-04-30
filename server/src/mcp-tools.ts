@@ -889,7 +889,7 @@ export class MCPToolHandler {
         const params = (args?.params || {}) as Record<string, unknown>;
 
         try {
-          const { AdCPClient } = await import("@adcp/client");
+          const { AdCPClient } = await import("@adcp/sdk");
           const multiClient = new AdCPClient([{
             id: "query",
             name: "Query",
@@ -949,7 +949,7 @@ export class MCPToolHandler {
         const params = (args?.params || {}) as Record<string, unknown>;
 
         try {
-          const { AdCPClient } = await import("@adcp/client");
+          const { AdCPClient } = await import("@adcp/sdk");
           const multiClient = new AdCPClient([{
             id: "query",
             name: "Query",
@@ -1008,7 +1008,7 @@ export class MCPToolHandler {
         const agentUrl = args?.agent_url as string;
 
         try {
-          const { AdCPClient } = await import("@adcp/client");
+          const { AdCPClient } = await import("@adcp/sdk");
           const multiClient = new AdCPClient([{
             id: "query",
             name: "Query",

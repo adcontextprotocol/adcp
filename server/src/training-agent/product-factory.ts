@@ -12,9 +12,9 @@ import type {
   FormatID,
   CPAPricingOption,
   CatalogType,
-} from '@adcp/client';
+} from '@adcp/sdk';
 // Derive structural types from Product's own fields — these types are defined in
-// core.generated but not re-exported from @adcp/client's main entry.
+// core.generated but not re-exported from @adcp/sdk's main entry.
 type PricingOption = Product['pricing_options'][number];
 type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
 type Installment = NonNullable<Product['installments']>[number];
@@ -427,7 +427,7 @@ function buildProduct(
 
   if (template.deliveryType === 'guaranteed') {
     // Availability forecast — total inventory available, no budget input.
-    // Cast needed until @adcp/client types are regenerated with optional budget
+    // Cast needed until @adcp/sdk types are regenerated with optional budget
     // and the 'availability' forecast_range_unit value.
     const availableImpressions = impressionsPer1k * 30;
     const estimatedSpend = Math.round(availableImpressions * baseCpm / 1000);
@@ -540,7 +540,13 @@ function buildProduct(
       available_metrics: pub.reportingMetrics as NonNullable<Product['reporting_capabilities']>['available_metrics'],
       date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,
-    },
+      // vendor_metrics is in the published spec (#3492) but the @adcp/client Product
+      // type used here lags pending an SDK rebuild; cast through unknown until the
+      // type catches up.
+      ...(pub.vendorMetrics?.length && {
+        vendor_metrics: pub.vendorMetrics,
+      }),
+    } as NonNullable<Product['reporting_capabilities']>,
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     ...(forecast && { forecast }),

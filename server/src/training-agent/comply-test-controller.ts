@@ -2,7 +2,7 @@
  * Training-agent wrapper around the SDK's comply_test_controller.
  *
  * The SDK owns the scenario dispatcher, response envelope, and per-scenario
- * enum validation (`@adcp/client` exports `handleTestControllerRequest`,
+ * enum validation (`@adcp/sdk` exports `handleTestControllerRequest`,
  * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
  * adds the two things the SDK intentionally leaves to the seller: a sandbox
  * gate on the top-level `account.sandbox` flag, and a per-request
@@ -15,9 +15,9 @@ import {
   createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
-} from '@adcp/client';
-import type { TestControllerStore } from '@adcp/client';
-import type { BrandReference } from '@adcp/client';
+} from '@adcp/sdk';
+import type { TestControllerStore } from '@adcp/sdk';
+import type { BrandReference } from '@adcp/sdk';
 import type {
   TrainingContext,
   ToolArgs,
@@ -517,7 +517,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 // sanitizer is not a live leak. If a future edit ever returns `{ adcp_error:
 // { code: 'IDEMPOTENCY_CONFLICT', recovery, ... } }` (or any code with a
 // restricted ADCP_ERROR_FIELD_ALLOWLIST entry), route it through
-// `@adcp/client/server`'s `adcpError()` builder — the builder filters at
+// `@adcp/sdk/server`'s `adcpError()` builder — the builder filters at
 // construction time and gives the dispatcher's invariant the same guarantee
 // spec tools get for free.
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
@@ -593,6 +593,28 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     // Mirror into session state so existing tests/inspection paths still see it.
     session.complyExtensions.seededCreativeFormats.set(formatId, stored);
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
+  }
+
+  // Pre-capture vendor_metric_values from simulate_delivery before the SDK dispatcher
+  // strips them. The SDK's TestControllerStore.simulateDelivery interface only accepts
+  // standard scalar params; vendor_metric_values passthrough is a future adcp/client
+  // addition. Until then, read from rawArgs here and store in the accumulator directly
+  // so task-handlers.ts can emit them in get_media_buy_delivery by_package entries.
+  if (scenario === 'simulate_delivery') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const mediaBuyId = params.media_buy_id as string | undefined;
+    const vendorMetricValues = params.vendor_metric_values;
+    const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
+    if (mb && Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
+      const ext = session.complyExtensions;
+      let cumulative = ext.deliverySimulations.get(mediaBuyId!);
+      if (!cumulative) {
+        enforceMapCap(ext.deliverySimulations, mediaBuyId!, 'delivery simulations');
+        cumulative = { impressions: 0, clicks: 0, reportedSpend: { amount: 0, currency: mb.currency }, conversions: 0 };
+        ext.deliverySimulations.set(mediaBuyId!, cumulative);
+      }
+      cumulative.vendorMetricValues = vendorMetricValues;
+    }
   }
 
   const store = createStore(session);

@@ -14,7 +14,9 @@
 import { Readability } from '@mozilla/readability';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
 import { parseHTML } from 'linkedom';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('content-curator');
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';

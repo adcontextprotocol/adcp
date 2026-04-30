@@ -4,6 +4,11 @@
   "title": "Get Property List Response",
   "description": "Response payload for get_property_list task. Returns identifiers only (not full property objects or scores). Consumers should cache the resolved identifiers and refresh based on cache_valid_until.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "list": {
       "$ref": "/schemas/property/property-list.json",

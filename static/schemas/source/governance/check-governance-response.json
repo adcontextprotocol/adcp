@@ -3,8 +3,77 @@
   "$id": "/schemas/governance/check-governance-response.json",
   "title": "Check Governance Response",
   "description": "Governance agent's response to a check request. Returns whether the action is approved under the governance plan.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "conditions"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "conditions"
+        ],
+        "properties": {
+          "conditions": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "denied"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "findings"
+        ],
+        "properties": {
+          "findings": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "conditions"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "expires_at"
+        ]
+      }
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "check_id": {
       "type": "string",
@@ -147,71 +216,5 @@
     "plan_id",
     "explanation"
   ],
-  "additionalProperties": true,
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "const": "conditions"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      },
-      "then": {
-        "required": [
-          "conditions"
-        ],
-        "properties": {
-          "conditions": {
-            "minItems": 1
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "const": "denied"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      },
-      "then": {
-        "required": [
-          "findings"
-        ],
-        "properties": {
-          "findings": {
-            "minItems": 1
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "enum": [
-              "approved",
-              "conditions"
-            ]
-          }
-        },
-        "required": [
-          "status"
-        ]
-      },
-      "then": {
-        "required": [
-          "expires_at"
-        ]
-      }
-    }
-  ]
+  "additionalProperties": true
 }

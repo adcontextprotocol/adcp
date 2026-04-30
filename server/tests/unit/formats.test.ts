@@ -3,8 +3,8 @@ import type { Agent } from '../../src/types.js';
 
 const mockExecuteTask = vi.fn();
 
-// Mock @adcp/client with a proper class constructor
-vi.mock('@adcp/client', () => ({
+// Mock @adcp/sdk with a proper class constructor
+vi.mock('@adcp/sdk', () => ({
   AdCPClient: class MockAdCPClient {
     agent() {
       return {

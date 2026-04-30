@@ -10,12 +10,11 @@ import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 vi.mock('../../server/src/services/pipes.js', () => ({
   getGitHubAccessToken: vi.fn(),
-  getGitHubAuthorizeUrl: vi.fn(),
 }));
 
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
-import { getGitHubAccessToken, getGitHubAuthorizeUrl } from '../../server/src/services/pipes.js';
+import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 
 describe('MEMBER_TOOLS definitions', () => {
   it('exports an array of tools', () => {
@@ -329,13 +328,11 @@ describe('createMemberToolHandlers', () => {
 
     let fetchMock: ReturnType<typeof vi.fn>;
     const getTokenMock = vi.mocked(getGitHubAccessToken);
-    const getAuthorizeUrlMock = vi.mocked(getGitHubAuthorizeUrl);
 
     beforeEach(() => {
       fetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
       getTokenMock.mockReset();
-      getAuthorizeUrlMock.mockReset();
     });
 
     afterEach(() => {
@@ -355,7 +352,6 @@ describe('createMemberToolHandlers', () => {
 
     it("leads with the Connect offer when user hasn't connected GitHub", async () => {
       getTokenMock.mockResolvedValue({ status: 'not_connected' });
-      getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/abc');
 
       const handlers = createMemberToolHandlers(loggedInContext);
       const handler = handlers.get('create_github_issue')!;
@@ -363,8 +359,10 @@ describe('createMemberToolHandlers', () => {
       const result = await handler({ title: 'T', body: 'B' });
 
       expect(getTokenMock).toHaveBeenCalledWith('user_abc');
-      expect(getAuthorizeUrlMock).toHaveBeenCalledWith('user_abc', expect.stringContaining('/member-hub'));
-      expect(result).toContain('[Connect GitHub](https://workos.example/pipes/authorize/abc)');
+      // Should surface our session-aware bouncer URL, not a raw WorkOS Pipes URL,
+      // so a Slack click that arrives without an active AuthKit session bounces
+      // through login first and mints a fresh Pipes URL on the click.
+      expect(result).toMatch(/\[Connect GitHub\]\([^)]*\/connect\/github\?return_to=/);
       expect(result).toContain('draft_github_issue');
       // Lead line should be the offer, not the failure reason.
       const firstLine = result.split('\n')[0];
@@ -374,7 +372,6 @@ describe('createMemberToolHandlers', () => {
 
     it('returns Reconnect URL when connection needs reauthorization', async () => {
       getTokenMock.mockResolvedValue({ status: 'needs_reauthorization', missingScopes: ['public_repo'] });
-      getAuthorizeUrlMock.mockResolvedValue('https://workos.example/pipes/authorize/xyz');
 
       const handlers = createMemberToolHandlers(loggedInContext);
       const handler = handlers.get('create_github_issue')!;
@@ -382,26 +379,12 @@ describe('createMemberToolHandlers', () => {
       const result = await handler({ title: 'T', body: 'B' });
 
       expect(result).toContain('re-authorization');
-      expect(result).toContain('[Reconnect GitHub](https://workos.example/pipes/authorize/xyz)');
+      expect(result).toMatch(/\[Reconnect GitHub\]\([^)]*\/connect\/github\?return_to=/);
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('gracefully degrades when Pipes getAccessToken throws', async () => {
       getTokenMock.mockRejectedValue(new Error('workos api down'));
-
-      const handlers = createMemberToolHandlers(loggedInContext);
-      const handler = handlers.get('create_github_issue')!;
-
-      const result = await handler({ title: 'T', body: 'B' });
-
-      expect(result).toContain('unavailable');
-      expect(result).toContain('draft_github_issue');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('gracefully degrades when Pipes authorize URL lookup fails', async () => {
-      getTokenMock.mockResolvedValue({ status: 'not_connected' });
-      getAuthorizeUrlMock.mockRejectedValue(new Error('workos unavailable'));
 
       const handlers = createMemberToolHandlers(loggedInContext);
       const handler = handlers.get('create_github_issue')!;

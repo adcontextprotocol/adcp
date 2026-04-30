@@ -16,7 +16,7 @@ import type {
   GovernanceFinding,
   GovernanceCondition,
 } from './types.js';
-import type { BrandReference } from '@adcp/client';
+import type { BrandReference } from '@adcp/sdk';
 import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from './state.js';
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);

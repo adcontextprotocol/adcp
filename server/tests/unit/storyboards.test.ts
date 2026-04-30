@@ -5,6 +5,9 @@ import {
   getAllStoryboards,
   getTestKit,
   getTestKitForStoryboard,
+  compareAdcpVersions,
+  getStoryboardsForVersion,
+  getStoryboardIdsForVersion,
   type Storyboard,
   type StoryboardSummary,
 } from '../../src/services/storyboards.js';
@@ -12,7 +15,7 @@ import {
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
  * (which storyboards exist, their tasks, phases, etc.) is owned upstream by
- * @adcp/client's compliance cache; upstream has its own catalog tests.
+ * @adcp/sdk's compliance cache; upstream has its own catalog tests.
  */
 
 describe('listStoryboards', () => {
@@ -136,5 +139,76 @@ describe('wrapper contract', () => {
     const summary: StoryboardSummary = first;
     expect(typeof summary.phase_count).toBe('number');
     expect(typeof summary.step_count).toBe('number');
+  });
+});
+
+describe('compareAdcpVersions', () => {
+  it('returns 0 for equal versions', () => {
+    expect(compareAdcpVersions('3.0', '3.0')).toBe(0);
+    expect(compareAdcpVersions('3.10', '3.10')).toBe(0);
+  });
+
+  it('returns negative when a < b', () => {
+    expect(compareAdcpVersions('3.0', '3.1')).toBeLessThan(0);
+    expect(compareAdcpVersions('3.0', '4.0')).toBeLessThan(0);
+  });
+
+  it('returns positive when a > b', () => {
+    expect(compareAdcpVersions('3.1', '3.0')).toBeGreaterThan(0);
+    expect(compareAdcpVersions('4.0', '3.99')).toBeGreaterThan(0);
+  });
+
+  it('compares minors numerically (the fix that motivated this helper)', () => {
+    // String compare would say '3.10' < '3.2' (lex) — wrong.
+    expect(compareAdcpVersions('3.10', '3.2')).toBeGreaterThan(0);
+    expect(compareAdcpVersions('3.2', '3.10')).toBeLessThan(0);
+  });
+
+  it('compares double-digit majors numerically', () => {
+    expect(compareAdcpVersions('10.0', '3.0')).toBeGreaterThan(0);
+    expect(compareAdcpVersions('3.99', '10.0')).toBeLessThan(0);
+  });
+
+  it('treats malformed values as 0.0 (sort first, fail loudly elsewhere)', () => {
+    // Defensive: malformed values should not crash the comparator. The DB
+    // CHECK constraint ensures they never reach the comparator in
+    // production; this guards a debugging path.
+    expect(compareAdcpVersions('garbage', '3.0')).toBeLessThan(0);
+    expect(compareAdcpVersions('3.0', '')).toBeGreaterThan(0);
+  });
+});
+
+describe('getStoryboardsForVersion', () => {
+  it('returns every storyboard when target is the highest supported version', () => {
+    // All current storyboards have unset `introduced_in` (always-applied),
+    // so a 3.0 target returns every storyboard in the catalog.
+    const all = getAllStoryboards();
+    const for30 = getStoryboardsForVersion('3.0');
+    expect(for30.length).toBe(all.length);
+  });
+
+  it('omits storyboards with introduced_in above the target', () => {
+    // Synthetic check: build the same filter logic against a fake catalog
+    // since no current storyboard has introduced_in set. The behavior we
+    // care about is the contract — we re-test it via the comparator.
+    const sb = getAllStoryboards()[0];
+    expect(sb).toBeDefined();
+    // If we were to add introduced_in: '3.1' to this storyboard, a 3.0
+    // target would skip it. The filter is `introduced_in <= target`.
+    const target = '3.0';
+    const introducedIn = '3.1';
+    expect(compareAdcpVersions(introducedIn, target)).toBeGreaterThan(0);
+    // Real assertion using the same predicate the function uses:
+    const wouldKeep = compareAdcpVersions(introducedIn, target) <= 0;
+    expect(wouldKeep).toBe(false);
+  });
+
+  it('keeps storyboards with introduced_in equal to or below the target', () => {
+    expect(compareAdcpVersions('3.0', '3.0') <= 0).toBe(true);
+    expect(compareAdcpVersions('3.0', '3.1') <= 0).toBe(true);
+  });
+
+  it('getStoryboardIdsForVersion returns the same length as getStoryboardsForVersion', () => {
+    expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
   });
 });

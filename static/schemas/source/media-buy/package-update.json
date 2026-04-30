@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/package-update.json",
   "title": "Package Update",
-  "description": "Package update configuration for update_media_buy. Identifies package by package_id and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id and specifies fields to modify. Fields not present are left unchanged. Fully-immutable fields (product_id, format_ids, pricing_option_id) cannot appear in update payloads — schema-enforced via the `not` constraint at the root of this object. The reporting contract field `committed_metrics` is append-only (sellers MUST accept new entries on update but reject attempts to modify or remove existing entries with validation_error per its own description).",
   "type": "object",
   "properties": {
     "package_id": {
@@ -184,5 +184,12 @@
   "required": [
     "package_id"
   ],
+  "not": {
+    "anyOf": [
+      { "required": ["product_id"] },
+      { "required": ["format_ids"] },
+      { "required": ["pricing_option_id"] }
+    ]
+  },
   "additionalProperties": true
 }

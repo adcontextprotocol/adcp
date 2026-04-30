@@ -86,7 +86,7 @@ describe('brand protocol tools (training agent)', () => {
       expect(result.available_fields).toBeUndefined();
     });
 
-    it('loads all sandbox advertiser brands from @adcp/client', async () => {
+    it('loads all sandbox advertiser brands from @adcp/sdk', async () => {
       const expectedIds = ['acme_outdoor', 'nova_motors', 'bistro_oranje', 'osei_natural', 'summit_foods'];
       for (const id of expectedIds) {
         const result = await call('get_brand_identity', { brand_id: id });

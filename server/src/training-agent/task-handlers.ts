@@ -14,8 +14,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
-import { PostgresTaskStore } from '@adcp/client';
-import { mergeSeedProduct } from '@adcp/client/testing';
+import { PostgresTaskStore } from '@adcp/sdk';
+import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
@@ -40,7 +40,7 @@ import type {
   ListCreativesResponse,
   PreviewCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
-} from '@adcp/client';
+} from '@adcp/sdk';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -156,7 +156,7 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   };
 }
 
-// Proposal lifecycle fields not yet in @adcp/client — remove after client update
+// Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
   insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
@@ -522,14 +522,14 @@ function validActionsForStatus(status: string): string[] {
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
-let cachedProposals: import('@adcp/client').Proposal[] | null = null;
+let cachedProposals: import('@adcp/sdk').Proposal[] | null = null;
 
 function getCatalog(): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
   return cachedCatalog;
 }
 
-function getProposals(): import('@adcp/client').Proposal[] {
+function getProposals(): import('@adcp/sdk').Proposal[] {
   if (!cachedProposals) cachedProposals = buildProposals(getCatalog());
   return cachedProposals;
 }
@@ -576,7 +576,7 @@ function canonicalizeAgentUrl(url: string): string {
  */
 function overlaySeededProducts(
   session: import('./types.js').SessionState,
-  productMap: Map<string, import('@adcp/client').Product>,
+  productMap: Map<string, import('@adcp/sdk').Product>,
 ): void {
   const { seededProducts, seededPricingOptions } = session.complyExtensions;
   if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
@@ -686,6 +686,17 @@ const TOOLS = [
       properties: {
         format_ids: { type: 'array' },
         channels: { type: 'array', items: { type: 'string' } },
+        // Declared so the SDK's request validator (legacy dispatch) doesn't
+        // strip `pagination` before it reaches the handler — without this,
+        // pagination_integrity_creative_formats sees max_results dropped, the
+        // handler defaults to 50, and `has_more` is incorrectly false.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
@@ -800,11 +811,27 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
+        // Declared so legacy-dispatch session keying matches the seeded
+        // creatives. `controller_seeding: true` storyboards seed via
+        // comply_test_controller (which accepts `brand`) and then list with
+        // `brand: {domain: ...}` from the runner's test-kit; without `brand`
+        // declared here, the SDK strips it on list_creatives, sessionKeyFromArgs
+        // falls back to `default`, and the seeded creatives are invisible.
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
         include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
         include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
         filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
+        // See list_creative_formats above — declared so legacy dispatch keeps
+        // `pagination` on the wire.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
@@ -906,6 +933,15 @@ const TOOLS = [
         countries: { type: 'array', items: { type: 'string' } },
         filters: { type: 'object' },
         max_results: { type: 'integer' },
+        // See list_creative_formats above — declared so legacy dispatch keeps
+        // `pagination` on the wire.
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
     },
   },
@@ -1142,7 +1178,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             }
             const sessionProposals = session.lastGetProductsContext.proposals || [];
             const idx = sessionProposals.findIndex(p => p.proposal_id === op.proposal_id);
-            const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
+            const updatedProposal = committed as unknown as import('@adcp/sdk').Proposal;
             if (idx >= 0) {
               sessionProposals[idx] = updatedProposal;
             } else {
@@ -1864,6 +1900,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
     : 0;
 
+  // Read simulated delivery upfront so vendor_metric_values can be spread into
+  // per-package entries inside the map below.
+  const simDeliveryEarly = getDeliverySimulation(session, mb.mediaBuyId);
+
   // Build per-package metrics
   let totalImpressions = 0;
   let totalSpend = 0;
@@ -1883,7 +1923,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         impressions: 0,
         clicks: 0,
         pricing_model: model,
-        model, // #1525: alias for @adcp/client < 4.11.0
+        model, // #1525: alias for @adcp/sdk < 4.11.0
         rate,
         currency: mb.currency,
         paused: true,
@@ -1958,16 +1998,23 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       clicks,
       ...audioMetrics,
       pricing_model: pricingModel,
-      model: pricingModel, // #1525: alias for @adcp/client < 4.11.0
+      model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
       currency: mb.currency,
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
+      // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
+      // propagate to all active packages. Multi-package buys will echo the same
+      // array across packages — known training-agent limitation, acceptable for
+      // single-package storyboard scenarios.
+      ...(simDeliveryEarly?.vendorMetricValues?.length
+        ? { vendor_metric_values: simDeliveryEarly.vendorMetricValues }
+        : {}),
     };
   });
 
   // Add simulated delivery data from comply_test_controller
-  const simDelivery = getDeliverySimulation(session, mb.mediaBuyId);
+  const simDelivery = simDeliveryEarly;
   if (simDelivery) {
     totalImpressions += simDelivery.impressions;
     totalClicks += simDelivery.clicks;
@@ -2003,7 +2050,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   };
 }
 
-function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/client').Product>): { model: string; rate: number } {
+function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').Product>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
   const pricing = product?.pricing_options.find(po => po.pricing_option_id === pkg.pricingOptionId);
   return {
@@ -3058,7 +3105,7 @@ function getDimensions(format: { renders: Array<Record<string, unknown>> } | und
 }
 
 function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
-  // HTMLAsset in @adcp/client ≥5.10 has `asset_type: 'html'` as a required
+  // HTMLAsset in @adcp/sdk ≥5.10 has `asset_type: 'html'` as a required
   // discriminator. Without it the union resolves ambiguously to MarkdownAsset
   // and tsc fails build.
   return { serving_tag: { asset_type: 'html', content: html } };

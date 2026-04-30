@@ -4,6 +4,11 @@
   "title": "Log Event Response",
   "description": "Response from event logging operation. Returns either event processing results OR operation-level errors.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "LogEventSuccess",
@@ -39,7 +44,11 @@
                 "description": "Human-readable error message"
               }
             },
-            "required": ["event_id", "code", "message"],
+            "required": [
+              "event_id",
+              "code",
+              "message"
+            ],
             "additionalProperties": true
           }
         },
@@ -67,10 +76,15 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["events_received", "events_processed"],
+      "required": [
+        "events_received",
+        "events_processed"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -93,15 +107,30 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["events_received"] },
-          { "required": ["events_processed"] },
-          { "required": ["sandbox"] }
+          {
+            "required": [
+              "events_received"
+            ]
+          },
+          {
+            "required": [
+              "events_processed"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

@@ -1,10 +1,10 @@
 /**
  * Internal types for the training agent.
- * Schema-level types (Product, Format, etc.) come from @adcp/client.
+ * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
-import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
+import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/sdk';
 
-// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
+// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
 
 /** Matches the talent-role.json enum in static/schemas/source/enums/ */
@@ -90,6 +90,11 @@ export interface PublisherProfile {
   catalogTypes?: string[];
   reportingFrequencies: string[];
   reportingMetrics: string[];
+  /** Optional: vendor-defined metrics this publisher reports (Adelaide attention, Scope3 emissions, etc.) */
+  vendorMetrics?: Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>;
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */
@@ -138,7 +143,7 @@ export interface PricingTemplate {
 }
 
 export interface CatalogProduct {
-  product: import('@adcp/client').Product;
+  product: import('@adcp/sdk').Product;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
@@ -179,6 +184,8 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
+  vendorMetricValues?: unknown[];
 }
 
 export interface ComplyBudgetSimulation {

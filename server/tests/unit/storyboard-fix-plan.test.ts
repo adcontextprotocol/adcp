@@ -269,7 +269,7 @@ describe('renderAllHintFixPlans', () => {
   });
 
   it('returns null when every hint is an unknown future kind', () => {
-    // A future @adcp/client release may add hint kinds the formatter
+    // A future @adcp/sdk release may add hint kinds the formatter
     // doesn't yet render. The runner's `hint.message` covers those at
     // the consumer's discretion; this formatter declines to synthesize
     // a plan for an unknown discriminator.
@@ -309,7 +309,7 @@ describe('renderAllHintFixPlans', () => {
 const shapeDriftHint: ShapeDriftHint = {
   kind: 'shape_drift',
   message:
-    'list_creatives returned a bare array at the top level. Required: { creatives: [...] }. Use listCreativesResponse() from @adcp/client/server.',
+    'list_creatives returned a bare array at the top level. Required: { creatives: [...] }. Use listCreativesResponse() from @adcp/sdk/server.',
   tool: 'list_creatives',
   observed_variant: 'bare_array',
   expected_variant: '{ creatives: [...] }',
@@ -338,8 +338,8 @@ describe('renderHintFixPlan — shape_drift (wire-shape envelope wrong)', () => 
     expect(out).toContain('at the response root');
   });
 
-  it('points at the @adcp/client/server typed builders', () => {
-    expect(out).toContain('@adcp/client/server');
+  it('points at the @adcp/sdk/server typed builders', () => {
+    expect(out).toContain('@adcp/sdk/server');
     expect(out).toContain('listCreativesResponse');
   });
 

@@ -23,9 +23,10 @@ import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
-import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility } from "../types.js";
-import type { MemberBrandInfo, AgentVisibility, AgentConfig } from "../types.js";
+import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility, isValidAgentType } from "../types.js";
+import type { MemberBrandInfo, AgentVisibility, AgentConfig, AgentType } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
+import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
@@ -37,8 +38,61 @@ import { recordProfilePublishedIfNeeded } from "../services/profile-publish-even
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
+const snapshotDb = new AgentSnapshotDatabase();
 
 const logger = createLogger("member-profile-routes");
+
+/**
+ * Server-authoritative agent type for issue #3495.
+ *
+ * Three cases, in priority order:
+ *
+ * 1. We have a capability snapshot AND its inferred_type is a valid
+ *    AgentType — use it. This is ground truth from the crawler probe.
+ *
+ * 2. We have a snapshot but inferred_type is null (probe failed,
+ *    OAuth-required, or all tools were unrecognised) — force 'unknown'.
+ *    Deliberately do NOT fall back to the client's value here: a
+ *    snapshot row with null inferred_type means "we tried and could not
+ *    classify", which is exactly the case where a malicious client could
+ *    smuggle a wrong type. Trust silence over the client.
+ *
+ * 3. No snapshot at all (URL has never been probed) — fall back to the
+ *    client's value, but only if it validates against the AgentType
+ *    enum. Drop legacy strings like 'buyer' / 'seller' to 'unknown' so
+ *    they cannot land in JSONB.
+ */
+async function resolveAgentTypes(agents: unknown): Promise<unknown> {
+  if (!Array.isArray(agents) || agents.length === 0) return agents;
+  const urls = agents
+    .map((a) => (a && typeof a === 'object' && typeof (a as any).url === 'string' ? (a as any).url : null))
+    .filter((u): u is string => u !== null);
+  const snapshots = urls.length > 0
+    ? await snapshotDb.bulkGetCapabilities(urls)
+    : new Map();
+
+  return agents.map((agent) => {
+    if (!agent || typeof agent !== 'object') return agent;
+    const a = agent as Record<string, unknown>;
+    if (typeof a.url !== 'string') return agent;
+    const snapshot = snapshots.get(a.url);
+    if (snapshot) {
+      const inferred = snapshot.inferred_type;
+      if (inferred && isValidAgentType(inferred)) {
+        return { ...a, type: inferred as AgentType };
+      }
+      // Snapshot exists but probe couldn't classify the agent. Reject the
+      // client's claimed type: a probed-but-unknown URL is the exact attack
+      // window for type smuggling.
+      return { ...a, type: 'unknown' as AgentType };
+    }
+    // No snapshot — trust validated client value, drop the rest.
+    if (typeof a.type === 'string' && !isValidAgentType(a.type)) {
+      return { ...a, type: 'unknown' as AgentType };
+    }
+    return agent;
+  });
+}
 
 /**
  * Validate slug format and check against reserved keywords
@@ -328,6 +382,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const { agents: gatedAgents, warnings: createWarnings } =
         gateAgentVisibilityForCaller(agents, createCallerHasApi);
 
+      // Resolve `type` server-side from the capability snapshot so a client
+      // can't smuggle a wrong type (e.g. registering a sales agent as
+      // 'buying'). See resolveAgentTypes() docstring + issue #3495.
+      const typedGatedAgents = await resolveAgentTypes(gatedAgents);
+
       // Same tier gate for the profile-level `is_public` flag. The
       // `/visibility` PUT route gates this through hasActiveSubscription
       // (line 1343), but the POST create and PUT bulk-update paths
@@ -361,7 +420,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         linkedin_url,
         twitter_url,
         offerings: offerings || [],
-        agents: gatedAgents,
+        agents: typedGatedAgents as AgentConfig[],
         headquarters,
         markets: markets || [],
         tags: tags || [],
@@ -543,7 +602,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
-        updates.agents = gated.agents;
+        // Resolve `type` server-side from the capability snapshot. The
+        // client cannot pin a misclassification (e.g. sales agent typed
+        // 'buying') — the inferred_type from the crawler probe wins. See
+        // resolveAgentTypes() + issue #3495.
+        updates.agents = await resolveAgentTypes(gated.agents);
         warnings = gated.warnings;
       }
 
@@ -1714,6 +1777,12 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       delete updates.workos_organization_id;
       delete updates.created_at;
       delete updates.updated_at;
+
+      // Even an admin caller cannot pin an agent type that contradicts the
+      // probed capability snapshot — see resolveAgentTypes() + issue #3495.
+      if (Array.isArray(updates.agents)) {
+        updates.agents = await resolveAgentTypes(updates.agents);
+      }
 
       const profile = await memberDb.updateProfile(id, updates);
 

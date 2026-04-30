@@ -9,10 +9,9 @@ name: Forward-merge 3.0.x to main
 # conflicts, the workflow fails fast and the PR is not opened — a human
 # must resolve manually.
 #
-# Known limitation (see #3417): peter-evans/create-pull-request opens
-# the PR with GITHUB_TOKEN, so required `pull_request` workflows on the
-# resulting PR don't fire automatically. Until #3417 lands, the
-# forward-merge PR requires admin-merge.
+# The PR is opened with a GitHub App installation token (RELEASE_APP_ID),
+# so its open/sync events fire required `pull_request` workflows
+# (TypeScript Build, IPR Policy, Check for changeset). #3417 closed.
 
 on:
   push:
@@ -33,11 +32,25 @@ jobs:
     name: Forward-merge 3.0.x → main
     runs-on: ubuntu-latest
     steps:
+      # Mint a GitHub App installation token so the auto-opened PR fires
+      # required CI workflows (TypeScript Build, IPR Policy, Check for
+      # changeset). GITHUB_TOKEN-triggered events are blocked by GitHub's
+      # recursion rule. Closes #3417.
+      - name: Mint AAO Release Bot installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
       - name: Checkout main with full history
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: main
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
@@ -78,7 +91,7 @@ jobs:
         if: steps.ancestry.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           branch: forward-merge/3.0.x
           base: main
           title: "Forward-merge 3.0.x → main"
@@ -94,8 +107,7 @@ jobs:
             - [ ] Diff matches what you'd expect from the 3.0.x patches
             - [ ] No 3.1-line work has been pulled in by accident (would
                   indicate the merge picked up something unintended)
-            - [ ] CI green (may require admin-merge until #3417 lands —
-                  GITHUB_TOKEN-triggered events don't fire required workflows)
+            - [ ] CI green
 
             ## Source
 

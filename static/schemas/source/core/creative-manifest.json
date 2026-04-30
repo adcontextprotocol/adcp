@@ -14,25 +14,7 @@
       "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nEach asset value carries an `asset_type` discriminator (image, video, audio, vast, daast, text, markdown, url, html, css, webhook, javascript, brief, catalog) that selects the matching asset schema. Validators with OpenAPI-style discriminator support use `asset_type` to report errors against only the selected branch instead of all branches.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
-          "oneOf": [
-            { "$ref": "/schemas/core/assets/image-asset.json" },
-            { "$ref": "/schemas/core/assets/video-asset.json" },
-            { "$ref": "/schemas/core/assets/audio-asset.json" },
-            { "$ref": "/schemas/core/assets/vast-asset.json" },
-            { "$ref": "/schemas/core/assets/text-asset.json" },
-            { "$ref": "/schemas/core/assets/url-asset.json" },
-            { "$ref": "/schemas/core/assets/html-asset.json" },
-            { "$ref": "/schemas/core/assets/javascript-asset.json" },
-            { "$ref": "/schemas/core/assets/webhook-asset.json" },
-            { "$ref": "/schemas/core/assets/css-asset.json" },
-            { "$ref": "/schemas/core/assets/daast-asset.json" },
-            { "$ref": "/schemas/core/assets/markdown-asset.json" },
-            { "$ref": "/schemas/core/assets/brief-asset.json" },
-            { "$ref": "/schemas/core/assets/catalog-asset.json" }
-          ],
-          "discriminator": {
-            "propertyName": "asset_type"
-          }
+          "$ref": "/schemas/core/assets/asset-union.json"
         }
       },
       "additionalProperties": true

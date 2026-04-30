@@ -103,9 +103,11 @@ jobs:
         run: |
           SRC="static/compliance/source"
           # 5.13 moved the cache dir from `latest` to the AdCP version
-          # string (e.g. `3.0.0`). Resolve whichever subdir exists so the
-          # overlay step doesn't have to bump with every SDK release.
-          CACHE_ROOT="node_modules/@adcp/client/compliance/cache"
+          # string (e.g. `3.0.0`). 5.23.0 renamed the package
+          # `@adcp/client` -> `@adcp/sdk` and the compliance bundle moved
+          # with it. Resolve whichever subdir exists so the overlay step
+          # doesn't have to bump with every SDK release.
+          CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
           DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
           if [ -z "$DST" ] || [ ! -d "$DST" ]; then
             echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"

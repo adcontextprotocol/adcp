@@ -19,6 +19,8 @@
       "description": "Total number of items matching the query across all pages. Optional because not all backends can efficiently compute this."
     }
   },
-  "required": ["has_more"],
+  "required": [
+    "has_more"
+  ],
   "additionalProperties": false
 }

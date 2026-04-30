@@ -85,7 +85,7 @@ async function seedDevMemberProfiles(): Promise<void> {
       tagline: 'Dev company for testing member features',
       description: 'A company account for testing agents, publishers, and member dashboard features.',
       offerings: '{buyer_agent,sales_agent}',
-      agents: JSON.stringify([{ url: 'https://test-agent.adcontextprotocol.org', name: 'Training Agent', type: 'buying', visibility: 'public' }]),
+      agents: JSON.stringify([{ url: 'https://test-agent.adcontextprotocol.org', name: 'Training Agent', type: 'sales', visibility: 'public' }]),
       isPublic: true,
     },
     {
@@ -104,10 +104,10 @@ async function seedDevMemberProfiles(): Promise<void> {
       slug: 'acme-ad-tech',
       tagline: 'Agentic media buying for mid-market brands',
       description: 'Acme builds buyer and seller agents for programmatic advertising. Builder-tier member with active team and compliance monitoring.',
-      offerings: '{buyer_agent,seller_agent,consulting}',
+      offerings: '{buyer_agent,sales_agent,consulting}',
       agents: JSON.stringify([
-        { url: 'https://buyer.acme-adtech.dev', name: 'Acme Buyer Agent', type: 'buyer', visibility: 'public' },
-        { url: 'https://seller.acme-adtech.dev', name: 'Acme Seller Agent', type: 'seller', visibility: 'public' },
+        { url: 'https://buyer.acme-adtech.dev', name: 'Acme Buyer Agent', type: 'buying', visibility: 'public' },
+        { url: 'https://seller.acme-adtech.dev', name: 'Acme Seller Agent', type: 'sales', visibility: 'public' },
       ]),
       isPublic: true,
     },

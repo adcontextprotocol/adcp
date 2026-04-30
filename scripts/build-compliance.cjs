@@ -370,7 +370,7 @@ function generateIndex(version, sourceDir) {
     has_baseline: d.has_baseline,
     path: d.path,
   }));
-  // Transitional alias for @adcp/client@5.x consumers that read `domains` and expect
+  // Transitional alias for @adcp/sdk@5.x consumers that read `domains` and expect
   // `domains/{id}/` on-disk paths. Drop after v6 ships and all consumers upgrade.
   const domainAliasEntries = protocols.map(d => ({
     id: d.id,
@@ -379,7 +379,12 @@ function generateIndex(version, sourceDir) {
     path: d.path.replace(/^protocols\//, 'domains/'),
   }));
 
+  // published_version: full semver of this compliance bundle.
+  // adcp_version: legacy alias kept through 3.x for @adcp/client compatibility
+  // (ComplianceIndex.adcp_version). Both carry full semver; distinct from the
+  // wire field in core/version-envelope.json (release-precision).
   return {
+    published_version: version,
     adcp_version: version,
     generated_at: new Date().toISOString(),
     universal,
@@ -504,6 +509,22 @@ function main() {
   // has_more=false MUST omit cursor. See pagination-response.json.
   try {
     execSync('node scripts/lint-pagination-invariant.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Vendor metric uniqueness lint: storyboard fixture inline payloads MUST NOT
+  // contain duplicate (vendor.domain, vendor.brand_id, metric_id) tuples in
+  // vendor_metric_values or vendor_metrics arrays. Enforces the MUST constraint
+  // documented in reporting-capabilities.json and delivery-metrics.json that
+  // JSON Schema uniqueItems cannot enforce (BrandRef optional fields defeat
+  // deep-equal). Companion schema-examples lint runs in build-schemas.cjs.
+  // adcontextprotocol/adcp#3502.
+  try {
+    execSync('node scripts/lint-vendor-metric-uniqueness.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

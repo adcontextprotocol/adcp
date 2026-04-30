@@ -1,7 +1,7 @@
 /**
  * Webhook signing and emission for the training agent.
  *
- * Uses `@adcp/client/server`'s `createWebhookEmitter` to post RFC 9421-signed
+ * Uses `@adcp/sdk/server`'s `createWebhookEmitter` to post RFC 9421-signed
  * completion webhooks with stable `idempotency_key` per logical event and
  * retry/backoff on 5xx/429. The signer uses a single Ed25519 keypair sourced
  * from `WEBHOOK_SIGNING_KEY_JWK` (a private JWK) when configured, or a
@@ -16,9 +16,9 @@ import {
   createWebhookEmitter,
   memoryWebhookKeyStore,
   type WebhookEmitter,
-} from '@adcp/client/server';
-import type { SignerKey, SigningProvider } from '@adcp/client/signing';
-import type { AdcpJsonWebKey } from '@adcp/client/signing';
+} from '@adcp/sdk/server';
+import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
 import { createWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningProvider } from '../security/gcp-kms-signer.js';

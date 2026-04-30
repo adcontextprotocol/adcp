@@ -159,6 +159,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`downloads`**: Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines methodology); distinct from `views`
 - **`units_sold`**: Items sold attributed to delivery (retail-media commerce scalar; distinct from `conversions` — one transaction may carry multiple units; attribution-window declared via `measurement_terms`)
 - **`new_to_brand_units`**: Unit-volume parallel to `new_to_brand_rate` — count of units sold to first-time brand buyers
+- **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 

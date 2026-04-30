@@ -4,6 +4,11 @@
   "title": "Sync Governance Response",
   "description": "Response from governance agent sync. Returns per-account results confirming sync, or operation-level errors on complete failure.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "SyncGovernanceSuccess",
@@ -22,7 +27,10 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["synced", "failed"],
+                "enum": [
+                  "synced",
+                  "failed"
+                ],
                 "description": "Sync result. synced: governance agents persisted. failed: could not complete (see errors)."
               },
               "governance_agents": {
@@ -38,7 +46,9 @@
                       "description": "Governance agent endpoint URL."
                     }
                   },
-                  "required": ["url"],
+                  "required": [
+                    "url"
+                  ],
                   "additionalProperties": false
                 },
                 "minItems": 1,
@@ -52,7 +62,10 @@
                 }
               }
             },
-            "required": ["account", "status"],
+            "required": [
+              "account",
+              "status"
+            ],
             "additionalProperties": true
           }
         },
@@ -63,10 +76,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["accounts"],
+      "required": [
+        "accounts"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -89,10 +106,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
-        "required": ["accounts"]
+        "required": [
+          "accounts"
+        ]
       }
     }
   ],
@@ -102,7 +123,9 @@
       "data": {
         "accounts": [
           {
-            "account": { "account_id": "acct-social-001" },
+            "account": {
+              "account_id": "acct-social-001"
+            },
             "status": "synced",
             "governance_agents": [
               {
@@ -111,7 +134,9 @@
             ]
           },
           {
-            "account": { "account_id": "acct-social-002" },
+            "account": {
+              "account_id": "acct-social-002"
+            },
             "status": "synced",
             "governance_agents": [
               {
@@ -127,7 +152,9 @@
       "data": {
         "accounts": [
           {
-            "account": { "account_id": "acct-social-001" },
+            "account": {
+              "account_id": "acct-social-001"
+            },
             "status": "synced",
             "governance_agents": [
               {
@@ -136,7 +163,9 @@
             ]
           },
           {
-            "account": { "account_id": "acct-unknown" },
+            "account": {
+              "account_id": "acct-unknown"
+            },
             "status": "failed",
             "errors": [
               {
@@ -148,5 +177,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

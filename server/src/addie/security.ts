@@ -7,7 +7,9 @@
  * - Malicious content
  */
 
-import { logger } from '../logger.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-security');
 import type { SanitizationResult, AddieInteractionLog } from './types.js';
 
 /**

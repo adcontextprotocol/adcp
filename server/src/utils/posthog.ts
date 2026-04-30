@@ -201,7 +201,7 @@ export function initPostHogErrorTracking(): boolean {
     // All error+ logs get posted to the #aao-errors channel via notifySystemError.
     // The error-notifier has its own 5-minute per-source throttle.
     if (level && level >= 50) {
-      notifyErrorChannel(module, message, error);
+      notifyErrorChannel(module, message, error, context);
     }
   });
 
@@ -230,7 +230,7 @@ function sanitizeForSlack(msg: string): string {
  */
 let notifyingErrorChannel = false;
 
-function notifyErrorChannel(module: string, message: string, error?: Error): void {
+function notifyErrorChannel(module: string, message: string, error?: Error, context?: Record<string, unknown>): void {
   if (notifyingErrorChannel) return;
   notifyingErrorChannel = true;
 
@@ -239,14 +239,50 @@ function notifyErrorChannel(module: string, message: string, error?: Error): voi
       const errorDetail = error?.message && error.message !== message
         ? sanitizeForSlack(`${message}: ${error.message}`)
         : sanitizeForSlack(message);
+      const fields = formatContextForSlack(context);
       const stack = error?.stack ? `\n\`\`\`${sanitizeForSlack(error.stack.slice(0, 500))}\`\`\`` : '';
       notifySystemError({
         source: module || 'unknown',
-        errorMessage: errorDetail + stack,
+        errorMessage: errorDetail + fields + stack,
       });
     })
     .catch(() => {})
     .finally(() => { notifyingErrorChannel = false; });
+}
+
+const SLACK_CONTEXT_DROP_KEYS = new Set(['module', 'processRole', 'pid', 'hostname', 'time', 'level', 'msg']);
+const SLACK_CONTEXT_SENSITIVE = /password|token|secret|apikey|api_key|authorization|credential|cookie|session/i;
+
+/**
+ * Render structured-log context fields under the error message so Slack
+ * readers see what the PostHog event captures (status codes, domains, IDs,
+ * resource paths). Drops noisy keys, redacts likely secrets, truncates.
+ */
+function formatContextForSlack(context?: Record<string, unknown>): string {
+  if (!context) return '';
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(context)) {
+    if (SLACK_CONTEXT_DROP_KEYS.has(key)) continue;
+    if (value === undefined || value === null) continue;
+    if (SLACK_CONTEXT_SENSITIVE.test(key)) {
+      lines.push(`• \`${key}\`: [redacted]`);
+      continue;
+    }
+    let rendered: string;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      rendered = String(value);
+    } else {
+      try {
+        rendered = JSON.stringify(value);
+      } catch {
+        rendered = '[unserializable]';
+      }
+    }
+    if (rendered.length > 200) rendered = rendered.slice(0, 197) + '...';
+    lines.push(`• \`${key}\`: ${sanitizeForSlack(rendered)}`);
+  }
+  if (lines.length === 0) return '';
+  return '\n' + lines.join('\n');
 }
 
 /**

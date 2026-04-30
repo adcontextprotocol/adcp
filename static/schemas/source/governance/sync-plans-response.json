@@ -3,8 +3,13 @@
   "$id": "/schemas/governance/sync-plans-response.json",
   "title": "Sync Plans Response",
   "description": "Response from syncing campaign plans. Returns status and active validation categories for each plan.",
-  "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
   "properties": {
     "plans": {
       "type": "array",
