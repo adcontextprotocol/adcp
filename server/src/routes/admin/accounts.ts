@@ -22,6 +22,7 @@ import {
 } from "../../billing/stripe-client.js";
 import {
   createMembershipInvite,
+  getMembershipInviteByToken,
   listMembershipInvitesForOrg,
   inviteStatus,
   revokeMembershipInvite,
@@ -2878,6 +2879,7 @@ export function setupAccountRoutes(
         const invites = await listMembershipInvitesForOrg(orgId);
         res.json({
           invites: invites.map((inv) => ({
+            id: inv.id,
             token: inv.token,
             contact_email: inv.contact_email,
             contact_name: inv.contact_name,
@@ -2889,6 +2891,7 @@ export function setupAccountRoutes(
             accepted_by_user_id: inv.accepted_by_user_id,
             invoice_id: inv.invoice_id,
             revoked_at: inv.revoked_at,
+            revoked_by_user_id: inv.revoked_by_user_id,
             status: inviteStatus(inv),
           })),
         });
@@ -2918,6 +2921,125 @@ export function setupAccountRoutes(
       } catch (error) {
         logger.error({ err: error }, "Error revoking invitation");
         res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/invites/:token/reinvite
+  // Atomic revoke + create-fresh + send-email. Lets an admin replace a stale
+  // pending or expired invite without leaving two coexisting tokens for the
+  // same email. The new invite reuses the original lookup_key, contact_email,
+  // and contact_name (re-validated against current eligible products).
+  apiRouter.post(
+    "/accounts/:orgId/invites/:token/reinvite",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId, token } = req.params;
+
+        const existing = await getMembershipInviteByToken(token);
+        if (!existing || existing.workos_organization_id !== orgId) {
+          return res.status(404).json({
+            error: "Not found",
+            message: "Invite not found for this organization.",
+          });
+        }
+        if (existing.accepted_at) {
+          return res.status(400).json({
+            error: "Cannot reinvite",
+            message: "Invite was already accepted — no reinvite needed.",
+          });
+        }
+
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        // Re-validate the tier against current eligibility — a lookup_key that
+        // was valid when the invite was first sent may have been retired.
+        const customerType = org.is_personal ? "individual" : "company";
+        const eligibleProducts = await getProductsForCustomer({
+          customerType,
+          category: "membership",
+        });
+        const product = eligibleProducts.find(
+          (p) => p.lookup_key === existing.lookup_key
+        );
+        if (!product) {
+          return res.status(400).json({
+            error: "Tier no longer available",
+            message:
+              "The original invite's tier is no longer available for this organization. Send a fresh invite with a current tier instead.",
+          });
+        }
+
+        // Revoke first, then create — if the create fails the original is
+        // still gone, which is the safer half-failure (no two-tokens state).
+        await revokeMembershipInvite(token, req.user!.id);
+
+        const invite = await createMembershipInvite({
+          workos_organization_id: orgId,
+          lookup_key: existing.lookup_key,
+          contact_email: existing.contact_email,
+          contact_name: existing.contact_name ?? undefined,
+          referral_code: existing.referral_code ?? undefined,
+          invited_by_user_id: req.user!.id,
+        });
+
+        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        const inviteUrl = `${baseUrl}/invite/${invite.token}`;
+        const priceDisplay = `$${(product.amount_cents / 100).toLocaleString()}`;
+
+        const invitedByName =
+          [req.user!.firstName, req.user!.lastName].filter(Boolean).join(" ") ||
+          req.user!.email;
+
+        const emailSent = await sendMembershipInviteEmail({
+          to: invite.contact_email,
+          contactName: invite.contact_name ?? null,
+          orgName: org.name,
+          tierDisplayName: product.display_name,
+          priceDisplay,
+          inviteUrl,
+          invitedByName,
+          invitedByEmail: req.user!.email,
+          expiresAt: invite.expires_at,
+        });
+
+        logger.info(
+          {
+            orgId,
+            orgName: org.name,
+            lookupKey: existing.lookup_key,
+            contactEmail: invite.contact_email,
+            previousInviteId: existing.id,
+            newInviteId: invite.id,
+            emailSent,
+            adminEmail: req.user!.email,
+          },
+          "Admin reinvited"
+        );
+
+        res.json({
+          success: true,
+          invite: {
+            id: invite.id,
+            token: invite.token,
+            contact_email: invite.contact_email,
+            contact_name: invite.contact_name,
+            lookup_key: invite.lookup_key,
+            expires_at: invite.expires_at,
+            url: inviteUrl,
+          },
+          email_sent: emailSent,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error reinviting");
+        const message =
+          error instanceof Error ? error.message : "Unable to reinvite";
+        res.status(500).json({ error: "Internal server error", message });
       }
     }
   );
