@@ -4,6 +4,11 @@
   "title": "Get Media Buy Artifacts Response",
   "description": "Response containing content artifacts from a media buy for validation",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -60,11 +65,18 @@
               },
               "local_verdict": {
                 "type": "string",
-                "enum": ["pass", "fail", "unevaluated"],
+                "enum": [
+                  "pass",
+                  "fail",
+                  "unevaluated"
+                ],
                 "description": "Seller's local model verdict for this artifact"
               }
             },
-            "required": ["record_id", "artifact"]
+            "required": [
+              "record_id",
+              "artifact"
+            ]
           }
         },
         "collection_info": {
@@ -99,7 +111,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["media_buy_id", "artifacts"]
+      "required": [
+        "media_buy_id",
+        "artifacts"
+      ]
     },
     {
       "type": "object",
@@ -107,7 +122,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -116,7 +133,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }

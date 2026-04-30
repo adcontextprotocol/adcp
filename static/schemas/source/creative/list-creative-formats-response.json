@@ -4,6 +4,11 @@
   "title": "List Creative Formats Response (Creative Agent)",
   "description": "Response payload for list_creative_formats task from creative agent - returns full format definitions",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "formats": {
       "type": "array",

@@ -27,6 +27,46 @@ export function isVerificationMode(value: unknown): value is VerificationMode {
   return typeof value === 'string' && (VERIFICATION_MODES as readonly string[]).includes(value);
 }
 
+/**
+ * AdCP versions for which AAO actively issues per-version badges. The
+ * heartbeat fans out per entry: for each version, it runs `comply()`
+ * with the version-filtered storyboard set and calls
+ * `processAgentBadges()` with that version.
+ *
+ * Adding a version is a deliberate decision — adding `'3.1'` here turns
+ * on Verified Media Buy 3.1 (Spec) issuance for every eligible agent,
+ * even ones that haven't been told yet. Update this in lockstep with
+ * the `introduced_in:` fields on new storyboards under
+ * static/compliance/source/specialisms/.
+ *
+ * Order matters: highest version first so heartbeat reports and queue
+ * draining surface the newest version's pass/fail state first.
+ */
+export const SUPPORTED_BADGE_VERSIONS = ['3.0'] as const;
+export type SupportedBadgeVersion = typeof SUPPORTED_BADGE_VERSIONS[number];
+
+export function isSupportedBadgeVersion(value: unknown): value is SupportedBadgeVersion {
+  return typeof value === 'string' && (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Shape constraint for AdCP version strings (MAJOR.MINOR, e.g. '3.0').
+ *
+ * Single source of truth — also enforced by:
+ *  - The `valid_adcp_version` CHECK constraint in migration 457
+ *  - JWT signing in `verification-token.ts` (fail-closed)
+ *  - SVG label rendering in `badge-svg.ts` (drop-on-malformed)
+ *  - Route validators in `registry-api.ts` (length-bounded variant)
+ *  - Panel JS in `dashboard-agents.html` (kept inline due to no module imports)
+ *
+ * If the constraint changes, update every site that mirrors it.
+ */
+export const ADCP_VERSION_RE = /^[1-9][0-9]*\.[0-9]+$/;
+
+export function isValidAdcpVersionShape(value: unknown): value is string {
+  return typeof value === 'string' && ADCP_VERSION_RE.test(value);
+}
+
 /** AdCP protocol enum — must match enums/adcp-protocol.json. */
 export type AdcpProtocol =
   | 'media-buy'

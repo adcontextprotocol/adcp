@@ -8,7 +8,9 @@
  * This gives Addie context about external content users reference.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('addie-url-tools');
 import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-security.js';
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';

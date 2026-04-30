@@ -6,7 +6,9 @@
  */
 
 import { query } from '../../db/client.js';
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('api-tracker');
 
 export interface ApiCallRecord {
   model: string;

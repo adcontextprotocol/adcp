@@ -4,6 +4,11 @@
   "title": "Create Property List Response",
   "description": "Response payload for create_property_list task",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "properties": {
     "list": {
       "$ref": "/schemas/property/property-list.json",

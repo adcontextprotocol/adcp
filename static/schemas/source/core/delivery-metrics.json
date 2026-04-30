@@ -73,6 +73,11 @@
       "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
       "minimum": 0
     },
+    "plays": {
+      "type": "number",
+      "description": "Number of times the ad creative was displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (per-screen rotation count) and from `impressions` (multiplied audience figure). Used for DOOH and broadcast inventory where buyers reconcile against forecast `plays`.",
+      "minimum": 0
+    },
     "by_event_type": {
       "type": "array",
       "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",

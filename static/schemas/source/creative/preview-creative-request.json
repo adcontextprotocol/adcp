@@ -4,16 +4,61 @@
   "title": "Preview Creative Request",
   "description": "Request to generate previews of creative manifests. Uses request_type to select single, batch, or variant mode.",
   "type": "object",
-  "properties": {
-    "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
     },
+    {
+      "if": {
+        "properties": {
+          "request_type": {
+            "const": "single"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "creative_manifest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request_type": {
+            "const": "batch"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "requests"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request_type": {
+            "const": "variant"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "variant_id"
+        ]
+      }
+    }
+  ],
+  "properties": {
     "request_type": {
       "type": "string",
-      "enum": ["single", "batch", "variant"],
+      "enum": [
+        "single",
+        "batch",
+        "variant"
+      ],
       "description": "Preview mode. 'single' previews one creative manifest. 'batch' previews multiple creatives in one call. 'variant' replays a post-flight variant by ID."
     },
     "creative_manifest": {
@@ -159,20 +204,6 @@
   },
   "required": [
     "request_type"
-  ],
-  "allOf": [
-    {
-      "if": { "properties": { "request_type": { "const": "single" } } },
-      "then": { "required": ["creative_manifest"] }
-    },
-    {
-      "if": { "properties": { "request_type": { "const": "batch" } } },
-      "then": { "required": ["requests"] }
-    },
-    {
-      "if": { "properties": { "request_type": { "const": "variant" } } },
-      "then": { "required": ["variant_id"] }
-    }
   ],
   "additionalProperties": true
 }

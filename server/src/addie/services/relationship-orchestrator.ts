@@ -6,7 +6,9 @@
  * unified delivery, thread persistence, and eligibility checks.
  */
 
-import { logger } from '../../logger.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('relationship-orchestrator');
 import { query } from '../../db/client.js';
 import {
   assignUserStakeholder,

@@ -4,6 +4,11 @@
   "title": "Provide Performance Feedback Response",
   "description": "Response payload for provide_performance_feedback task. Returns either success confirmation OR error information, never both.",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "title": "ProvidePerformanceFeedbackSuccess",
@@ -75,5 +80,6 @@
         ]
       }
     }
-  ]
+  ],
+  "properties": {}
 }

@@ -324,8 +324,12 @@ See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) f
 ## Version Discovery
 
 ```bash
-# Get current version
-curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.adcp_version'
+# Get the full semver of the published schema bundle.
+# (Note: `published_version` carries full semver including patch.
+# It's distinct from the per-request/response wire `adcp_version`
+# field defined in core/version-envelope.json, which uses
+# release-precision — never send `published_version` on the wire.)
+curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.published_version'
 ```
 
 Check [Release Notes](/docs/reference/release-notes) for version history and migration guides.

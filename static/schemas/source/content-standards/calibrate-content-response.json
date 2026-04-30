@@ -4,6 +4,11 @@
   "title": "Calibrate Content Response",
   "description": "Response payload with verdict and detailed explanations for collaborative calibration",
   "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -51,7 +56,10 @@
                 "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
               }
             },
-            "required": ["feature_id", "status"]
+            "required": [
+              "feature_id",
+              "status"
+            ]
           }
         },
         "context": {
@@ -61,7 +69,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["verdict"]
+      "required": [
+        "verdict"
+      ]
     },
     {
       "type": "object",
@@ -69,7 +79,9 @@
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" }
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -78,7 +90,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"]
+      "required": [
+        "errors"
+      ]
     }
-  ]
+  ],
+  "properties": {}
 }
