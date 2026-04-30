@@ -3,7 +3,7 @@
  * AAO Verified badges based on specialism results.
  */
 
-import { ComplianceDatabase, type BadgeRole, type StoryboardStatusEntry } from '../db/compliance-db.js';
+import { ComplianceDatabase, DEFAULT_BADGE_ADCP_VERSION, type BadgeRole, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import { deriveVerificationStatus } from '../addie/services/compliance-testing.js';
 import { signVerificationToken, isTokenSigningEnabled } from './verification-token.js';
 import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
@@ -36,6 +36,7 @@ export async function processAgentBadges(
   storyboardStatuses: StoryboardStatusEntry[],
   overallPassing: boolean,
   membershipOrgId?: string,
+  adcpVersion: string = DEFAULT_BADGE_ADCP_VERSION,
 ): Promise<BadgeIssuanceResult> {
   const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
@@ -44,19 +45,29 @@ export async function processAgentBadges(
   }
 
   const verification = deriveVerificationStatus(declaredSpecialisms, storyboardStatuses);
-  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
-  const existingByRole = new Map(existingBadges.map(b => [b.role, b]));
+  const existingAllVersions = await complianceDb.getBadgesForAgent(agentUrl);
 
-  // If the agent's org no longer has API-access membership, revoke all existing
-  // badges. Badge issuance is a public trust signal tied to active membership.
+  // Membership is an agent-level fact, not a version-level fact. When
+  // membership lapses, every badge across every version must revoke
+  // immediately — not just the version under test. Otherwise a non-paying
+  // agent's other-version badges would keep signaling "AAO Verified" until
+  // their own heartbeats land (12-24h later), which is wrong for a public
+  // trust mark.
   if (!membershipOrgId) {
-    for (const existing of existingBadges) {
-      await complianceDb.revokeBadge(agentUrl, existing.role, 'Membership lapsed');
+    for (const existing of existingAllVersions) {
+      await complianceDb.revokeBadge(agentUrl, existing.role, existing.adcp_version, 'Membership lapsed');
       result.revoked.push({ role: existing.role, reason: 'Membership lapsed' });
-      logger.info({ agentUrl, role: existing.role }, 'Badge revoked — membership lapsed');
+      logger.info({ agentUrl, role: existing.role, adcpVersion: existing.adcp_version }, 'Badge revoked — membership lapsed');
     }
     return result;
   }
+
+  // Scope further reads/writes to the AdCP version we're processing —
+  // for issuance, degradation, and 48-hour-grace revocation, this run
+  // only touches its own version. A 3.1 failing run never affects a 3.0
+  // badge and vice-versa.
+  const existingBadges = existingAllVersions.filter(b => b.adcp_version === adcpVersion);
+  const existingByRole = new Map(existingBadges.map(b => [b.role, b]));
 
   for (const roleResult of verification.roles) {
     const existing = existingByRole.get(roleResult.role);
@@ -89,6 +100,7 @@ export async function processAgentBadges(
       await complianceDb.upsertBadge({
         agent_url: agentUrl,
         role: roleResult.role,
+        adcp_version: adcpVersion,
         verified_specialisms: roleResult.specialisms,
         verification_modes: modes,
         verification_token: token,
@@ -98,23 +110,23 @@ export async function processAgentBadges(
 
       if (!existing) {
         result.issued.push({ role: roleResult.role, specialisms: roleResult.specialisms });
-        logger.info({ agentUrl, role: roleResult.role, specialisms: roleResult.specialisms }, 'Badge issued');
+        logger.info({ agentUrl, role: roleResult.role, adcpVersion, specialisms: roleResult.specialisms }, 'Badge issued');
       } else {
         result.unchanged.push({ role: roleResult.role });
       }
     } else if (existing) {
       if (existing.status === 'active') {
-        await complianceDb.degradeBadge(agentUrl, roleResult.role);
+        await complianceDb.degradeBadge(agentUrl, roleResult.role, adcpVersion);
         result.degraded.push({ role: roleResult.role });
-        logger.info({ agentUrl, role: roleResult.role, failing: roleResult.failing }, 'Badge degraded');
+        logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge degraded');
       } else if (existing.status === 'degraded') {
         const degradedAt = existing.updated_at;
         const hoursSinceDegraded = (Date.now() - degradedAt.getTime()) / (1000 * 60 * 60);
 
         if (hoursSinceDegraded >= 48) {
-          await complianceDb.revokeBadge(agentUrl, roleResult.role, `Specialisms failing for 48+ hours: ${roleResult.failing.join(', ')}`);
+          await complianceDb.revokeBadge(agentUrl, roleResult.role, adcpVersion, `Specialisms failing for 48+ hours: ${roleResult.failing.join(', ')}`);
           result.revoked.push({ role: roleResult.role, reason: `Failing specialisms: ${roleResult.failing.join(', ')}` });
-          logger.info({ agentUrl, role: roleResult.role, failing: roleResult.failing }, 'Badge revoked after 48h grace');
+          logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge revoked after 48h grace');
         } else {
           result.unchanged.push({ role: roleResult.role });
         }
@@ -126,7 +138,7 @@ export async function processAgentBadges(
   const activeRoles = new Set(verification.roles.map(r => r.role));
   for (const existing of existingBadges) {
     if (!activeRoles.has(existing.role)) {
-      await complianceDb.revokeBadge(agentUrl, existing.role, 'Role no longer in declared specialisms');
+      await complianceDb.revokeBadge(agentUrl, existing.role, adcpVersion, 'Role no longer in declared specialisms');
       result.revoked.push({ role: existing.role, reason: 'Role no longer declared' });
     }
   }

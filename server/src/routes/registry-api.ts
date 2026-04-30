@@ -2692,14 +2692,25 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (typeof rec.url === 'string' && typeof rec.type === 'string') {
         const badges = badgeMap.get(rec.url as string);
         if (badges && badges.length > 0) {
+          // Once an agent holds parallel-version badges (Stage 2+),
+          // bulkGetActiveBadges returns multiple rows per role. Dedupe
+          // here by role, keeping the highest-version badge — that's
+          // what the Q3 decision says the public mark should reflect.
+          // bulkGetActiveBadges already orders by adcp_version DESC
+          // numerically, so the first row per role is the highest.
+          const byRole = new Map<typeof badges[number]['role'], typeof badges[number]>();
+          for (const badge of badges) {
+            if (!byRole.has(badge.role)) byRole.set(badge.role, badge);
+          }
+          const dedupedBadges = Array.from(byRole.values());
           rec.aao_verification = {
             verified: true,
-            roles: badges.map(b => b.role),
-            // Per-role verification axes. Each entry is the modes array for
-            // the role at the same index in `roles`. ['spec'] today; will
-            // include 'live' when canonical campaigns are healthy.
-            modes_by_role: Object.fromEntries(badges.map(b => [b.role, b.verification_modes])),
-            verified_at: badges[0].verified_at.toISOString(),
+            roles: dedupedBadges.map(b => b.role),
+            // Per-role verification axes. ['spec'] today; will include
+            // 'live' when canonical campaigns are healthy. Stage 5
+            // adds a richer `badges[]` array with per-version detail.
+            modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
+            verified_at: dedupedBadges[0].verified_at.toISOString(),
           };
         }
       }
@@ -3711,6 +3722,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             const optedOut = meta?.compliance_opt_out ?? false;
             if (cs && !optedOut) {
               const agentBadges = badgeMap?.get(agent.url) || [];
+              // Dedupe by role for the registry summary — once an agent
+              // holds parallel-version badges, agentBadges has multiple
+              // rows per role and verified_roles would silently grow
+              // duplicates. Keep one entry per role (any version is
+              // sufficient for the boolean "verified for this role").
+              const uniqueRoles = Array.from(new Set(agentBadges.map(b => b.role)));
               enrichedAgent.compliance = {
                 status: cs.status,
                 lifecycle_stage: cs.lifecycle_stage,
@@ -3721,7 +3738,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 monitoring_paused: meta?.monitoring_paused ?? false,
                 check_interval_hours: meta?.check_interval_hours ?? 12,
                 verified: agentBadges.length > 0,
-                verified_roles: agentBadges.map(b => b.role),
+                verified_roles: uniqueRoles,
               };
             }
           }
@@ -3996,12 +4013,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
       }
 
-      // getActiveBadge returns active + degraded badges. A degraded badge
+      // getHighestVersionActiveBadge returns the highest-version active +
+      // degraded badge. A degraded badge
       // (within 48-hour grace period) still renders as verified -- the grace
       // period is invisible to the public. Revocation only happens after 48h.
       let modes: string[] = [];
       try {
-        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         if (badge) modes = badge.verification_modes;
       } catch {
         // Table may not exist yet
@@ -4037,7 +4055,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       let verified = false;
       try {
-        const badge = await complianceDb.getActiveBadge(agentUrl, role as any);
+        const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
       } catch {
         // Table may not exist yet
