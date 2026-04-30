@@ -90,6 +90,11 @@ export interface PublisherProfile {
   catalogTypes?: string[];
   reportingFrequencies: string[];
   reportingMetrics: string[];
+  /** Optional: vendor-defined metrics this publisher reports (Adelaide attention, Scope3 emissions, etc.) */
+  vendorMetrics?: Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>;
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */
