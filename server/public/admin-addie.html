@@ -1562,6 +1562,7 @@
           <select id="threads-tool-filter" style="min-width: 150px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);">
             <option value="">All Tools</option>
           </select>
+          <button class="btn btn-secondary" onclick="filterPersonTools()" title="Filter to threads that called any person-shaped tool">Person tools</button>
           <button id="threads-search-btn" class="btn btn-primary" onclick="loadThreads()">Search</button>
           <button class="btn btn-secondary" onclick="clearThreadsSearch()">Clear</button>
         </div>
@@ -2434,7 +2435,38 @@
     function clearThreadsSearch() {
       document.getElementById('threads-search-text').value = '';
       document.getElementById('threads-search-user').value = '';
-      document.getElementById('threads-tool-filter').value = '';
+      const tf = document.getElementById('threads-tool-filter');
+      // Drop any preset option we may have injected and reset to All Tools
+      const preset = tf.querySelector('option[data-preset="person"]');
+      if (preset) preset.remove();
+      tf.value = '';
+      loadThreads();
+    }
+
+    // Filter threads to those that called any person-shaped Addie tool. The
+    // route accepts a comma-separated list as ?tool=A,B,C — we inject the
+    // composite as a synthetic option on the existing dropdown so the rest
+    // of the search flow doesn't need to know about presets.
+    const PERSON_TOOLS = [
+      'lookup_person',
+      'get_person_memory',
+      'get_account',
+      'diagnose_signin_block',
+      'list_invites_for_org',
+      'resend_invite',
+      'revoke_invite',
+    ];
+    function filterPersonTools() {
+      const tf = document.getElementById('threads-tool-filter');
+      let preset = tf.querySelector('option[data-preset="person"]');
+      if (!preset) {
+        preset = document.createElement('option');
+        preset.dataset.preset = 'person';
+        preset.textContent = 'Person tools (preset)';
+        preset.value = PERSON_TOOLS.join(',');
+        tf.insertBefore(preset, tf.firstChild?.nextSibling || null);
+      }
+      tf.value = preset.value;
       loadThreads();
     }
 

@@ -261,7 +261,10 @@ export interface ThreadListFilters {
   offset?: number;
   // Search filters
   search_text?: string;
+  /** Single tool name to filter by. For multi-tool, use tool_names. */
   tool_name?: string;
+  /** Filter to threads that called any of these tools. Wins over tool_name when both set. */
+  tool_names?: string[];
   user_search?: string;
 }
 
@@ -654,7 +657,7 @@ export class ThreadService {
     let paramIndex = 1;
 
     // Determine if we need to join with messages table for search/tool filtering
-    const needsMessageJoin = !!(filters.search_text || filters.tool_name);
+    const needsMessageJoin = !!(filters.search_text || filters.tool_name || (filters.tool_names && filters.tool_names.length > 0));
 
     // user_search matches across all identifiers an admin might describe a
     // person by — full name, Slack handle, real name, WorkOS first/last
@@ -727,8 +730,13 @@ export class ThreadService {
       params.push(`%${filters.search_text}%`);
     }
 
-    // Tool name filter (requires join, searches tools_used array)
-    if (filters.tool_name) {
+    // Tool name filter (requires join, searches tools_used array). When
+    // multiple tools are supplied, match threads that used any of them
+    // (array overlap). Single-tool form retained for backward compatibility.
+    if (filters.tool_names && filters.tool_names.length > 0) {
+      conditions.push(`m.tools_used && $${paramIndex++}::text[]`);
+      params.push(filters.tool_names);
+    } else if (filters.tool_name) {
       conditions.push(`$${paramIndex++} = ANY(m.tools_used)`);
       params.push(filters.tool_name);
     }
