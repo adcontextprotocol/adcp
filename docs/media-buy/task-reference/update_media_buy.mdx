@@ -660,12 +660,14 @@ Cancel a single package while the media buy remains active:
 - Catalog reference (replace the catalog a catalog-driven package promotes)
 - Creative assignments (before the package's `creative_deadline`)
 
-❌ **Cannot update:**
+❌ **Cannot update (schema-enforced via `not` constraint on `package-update.json`):**
 - Package ID
 - Product ID
 - Pricing option ID
 - Format IDs (creatives must match existing formats)
-- Committed metrics (`committed_metrics`, `committed_vendor_metrics`) — frozen reporting contract stamped at creation; schema-enforced
+
+⚠️ **Append-only on update:**
+- `committed_metrics` — sellers accept new entries (mid-flight metric additions, each with its own `committed_at` timestamp) but MUST reject attempts to modify or remove existing entries with `validation_error` (code `IMMUTABLE_FIELD`). Runtime enforcement; the append-only semantics aren't expressible in the schema's `not` clause.
 
 ## Error Handling
 
