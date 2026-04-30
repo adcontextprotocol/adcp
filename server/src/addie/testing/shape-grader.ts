@@ -122,6 +122,20 @@ function countWords(s: string): number {
   return s.trim().split(/\s+/).filter(Boolean).length;
 }
 
+/**
+ * Word count for a response, with code-block content excluded. A 9-word
+ * "draw a mermaid diagram of X" question legitimately produces a long
+ * fenced code block — counting code as words flagged it as length_cap
+ * blow-out when nothing was actually verbose. Inline backtick code stays
+ * counted (it's part of prose). Strips ```...``` fenced blocks of any
+ * language.
+ */
+function countResponseWords(s: string): number {
+  if (!s) return 0;
+  const stripped = s.replace(/```[\s\S]*?```/g, ' ');
+  return stripped.trim().split(/\s+/).filter(Boolean).length;
+}
+
 export function classifyQuestion(question: string): QuestionShape {
   const wordCount = countWords(question);
   const questionMarks = (question.match(/\?/g) || []).length;
@@ -145,7 +159,7 @@ export function classifyQuestion(question: string): QuestionShape {
 }
 
 export function analyzeResponseShape(response: string): ResponseShape {
-  const wordCount = countWords(response);
+  const wordCount = countResponseWords(response);
 
   const lines = response.split('\n');
 

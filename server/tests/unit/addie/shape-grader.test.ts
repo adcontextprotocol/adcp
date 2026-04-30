@@ -183,6 +183,50 @@ Let me know if that helps.`;
     const r = analyzeResponseShape(text);
     expect(r.bannedRitualHits.length).toBeGreaterThan(0);
   });
+
+  it('excludes fenced code-block content from word count', () => {
+    // A short question like "draw a mermaid diagram of X" legitimately
+    // produces a long fenced block. Counting code as words tripped
+    // length_cap when no actual prose was verbose.
+    const codeHeavy = `Here's the diagram:
+
+\`\`\`mermaid
+sequenceDiagram
+    participant A as Alpha
+    participant B as Beta
+    A ->> B: request
+    B -->> A: response
+    A ->> B: another
+    B -->> A: more
+\`\`\`
+
+Let me know if you want it adjusted.`;
+    const r = analyzeResponseShape(codeHeavy);
+    // Prose is "Here's the diagram:" + "Let me know if you want it adjusted."
+    // = ~10 words. Without the fix the count would be ~30+ words including
+    // the mermaid syntax.
+    expect(r.wordCount).toBeLessThan(15);
+  });
+
+  it('keeps inline backtick code in word count (not fenced)', () => {
+    const inline = 'Use the `search_docs` tool with query "addie tools".';
+    const r = analyzeResponseShape(inline);
+    expect(r.wordCount).toBeGreaterThan(5);
+  });
+
+  it('strips multiple fenced blocks', () => {
+    const multi = `First:
+\`\`\`
+console.log('a')
+\`\`\`
+Then:
+\`\`\`json
+{"x": 1}
+\`\`\`
+Done.`;
+    const r = analyzeResponseShape(multi);
+    expect(r.wordCount).toBeLessThan(8);
+  });
 });
 
 describe('gradeShape — Katie/registry case is the load-bearing fixture', () => {
