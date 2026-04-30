@@ -334,6 +334,16 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         if (!fetchResponse.body) {
           return res.status(400).json({ error: 'URL returned no body' });
         }
+        // Defense-in-depth for the compression-bomb path: if the server
+        // ignored our `Accept-Encoding: identity` request and shipped gzip
+        // (or br/deflate) anyway, undici auto-decodes and the byte counter
+        // measures decompressed bytes — a high-ratio bomb still spikes
+        // memory before the cap fires. Reject any non-identity encoding
+        // outright.
+        const contentEncoding = fetchResponse.headers.get('content-encoding')?.toLowerCase().trim();
+        if (contentEncoding && contentEncoding !== 'identity') {
+          return res.status(400).json({ error: 'URL response uses unsupported content-encoding' });
+        }
         // Stream with a hard byte cap — Content-Length alone is not reliable for chunked responses.
         const decoder = new TextDecoder();
         const chunks: string[] = [];

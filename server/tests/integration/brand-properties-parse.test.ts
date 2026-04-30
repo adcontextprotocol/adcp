@@ -61,11 +61,17 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { BrandDatabase } from '../../src/db/brand-db.js';
 import { createBrandFeedsRouter } from '../../src/routes/brand-feeds.js';
 
-const TEST_DOMAIN = 'parse-test.example.com';
-const OWNER_ORG = 'org_parse_owner_001';
-const OUTSIDER_ORG = 'org_parse_outsider_002';
-const OWNER_USER = 'user_parse_owner';
-const OUTSIDER_USER = 'user_parse_outsider';
+// PID + timestamp suffixed IDs prevent FK collisions when this suite runs
+// in parallel with any other integration test that touches organizations,
+// users, or brands tables. The suite's beforeEach DELETEs are scoped to
+// these specific keys, so a sibling worker running concurrently can't be
+// trampled.
+const SUFFIX = `${process.pid}_${Date.now()}`;
+const TEST_DOMAIN = `parse-test-${SUFFIX}.example.com`;
+const OWNER_ORG = `org_parse_owner_${SUFFIX}`;
+const OUTSIDER_ORG = `org_parse_outsider_${SUFFIX}`;
+const OWNER_USER = `user_parse_owner_${SUFFIX}`;
+const OUTSIDER_USER = `user_parse_outsider_${SUFFIX}`;
 
 // Build a Messages.create response that looks like the model invoked
 // `extract_properties` with the supplied args. The route reads
@@ -441,9 +447,17 @@ describe('POST /api/brands/:domain/properties/parse', () => {
   // ─── URL fetch path coverage ────────────────────────────────────────
 
   // Build a Response-like object with a streamable body.
-  function streamingResponse(opts: { ok?: boolean; status?: number; body?: string | null }) {
-    const { ok = true, status = 200, body } = opts;
-    if (body === null) return { ok, status, body: null } as unknown as Response;
+  function streamingResponse(opts: {
+    ok?: boolean;
+    status?: number;
+    body?: string | null;
+    headers?: Record<string, string>;
+  }) {
+    const { ok = true, status = 200, body, headers = {} } = opts;
+    const respHeaders = new Headers(headers);
+    if (body === null) {
+      return { ok, status, body: null, headers: respHeaders } as unknown as Response;
+    }
     const encoder = new TextEncoder();
     const bytes = encoder.encode(body ?? '');
     const stream = new ReadableStream<Uint8Array>({
@@ -452,7 +466,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
         controller.close();
       },
     });
-    return { ok, status, body: stream } as unknown as Response;
+    return { ok, status, body: stream, headers: respHeaders } as unknown as Response;
   }
 
   it('happy URL path streams body and parses identifiers', async () => {
@@ -513,6 +527,40 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Could not fetch URL');
     expect(res.body.error).not.toMatch(/ECONNREFUSED|10\.0\.0/);
+  });
+
+  it.each(['gzip', 'br', 'deflate', 'GZIP'] as const)(
+    'rejects URL responses that ship with Content-Encoding=%s (compression-bomb defense)',
+    async (encoding) => {
+      mocks.validateFetchUrl.mockResolvedValueOnce(undefined);
+      // Server ignores our `Accept-Encoding: identity` request and ships
+      // a compressed response. The route must reject before reading.
+      mocks.safeFetch.mockResolvedValueOnce(
+        streamingResponse({ body: 'real.example', headers: { 'content-encoding': encoding } }),
+      );
+
+      const res = await request(app)
+        .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+        .send({ input: 'https://example.org/list.csv', input_type: 'url' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/content-encoding/i);
+      expect(mocks.anthropicCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts an explicit Content-Encoding: identity response', async () => {
+    mocks.validateFetchUrl.mockResolvedValueOnce(undefined);
+    mocks.safeFetch.mockResolvedValueOnce(
+      streamingResponse({ body: 'a.example', headers: { 'content-encoding': 'identity' } }),
+    );
+    mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: [] }));
+
+    const res = await request(app)
+      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .send({ input: 'https://example.org/list.csv', input_type: 'url' });
+
+    expect(res.status).toBe(200);
   });
 
   it('sends Accept-Encoding: identity to disable compression auto-decode (compression-bomb defense)', async () => {
