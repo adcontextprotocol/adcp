@@ -219,8 +219,12 @@ export const ssrfSafeLookup: LookupFunction = (
  *
  * Encapsulating the dispatcher per `safeFetch` call avoids cross-request
  * connection reuse and keeps the lookup hook scoped to the single request.
+ *
+ * Exported so a unit test can pin the construction shape: if a future
+ * refactor drops the `connect.lookup` option (or undici renames it), the
+ * test fails before the SSRF gap silently reopens.
  */
-function buildSsrfSafeDispatcher(): Dispatcher {
+export function buildSsrfSafeDispatcher(): Dispatcher {
   return new Agent({
     connect: {
       lookup: ssrfSafeLookup,
