@@ -2709,8 +2709,42 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
   /**
+   * Shape contract for the `aao_verification` block this enrichment
+   * appends to brand.json agent entries. Public buyer-facing surface;
+   * documented here so future contributors don't drift the wire format.
+   *
+   *   `verified`         — boolean: any active badge exists
+   *   `verified_at`      — ISO timestamp of the most-recent state change
+   *                        across any badge
+   *   `badges[]`         — canonical per-(role, version) detail. Order is
+   *                        preserved from the underlying API's
+   *                        `adcp_version DESC, role` sort. Adding future
+   *                        axes won't change the array shape (#3524 Q6).
+   *   `roles[]`          — DEPRECATED alias: distinct roles, highest
+   *                        badge per role. Removal target: AdCP 4.0.
+   *   `modes_by_role`    — DEPRECATED alias: highest-version modes per
+   *                        role. Removal target: AdCP 4.0.
+   *   `deprecation_notice` — Travels with the data so long-tail crawlers
+   *                          see the warning even without release notes.
+   */
+  interface AaoVerificationBlock {
+    verified: true;
+    verified_at: string;
+    badges: Array<{
+      role: string;
+      adcp_version: string | null;
+      verification_modes: string[];
+      verified_at: string;
+    }>;
+    roles: string[];
+    modes_by_role: Record<string, string[]>;
+    deprecation_notice: string;
+  }
+
+  /**
    * Enrich brand.json agent entries with AAO verification status.
-   * Scans data for agent URLs and appends aao_verification where badges exist.
+   * Scans data for agent URLs and appends `aao_verification` (shape
+   * documented above as `AaoVerificationBlock`) where badges exist.
    */
   async function enrichBrandDataWithVerification(data: unknown): Promise<unknown> {
     if (!data || typeof data !== 'object') return data;
@@ -2751,9 +2785,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (typeof rec.url === 'string' && typeof rec.type === 'string') {
         const badges = badgeMap.get(rec.url as string);
         if (badges && badges.length > 0) {
-          // bulkGetActiveBadges already orders by adcp_version DESC
-          // numerically (Stage 1), so iterating in order gives us the
-          // newest version per role first.
+          // bulkGetActiveBadges orders by `agent_url, adcp_version DESC,
+          // role`, so for any given agent the first occurrence of each
+          // role in the iteration is the highest-version badge for that
+          // role. Roles can interleave (e.g. media-buy 3.1, creative
+          // 3.1, media-buy 3.0) — `if (!byRole.has)` picks correctly.
           const byRole = new Map<typeof badges[number]['role'], typeof badges[number]>();
           for (const badge of badges) {
             if (!byRole.has(badge.role)) byRole.set(badge.role, badge);
@@ -2761,16 +2797,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           const dedupedBadges = Array.from(byRole.values());
           // Per-version badges array — the canonical shape going forward.
           // One entry per (role, adcp_version), preserving the API's
-          // version-DESC ordering. Buyers consuming brand.json see the
-          // full version history; clients that only care about the
-          // current state read modes_by_role.
+          // version-DESC ordering. Defense-in-depth: gate adcp_version
+          // through the same shape regex used by /compliance and
+          // /verification — brand.json is the public buyer-facing
+          // surface, so any future code path that bypasses the DB CHECK
+          // (raw SQL backfill, restored snapshot) MUST NOT leak through.
           const badgesArray = badges.map(b => ({
             role: b.role,
-            adcp_version: b.adcp_version,
+            adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
             verification_modes: b.verification_modes,
             verified_at: b.verified_at.toISOString(),
           }));
-          rec.aao_verification = {
+          const aaoVerification: AaoVerificationBlock = {
             verified: true,
             // Newest verification across any (role, version) — the most
             // recent state change for the agent.
@@ -2779,14 +2817,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             // #3524's resolved decisions, this is the forward-compat
             // shape — adding future axes won't change the array.
             badges: badgesArray,
-            // Deprecated alias kept for one release. Highest-version
-            // badge per role; reflects "the current best mark." Clients
-            // reading modes_by_role today keep working when parallel-
-            // version badges ship; clients reading badges get the full
-            // picture. Removal target: AdCP 4.0.
+            // Deprecated aliases kept for one release. Highest-version
+            // badge per role; reflects "the current best mark." A
+            // buyer pinned to AdCP 3.0 reading `modes_by_role: { x:
+            // ['spec', 'live'] }` could wrongly conclude their 3.0
+            // traffic gets Live when in fact only 3.1 has Live. The
+            // deprecation_notice ships alongside the data so a long-
+            // tail crawler that doesn't track release notes still sees
+            // the warning. Removal target: AdCP 4.0 (≥6 months from
+            // this PR's merge per the cadence policy in #2359).
             roles: dedupedBadges.map(b => b.role),
             modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
+            deprecation_notice: 'roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0.',
           };
+          rec.aao_verification = aaoVerification;
         }
       }
       if (rec.agents && Array.isArray(rec.agents)) rec.agents.forEach(enrichAgentEntries);
