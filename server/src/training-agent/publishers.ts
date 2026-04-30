@@ -29,6 +29,9 @@ export const PUBLISHERS: PublisherProfile[] = [
     measurementNotes: 'MRC-accredited viewability. 50% in-view for 1s display / 2s video. GroupM standard available on request.',
     reportingFrequencies: ['daily', 'monthly'],
     reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'viewability', 'completed_views', 'completion_rate'],
+    vendorMetrics: [
+      { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' },
+    ],
     properties: [
       {
         propertyId: 'pinnacle_web',
