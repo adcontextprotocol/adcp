@@ -1,0 +1,187 @@
+/**
+ * Invariant: every paid membership subscription that is live in Stripe is
+ * reflected in the AAO `organizations` row for its linked org. Catches the
+ * inverse direction from `org-row-matches-live-stripe-sub`: that one starts
+ * at orgs we already think are subscribed and verifies Stripe agrees. This
+ * one starts at Stripe and verifies our DB caught up.
+ *
+ * Motivating incident: a member paid for Professional, Stripe recorded the
+ * subscription as `active`, the customer was correctly linked to her org —
+ * but `customer.subscription.created` never updated the org row. She had
+ * `subscription_status: NULL` for ~40 days while Stripe billed her, and was
+ * blocked from paid certification content the whole time.
+ *
+ * Detect-only by design. The framework's auto-remediation policy lives at
+ * Phase 3+; for now violations are surfaced for an admin to act on via
+ * `POST /api/admin/accounts/:orgId/sync`. The orphan-customer branch
+ * (Stripe customer with paid sub, not linked to any org) is intentionally
+ * not auto-linked — that path inherits the email-based dedup vulnerability
+ * in `createStripeCustomer` and is a Stripe-customer-hijack-to-membership
+ * attack vector if automated.
+ */
+import type Stripe from 'stripe';
+import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
+
+/**
+ * Subscriptions whose price `lookup_key` starts with one of these prefixes
+ * are membership subs that drive entitlement. Anything else (one-off
+ * invoice line items, test products, future non-membership subs) is out of
+ * scope — we don't want to flag drift on a non-membership sub.
+ */
+const MEMBERSHIP_LOOKUP_KEY_PREFIXES = ['aao_membership_', 'aao_invoice_'] as const;
+
+/**
+ * Stripe statuses that grant entitlement at AAO. Mirrors the gate logic
+ * elsewhere in the codebase. `past_due` keeps access during dunning; the
+ * customer hasn't lost access just because a payment retry is pending.
+ */
+const ENTITLED_STATUSES = new Set<Stripe.Subscription.Status>(['active', 'trialing', 'past_due']);
+
+function isMembershipPrice(lookupKey: string | null | undefined): boolean {
+  if (!lookupKey) return false;
+  return MEMBERSHIP_LOOKUP_KEY_PREFIXES.some((p) => lookupKey.startsWith(p));
+}
+
+function customerIdOf(sub: Stripe.Subscription): string {
+  return typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+}
+
+function priceFieldsOf(sub: Stripe.Subscription): {
+  lookup_key: string | null;
+  unit_amount: number | null;
+} {
+  const price = sub.items.data[0]?.price;
+  return {
+    lookup_key: price?.lookup_key ?? null,
+    unit_amount: price?.unit_amount ?? null,
+  };
+}
+
+interface OrgRow {
+  workos_organization_id: string;
+  name: string;
+  stripe_customer_id: string;
+  subscription_status: string | null;
+  stripe_subscription_id: string | null;
+}
+
+export const stripeSubReflectedInOrgRowInvariant: Invariant = {
+  name: 'stripe-sub-reflected-in-org-row',
+  description:
+    'Every membership subscription that is active or trialing in Stripe is reflected in the org row for its linked customer. Catches missed `customer.subscription.created` and `customer.subscription.updated` webhooks that leave a paying member with no entitlement in our DB.',
+  severity: 'critical',
+  async check(ctx: InvariantContext): Promise<InvariantResult> {
+    const { pool, stripe, logger } = ctx;
+    const violations: Violation[] = [];
+
+    // Two list calls, server-side filtered, regardless of customer count.
+    // Cheaper than walking customers (2N+ calls) and bounded by the count of
+    // live entitling subs, which is small at AAO scale.
+    const memberSubs: Stripe.Subscription[] = [];
+    for (const status of ['active', 'trialing'] as const) {
+      for await (const sub of stripe.subscriptions.list({ status, limit: 100 })) {
+        const { lookup_key } = priceFieldsOf(sub);
+        if (!isMembershipPrice(lookup_key)) continue;
+        memberSubs.push(sub);
+      }
+    }
+
+    if (memberSubs.length === 0) {
+      return { checked: 0, violations: [] };
+    }
+
+    const customerIds = Array.from(new Set(memberSubs.map(customerIdOf)));
+
+    const orgsResult = await pool.query<OrgRow>(
+      `SELECT workos_organization_id, name, stripe_customer_id,
+              subscription_status, stripe_subscription_id
+         FROM organizations
+        WHERE stripe_customer_id = ANY($1::text[])`,
+      [customerIds],
+    );
+    const customerToOrg = new Map<string, OrgRow>(
+      orgsResult.rows.map((r) => [r.stripe_customer_id, r]),
+    );
+
+    for (const sub of memberSubs) {
+      const customerId = customerIdOf(sub);
+      const { lookup_key, unit_amount } = priceFieldsOf(sub);
+      const org = customerToOrg.get(customerId);
+
+      if (!org) {
+        // Stripe customer holds a paid membership sub but has no AAO org
+        // pointing at it. Could be: (a) abandoned-checkout customer that got
+        // re-used, (b) customer linked to org that was later merged/deleted,
+        // (c) test-mode bleed (shouldn't happen in live env), (d) a real
+        // org-link that needs a human admin to make.
+        //
+        // Severity is `warning`, not `critical`: no AAO user is being denied
+        // entitlement (there's no AAO user attached). Auto-linking on email
+        // or metadata is unsafe — `createStripeCustomer`'s dedup lookups have
+        // a known collision path that an attacker could exploit by getting
+        // their Stripe-customer email matched to a victim's org.
+        violations.push({
+          invariant: 'stripe-sub-reflected-in-org-row',
+          severity: 'warning',
+          subject_type: 'customer',
+          subject_id: customerId,
+          message:
+            `Stripe customer ${customerId} holds ${sub.status} membership subscription ${sub.id} ` +
+            `(${lookup_key ?? 'no lookup_key'}) but is not linked to any AAO organization.`,
+          details: {
+            stripe_subscription_id: sub.id,
+            stripe_status: sub.status,
+            lookup_key,
+            unit_amount,
+            customer_email:
+              typeof sub.customer === 'string' || sub.customer.deleted
+                ? null
+                : sub.customer.email,
+          },
+          remediation_hint:
+            'Use the admin UI to link this customer to its org via POST /api/admin/billing/customers/:customerId/link. Do not auto-link — that path is a Stripe-customer-hijack vector.',
+        });
+        continue;
+      }
+
+      // Healthy: row reflects Stripe entitlement. No-op.
+      if (org.subscription_status && ENTITLED_STATUSES.has(org.subscription_status as Stripe.Subscription.Status)) {
+        continue;
+      }
+
+      // Lina-class: paying customer is being denied access. Stripe says
+      // entitled, our DB does not.
+      violations.push({
+        invariant: 'stripe-sub-reflected-in-org-row',
+        severity: 'critical',
+        subject_type: 'organization',
+        subject_id: org.workos_organization_id,
+        message:
+          `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
+          `(${sub.status}) but DB row shows subscription_status=${JSON.stringify(org.subscription_status)}. ` +
+          `Member is incorrectly being denied entitlement.`,
+        details: {
+          org_name: org.name,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: sub.id,
+          stripe_status: sub.status,
+          db_subscription_status: org.subscription_status,
+          db_stripe_subscription_id: org.stripe_subscription_id,
+          lookup_key,
+          unit_amount,
+        },
+        remediation_hint:
+          `POST /api/admin/accounts/${org.workos_organization_id}/sync to pull fresh state from Stripe and unblock the member. Investigate why the customer.subscription.created/updated webhook didn't fire (Stripe dashboard webhook delivery log).`,
+      });
+    }
+
+    if (memberSubs.length > 0 && violations.length > 0) {
+      logger.warn(
+        { invariant: 'stripe-sub-reflected-in-org-row', total_subs: memberSubs.length, violations: violations.length },
+        'Stripe→DB reconciliation found drift',
+      );
+    }
+
+    return { checked: memberSubs.length, violations };
+  },
+};

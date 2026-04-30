@@ -69,7 +69,7 @@ The runner executes invariants sequentially. One throwing doesn't cancel the oth
 
 - **Auto-remediation.** Phase 1 detects; humans decide. Auto-fix is Phase 3+.
 - **Real-time monitoring.** Webhooks remain the primary sync mechanism. Invariants catch what webhooks miss.
-- **Stripe-customer enumeration.** We walk AAO orgs and check Stripe for each. Catching orphans on the *Stripe* side (customers with no AAO row) requires the inverse walk and is Phase 3+.
+- **Auto-link of orphan Stripe customers.** `stripe-sub-reflected-in-org-row` walks Stripe and flags subs whose customer has no AAO org. It does **not** auto-link them — that path inherits a known dedup vulnerability in `createStripeCustomer` and is a hijack-to-membership vector if automated. A human admin links via `POST /api/admin/billing/customers/:customerId/link`.
 - **Replace `POST /api/admin/accounts/:orgId/sync`.** That endpoint is for explicit single-org reconciliation. Invariants tell you which orgs to sync.
 
 ## Reference
